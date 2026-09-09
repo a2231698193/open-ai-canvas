@@ -40,6 +40,13 @@
 
 - [beautifului 创作设计](beautifului-creation-design.md)：本地设计参考，未纳入版本控制。
 
+## 运维手册
+
+- [生产环境更新步骤](plans/production-update-runbook.md)：官方仓库同步到 Fork、生产部署、验收和故障信息收集。
+- [APIMart 视频模型价格表](plans/apimart-video-pricing.md)：54 个视频模型、236 条价格记录，以及成本积分、默认倍率和用户售价换算。
+- [APIMart 原始价格数据](plans/apimart-pricing.json)：本次导入的价格 JSON 快照。
+- [APIMart 视频价格批量导入](plans/apimart-video-pricing-import.md)：只更新已添加模型的 dry-run 与正式导入步骤。
+
 ## 按约定维护的文档（`docs/content/docs/`）
 
 功能、代码地图、待办、待测试分别维护在以下页面；尚未建立的专题会在对应任务中补齐：
