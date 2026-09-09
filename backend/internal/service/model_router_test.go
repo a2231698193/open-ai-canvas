@@ -98,6 +98,22 @@ func TestSKUSelectorHandlesMissingImageOptions(t *testing.T) {
 	}
 }
 
+func TestSKUSelectorMatchesVideoAudioTier(t *testing.T) {
+	intent := ModelRequestIntent{Capability: "video", Options: map[string]any{"vquality": "1080P", "videoGenerateAudio": true}}
+	selector := skuSelectorForIntent(intent)
+	if selector["vquality"] != "1080p" || selector["videoGenerateAudio"] != "true" {
+		t.Fatalf("selector = %#v", selector)
+	}
+	modelWithTiers := model.ChannelModel{PriceTiers: []model.ChannelModelPriceTier{
+		{ID: "silent", SelectorJSON: `{"vquality":"1080p"}`, Enabled: true, PriceConfigured: true},
+		{ID: "sound", SelectorJSON: `{"vquality":"1080p","videoGenerateAudio":"true"}`, Enabled: true, PriceConfigured: true},
+	}}
+	matched := channelModelPriceTierForIntent(modelWithTiers, intent)
+	if matched == nil || matched.ID != "sound" {
+		t.Fatalf("matched tier = %#v", matched)
+	}
+}
+
 func TestSKUSelectorIncludesVideoReferenceImageCount(t *testing.T) {
 	selector := skuSelectorForIntent(ModelRequestIntent{Capability: "video", Inputs: map[string]int{"image": 5}, Options: map[string]any{"vquality": "720p"}})
 	if selector["imageCount"] != "5" || selector["vquality"] != "720p" {

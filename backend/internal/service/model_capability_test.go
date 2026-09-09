@@ -116,6 +116,21 @@ func TestDefaultVideoCapabilityUsesProtocolSpecificResolutionTiers(t *testing.T)
 	}
 }
 
+func TestAPIMartVideoCapabilitiesUseModelLimits(t *testing.T) {
+	miniMax := DefaultModelCapabilityConfigForModel("apimart-video", "MiniMax-H3").Video
+	if miniMax.DefaultResolution != "2K" || miniMax.References.MaxVideos != 3 || miniMax.GenerateAudio.Supported {
+		t.Fatalf("MiniMax-H3 capability = %#v", miniMax)
+	}
+	seedance25 := DefaultModelCapabilityConfigForModel("apimart-video", "seedance-2.5").Video
+	if seedance25.DefaultRatio != "adaptive" || seedance25.Duration.Max != 30 || seedance25.References.MaxImages != 30 || seedance25.References.MaxVideos != 10 || seedance25.References.MaxAudios != 10 {
+		t.Fatalf("Seedance 2.5 capability = %#v", seedance25)
+	}
+	kling := DefaultModelCapabilityConfigForModel("apimart-video", "kling-v3").Video
+	if kling.GenerateAudio.Default || !kling.GenerateAudio.Supported || kling.References.MaxImages != 2 {
+		t.Fatalf("Kling v3 capability = %#v", kling)
+	}
+}
+
 func TestDefaultMiniMaxVideoCapabilitySupportsReferenceGeneration(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel("minimax-video", "MiniMax-H3")
 	if profile == nil || profile.Video == nil {

@@ -209,6 +209,22 @@ func TestAuthorizeSystemProxyVolcengineArkImageOnlyAllowsGenerations(t *testing.
 	}
 }
 
+func TestAuthorizeSystemProxyAllowsAPIMartVideoEndpoints(t *testing.T) {
+	channel := &model.ModelChannel{APIFormat: "openai", ModelsJSON: `["kling-v3"]`}
+	if err := authorizeSystemProxy(channel, model.ChannelInterfaceAPIMartVideo, http.MethodPost, "/v1/videos/generations", "application/json", []byte(`{"model":"kling-v3"}`)); err != nil {
+		t.Fatalf("expected APIMart create to be allowed: %v", err)
+	}
+	if err := authorizeSystemProxy(channel, model.ChannelInterfaceAPIMartVideo, http.MethodGet, "/v1/tasks/task-1", "", nil); err != nil {
+		t.Fatalf("expected APIMart poll to be allowed: %v", err)
+	}
+	if err := authorizeSystemProxy(channel, model.ChannelInterfaceAPIMartVideo, http.MethodPost, "/v1/videos/generations", "application/json", []byte(`{"model":"unknown"}`)); err == nil {
+		t.Fatal("expected unauthorized APIMart model to be blocked")
+	}
+	if err := authorizeSystemProxy(channel, model.ChannelInterfaceAPIMartVideo, http.MethodGet, "/v1/tasks", "", nil); err == nil {
+		t.Fatal("expected invalid APIMart poll path to be blocked")
+	}
+}
+
 func TestAuthorizeSystemProxyBlocksBackendOnlyVideoInterfaces(t *testing.T) {
 	body := []byte(`{"model":"grok-image-video"}`)
 	for _, interfaceType := range []model.ChannelInterfaceType{model.ChannelInterfaceNewAPIChannel2, model.ChannelInterfaceXAIVideo, model.ChannelInterfaceVolcengineJiMengImage, model.ChannelInterfaceVolcengineJiMengVideo} {

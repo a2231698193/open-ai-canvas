@@ -19,6 +19,8 @@ const sorted = (value) => ({ $sortByOrder: value });
 const mediaWithRoles = (path, roles) => filter(sorted(ref(path)), "media", { $in: [ref("media.role"), roles] });
 const firstMediaWithRoles = (path, roles) => first(mediaWithRoles(path, roles));
 const firstMediaFieldWithRoles = (path, roles, field) => first(map(mediaWithRoles(path, roles), "media", ref(`media.${field}`)));
+const explicitVideoFrames = (path) => mediaWithRoles(path, ["first_frame", "last_frame"]);
+const hasExplicitVideoFrames = (path) => gt(len(explicitVideoFrames(path)), 0);
 
 const textParams = [
   ["model", "string", true, "model", "上游模型 ID。"],
@@ -348,6 +350,65 @@ add({
     }
   }),
   poll: { method: "GET", path: "/v1/videos/{{taskId}}" }, response: asyncResponse("video")
+});
+
+add({
+  id: "apimart-video", providerId: "apimart-video", name: "APIMart Video", vendor: "APIMart", capability: "video",
+  baseUrl: "https://api.apimart.ai", auth: bearer, params: videoParams, requiresPublicMediaUrls: true,
+  notes: "APIMart 视频统一异步接口：创建使用 /v1/videos/generations，查询使用 /v1/tasks/{task_id}。不同模型的参数字段并不完全一致，本插件只发送对应模型支持的字段；其他 APIMart endpoint 必须使用独立协议。",
+  create: jsonCreate("/v1/videos/generations", {
+    model: ref("request.model"), prompt: omit(ref("request.prompt")),
+    duration: conditional(gt(ref("request.duration"), 0), ref("request.duration"), 5),
+    resolution: conditional({ $eq: [{ $lower: ref("request.model") }, "kling-v3"] }, undefined, omit(ref("request.resolution"))),
+    mode: conditional({ $eq: [{ $lower: ref("request.model") }, "kling-v3"] }, conditional({ $eq: [{ $lower: ref("request.resolution") }, "4k"] }, "4k", conditional({ $eq: [{ $lower: ref("request.resolution") }, "1080p"] }, "pro", "std")), undefined),
+    aspect_ratio: conditional({ $not: { $in: [{ $lower: ref("request.model") }, ["seedance-2.0", "seedance-2.0-mini", "seedance-2.5"]] } }, omit(ref("request.aspectRatio")), undefined),
+    size: conditional({ $in: [{ $lower: ref("request.model") }, ["seedance-2.0", "seedance-2.0-mini", "seedance-2.5"]] }, omit(ref("request.aspectRatio")), undefined),
+    generate_audio: conditional({ $in: [{ $lower: ref("request.model") }, ["seedance-2.0", "seedance-2.0-mini", "seedance-2.5"]] }, ref("request.generateAudio"), undefined),
+    audio: conditional({ $in: [{ $lower: ref("request.model") }, ["kling-v3", "seedance-1-5-pro"]] }, ref("request.generateAudio"), undefined),
+    watermark: conditional({ $in: [{ $lower: ref("request.model") }, ["minimax-h3", "kling-3.0-turbo", "kling-v3", "seedance-2.5"]] }, ref("request.watermark"), undefined),
+    image_urls: conditional({ $or: [
+      { $eq: [{ $lower: ref("request.model") }, "kling-v3"] },
+      { $and: [
+        { $ne: [{ $lower: ref("request.model") }, "kling-3.0-turbo"] },
+        { $not: hasExplicitVideoFrames("request.images") }
+      ] }
+    ] }, omit(map({ $sortByOrder: ref("request.images") }, "media", ref("media.value"))), undefined),
+    first_frame_image: conditional({ $eq: [{ $lower: ref("request.model") }, "kling-3.0-turbo"] }, omit(firstMediaFieldWithRoles("request.images", ["first_frame", ""], "value")), undefined),
+    video_urls: conditional({ $or: [
+      { $eq: [{ $lower: ref("request.model") }, "seedance-2.5"] },
+      { $and: [
+        { $in: [{ $lower: ref("request.model") }, ["minimax-h3", "seedance-2.0", "seedance-2.0-mini"]] },
+        { $not: hasExplicitVideoFrames("request.images") }
+      ] }
+    ] }, omit(map({ $sortByOrder: ref("request.videos") }, "media", ref("media.value"))), undefined),
+    audio_urls: conditional({ $or: [
+      { $eq: [{ $lower: ref("request.model") }, "seedance-2.5"] },
+      { $and: [
+        { $in: [{ $lower: ref("request.model") }, ["minimax-h3", "seedance-2.0", "seedance-2.0-mini"]] },
+        { $not: hasExplicitVideoFrames("request.images") }
+      ] }
+    ] }, omit(map({ $sortByOrder: ref("request.audios") }, "media", ref("media.value"))), undefined),
+    image_with_roles: conditional({ $in: [{ $lower: ref("request.model") }, ["minimax-h3", "seedance-1-5-pro", "seedance-2.0", "seedance-2.0-mini", "seedance-2.5"]] }, conditional(
+      hasExplicitVideoFrames("request.images"),
+      omit(map({ $sortByOrder: ref("request.images") }, "media", {
+        url: ref("media.value"), role: coalesce(ref("media.role"), "reference_image")
+      })),
+      undefined
+    ), undefined)
+  }),
+  poll: { method: "GET", path: "/v1/tasks/{{taskId}}" },
+  response: asyncResponse("video", {
+    taskId: coalesce(ref("response.data.0.task_id"), ref("response.data.0.taskId"), ref("response.data.task_id"), ref("response.task_id"), ref("taskId")),
+    status: coalesce(ref("response.data.0.status"), ref("response.data.status"), ref("response.status"), "pending"),
+    message: coalesce(ref("response.data.error.message"), ref("response.error.message"), ref("response.message"), ref("response.fail_reason")),
+    videos: coalesce(
+      map(ref("response.data.result.videos"), "video", { $at: [{ $ref: "video.url" }, 0] }),
+      map(ref("response.data.videos"), "video", { $at: [{ $ref: "video.url" }, 0] }),
+      ref("response.data.result.video_url"), ref("response.data.video_url"), ref("response.video_url")
+    ),
+    errorPaths: ["response.data.error.code", "response.data.error.message", "response.error.code"],
+    messagePaths: ["response.data.error.message", "response.error.message", "response.message"]
+  })
 });
 
 add({

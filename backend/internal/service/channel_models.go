@@ -500,6 +500,11 @@ func normalizeChannelModelTierSelector(capability string, input ChannelModelPric
 		switch key {
 		case "operation":
 			value = strings.ToLower(value)
+		case "videoGenerateAudio":
+			if !strings.EqualFold(value, "true") && !strings.EqualFold(value, "false") {
+				return nil, "", 0, BadAuthRequest("视频价格档音频开关必须是 true 或 false")
+			}
+			value = strings.ToLower(value)
 		case "quality", "size":
 			value = strings.ToLower(value)
 			if value == "auto" || value == "any" {
@@ -557,6 +562,9 @@ func normalizeChannelModelTierSelector(capability string, input ChannelModelPric
 	}
 	if _, exists := selector["imageCount"]; exists && capability != "video" {
 		return nil, "", 0, BadAuthRequest("只有视频模型可以按参考图片数量配置价格档")
+	}
+	if _, exists := selector["videoGenerateAudio"]; exists && capability != "video" {
+		return nil, "", 0, BadAuthRequest("只有视频模型可以按音频开关配置价格档")
 	}
 	resolution := "*"
 	if value := selector["vquality"]; value != "" {

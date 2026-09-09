@@ -6,6 +6,19 @@ import (
 	"infinite-canvas/backend/internal/model"
 )
 
+func TestNormalizeVideoPriceTierAudioSelector(t *testing.T) {
+	selector, _, _, err := normalizeChannelModelTierSelector("video", ChannelModelPriceTierRequest{Selector: map[string]string{"videoGenerateAudio": "TRUE"}})
+	if err != nil || selector["videoGenerateAudio"] != "true" {
+		t.Fatalf("selector = %#v, err = %v", selector, err)
+	}
+	if _, _, _, err := normalizeChannelModelTierSelector("video", ChannelModelPriceTierRequest{Selector: map[string]string{"videoGenerateAudio": "yes"}}); err == nil {
+		t.Fatal("invalid videoGenerateAudio selector should be rejected")
+	}
+	if _, _, _, err := normalizeChannelModelTierSelector("image", ChannelModelPriceTierRequest{Selector: map[string]string{"videoGenerateAudio": "true"}}); err == nil {
+		t.Fatal("image price tier should reject videoGenerateAudio")
+	}
+}
+
 func TestNormalizeChannelModelContract(t *testing.T) {
 	channel := &model.ModelChannel{APIKey: "test-key"}
 	modelKey, providerModelKey, capability, protocol, err := normalizeChannelModelContract(channel, ChannelModelRequest{

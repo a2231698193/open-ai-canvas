@@ -228,11 +228,14 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 		video.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
 		video.Watermark = VideoBooleanConfig{Supported: true, Default: false}
 		video.Resolutions = []string{"480p", "720p", "1080p"}
-	case model.ChannelInterfaceNewAPIChannel1, model.ChannelInterfaceNewAPIChannel2:
+	case model.ChannelInterfaceNewAPIChannel1, model.ChannelInterfaceNewAPIChannel2, model.ChannelInterfaceAPIMartVideo:
 		video.References.MaxVideos, video.References.MaxAudios = 3, 3
 		video.References.MaxVideoBytes, video.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
 		video.References.MaxVideoDuration, video.References.MaxAudioDuration = 15, 15
 		video.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
+		if model.ChannelInterfaceType(protocol) == model.ChannelInterfaceAPIMartVideo {
+			video = applyAPIMartVideoCapability(video, modelName)
+		}
 		if model.ChannelInterfaceType(protocol) == model.ChannelInterfaceNewAPIChannel1 {
 			video.Resolutions = []string{"480p", "720p", "1080p"}
 		}
@@ -313,6 +316,81 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		return nil, err
 	}
 	return value, nil
+}
+
+func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName string) *VideoCapabilityConfig {
+	value := *profile
+	value.DefaultOperation = "text_to_video"
+	value.Ratios = []string{"16:9", "9:16", "1:1"}
+	value.DefaultRatio = "16:9"
+	value.GenerateAudio = VideoBooleanConfig{}
+	value.Watermark = VideoBooleanConfig{}
+	value.References.MaxImages = 0
+	value.References.MaxVideos = 0
+	value.References.MaxAudios = 0
+	value.References.MaxVideoBytes = 0
+	value.References.MaxAudioBytes = 0
+	value.References.MaxVideoDuration = 0
+	value.References.MaxAudioDuration = 0
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "minimax-h3":
+		value.References.PromptMaxChars = 7000
+		value.References.MaxImages, value.References.MaxVideos, value.References.MaxAudios = 9, 3, 3
+		value.References.MaxVideoBytes, value.References.MaxAudioBytes = 50*1024*1024, 15*1024*1024
+		value.References.MaxVideoDuration, value.References.MaxAudioDuration = 15, 15
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 15, Step: 1, Default: 5}
+		value.Ratios = []string{"adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"}
+		value.Resolutions, value.DefaultResolution = []string{"768P", "2K"}, "2K"
+		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
+		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+	case "seedance-1-5-pro":
+		value.References.MaxImages = 2
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 12, Step: 1, Default: 5}
+		value.Ratios = []string{"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+		value.Resolutions, value.DefaultResolution = []string{"480p", "720p", "1080p"}, "720p"
+		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
+		value.Operations = []string{"text_to_video", "image_to_video"}
+	case "seedance-2.0", "seedance-2.0-mini":
+		value.References.MaxImages, value.References.MaxVideos, value.References.MaxAudios = 9, 3, 3
+		value.References.MaxVideoBytes, value.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
+		value.References.MaxVideoDuration, value.References.MaxAudioDuration = 15, 15
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 5, Max: 15, Step: 1, Default: 5}
+		value.Ratios = []string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+		value.Resolutions = []string{"480p", "720p"}
+		if strings.EqualFold(modelName, "seedance-2.0") {
+			value.Resolutions = append(value.Resolutions, "1080p", "4k")
+		}
+		value.DefaultResolution = "720p"
+		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
+		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+	case "seedance-2.5":
+		value.References.MaxImages, value.References.MaxVideos, value.References.MaxAudios = 30, 10, 10
+		value.References.MaxVideoBytes, value.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
+		value.References.MaxVideoDuration, value.References.MaxAudioDuration = 30, 30
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 30, Step: 1, Default: 5}
+		value.Ratios = []string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+		value.DefaultRatio = "adaptive"
+		value.Resolutions, value.DefaultResolution = []string{"480p", "720p", "1080p"}, "720p"
+		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
+		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
+		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video", "audio_to_video"}
+	case "kling-3.0-turbo":
+		value.References.PromptMaxChars = 3072
+		value.References.MaxImages = 1
+		value.References.MaxImageBytes = 50 * 1024 * 1024
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 3, Max: 15, Step: 1, Default: 5}
+		value.Resolutions, value.DefaultResolution = []string{"720p", "1080p"}, "720p"
+		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
+		value.Operations = []string{"text_to_video", "image_to_video"}
+	case "kling-v3":
+		value.References.MaxImages = 2
+		value.Duration = VideoDurationConfig{Selection: "range", Min: 3, Max: 15, Step: 1, Default: 5}
+		value.Resolutions, value.DefaultResolution = []string{"720p", "1080p", "4k"}, "720p"
+		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: false}
+		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
+		value.Operations = []string{"text_to_video", "image_to_video"}
+	}
+	return &value
 }
 
 func applyModelSpecificVideoCapability(profile *VideoCapabilityConfig, protocol string, modelName string) *VideoCapabilityConfig {

@@ -153,6 +153,82 @@ func assertManifestContractMatchesPackage(t *testing.T, packageName string, mani
 	}
 }
 
+func TestAPIMartVideoProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "apimart-video.yingce-plugin", "apimart-video")
+	seedance, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "seedance-2.0", Prompt: "a cat running", Duration: 5, AspectRatio: "16:9", Resolution: "720p", GenerateAudio: true,
+		Images: []MediaReference{{URL: "https://cdn.example/frame.png", Role: "first_frame"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, seedance)
+	if seedance.Method != "POST" || seedance.Path != "/v1/videos/generations" || body["model"] != "seedance-2.0" || body["size"] != "16:9" || body["resolution"] != "720p" || body["generate_audio"] != true {
+		t.Fatalf("APIMart Seedance create = %#v, body = %#v", seedance, body)
+	}
+	if _, ok := body["aspect_ratio"]; ok {
+		t.Fatalf("Seedance request must use size, body = %#v", body)
+	}
+	if _, ok := body["image_urls"]; ok {
+		t.Fatalf("explicit Seedance frames must not be duplicated as image_urls: %#v", body)
+	}
+	frames, _ := body["image_with_roles"].([]any)
+	if len(frames) != 1 {
+		t.Fatalf("Seedance frame mapping = %#v", body["image_with_roles"])
+	}
+
+	kling, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-v3", Prompt: "a cat running", Duration: 5, AspectRatio: "16:9", Resolution: "1080p", GenerateAudio: true,
+		Images: []MediaReference{{URL: "https://cdn.example/first.png", Role: "first_frame"}, {URL: "https://cdn.example/last.png", Role: "last_frame"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	klingBody := manifestTestBody(t, kling)
+	images, _ := klingBody["image_urls"].([]any)
+	if klingBody["mode"] != "pro" || klingBody["audio"] != true || len(images) != 2 {
+		t.Fatalf("APIMart Kling create body = %#v", klingBody)
+	}
+	if _, ok := klingBody["resolution"]; ok {
+		t.Fatalf("Kling v3 uses mode instead of resolution: %#v", klingBody)
+	}
+
+	turbo, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-3.0-turbo", Prompt: "a cat running", Duration: 5, AspectRatio: "16:9", Resolution: "720p",
+		Images: []MediaReference{{URL: "https://cdn.example/first.png", Role: "first_frame"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turboBody := manifestTestBody(t, turbo)
+	if turboBody["first_frame_image"] != "https://cdn.example/first.png" {
+		t.Fatalf("APIMart Kling Turbo create body = %#v", turboBody)
+	}
+	if _, ok := turboBody["image_urls"]; ok {
+		t.Fatalf("Kling Turbo uses first_frame_image instead of image_urls: %#v", turboBody)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task-1"}]}`))
+	if err != nil || created.TaskID != "task-1" || created.Status != StatusPending {
+		t.Fatalf("APIMart create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "task-1"})
+	if err != nil || poll.Path != "/v1/tasks/task-1" {
+		t.Fatalf("APIMart poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "task-1"}, []byte(`{"code":200,"data":{"id":"task-1","status":"completed","result":{"videos":[{"url":["https://cdn.example/video.mp4"]}]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 || result.Result.Videos[0].URL != "https://cdn.example/video.mp4" {
+		t.Fatalf("APIMart response = %#v", result)
+	}
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "task-2"}, []byte(`{"code":200,"data":{"id":"task-2","status":"failed","error":{"code":"upstream_failed","message":"provider rejected request"}}}`))
+	if err != nil || failed.Status != StatusFailed || failed.Message != "provider rejected request" {
+		t.Fatalf("APIMart failure response = %#v, err = %v", failed, err)
+	}
+}
+
 func TestOfficialAgentProfilesMapToolRequestsAndResponses(t *testing.T) {
 	requests := map[string]any{
 		"chatCompletion": map[string]any{"messages": []any{map[string]any{"role": "user", "content": "inspect"}}, "tools": []any{map[string]any{"type": "function"}}, "tool_choice": "required", "marker": "chat"},
