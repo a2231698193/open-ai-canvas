@@ -191,6 +191,10 @@
     --btn-solid-hover-bg: #303030;
     --btn-solid-active-bg: #404040;
     --btn-solid-fg: #ffffff;
+    --btn-outline-border: color-mix(in srgb, var(--foreground) 16%, transparent);
+    --btn-outline-hover-border: color-mix(in srgb, var(--foreground) 28%, transparent);
+    --btn-outline-hover-bg: color-mix(in srgb, var(--foreground) 6%, transparent);
+    --btn-outline-active-bg: color-mix(in srgb, var(--foreground) 9%, transparent);
     --control-selected-bg: rgba(17, 17, 17, 0.09);
     --control-selected-hover-bg: rgba(17, 17, 17, 0.13);
     --control-selected-fg: #171717;
@@ -952,6 +956,8 @@
     --dock-precision-width: var(--space-12);
     --dock-z-popover: 30;                 /* dock 子面板在 toolbar 根 stacking context 内的层级（见 ADR-001）*/
     --dock-switch-track: #000000;         /* 抓手/框选胶囊轨道：纯黑，和工具栏表面分开 */
+    --dock-switch-thumb: #ffffff;
+    --dock-switch-thumb-text: #000000;    /* 选中图标落在白圆上，用纯黑描边避免发灰 */
 
     /* 页面顶部栏（PageHeader / 工作台头部）*/
     --page-topbar-h: 64px;
@@ -2256,6 +2262,46 @@
     :where(.ant-btn[aria-pressed="true"]:not(:disabled)):hover {
         background: var(--control-selected-hover-bg) !important;
         color: var(--control-selected-fg) !important;
+    }
+
+    /* 用户端主按钮与弹窗确认：统一描边，不再用实心填充。后台和管理登录 CTA 不受影响。 */
+    .app-user-workspace .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]),
+    .app-user-overlays .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]),
+    .library-primary-action {
+        border: 1px solid var(--btn-outline-border) !important;
+        background: transparent !important;
+        color: var(--foreground) !important;
+        box-shadow: none !important;
+    }
+
+    .app-user-workspace .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]):not(:disabled):hover,
+    .app-user-overlays .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]):not(:disabled):hover,
+    .library-primary-action:not(:disabled):hover {
+        border-color: var(--btn-outline-hover-border) !important;
+        background: var(--btn-outline-hover-bg) !important;
+        color: var(--foreground) !important;
+    }
+
+    .app-user-workspace .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]):not(:disabled):active,
+    .app-user-overlays .ant-btn-primary:not(.ant-btn-dangerous):not([aria-pressed="true"]):not(:disabled):active,
+    .library-primary-action:not(:disabled):active {
+        background: var(--btn-outline-active-bg) !important;
+        color: var(--foreground) !important;
+    }
+
+    .app-user-workspace .ant-btn-primary.ant-btn-dangerous:not([aria-pressed="true"]),
+    .app-user-overlays .ant-btn-primary.ant-btn-dangerous:not([aria-pressed="true"]) {
+        border: 1px solid color-mix(in srgb, var(--status-error) 42%, transparent) !important;
+        background: transparent !important;
+        color: var(--status-error) !important;
+        box-shadow: none !important;
+    }
+
+    .app-user-workspace .ant-btn-primary.ant-btn-dangerous:not([aria-pressed="true"]):not(:disabled):hover,
+    .app-user-overlays .ant-btn-primary.ant-btn-dangerous:not([aria-pressed="true"]):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--status-error) 58%, transparent) !important;
+        background: color-mix(in srgb, var(--status-error) 8%, transparent) !important;
+        color: var(--status-error) !important;
     }
 
     /* AntD Switch 只有一个 handleBg token，无法分别表达开/关滑块颜色。
@@ -4838,21 +4884,22 @@
     }
 
     .workflow-test-toolbar-actions .ant-btn-primary {
-        border: 0;
-        background: var(--btn-solid-bg) !important;
-        color: var(--btn-solid-fg) !important;
+        border: 1px solid var(--btn-outline-border) !important;
+        background: transparent !important;
+        color: var(--foreground) !important;
         box-shadow: none !important;
-        font-weight: 620;
+        font-weight: 560;
     }
 
     .workflow-test-toolbar-actions .ant-btn-primary:not(:disabled):hover {
-        background: var(--btn-solid-hover-bg) !important;
-        color: var(--btn-solid-fg) !important;
+        border-color: var(--btn-outline-hover-border) !important;
+        background: var(--btn-outline-hover-bg) !important;
+        color: var(--foreground) !important;
     }
 
     .workflow-test-toolbar-actions .ant-btn-primary:not(:disabled):active {
-        background: var(--btn-solid-active-bg) !important;
-        color: var(--btn-solid-fg) !important;
+        background: var(--btn-outline-active-bg) !important;
+        color: var(--foreground) !important;
     }
 
     .workflow-test-toolbar-actions .ant-btn-primary > span,
@@ -5260,21 +5307,21 @@
     /* 页面头部按钮优化 - 去除重边框 */
     html:not(.dark) .library-page .app-page-header .ant-btn,
     html:not(.dark) .canvas-library-page .app-page-header .ant-btn {
-        border: 1px solid rgba(17, 17, 17, 0.08) !important;
-        background: #ffffff !important;
-        color: #171717 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        border: 1px solid var(--btn-outline-border) !important;
+        background: transparent !important;
+        color: var(--foreground) !important;
+        box-shadow: none !important;
         transition: all 180ms ease-out !important;
     }
     html:not(.dark) .library-page .app-page-header .ant-btn:hover,
     html:not(.dark) .canvas-library-page .app-page-header .ant-btn:hover {
-        border-color: rgba(17, 17, 17, 0.12) !important;
-        background: #ffffff !important;
-        color: #171717 !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+        border-color: var(--btn-outline-hover-border) !important;
+        background: var(--btn-outline-hover-bg) !important;
+        color: var(--foreground) !important;
+        box-shadow: none !important;
         transform: translateY(-1px);
     }
-    .library-primary-action { border: 0 !important; border-radius: var(--r-md) !important; background: var(--btn-solid-bg) !important; color: var(--btn-solid-fg) !important; box-shadow: none !important; font-weight: 620; }
+    .library-primary-action { border: 1px solid var(--btn-outline-border) !important; border-radius: var(--r-md) !important; background: transparent !important; color: var(--foreground) !important; box-shadow: none !important; font-weight: 560; }
 
     /* 画布库页头操作：沿用现有配色，只统一几何比例与触感反馈。 */
     .canvas-library-header-actions {
@@ -5700,7 +5747,7 @@
     .project-standard-flow-head span { color: var(--workspace-accent); font-size: var(--fs-micro); font-weight: 650; }
     .project-standard-flow-head h2 { margin-top: 4px; font-size: 20px; font-weight: 680; }
     .project-standard-flow-head p { max-width: 720px; margin-top: 5px; color: color-mix(in srgb, var(--foreground) 48%, transparent); font-size: var(--fs-caption); line-height: 1.6; }
-    .project-standard-flow-head > a { display: inline-flex; height: 32px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 11px; border-radius: var(--r-md); background: var(--btn-solid-bg); color: var(--btn-solid-fg); font-size: var(--fs-label); font-weight: 600; }
+    .project-standard-flow-head > a { display: inline-flex; height: 32px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid var(--btn-outline-border); border-radius: var(--r-md); background: transparent; color: var(--foreground); font-size: var(--fs-label); font-weight: 560; }
     .project-standard-flow-head > a svg { width: 14px; height: 14px; }
     .project-standard-flow-track { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; border-top: 1px solid var(--library-border); border-bottom: 1px solid var(--library-border); padding: 14px 16px 16px; background: color-mix(in srgb, var(--foreground) 2%, var(--library-surface)); }
     .project-standard-flow-track > a { position: relative; display: grid; min-width: 0; min-height: 176px; grid-template-rows: 24px auto auto 1fr auto; align-content: start; padding: 16px; border: 1px solid var(--library-border); border-radius: var(--r-lg); background: color-mix(in srgb, var(--library-surface) 96%, var(--foreground) 4%); color: var(--foreground); box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 4%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent); transition: border-color var(--motion-instant), background-color var(--motion-instant), box-shadow var(--motion-instant); }
@@ -5747,8 +5794,8 @@
     .project-overview-title { max-width: 22ch; margin-top: 14px; color: var(--foreground); font-size: 30px; font-weight: 640; line-height: 1.24; letter-spacing: 0; text-wrap: balance; }
     .project-overview-description { max-width: 62ch; margin-top: 10px; color: color-mix(in srgb, var(--foreground) 50%, transparent); font-size: var(--fs-body); line-height: 1.65; text-wrap: pretty; }
     .project-overview-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 26px; }
-    .project-overview-cta-primary { display: inline-flex; max-width: 100%; height: 40px; align-items: center; gap: 8px; border-radius: var(--r-md); background: var(--btn-solid-bg); padding-inline: 18px; color: var(--btn-solid-fg); font-size: var(--fs-body); font-weight: 560; transition: opacity 160ms ease-out; }
-    .project-overview-cta-primary:hover { background: var(--btn-solid-hover-bg); color: var(--btn-solid-fg); }
+    .project-overview-cta-primary { display: inline-flex; max-width: 100%; height: 40px; align-items: center; gap: 8px; border: 1px solid var(--btn-outline-border); border-radius: var(--r-md); background: transparent; padding-inline: 18px; color: var(--foreground); font-size: var(--fs-body); font-weight: 560; transition: background-color 160ms ease-out, border-color 160ms ease-out; }
+    .project-overview-cta-primary:hover { border-color: var(--btn-outline-hover-border); background: var(--btn-outline-hover-bg); color: var(--foreground); }
     .project-overview-cta-primary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
     .project-overview-cta-secondary { display: inline-flex; height: 40px; align-items: center; gap: 6px; border-radius: var(--r-md); padding-inline: 12px; color: color-mix(in srgb, var(--foreground) 50%, transparent); font-size: var(--fs-caption); font-weight: 500; transition: background-color 160ms ease-out, color 160ms ease-out; }
     .project-overview-cta-secondary:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); color: var(--foreground); }
@@ -6764,14 +6811,22 @@
     }
 
     .aceternity-dock-switch-option[aria-checked="true"] {
-        color: var(--dock-switch-thumb-text, var(--background));
+        color: var(--dock-switch-thumb-text, #000000);
         opacity: 1;
     }
 
     .aceternity-dock-switch-option > span svg {
         width: 100%;
         height: 100%;
-        stroke-width: 1.9;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2px;
+    }
+
+    .aceternity-dock-switch-option[aria-checked="true"] > span svg {
+        color: var(--dock-switch-thumb-text, #000000);
+        stroke: currentColor;
+        stroke-width: 2.6px;
     }
 
     .aceternity-dock-switch-option:focus-visible {
@@ -8705,11 +8760,11 @@
         height: 30px;
         flex: 0 0 30px;
         place-items: center;
-        border: 0;
+        border: 1px solid var(--btn-outline-border);
         border-radius: var(--r-full);
-        background: var(--btn-solid-bg);
-        color: var(--btn-solid-fg) !important;
-        transition: opacity var(--motion-dur-fast) var(--motion-ease-out), transform var(--motion-dur-fast) var(--motion-ease-out);
+        background: transparent;
+        color: var(--foreground) !important;
+        transition: opacity var(--motion-dur-fast) var(--motion-ease-out), transform var(--motion-dur-fast) var(--motion-ease-out), background-color var(--motion-dur-fast) var(--motion-ease-out), border-color var(--motion-dur-fast) var(--motion-ease-out);
     }
 
     .canvas-prompt-optimizer-send > svg {
@@ -13838,10 +13893,10 @@ html:not(.dark) .creation-history-drawer-root {
 .library-modal :where(.ant-input:hover, .ant-input-affix-wrapper:hover, .ant-select-selector:hover) { border-color: color-mix(in srgb, var(--foreground) 26%, transparent) !important; }
 /* 聚焦态：--workspace-accent 暗色下是 #f5f5f5，直接描边会形成刺眼白圈，降到半透明。 */
 .library-modal :where(.ant-input:focus, .ant-input-affix-wrapper-focused, .ant-select-focused .ant-select-selector) { border-color: var(--control-focus-ring) !important; box-shadow: none !important; }
-.library-modal .ant-btn-primary { border: 0; border-radius: var(--r-md); background: var(--btn-solid-bg); color: var(--btn-solid-fg); box-shadow: none; font-weight: 620; }
-.library-modal .ant-btn-primary:not(:disabled):hover { background: var(--btn-solid-hover-bg); color: var(--btn-solid-fg); }
-.library-modal .ant-btn-primary:not(:disabled):active { background: var(--btn-solid-active-bg); color: var(--btn-solid-fg); }
-.library-modal .ant-btn-default { border-color: color-mix(in srgb, var(--foreground) 15%, transparent); border-radius: var(--r-md); background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+.library-modal .ant-btn-primary { border: 1px solid var(--btn-outline-border); border-radius: var(--r-md); background: transparent; color: var(--foreground); box-shadow: none; font-weight: 560; }
+.library-modal .ant-btn-primary:not(:disabled):hover { border-color: var(--btn-outline-hover-border); background: var(--btn-outline-hover-bg); color: var(--foreground); }
+.library-modal .ant-btn-primary:not(:disabled):active { background: var(--btn-outline-active-bg); color: var(--foreground); }
+.library-modal .ant-btn-default { border-color: var(--btn-outline-border); border-radius: var(--r-md); background: transparent; }
 
 /* 短剧创作：AI 创建入口面板与创建弹窗来源/画风选择 */
 .app-story-create-panel {
@@ -13905,24 +13960,25 @@ html:not(.dark) .creation-history-drawer-root {
     height: 34px;
     align-items: center;
     gap: 7px;
-    border: 0;
+    border: 1px solid var(--btn-outline-border);
     border-radius: var(--r-md);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    background: transparent;
     padding: 0 12px;
-    color: color-mix(in srgb, var(--foreground) 62%, transparent);
+    color: color-mix(in srgb, var(--foreground) 72%, transparent);
     font-size: var(--fs-caption);
     font-weight: 520;
-    transition: background-color 180ms ease-out, color 180ms ease-out;
+    transition: background-color 180ms ease-out, color 180ms ease-out, border-color 180ms ease-out;
 }
 
 .app-story-create-shortcut:hover {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    border-color: var(--btn-outline-hover-border);
+    background: var(--btn-outline-hover-bg);
     color: var(--foreground);
 }
 
 .app-story-create-actions .ant-btn-default {
-    border: 0;
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    border: 1px solid var(--btn-outline-border);
+    background: transparent;
     box-shadow: none;
 }
 
@@ -14470,7 +14526,8 @@ html:not(.dark) .creation-history-drawer-root {
 .library-drawer .ant-drawer-close { width: 34px; height: 34px; margin-inline-end: 6px; border-radius: var(--r-full); color: color-mix(in srgb, var(--foreground) 42%, transparent); }
 .library-drawer .ant-drawer-close:hover { background: color-mix(in srgb, var(--foreground) 8%, transparent); color: var(--foreground); }
 .library-drawer .ant-drawer-body { padding: 22px 28px 30px; }
-.library-drawer .ant-drawer-extra .ant-btn { border: 0; border-radius: var(--r-md); background: var(--btn-solid-bg); color: var(--btn-solid-fg); font-weight: 620; }
+.library-drawer .ant-drawer-extra .ant-btn { border: 1px solid var(--btn-outline-border); border-radius: var(--r-md); background: transparent; color: var(--foreground); font-weight: 560; box-shadow: none; }
+.library-drawer .ant-drawer-extra .ant-btn:not(:disabled):hover { border-color: var(--btn-outline-hover-border); background: var(--btn-outline-hover-bg); color: var(--foreground); }
 .library-drawer .ant-form-item-label > label { color: color-mix(in srgb, var(--foreground) 68%, transparent); font-size: var(--fs-caption); font-weight: 560; }
 .library-drawer :where(.ant-input, .ant-input-affix-wrapper, .ant-select-selector) { border-color: color-mix(in srgb, var(--foreground) 15%, transparent) !important; border-radius: var(--r-md) !important; background: color-mix(in srgb, var(--foreground) 3%, transparent) !important; box-shadow: none !important; }
 .library-drawer :where(.ant-input:hover, .ant-input-affix-wrapper:hover, .ant-select-selector:hover) { border-color: color-mix(in srgb, var(--foreground) 26%, transparent) !important; }
@@ -15037,18 +15094,28 @@ html:not(.dark) .creation-history-drawer-root {
     .assets-storage-usage { width: 100%; }
     .assets-storage-usage-track { min-width: 32px; }
 }
-/* 页头主按钮：压过 light 主题下 app-page-header 按钮的白色背景覆盖。 */
-.assets-library-page.canvas-library-page .app-page-header .library-primary-action {
-    border: 0 !important;
-    background: var(--btn-solid-bg) !important;
-    color: var(--btn-solid-fg) !important;
+/* 页头操作：明暗都用描边，压过 light 主题下 app-page-header 的白底实心覆盖。 */
+html .assets-library-page .app-page-header .assets-header-action-buttons .ant-btn {
+    height: 32px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 16%, transparent) !important;
+    background: transparent !important;
+    color: var(--foreground) !important;
     box-shadow: none !important;
+    font-weight: 560;
 }
-.assets-library-page.canvas-library-page .app-page-header .library-primary-action:not(:disabled):hover {
-    border-color: transparent !important;
-    background: var(--btn-solid-hover-bg) !important;
-    color: var(--btn-solid-fg) !important;
+html .assets-library-page .app-page-header .assets-header-action-buttons .ant-btn:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--foreground) 28%, transparent) !important;
+    background: color-mix(in srgb, var(--foreground) 6%, transparent) !important;
+    color: var(--foreground) !important;
     transform: translateY(-1px);
+}
+html .assets-library-page .app-page-header .assets-header-action-buttons .ant-btn-icon-only {
+    width: 32px;
+    padding-inline: 0;
+}
+html .assets-library-page .app-page-header .assets-header-action-buttons .ant-btn-dangerous {
+    border-color: color-mix(in srgb, var(--status-error) 42%, transparent) !important;
+    color: var(--status-error) !important;
 }
 
 /* 筛选胶囊：激活态 accent 反白 + 计数徽章反白 */
@@ -15318,9 +15385,9 @@ html:not(.dark) .creation-history-drawer-root {
 .asset-archive-section-title { display: block; margin-bottom: 8px; color: color-mix(in srgb, var(--foreground) 40%, transparent); font-size: var(--fs-tiny); font-weight: 560; letter-spacing: .05em; }
 .asset-archive-section-body { margin: 0; color: color-mix(in srgb, var(--foreground) 74%, transparent); font-size: var(--fs-label); line-height: 1.7; white-space: pre-wrap; }
 .asset-archive-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.library-drawer .ant-btn-primary { border: 0; background: var(--btn-solid-bg); color: var(--btn-solid-fg); box-shadow: none; font-weight: 620; }
-.library-drawer .ant-btn-primary:not(:disabled):hover { background: var(--btn-solid-hover-bg); color: var(--btn-solid-fg); }
-.library-drawer .ant-btn-primary:not(:disabled):active { background: var(--btn-solid-active-bg); color: var(--btn-solid-fg); }
+.library-drawer .ant-btn-primary { border: 1px solid var(--btn-outline-border); background: transparent; color: var(--foreground); box-shadow: none; font-weight: 560; }
+.library-drawer .ant-btn-primary:not(:disabled):hover { border-color: var(--btn-outline-hover-border); background: var(--btn-outline-hover-bg); color: var(--foreground); }
+.library-drawer .ant-btn-primary:not(:disabled):active { background: var(--btn-outline-active-bg); color: var(--foreground); }
 
 @media (max-width: 680px) {
     .assets-empty-cards { grid-template-columns: 1fr; }
