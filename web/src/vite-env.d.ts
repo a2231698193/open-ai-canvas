@@ -2,3 +2,4 @@
 
 declare const __APP_VERSION__: string;
 declare const __APP_CHANGELOG__: string;
+declare const __USER_CHANGELOG__: string;

@@ -20,7 +20,7 @@ ENV CANVAS_BUILD_VERSION=${BUILD_VERSION}
 COPY web/package.json web/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --cache-dir=/root/.bun/install/cache
 COPY VERSION /app/VERSION
-COPY CHANGELOG.md /app/CHANGELOG.md
+COPY CHANGELOG.md USER_CHANGELOG.md /app/
 COPY canvas-agent /app/canvas-agent
 COPY web ./
 COPY --from=comfy-bridge-build /out/OpenAICanvas-ComfyBridge.exe /app/web/public/OpenAICanvas-ComfyBridge.exe

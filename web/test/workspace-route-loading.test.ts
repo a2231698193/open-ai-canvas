@@ -92,12 +92,20 @@ describe("workspace route loading", () => {
 
     test("defers modal-only markdown and canvas creation runtimes until interaction", () => {
         const changelogButton = source("../src/components/layout/app-changelog-modal.tsx");
+        const changelogDialog = source("../src/components/layout/app-changelog-dialog.tsx");
+        const accountMenu = source("../src/components/layout/workspace-account-menu.tsx");
+        const sidebarFooter = source("../src/components/layout/workspace-sidebar-footer.tsx");
+        const adminShell = source("../src/pages/admin/components/admin-shell.tsx");
         const announcements = source("../src/components/layout/system-announcement-center.tsx");
         const projectDetail = source("../src/pages/projects/detail.tsx");
         const workflow = source("../src/pages/projects/detail/workflow-production-workbench.tsx");
 
         expect(changelogButton).toContain('lazy(() => import("@/components/layout/app-changelog-dialog")');
         expect(changelogButton).not.toContain('from "react-markdown"');
+        expect(changelogDialog).toContain("userFacing ? __USER_CHANGELOG__ : __APP_CHANGELOG__");
+        expect(accountMenu).toContain('audience="user"');
+        expect(sidebarFooter).toContain('audience="user"');
+        expect(adminShell).not.toContain('audience="user"');
         expect(announcements).toContain('lazy(() => import("@/components/ui/aceternity/announcement-timeline-modal")');
         expect(projectDetail).toContain('import("@/services/user-data-sync")');
         expect(projectDetail).not.toContain('import { createCanvasProjectWithRemoteSync } from "@/services/user-data-sync"');
