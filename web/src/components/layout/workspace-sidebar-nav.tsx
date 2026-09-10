@@ -30,7 +30,6 @@ type WorkspaceNavGroup = {
 
 /** 设置页分区子项，沿用 /settings?section=<key> 路由合同。 */
 const SETTINGS_SECTIONS: Array<{ key: string; label: string }> = [
-    { key: "local-cli", label: "本机工具" },
     { key: "channels", label: "自定义渠道" },
     { key: "models", label: "模型选择" },
     { key: "preferences", label: "生成偏好" },

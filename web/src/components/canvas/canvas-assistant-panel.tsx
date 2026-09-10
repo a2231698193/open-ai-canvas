@@ -28,7 +28,6 @@ import { summarizeCanvasContext } from "@/lib/canvas/canvas-context-summary";
 import { AgentChatComposer, AgentChatMessage, AgentWorkingMessage, type CanvasAgentMode } from "./canvas-agent-chat-ui";
 import { VoiceRecordingButton } from "@/components/conversation/voice-recording-button";
 import { AgentChatEmptyState, AgentPanelChrome } from "./canvas-agent-panel-chrome";
-import { CanvasLocalAgentPanel } from "./canvas-local-agent-panel";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
 import { type CanvasAssistantMessage, type CanvasAssistantPendingBackendSession, type CanvasAssistantReference, type CanvasAssistantSession, type CanvasNodeData } from "@/types/canvas";
 import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
@@ -71,8 +70,6 @@ type CanvasAssistantPanelProps = {
     onUndoOps: () => CanvasAgentSnapshot | null;
     onPasteImage: (file: File) => void;
     agentMode: CanvasAgentMode;
-    onAgentModeChange: (mode: CanvasAgentMode) => void;
-    autoConnectLocal?: boolean;
     closing: boolean;
     onCollapse: () => void;
     cinematicEntry?: boolean;
@@ -100,8 +97,6 @@ export function CanvasAssistantPanel({
     onUndoOps,
     onPasteImage,
     agentMode,
-    onAgentModeChange,
-    autoConnectLocal,
     closing,
     onCollapse,
     cinematicEntry = false,
@@ -955,23 +950,21 @@ export function CanvasAssistantPanel({
         >
             <AgentPanelChrome
                 theme={theme}
-                mode={agentMode}
                 context={contextSummary}
                 referenceCount={selectedReferences.length}
                 confirmTools={confirmTools}
-                canUndo={agentMode === "online" ? canUndoOps : false}
-                undoCount={agentMode === "online" ? undoOpsCount : 0}
-                onModeChange={onAgentModeChange}
+                canUndo={canUndoOps}
+                undoCount={undoOpsCount}
                 onConfirmToolsChange={(confirmTools) => setAgentState({ confirmTools })}
                 onUndo={undoLastOnlineBatch}
                 onCollapse={collapse}
-                historyCount={agentMode === "online" ? historySessions.length : 0}
-                historyActive={agentMode === "online" && view === "history"}
-                onOpenHistory={agentMode === "online" ? () => setView((current) => current === "history" ? "chat" : "history") : undefined}
-                onNewChat={agentMode === "online" ? () => { startChatSession(); setView("chat"); } : undefined}
+                historyCount={historySessions.length}
+                historyActive={view === "history"}
+                onOpenHistory={() => setView((current) => current === "history" ? "chat" : "history")}
+                onNewChat={() => { startChatSession(); setView("chat"); }}
                 newChatDisabled={false}
             />
-            {agentMode === "local" ? <CanvasLocalAgentPanel embedded snapshot={snapshot} canUndoOps={canUndoOps} undoOpsCount={undoOpsCount} onApplyOps={onApplyOps} onUndoOps={onUndoOps} autoConnect={autoConnectLocal} /> : onlineContent}
+            {onlineContent}
         </motion.aside>
     );
 }

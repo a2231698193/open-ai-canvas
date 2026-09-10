@@ -6,7 +6,6 @@ import { loadAssetsForUse } from "@/services/user-data-sync";
 import { canvasAssetHandoffIds } from "@/lib/canvas/canvas-asset-handoff";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { uploadMediaFile } from "@/services/file-storage";
-import { readLocalRuntimeBootstrapState } from "@/services/local-runtime-bootstrap";
 import { createCanvasGenerationLiveProjectAdapter, registerCanvasGenerationLiveProject } from "@/services/canvas-generation-consumer";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { resourceFileUrl, resourceIdFromStorageKey, syncResourceToArkPrivateAsset } from "@/services/api/resources";
@@ -20,7 +19,6 @@ import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { persistCanvasMediaPerformanceMode, readCanvasMediaPerformanceMode } from "@/lib/canvas/canvas-performance-mode";
 import { summarizeCanvasContext } from "@/lib/canvas/canvas-context-summary";
 import { refreshCanvasCharacterReferenceNodes } from "@/lib/canvas/canvas-character-reference";
-import { shouldAutoConnectCanvasRuntime } from "@/lib/canvas/local-runtime-connection";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { flushCanvasStorePersistence } from "@/stores/canvas/use-canvas-store";
 import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
@@ -69,9 +67,7 @@ import { CanvasScriptEditor, CanvasScriptNodeContent } from "@/components/canvas
 import { STORYBOARD_HEADER_HEIGHT, STORYBOARD_ROW_HEIGHT, storyboardMinNodeHeight, storyboardTableHeight } from "@/lib/canvas/canvas-storyboard-layout";
 import { CanvasDirectorNodePanel } from "@/components/canvas/director/canvas-director-node-panel";
 import { CanvasVersionCompareModal } from "@/components/canvas/canvas-version-compare-modal";
-import { CanvasLocalAgentPanel } from "@/components/canvas/canvas-local-agent-panel";
 import { useFocusMode } from "@/hooks/use-focus-mode";
-import { useCanvasAgentStore } from "@/stores/canvas/use-canvas-agent-store";
 import { applyCanvasConnectionPromptSync, getContextResourceNodes, normalizeCanvasNodeMentionTokens, reorderCanvasResourceConnections, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { CanvasConnectionCreateMenu, CanvasNodePanelOverlay, type PendingConnectionCreate } from "@/components/canvas/canvas-workspace-overlays";
 import { CanvasOverlayLayerContainer, CanvasOverlayLayerProvider } from "@/components/canvas/canvas-overlay-layer";
@@ -214,9 +210,6 @@ function InfiniteCanvasPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const projectId = params.id || "";
     const canvasStorageScope = getActiveUserScope();
-    const localAgentConnected = useCanvasAgentStore((state) => state.connected);
-    const localAgentActivity = useCanvasAgentStore((state) => state.activity);
-    const localAgentEnabled = useCanvasAgentStore((state) => state.enabled);
     const containerRef = useRef<HTMLDivElement>(null);
     const didInitialCenterRef = useRef(false);
     const toolbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -298,8 +291,6 @@ function InfiniteCanvasPage() {
     const [directorNodeId, setDirectorNodeId] = useState<string | null>(null);
     const [versionCompareRootId, setVersionCompareRootId] = useState<string | null>(null);
     const [libTVImportOpen, setLibTVImportOpen] = useState(false);
-    const codexAutoConnect = shouldAutoConnectCanvasRuntime(searchParams);
-    const codexCompactAgent = codexAutoConnect && readLocalRuntimeBootstrapState().legacyDeepLinkRejected;
     const [titleEditing, setTitleEditing] = useState(false);
     const [titleDraft, setTitleDraft] = useState("");
     const [shortcutRequestNonce, setShortcutRequestNonce] = useState(0);
@@ -321,7 +312,7 @@ function InfiniteCanvasPage() {
         window.addEventListener("resize", clamp);
         return () => window.removeEventListener("resize", clamp);
     }, []);
-    const { agentMode, assistantClosing, assistantMounted, assistantOpen, closeAgent, openAgent, setAgentMode } = useCanvasAssistantVisibility();
+    const { assistantClosing, assistantMounted, assistantOpen, closeAgent, openAgent, setAgentMode } = useCanvasAssistantVisibility();
     const { tasks: activeTasks } = useCanvasActiveTasks(projectId, projectLoaded);
     const { focusMode, enterFocusMode, exitFocusMode, toggleFocusMode } = useFocusMode();
     const [focusDockRevealed, setFocusDockRevealed] = useState(false);
@@ -546,15 +537,6 @@ function InfiniteCanvasPage() {
         },
         [bindGenerationTask, message, modal, nodesRef, projectId, queryClient, setTaskDetail],
     );
-
-    useEffect(() => {
-        if (!projectLoaded || !codexAutoConnect) return;
-        if (codexCompactAgent) {
-            setAgentMode("local");
-            return;
-        }
-        openAgent("local");
-    }, [codexAutoConnect, codexCompactAgent, openAgent, projectLoaded, setAgentMode]);
 
     useEffect(() => {
         const sessionId = searchParams.get("conversation");
@@ -2175,7 +2157,6 @@ function InfiniteCanvasPage() {
                             onShare={() => setShareModalOpen(true)}
                             agentOpen={assistantOpen}
                             agentPanelWidth={assistantMounted ? assistantWidth : undefined}
-                            compactAgentStatus={codexCompactAgent ? { connected: localAgentConnected, enabled: localAgentEnabled, activity: localAgentActivity } : undefined}
                             onToggleAgent={() => (assistantOpen ? closeAgent() : openAgent())}
                             shortcutRequestNonce={shortcutRequestNonce}
                             mediaPerformanceMode={mediaPerformanceMode}
@@ -2446,9 +2427,7 @@ function InfiniteCanvasPage() {
                                         undoOpsCount={agentUndoCount}
                                         onUndoOps={undoAgentOps}
                                         onPasteImage={pasteAssistantImage}
-                                        agentMode={agentMode}
-                                        onAgentModeChange={setAgentMode}
-                                        autoConnectLocal={codexAutoConnect}
+                                        agentMode="online"
                                         closing={assistantClosing}
                                         onCollapse={closeAgent}
                                         cinematicEntry={cinematicAgentEntry}
@@ -2939,9 +2918,6 @@ function InfiniteCanvasPage() {
 
                     <AssetPickerModal open={assetPickerOpen} multiple={assetInsertScope === "canvas"} onInsert={handleLibraryAssetsInsert} onClose={closeAssetPicker} />
                     <CanvasProjectAssetModal open={projectAssetOpen} detail={linkedProjectQuery.data} initialCategory={projectAssetInitialCategory} initialFolderId={projectAssetInitialFolderId} onClose={closeProjectAssets} onInsert={handleTimelineProjectAssetsInsert} onInsertFolder={projectAssetScope === "canvas" ? handleProjectFolderInsert : undefined} />
-                    {codexCompactAgent && !assistantMounted ? (
-                        <CanvasLocalAgentPanel headless snapshot={agentSnapshot} canUndoOps={canUndoAgentOps} undoOpsCount={agentUndoCount} onApplyOps={applyAgentOps} onUndoOps={undoAgentOps} autoConnect={codexAutoConnect} />
-                    ) : null}
                     </section>
                 </CanvasOverlayLayerProvider>
             </main>

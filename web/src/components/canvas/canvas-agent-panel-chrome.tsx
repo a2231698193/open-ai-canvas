@@ -2,23 +2,20 @@ import { Button } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
 
 import { Switch } from "@/components/ui/base/switch";
-import { BookOpenCheck, BookOpenText, Bot, Clapperboard, Focus, Globe2, History, LayoutTemplate, Laptop, PanelRightClose, PanelsTopLeft, Plus, RotateCcw, Workflow } from "lucide-react";
+import { BookOpenCheck, BookOpenText, Bot, Clapperboard, Focus, History, LayoutTemplate, PanelRightClose, PanelsTopLeft, Plus, RotateCcw, Workflow } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import type { CanvasContextSummary } from "@/lib/canvas/canvas-context-summary";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import { useUserStore } from "@/stores/use-user-store";
-import type { CanvasAgentMode } from "./canvas-agent-chat-ui";
 
 export function AgentPanelChrome({
     theme,
-    mode,
     context,
     referenceCount,
     confirmTools,
     canUndo,
     undoCount,
-    onModeChange,
     onConfirmToolsChange,
     onUndo,
     onCollapse,
@@ -29,13 +26,11 @@ export function AgentPanelChrome({
     newChatDisabled = false,
 }: {
     theme: CanvasTheme;
-    mode: CanvasAgentMode;
     context: CanvasContextSummary;
     referenceCount: number;
     confirmTools: boolean;
     canUndo: boolean;
     undoCount: number;
-    onModeChange: (mode: CanvasAgentMode) => void;
     onConfirmToolsChange: (confirm: boolean) => void;
     onUndo: () => void;
     onCollapse: () => void;
@@ -87,7 +82,6 @@ export function AgentPanelChrome({
                 {context.chapterLabel ? <span className="inline-flex min-w-0 items-center gap-1"><BookOpenText className="size-3 shrink-0" /><span className="max-w-32 truncate">{context.chapterLabel}{context.shotLabel ? ` · ${context.shotLabel}` : ""}</span></span> : null}
                 {referenceCount ? <span>{referenceCount} 个参考</span> : null}
                 <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                    <AgentModeSwitch value={mode} theme={theme} onChange={onModeChange} />
                     <Tooltip title={undoCount ? `撤销最近一批 Agent 写回，可撤销 ${undoCount} 批` : "没有可撤销的 Agent 写回"}>
                         <Button type="text" shape="circle" className="!h-6 !w-6 !min-w-6" disabled={!canUndo} style={{ color: theme.node.muted }} icon={<RotateCcw className="size-3" />} onClick={onUndo} aria-label="撤销最近一批 Agent 写回" />
                     </Tooltip>
@@ -98,23 +92,6 @@ export function AgentPanelChrome({
                 </div>
             </div>
         </header>
-    );
-}
-
-function AgentModeSwitch({ value, theme, onChange }: { value: CanvasAgentMode; theme: CanvasTheme; onChange: (value: CanvasAgentMode) => void }) {
-    return (
-        <div className="inline-flex h-7 shrink-0 items-center rounded-full p-0.5 text-[var(--fs-label)]" style={{ background: `${theme.node.text}08`, boxShadow: `inset 0 1px 0 ${theme.node.text}08` }} role="group" aria-label="Agent 运行位置">
-            {(["online", "local"] as const).map((item) => {
-                const active = value === item;
-                const Icon = item === "online" ? Globe2 : Laptop;
-                return (
-                    <button key={item} type="button" className="inline-flex h-6 items-center gap-1 rounded-full px-2 transition-[background-color,color,transform] duration-200 active:scale-95" style={{ background: active ? theme.node.fill : "transparent", color: active ? theme.node.text : theme.node.muted, boxShadow: active ? `0 4px 12px ${theme.spatial.shadow}` : "none" }} onClick={() => onChange(item)} aria-pressed={active}>
-                        <Icon className="size-3" />
-                        {item === "online" ? "网站" : "本机"}
-                    </button>
-                );
-            })}
-        </div>
     );
 }
 

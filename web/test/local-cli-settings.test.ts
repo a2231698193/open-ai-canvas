@@ -185,13 +185,13 @@ test("Local CLI settings keeps the Runtime compact and uses the official Dreamin
     expect(architecture).toContain("prompt、receipt 或本地路径");
 });
 
-test("settings route recognizes local-cli as a first-class section", async () => {
+test("settings route hides local-cli from user sections", async () => {
     const module = await import("../src/pages/settings");
     const isConfigSection = (module as { isConfigSection?: (value: string | null) => boolean }).isConfigSection;
     expect(typeof isConfigSection).toBe("function");
     if (!isConfigSection) return;
 
-    expect(isConfigSection("local-cli")).toBe(true);
+    expect(isConfigSection("local-cli")).toBe(false);
     expect(isConfigSection("local-runtime-token")).toBe(false);
 });
 

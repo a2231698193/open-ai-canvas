@@ -5,6 +5,20 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 用户端隐藏本机 Agent 入口
+
+- 画布 Agent 面板不再显示「网站 / 本机」切换，只走网站 Agent。
+- 设置页和侧栏不再显示「本机工具」；直接打 `/settings?section=local-cli` 应回退到可见分区。
+- [ ] 画布打开 Agent：顶栏没有「本机」按钮，不出现本机 Runtime 连接页。
+- [ ] 设置页侧栏没有「本机工具」；访问 `?section=local-cli` 不打开该页。
+
+## 品牌首页 `/welcome` 目录跳转
+
+- `/welcome` 与 `web/public/welcome/` 静态素材目录同名。未精确回退 SPA 时，nginx `try_files` 会 301 到带容器端口 `:3000` 的地址。
+- 现已按 `/canvas` 同样处理：精确命中 `/welcome`、`/welcome/` 回退 `index.html`；`/welcome/credits.html` 等素材路径仍走静态文件。
+- [ ] 经域名（无 `:3000`）登录后，点左上角 Logo → 品牌首页，地址应为 `https://域名/welcome`，不应出现 `:3000`。
+- [ ] `/welcome/credits.html` 与 `/welcome/workbench-canvas.webp` 仍能打开。
+
 ## HTTP API 错误码与 OpenAPI
 
 - 路径仍是 `/api`。不做 `/api/v1` 双挂；前后端一起发布。
