@@ -1,4 +1,3 @@
-// 资产导入（editor-shell 预设插件贡献 asset-ingest 插槽，M3.4）。
 // 展示项目资产库，按来源区分「本地上传」与「项目素材」；点击资产 → makeClipFromAsset
 // → dispatch addClip 加入时间线（添加到匹配 kind 的轨道末尾）。资产是
 // "仅时间线作用域"直连媒体（nodeId=asset:<id>）。导入链路：uploadResourceFile →
@@ -111,7 +110,7 @@ function AssetThumb({ asset }: { asset: ProjectAsset }) {
     );
 }
 
-/** 尝试用 <video> 抓取视频首帧作为封面 dataURL；失败返回 null（保持图标占位）。 */
+/** 尝试用 <video> 抓取视频首帧作为封面 dataURL；失败时保留媒体类型图标。 */
 function useVideoPoster(url: string | null): string | null {
     const [poster, setPoster] = useState<string | null>(null);
     useEffect(() => {

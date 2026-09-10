@@ -231,7 +231,7 @@ export function ChannelModelManager({ channel, onClose, onChanged }: { channel: 
         return true;
     });
     const pagedItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
-    const existingFetchModelKeys = new Set(items.map((item) => normalizeFetchModelKey(item.modelKey)));
+    const existingFetchModelKeys = new Set(items.flatMap((item) => [item.modelKey, item.providerModelKey].filter(Boolean).map(normalizeFetchModelKey)));
     const selectedNewFetchModels = selectedFetchModels.filter((name) => !existingFetchModelKeys.has(normalizeFetchModelKey(name)));
     const selectedExistingFetchCount = selectedFetchModels.length - selectedNewFetchModels.length;
     const allFetchModelsSelected = fetchPreviewModels.length > 0 && fetchPreviewModels.every((name) => selectedFetchModels.includes(name));

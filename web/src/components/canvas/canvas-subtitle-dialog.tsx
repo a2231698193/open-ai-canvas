@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, ColorPicker, Input, InputNumber, Modal, Progress, Segmented } from "antd";
+import { App, Button, ColorPicker, Input, InputNumber, Progress, Segmented } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { Switch } from "@/components/ui/base/switch";
 import { Captions, FileDown, FileUp, ListPlus, LoaderCircle, Plus, Scissors, Sparkles, Trash2 } from "lucide-react";
 import { saveAs } from "file-saver";
@@ -501,7 +502,7 @@ export function CanvasSubtitleDialog({ node, open, projectId, config, onClose, o
     );
 
     return (
-        <Modal className="canvas-subtitle-dialog" title={title} open={open} centered footer={null} width={1120} destroyOnHidden onCancel={onClose} styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0 } }}>
+        <AppModal className="canvas-subtitle-dialog" title={title} open={open} centered footer={null} width={1120} destroyOnHidden onCancel={onClose} flush>
             <div className="flex h-[min(72vh,680px)] min-h-[420px] flex-col text-sm" style={{ color: theme.node.text }}>
                 <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3" style={{ borderColor: theme.toolbar.border, background: theme.toolbar.panel }}>
                     <input
@@ -612,6 +613,6 @@ export function CanvasSubtitleDialog({ node, open, projectId, config, onClose, o
                     </div>
                 </div>
             </div>
-        </Modal>
+        </AppModal>
     );
 }

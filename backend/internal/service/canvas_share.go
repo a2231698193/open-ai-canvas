@@ -325,16 +325,7 @@ func canvasResourceID(value string) string {
 	if strings.HasPrefix(value, "resource:") {
 		return validCanvasResourceID(strings.TrimPrefix(value, "resource:"))
 	}
-	const prefix = "/api/resources/"
-	index := strings.Index(value, prefix)
-	if index < 0 {
-		return ""
-	}
-	remainder := value[index+len(prefix):]
-	if end := strings.IndexByte(remainder, '/'); end >= 0 {
-		remainder = remainder[:end]
-	}
-	return validCanvasResourceID(remainder)
+	return validCanvasResourceID(resourceIDFromFileURL(value))
 }
 
 func validCanvasResourceID(value string) string {

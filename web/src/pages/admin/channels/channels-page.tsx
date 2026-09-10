@@ -113,7 +113,7 @@ export default function ChannelsPage() {
         const sequence = ++requestSequence.current;
         setLoading(true);
         try {
-            const result = await listAdminChannels({ keyword: debouncedKeyword || undefined, status: status === "all" ? undefined : status, page, limit: pageSize });
+            const result = await listAdminChannels({ keyword: debouncedKeyword || undefined, status: status === "all" ? undefined : status, page, pageSize });
             if (sequence !== requestSequence.current) return;
             setChannels(result.channels);
             setTotal(result.total);

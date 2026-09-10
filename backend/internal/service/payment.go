@@ -104,7 +104,7 @@ type AdminPaymentOrderPage struct {
 	Orders []PaymentOrderView `json:"orders"`
 	Total  int64              `json:"total"`
 	Page   int                `json:"page"`
-	Limit  int                `json:"limit"`
+	Limit  int                `json:"pageSize"`
 }
 
 func (s *Service) PaymentNotificationResponse(providerID string, success bool) (int, string, string) {

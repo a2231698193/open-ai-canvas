@@ -3,6 +3,7 @@ import { Select } from "@/components/ui/base/select";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
 import { StatusBadge } from "@/components/ui/base/badges";
 import { Callout } from "@/components/ui/product/callout";
+import { EmptyState } from "@/components/ui/product/empty-state";
 import { RotateCcw, Save, ShieldCheck, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -145,7 +146,7 @@ export function PromptPreferencesPane() {
             </div>
         );
     }
-    if (!selected) return <div className="py-16 text-center text-sm text-foreground/50">暂无可配置的提示词模板</div>;
+    if (!selected) return <EmptyState title="暂无可配置的提示词模板" />;
 
     const templateContent = selected.template?.content || "当前没有启用的平台模板";
     const previewCreative = mode === "inherit" ? templateContent : mode === "append" ? `${templateContent}\n\n【用户个性化创作要求】\n${appendContent}` : rewriteContent;

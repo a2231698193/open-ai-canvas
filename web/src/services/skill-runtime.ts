@@ -130,7 +130,7 @@ function functionTool(name: string, description: string, properties: Record<stri
 }
 
 const PROGRESSIVE_SKILL_TOOLS: ResponseFunctionTool[] = [
-    functionTool("canvas_list_skills", "列出当前用户已加入、可按需加载的画布技能；只返回元数据，不返回完整指令。", {}),
+    functionTool("canvas_list_skills", "自动发现当前用户已加入的技能；可按 query 检索名称、描述或标签，offset/limit 分页；只返回元数据。", { query: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } }),
     functionTool("canvas_get_skill", "按 skillId 或名称读取技能元数据和入口 SKILL.md；不会加载 references、scripts、assets 等其他文件。", { skillId: { type: "string" }, name: { type: "string" } }),
     functionTool("canvas_list_skill_files", "列出一个技能包的文件路径、类型和大小，不读取文件正文。", { skillId: { type: "string" }, name: { type: "string" } }),
     functionTool("canvas_read_skill_file", "按路径读取技能包中的一个文本文件。先从入口引用或文件清单确定路径，禁止猜测路径。", { skillId: { type: "string" }, name: { type: "string" }, path: { type: "string" } }, ["path"]),
@@ -138,10 +138,10 @@ const PROGRESSIVE_SKILL_TOOLS: ResponseFunctionTool[] = [
 ];
 
 export function resolveSkillMentions(prompt: string, skills: Skill[], selectedSkillIds?: string[]) {
-    const activeSkills = skills.filter((skill) => skill.is_added);
+    const activeSkills = skills.filter((skill) => skill.isAdded);
     if (!activeSkills.length) return [];
     if (selectedSkillIds) {
-        const byId = new Map(activeSkills.map((skill) => [skill.skill_id, skill]));
+        const byId = new Map(activeSkills.map((skill) => [skill.skillId, skill]));
         return Array.from(new Set(selectedSkillIds)).flatMap((id) => {
             const skill = byId.get(id);
             return skill ? [skill] : [];
@@ -153,18 +153,18 @@ export function resolveSkillMentions(prompt: string, skills: Skill[], selectedSk
     let match: RegExpExecArray | null;
     SKILL_REF_PATTERN.lastIndex = 0;
     while ((match = SKILL_REF_PATTERN.exec(prompt))) mentionedIds.add(match[1]);
-    return activeSkills.filter((skill) => mentionedIds.has(skill.skill_id) || containsNaturalSkillMention(prompt, skill.skill_name));
+    return activeSkills.filter((skill) => mentionedIds.has(skill.skillId) || containsNaturalSkillMention(prompt, skill.skillName));
 }
 
 export function buildSkillMentionReferences(skills: Skill[]): CanvasResourceReference[] {
     return skills
-        .filter((skill) => skill.is_added)
+        .filter((skill) => skill.isAdded)
         .map((skill) => ({
-            id: `skill:${skill.skill_id}`,
-            nodeId: `skill:${skill.skill_id}`,
+            id: `skill:${skill.skillId}`,
+            nodeId: `skill:${skill.skillId}`,
             kind: "skill" as const,
-            label: skill.skill_name,
-            title: skill.skill_name,
+            label: skill.skillName,
+            title: skill.skillName,
             text: skill.description,
             active: true,
             skill,
@@ -240,8 +240,8 @@ async function prepareLinkedContext(input: PreparedSkillInput, dependencies: Ski
 }
 
 async function loadLinkedSkill(skill: Skill, prompt: string, budget: number, maxLinkedFiles: number, dependencies: SkillRuntimeDependencies) {
-    const [entryResult, fileList] = await Promise.all([dependencies.getFile(skill.skill_id, "SKILL.md"), dependencies.listFiles(skill.skill_id)]);
-    if (entryResult.file.binary) throw new Error(`技能「${skill.skill_name}」的 SKILL.md 不是文本文件`);
+    const [entryResult, fileList] = await Promise.all([dependencies.getFile(skill.skillId, "SKILL.md"), dependencies.listFiles(skill.skillId)]);
+    if (entryResult.file.binary) throw new Error(`技能「${skill.skillName}」的 SKILL.md 不是文本文件`);
 
     let remaining = budget;
     const entryContent = boundedText(entryResult.file.content, remaining);
@@ -250,7 +250,7 @@ async function loadLinkedSkill(skill: Skill, prompt: string, budget: number, max
     if (remaining <= 0 || maxLinkedFiles <= 0) return { skill, files };
 
     const candidates = linkedFileCandidates(entryResult.file.content, fileList.files, prompt).slice(0, maxLinkedFiles);
-    const linkedFiles = await Promise.all(candidates.map((candidate) => dependencies.getFile(skill.skill_id, candidate.path)));
+    const linkedFiles = await Promise.all(candidates.map((candidate) => dependencies.getFile(skill.skillId, candidate.path)));
     for (let index = 0; index < candidates.length; index += 1) {
         if (remaining <= 0) break;
         const candidate = candidates[index];
@@ -311,7 +311,7 @@ function boundedText(value: string, maxChars: number) {
 }
 
 function renderLinkedSkillContext(skill: Skill, files: Array<{ path: string; content: string }>) {
-    const attributes = `skill-id="${escapeAttribute(skill.skill_id)}" name="${escapeAttribute(skill.skill_name)}" version="${escapeAttribute(skill.version)}"`;
+    const attributes = `skill-id="${escapeAttribute(skill.skillId)}" name="${escapeAttribute(skill.skillName)}" version="${escapeAttribute(skill.version)}"`;
     const body = files.map((file) => `<skill-file path="${escapeAttribute(file.path)}">\n${file.content}\n</skill-file>`).join("\n\n");
     return `<skill-context ${attributes}>\n${body}\n</skill-context>`;
 }
@@ -321,54 +321,82 @@ function linkedResult(prompt: string, selectedSkills: Skill[], provenance: Skill
 }
 
 async function prepareNativePackages(input: PreparedSkillInput, dependencies: SkillRuntimeDependencies): Promise<NativeSkillRuntimeResult> {
-    const bundles = await Promise.all(input.selectedSkills.map((skill) => dependencies.getBundle(skill.skill_id)));
+    const bundles = await Promise.all(input.selectedSkills.map((skill) => dependencies.getBundle(skill.skillId)));
     const skills = bundles.map((result, index) => nativePackage(input.selectedSkills[index], result.bundle));
     const provenance = {
-        skillIds: input.selectedSkills.map((skill) => skill.skill_id),
-        skillVersions: input.selectedSkills.map((skill, index) => ({ skillId: skill.skill_id, versionId: bundles[index].bundle.version_id, version: bundles[index].bundle.version })),
-        skillFiles: bundles.flatMap((result, index) => result.bundle.files.map((file) => ({ skillId: input.selectedSkills[index].skill_id, path: file.path }))),
+        skillIds: input.selectedSkills.map((skill) => skill.skillId),
+        skillVersions: input.selectedSkills.map((skill, index) => ({ skillId: skill.skillId, versionId: bundles[index].bundle.versionId, version: bundles[index].bundle.version })),
+        skillFiles: bundles.flatMap((result, index) => result.bundle.files.map((file) => ({ skillId: input.selectedSkills[index].skillId, path: file.path }))),
     };
     return { delivery: "native-package", prompt: input.prompt, selectedSkills: input.selectedSkills, skills, provenance, metadata: skillRuntimeMetadata(provenance) };
 }
 
 function nativePackage(skill: Skill, bundle: SkillPackageBundle): NativeSkillPackage {
     return {
-        skillId: skill.skill_id,
-        name: skill.skill_name,
+        skillId: skill.skillId,
+        name: skill.skillName,
         description: skill.description,
         version: bundle.version,
-        files: bundle.files.map((file) => ({ path: file.path, mimeType: file.mime_type, contentBase64: file.content_base64 })),
+        files: bundle.files.map((file) => ({ path: file.path, mimeType: file.mimeType, contentBase64: file.contentBase64 })),
     };
 }
 
 function createProgressiveToolsAdapter(dependencies: SkillRuntimeDependencies): SkillToolAdapter {
     const handlers: Record<string, (args: Record<string, unknown>, skills: Skill[]) => Promise<SkillRuntimeToolResult>> = {
-        canvas_list_skills: async (_args, skills) => {
-            const data = skills.filter((skill) => skill.is_added).map((skill) => ({ skillId: skill.skill_id, name: skill.skill_name, description: skill.description, tag: skill.tag, version: skill.version, fileCount: skill.file_count, sourceType: skill.source_type }));
-            return { ok: true, message: data.length ? "已列出当前可用技能。" : "当前没有已加入技能。", data };
+        canvas_list_skills: async (args, skills) => {
+            const terms = typeof args.query === "string"
+                ? args.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+                : [];
+            const matches = skills.filter((skill) => skill.isAdded && terms.every((term) =>
+                `${skill.skillName} ${skill.description} ${skill.tag}`.toLocaleLowerCase().includes(term),
+            ));
+            const offset = typeof args.offset === "number" && Number.isFinite(args.offset)
+                ? Math.max(0, Math.floor(args.offset))
+                : 0;
+            const limit = typeof args.limit === "number" && Number.isFinite(args.limit)
+                ? Math.max(1, Math.min(100, Math.floor(args.limit)))
+                : 40;
+            const items = matches.slice(offset, offset + limit).map((skill) => ({
+                skillId: skill.skillId,
+                name: skill.skillName,
+                description: skill.description,
+                tag: skill.tag,
+                version: skill.version,
+                fileCount: skill.fileCount,
+                sourceType: skill.sourceType,
+            }));
+            return {
+                ok: true,
+                message: items.length ? "已发现相关技能，请按需读取入口；无匹配时可缩短关键词或查询完整目录。" : "没有匹配技能，可调整关键词。",
+                data: {
+                    items,
+                    total: matches.length,
+                    nextOffset: offset + items.length < matches.length ? offset + items.length : null,
+                },
+            };
         },
         canvas_get_skill: async (args, skills) => {
             const skill = requireAddedSkill(skills, args);
-            const entry = await dependencies.getFile(skill.skill_id, "SKILL.md");
-            return { ok: true, message: `已读取技能「${skill.skill_name}」的入口 SKILL.md；如入口引用其他文件，请继续按需读取。`, data: { skillId: skill.skill_id, name: skill.skill_name, description: skill.description, version: skill.version, fileCount: skill.file_count, sourceType: skill.source_type, entry: entry.file } };
+            const entry = await dependencies.getFile(skill.skillId, "SKILL.md");
+            return { ok: true, message: `已读取技能「${skill.skillName}」的入口 SKILL.md；如入口引用其他文件，请继续按需读取。`, data: { skillId: skill.skillId, name: skill.skillName, description: skill.description, version: skill.version, fileCount: skill.fileCount, sourceType: skill.sourceType, entry: entry.file } };
         },
         canvas_list_skill_files: async (args, skills) => {
             const skill = requireAddedSkill(skills, args);
-            const result = await dependencies.listFiles(skill.skill_id);
-            return { ok: true, message: `已列出技能「${skill.skill_name}」的 ${result.files.length} 个文件，仅含元数据。`, data: { skillId: skill.skill_id, files: result.files } };
+            const result = await dependencies.listFiles(skill.skillId);
+            return { ok: true, message: `已列出技能「${skill.skillName}」的 ${result.files.length} 个文件，仅含元数据。`, data: { skillId: skill.skillId, files: result.files } };
         },
         canvas_read_skill_file: async (args, skills) => {
             const skill = requireAddedSkill(skills, args);
             const path = requireString(args.path, "path");
-            const result = await dependencies.getFile(skill.skill_id, path);
+            const result = await dependencies.getFile(skill.skillId, path);
             if (result.file.binary) return { ok: false, message: `文件 ${path} 不是可读取的文本文件。` };
-            return { ok: true, message: `已按需读取 ${path}。`, data: { skillId: skill.skill_id, file: result.file } };
+            return { ok: true, message: `已按需读取 ${path}。`, data: { skillId: skill.skillId, file: result.file } };
         },
         canvas_search_skill_files: async (args, skills) => {
             const skill = requireAddedSkill(skills, args);
             const query = requireString(args.query, "query");
-            const result = await dependencies.searchFiles(skill.skill_id, query);
-            return { ok: true, message: result.results.length ? `在技能「${skill.skill_name}」中找到 ${result.results.length} 处匹配。` : "技能包中没有匹配内容。", data: { skillId: skill.skill_id, query, results: result.results } };
+            const result = await dependencies.searchFiles(skill.skillId, query);
+            return { ok: true, message: result.results.length ? `在技能「${skill.skillName}」中找到 ${result.results.length} 处匹配。` : "技能包中没有匹配内容。", data: { skillId: skill.skillId, query, results: result.results } };
         },
     };
     return {
@@ -388,17 +416,17 @@ function createProgressiveToolsAdapter(dependencies: SkillRuntimeDependencies): 
 
 function provenanceFromLoaded(loaded: Array<{ skill: Skill; files: Array<{ path: string; sha256?: string }> }>): SkillRuntimeProvenance {
     return {
-        skillIds: loaded.map((item) => item.skill.skill_id),
-        skillVersions: loaded.map((item) => ({ skillId: item.skill.skill_id, versionId: item.skill.version_id, version: item.skill.version })),
-        skillFiles: loaded.flatMap((item) => item.files.map((file) => ({ skillId: item.skill.skill_id, path: file.path, sha256: file.sha256 }))),
+        skillIds: loaded.map((item) => item.skill.skillId),
+        skillVersions: loaded.map((item) => ({ skillId: item.skill.skillId, versionId: item.skill.versionId, version: item.skill.version })),
+        skillFiles: loaded.flatMap((item) => item.files.map((file) => ({ skillId: item.skill.skillId, path: file.path, sha256: file.sha256 }))),
     };
 }
 
 function normalizeSkillTokens(prompt: string, skills: Skill[]) {
-    const byId = new Map(skills.map((skill) => [skill.skill_id, skill]));
+    const byId = new Map(skills.map((skill) => [skill.skillId, skill]));
     return prompt.replace(SKILL_REF_PATTERN, (token, id) => {
         const skill = byId.get(id);
-        return skill ? `@${skill.skill_name}` : token;
+        return skill ? `@${skill.skillName}` : token;
     });
 }
 
@@ -431,7 +459,7 @@ function escapeAttribute(value: string) {
 function requireAddedSkill(skills: Skill[], args: Record<string, unknown>) {
     const skillId = typeof args.skillId === "string" ? args.skillId.trim() : "";
     const name = typeof args.name === "string" ? args.name.trim().toLocaleLowerCase() : "";
-    const skill = skills.find((item) => item.is_added && (item.skill_id === skillId || (name && item.skill_name.toLocaleLowerCase() === name)));
+    const skill = skills.find((item) => item.isAdded && (item.skillId === skillId || (name && item.skillName.toLocaleLowerCase() === name)));
     if (!skill) throw new Error("未找到已加入的技能，请先调用 canvas_list_skills。");
     return skill;
 }

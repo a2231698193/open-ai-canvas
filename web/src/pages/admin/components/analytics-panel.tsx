@@ -134,7 +134,7 @@ export default function AnalyticsPanel({ users, channels }: Props) {
     const searchUsers = async (keyword: string) => {
         setSearchingUsers(true);
         try {
-            const result = await listAdminUsers({ keyword: keyword.trim() || undefined, page: 1, limit: 50 });
+            const result = await listAdminUsers({ keyword: keyword.trim() || undefined, page: 1, pageSize: 50 });
             setUserOptions(result.users);
         } catch (error) {
             message.error(error instanceof Error ? error.message : "搜索用户失败");

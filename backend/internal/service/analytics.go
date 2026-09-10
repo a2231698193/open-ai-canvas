@@ -115,7 +115,7 @@ type APICallLogPage struct {
 	Logs  []model.ApiCallLog `json:"logs"`
 	Total int64              `json:"total"`
 	Page  int                `json:"page"`
-	Limit int                `json:"limit"`
+	Limit int                `json:"pageSize"`
 }
 
 type ModelPricingRequest struct {
@@ -1010,7 +1010,9 @@ func (s *Service) enrichAPICallLogPayload(log *model.ApiCallLog, payload map[str
 	nestedTaskID := ""
 	if data, ok := payload["data"].(map[string]any); ok {
 		if log.Capability == "video" && strings.Contains(log.Path, "/v1/video/generations") {
-			nestedTaskID = firstNonEmpty(stringField(data, "task_id"), stringField(data, "taskId"))
+			if extracted, err := firstJSONString(data, "task_id", "taskId"); err == nil {
+				nestedTaskID = extracted
+			}
 		}
 		for key, value := range data {
 			if _, exists := payload[key]; !exists {
@@ -1075,7 +1077,11 @@ func (s *Service) enrichAPICallLogPayload(log *model.ApiCallLog, payload map[str
 		}
 		log.CachedTokens = firstInt64(usageMetadata, "cachedContentTokenCount")
 	}
-	log.ProviderRequestID = firstNonEmpty(nestedTaskID, stringField(payload, "task_id"), stringField(payload, "id"), stringField(payload, "request_id"), stringField(payload, "name"), log.ProviderRequestID)
+	if extracted, err := firstJSONString(payload, "task_id", "id", "request_id", "name"); err == nil {
+		log.ProviderRequestID = firstNonEmpty(nestedTaskID, extracted, log.ProviderRequestID)
+	} else {
+		log.ProviderRequestID = firstNonEmpty(nestedTaskID, log.ProviderRequestID)
+	}
 	log.ProviderStatus = strings.ToLower(firstNonEmpty(stringField(payload, "status"), log.ProviderStatus))
 	if log.ProviderStatus == "failed" || log.ProviderStatus == "cancelled" || log.ProviderStatus == "expired" {
 		log.Status = model.ApiCallStatusFailed

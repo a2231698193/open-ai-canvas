@@ -8,7 +8,7 @@ import { LocalDreaminaGenerationClientError, runLocalDreaminaGenerationTask, typ
 import { createGenerationBatchRetryContexts, createGenerationRetryContext, generationTaskMetadata, runBackendCanvasGenerationTask, runCanvasGenerationTaskToConsumer } from "../src/lib/canvas/canvas-project-generation";
 import { runCanvasAgentGenerationOps } from "../src/pages/canvas/use-canvas-agent-operations";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
-import { onlineToolToOps } from "../src/components/canvas/canvas-assistant-panel";
+import { onlineToolToOps } from "../src/components/canvas/canvas-assistant-online-tools";
 import { generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "../src/lib/generation-task-display";
 import { generationErrorMessage } from "../src/lib/generation-error";
 import { generationTaskNodeId, syncGenerationTaskToCanvasStore } from "../src/lib/canvas/canvas-generation-task-sync";
@@ -1387,7 +1387,8 @@ test("remote provider keeps Create resolution semantics and still creates one Ba
         },
     );
 
-    expect(backendInput?.input.config).toMatchObject({ vquality: "720", quality: "auto" });
+    expect(backendInput?.input.config).toMatchObject({ vquality: "720" });
+    expect(backendInput?.input.config.quality).toBeUndefined();
     expect(localCalls).toBe(0);
 });
 

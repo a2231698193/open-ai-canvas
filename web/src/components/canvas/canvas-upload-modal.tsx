@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { App, Button, Modal, Upload, type UploadFile } from "antd";
+import { App, Button, Upload, type UploadFile } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { FileImage, FileText, Film, Music2, UploadCloud, X } from "lucide-react";
 
 import { isAudioFile } from "@/lib/canvas/canvas-project-generation";
@@ -40,7 +41,7 @@ export function CanvasUploadModal({ open, onClose, onUpload }: CanvasUploadModal
     };
 
     return (
-        <Modal
+        <AppModal
             open={open}
             title={null}
             footer={null}
@@ -50,7 +51,7 @@ export function CanvasUploadModal({ open, onClose, onUpload }: CanvasUploadModal
             keyboard={!uploading}
             mask={{ closable: !uploading }}
             onCancel={onClose}
-            styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0 } }}
+            flush
         >
             <div className="flex min-h-96 flex-col overflow-hidden">
                 <header className="flex h-14 shrink-0 items-center justify-between border-b border-border py-0 pl-5 pr-12">
@@ -128,7 +129,7 @@ export function CanvasUploadModal({ open, onClose, onUpload }: CanvasUploadModal
                     </div>
                 </footer>
             </div>
-        </Modal>
+        </AppModal>
     );
 }
 

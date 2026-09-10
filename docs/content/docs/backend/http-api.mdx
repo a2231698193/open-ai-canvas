@@ -1,0 +1,51 @@
+---
+title: HTTP API 合同
+description: 信封、错误码与 OpenAPI
+---
+
+# HTTP API 合同
+
+路径前缀是 `/api`。前后端一起发布，不按 `/api/v1`、`/api/v2` 做路径版本。不兼容变更随版本一起改接口和调用方。
+
+机器可读规范：运行中的 `GET /api/openapi.yaml`，源文件 `backend/internal/handler/openapi.yaml`。前端 TypeScript 仍走 `web/src/services/api` 的 `http`，不从 OpenAPI 生成客户端。
+
+## 信封
+
+成功：
+
+```json
+{ "code": 0, "data": {}, "msg": "ok" }
+```
+
+失败：HTTP status 与 `code` 都不是成功；`reason` 是稳定机器可读原因。
+
+```json
+{ "code": 40301, "data": null, "msg": "账号素材数量已达到 100 个上限", "reason": "quota_exceeded" }
+```
+
+`code === 0` 才是业务成功。HTTP 200 但 `code !== 0` 必须当失败。前端判断类型用 `ApiError.reason` / `ApiError.code`，不要解析 `msg`。
+
+## 错误码
+
+`code` 默认等于 HTTP 状态。需要区分同一状态的不同原因时，使用 `status * 100 + n`。没有单独的 1001/2001 号段，以免和 HTTP 状态、现有 42901 以及重试判断打架。
+
+| code | HTTP | reason | 含义 |
+| --- | --- | --- | --- |
+| 0 | 200 | — | 成功 |
+| 400 | 400 | `invalid_argument` | 请求不合法 |
+| 401 | 401 | `unauthorized` | 未登录 |
+| 403 | 403 | `forbidden` | 无权限 |
+| 404 | 404 | `not_found` | 资源不存在 |
+| 409 | 409 | `conflict` | 冲突 |
+| 429 | 429 | `rate_limited` | 限流（未细分） |
+| 500 | 500 | `internal` | 内部错误 |
+| 502 | 502 | `bad_gateway` | 上游失败 |
+| 503 | 503 | `unavailable` | 暂时不可用 |
+| 504 | 504 | `timeout` | 超时 |
+| 40301 | 403 | `quota_exceeded` | 账号配额用尽（不自动重试） |
+| 40901 | 409 | `conflict` | 幂等冲突 |
+| 42901 | 429 | `rate_limited` | 请求限流（可带 Retry-After） |
+
+模型错误把已有字符串码放进 `reason`（如 `model_capability_not_supported`），`code` 仍为 400。
+
+常量：后端 `service/error_codes.go`，前端 `web/src/services/api/error-codes.ts`。

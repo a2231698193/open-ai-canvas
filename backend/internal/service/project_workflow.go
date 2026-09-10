@@ -550,14 +550,8 @@ func findTaskOutputResource(value any, mediaType string) (string, string) {
 				if strings.HasPrefix(text, "resource:") {
 					return strings.TrimPrefix(text, "resource:"), mediaType
 				}
-				if strings.HasPrefix(text, "/api/resources/") {
-					id := strings.TrimPrefix(text, "/api/resources/")
-					if slash := strings.IndexByte(id, '/'); slash >= 0 {
-						id = id[:slash]
-					}
-					if id != "" {
-						return id, mediaType
-					}
+				if id := resourceIDFromFileURL(text); id != "" {
+					return id, mediaType
 				}
 			}
 		}

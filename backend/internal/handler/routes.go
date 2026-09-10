@@ -104,9 +104,13 @@ func RegisterTaskRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+		pageSize, err := parsePositiveQueryInt(c.Query("pageSize"), 50)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		tasks, err := svc.TasksWithOptions(user.ID, service.TaskListOptions{
-			Limit:      limit,
+			Limit:      pageSize,
 			ProjectID:  c.Query("projectId"),
 			ActiveOnly: c.Query("activeOnly") == "true",
 		})
@@ -155,7 +159,11 @@ func RegisterTaskRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		after, _ := strconv.ParseInt(c.DefaultQuery("after", "0"), 10, 64)
+		after, err := taskTextEventCursor(c)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		result, err := svc.TaskTextReplay(user.ID, c.Param("id"), after)
 		if err != nil {
 			failService(c, err)

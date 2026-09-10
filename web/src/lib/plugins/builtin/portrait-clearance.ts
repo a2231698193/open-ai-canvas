@@ -1,7 +1,8 @@
 import { registerPlugin } from "@/lib/plugins/plugin-registry";
 import type { PluginManifest, RegisteredPlugin } from "@/lib/plugins/plugin-types";
 
-import { PORTRAIT_CLEARANCE_NODE_TYPE, PORTRAIT_CLEARANCE_PLUGIN_ID } from "@/lib/portrait-clearance/contracts";
+import { PORTRAIT_CLEARANCE_NODE_TYPE, PORTRAIT_CLEARANCE_PLUGIN_ID, createDefaultPortraitClearanceState } from "@/lib/portrait-clearance/contracts";
+import { prepareAnalysisNodeAction } from "../analysis-node-action";
 
 const manifest: PluginManifest = {
     apiVersion: "yingce.plugin/v1",
@@ -35,6 +36,13 @@ const manifest: PluginManifest = {
     },
 };
 
-export const portraitClearancePlugin: RegisteredPlugin = { manifest };
+export const portraitClearancePlugin: RegisteredPlugin = {
+    manifest,
+    agentActions: [prepareAnalysisNodeAction(PORTRAIT_CLEARANCE_NODE_TYPE, "肖像可识别性排查", () => ({ portraitClearance: createDefaultPortraitClearanceState() }))],
+    readAgentNode: (node) => {
+        const state = node.metadata?.portraitClearance;
+        return { mode: state?.mode, task: state?.task, lastResult: state?.lastResult, execution: "仅返回已观测任务和结果；新分析仍通过插件自己的任务入口启动。" };
+    },
+};
 
 registerPlugin(portraitClearancePlugin);

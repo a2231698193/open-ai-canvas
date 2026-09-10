@@ -284,6 +284,8 @@ func migrations() []tableMigration {
 		migrateTable[model.UserPromptCustomization]("user_prompt_customizations"),
 		migrateTable[model.Announcement]("announcements"),
 		migrateTable[model.UserAnnouncementRead]("user_announcement_reads"),
+		migrateTable[model.CreationRun]("creation_runs"),
+		migrateTable[model.CreationSubmission]("creation_submissions"),
 		migrateTable[model.Task]("tasks"),
 		migrateTable[model.TaskTextDelta]("task_text_delta"),
 		migrateTable[model.Session]("sessions"),

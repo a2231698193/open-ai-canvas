@@ -71,6 +71,18 @@ describe("workspace route loading", () => {
         expect(canvas).toContain("deleteDialogOpen ? <Suspense");
     });
 
+
+    test("keeps project asset refresh scoped to the latest user and project", () => {
+        const editor = source("../src/pages/projects/detail/editor.tsx");
+
+        expect(editor).toContain("const assetOwnerKey = JSON.stringify([scope, projectId])");
+        expect(editor).toContain("activeAssetOwnerKeyRef.current !== requestedOwnerKey");
+        expect(editor).toContain("assetRefreshSequenceRef.current !== requestSequence");
+        expect(editor).toContain("assetRefreshSequenceRef.current += 1");
+        expect(editor).toContain("syncedAssetOwnerKeyRef.current = assetOwnerKey");
+        expect(editor.match(/listProjectAssets\(projectId\)/g)).toHaveLength(1);
+    });
+
     test("does not poll wallet balance from permanent workspace chrome", () => {
         const wallet = source("../src/hooks/use-wallet-balance.ts");
         expect(wallet).not.toContain("refetchInterval:");
@@ -97,8 +109,8 @@ describe("workspace route loading", () => {
         const loader = source("../src/components/ui/aceternity/full-screen-loader.tsx");
         const css = source("../src/styles/globals.css");
 
-        expect(loader).toContain("full-screen-loader-topbar");
-        expect(loader).toContain("full-screen-loader-rail");
+        expect(loader).toContain("full-screen-loader-scene");
+        expect(loader).toContain("full-screen-loader-guide");
         expect(loader).toContain("LoadingSignal");
         expect(loader).not.toContain("YINGCE STUDIO");
         expect(loader).not.toContain("loading-cue");

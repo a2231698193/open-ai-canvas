@@ -1,7 +1,5 @@
-// 片段检查器（editor-shell 预设插件贡献 inspector 插槽，M3.3）。
 // 读取选中片段（store.selectedClipId），属性编辑经 setClipProperty 命令入队
-// （可撤销、可回放、进黄金文件语义）；无选中时显示项目概览。
-// 视觉参照 Concat inspector：分组小标题 + 紧凑控件 + sunken 滑块，token 随主题联动。
+// 并进入统一撤销历史；检查器不直接修改 project，避免绕过命令校验和持久化。
 
 import { useEffect, useState } from "react";
 

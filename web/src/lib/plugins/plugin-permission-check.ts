@@ -1,12 +1,12 @@
-// 编辑器插件执行期权限校验（M5，fail-closed）。
-// v2 插件贡献 editorSlots / 代发 timeline 命令时，其 manifest.permissions 必须覆盖
-// 对应能力域；缺失即拒绝渲染/执行。v1 插件不贡献 editorSlots，天然不受此域约束。
-// 本模块只做纯判定，接入点在插槽渲染（SlotStack）与宿主命令代发通道。
+// 编辑器插件执行期权限校验，默认拒绝未知插件和缺失权限。
+// v2 插件贡献 editorSlots 或代发 timeline 命令时，manifest.permissions 必须覆盖对应能力域；
+// v1 插件不贡献 editorSlots，因此不经过这条插槽权限路径。本模块只做纯判定，
+// 接入点分别位于插槽渲染（SlotStack）和宿主命令代发通道。
 
 import { getRegisteredPlugin } from "@/lib/plugins/plugin-registry";
 import type { EditorPluginPermission, EditorSlotKind } from "@/lib/plugins/plugin-types";
 
-/** 每个编辑器插槽所需的最小权限域（M5.2 表驱动：新插槽必须补表，否则 fail-closed 拒渲染）。 */
+/** 每个编辑器插槽所需的最小权限域；新增插槽必须补表，否则会因找不到权限而拒绝渲染。 */
 export const EDITOR_SLOT_REQUIRED_PERMISSION: Record<EditorSlotKind, EditorPluginPermission> = {
     "timeline-panel": "timeline.command",
     "preview-renderer": "timeline.read",
@@ -51,7 +51,7 @@ export function pluginMayRenderEditorSlot(pluginId: string, slot: EditorSlotKind
     return { allowed: true };
 }
 
-/** 宿主命令代发通道的权限断言：插件未声明 permission 时抛错（M6 AI 命令、第三方代发复用）。 */
+/** 宿主命令代发通道的权限断言：未注册插件或未声明目标权限时抛错，调用方必须阻止命令执行。 */
 export function assertEditorPermission(pluginId: string, permission: EditorPluginPermission): void {
     const permissions = pluginPermissions(pluginId);
     if (permissions === null) {

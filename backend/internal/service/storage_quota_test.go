@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
@@ -16,8 +17,10 @@ func TestValidateStructuredStorageQuotaRejectsBytesAndCounts(t *testing.T) {
 	if err := validateStructuredStorageQuotaWithPolicy(usage, "asset", false, 9, policy); err == nil {
 		t.Fatal("validateStructuredStorageQuota() byte error = nil")
 	}
-	if err := validateStructuredStorageQuotaWithPolicy(usage, "asset", true, 0, policy); err == nil {
-		t.Fatal("validateStructuredStorageQuota() count error = nil")
+	err := validateStructuredStorageQuotaWithPolicy(usage, "asset", true, 0, policy)
+	var quota *AppError
+	if err == nil || !errors.As(err, &quota) || quota.Code != CodeQuotaExceeded || quota.Status != CodeForbidden {
+		t.Fatalf("validateStructuredStorageQuota() count error = %v", err)
 	}
 }
 

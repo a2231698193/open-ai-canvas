@@ -79,7 +79,7 @@ export default function RedemptionCodesPanel({ createOpen, onCreateOpenChange, o
                 keyword: queryKeyword || undefined,
                 validity: queryValidity === "all" ? undefined : queryValidity,
                 page: targetPage,
-                limit: targetPageSize,
+                pageSize: targetPageSize,
             });
             if (requestId !== listRequestRef.current) return false;
             const lastPage = Math.max(1, Math.ceil(result.total / targetPageSize));
@@ -641,7 +641,7 @@ function RedeemBatchCodesModal({ batch, onClose, onBatchChanged }: { batch: Rede
         setCodes([]);
         setTotal(0);
         try {
-            const result = await listAdminRedeemBatchCodes(batch.id, { status: targetStatus === "all" ? undefined : targetStatus, page: targetPage, limit: targetPageSize });
+            const result = await listAdminRedeemBatchCodes(batch.id, { status: targetStatus === "all" ? undefined : targetStatus, page: targetPage, pageSize: targetPageSize });
             if (requestId !== requestRef.current) return false;
             const lastPage = Math.max(1, Math.ceil(result.total / targetPageSize));
             if (targetPage > lastPage) {

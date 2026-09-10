@@ -480,7 +480,10 @@ func (s *Service) SaveAdminLogicalModel(actor *model.User, id string, req Logica
 		return nil, err
 	}
 	s.invalidateRouteCatalog()
-	_ = s.appendAdminAudit(actor, map[bool]string{true: "logical_model.create", false: "logical_model.update"}[creating], "logical_model", item.ID, "保存前台模型及供应线路", map[string]any{"revisionId": revision.ID, "routeCount": len(routes)})
+	// 模型、版本和路由属于后台关键配置，保存成功却缺失审计记录不能静默返回成功。
+	if err := s.appendAdminAudit(actor, map[bool]string{true: "logical_model.create", false: "logical_model.update"}[creating], "logical_model", item.ID, "保存前台模型及供应线路", map[string]any{"revisionId": revision.ID, "routeCount": len(routes)}); err != nil {
+		return nil, err
+	}
 	graph, err := s.repo.LogicalModelGraph(item.ID, true)
 	if err != nil {
 		return nil, err
@@ -640,8 +643,14 @@ func (s *Service) logicalModelBundle(actor *model.User, id string, req LogicalMo
 	if err != nil {
 		return nil, nil, nil, false, err
 	}
-	specJSON, _ := json.Marshal(req.CapabilitySpec)
-	defaultsJSON, _ := json.Marshal(defaultMap(req.DefaultOptions))
+	specJSON, err := json.Marshal(req.CapabilitySpec)
+	if err != nil {
+		return nil, nil, nil, false, fmt.Errorf("序列化前台模型能力合同失败：%w", err)
+	}
+	defaultsJSON, err := json.Marshal(defaultMap(req.DefaultOptions))
+	if err != nil {
+		return nil, nil, nil, false, fmt.Errorf("序列化前台模型默认参数失败：%w", err)
+	}
 	revision := &model.LogicalModelRevision{ID: revisionID, LogicalModelID: item.ID, CapabilitySpecJSON: string(specJSON), DefaultOptionsJSON: string(defaultsJSON), CreatedBy: actor.ID, CreatedAt: time.Now()}
 	routes := make([]model.LogicalModelRoute, 0, len(req.Routes))
 	seenChannelModels := make(map[string]bool, len(req.Routes))

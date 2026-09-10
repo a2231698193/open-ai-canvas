@@ -1,4 +1,4 @@
-import { apiBaseURL, apiClient, request } from "@/services/api/request";
+import { http, apiBaseURL } from "@/services/api/request";
 import type { RemoteResource } from "@/services/api/resources";
 
 export type AnnouncementLevel = "info" | "success" | "warning" | "critical";
@@ -29,13 +29,12 @@ export type AdminAnnouncementListParams = {
     keyword?: string;
     status?: AnnouncementStatus;
     page?: number;
-    limit?: number;
+    pageSize?: number;
 };
 
-const api = apiClient;
 
 export function getAnnouncementFeed() {
-    return request<AnnouncementFeed>(api.get("/announcements"));
+    return http.get<AnnouncementFeed>("/announcements");
 }
 
 export function announcementImageUrl(announcement: Pick<SystemAnnouncement, "imageUrl">) {
@@ -46,31 +45,31 @@ export function announcementImageUrl(announcement: Pick<SystemAnnouncement, "ima
 }
 
 export function markAnnouncementsRead(announcementIds: string[]) {
-    return request<{ unreadCount: number }>(api.post("/announcements/read", { announcementIds }));
+    return http.post<{ unreadCount: number }>("/announcements/read", { announcementIds });
 }
 
 export function listAdminAnnouncements(params: AdminAnnouncementListParams = {}) {
-    return request<{ announcements: SystemAnnouncement[]; total: number; page: number; limit: number }>(api.get("/admin/announcements", { params }));
+    return http.get<{ announcements: SystemAnnouncement[]; total: number; page: number; pageSize: number }>("/admin/announcements", { params });
 }
 
 export function uploadAdminAnnouncementImage(file: File) {
     const formData = new FormData();
     formData.append("file", file, file.name);
-    return request<{ resource: RemoteResource }>(api.post("/admin/announcement-images", formData));
+    return http.post<{ resource: RemoteResource }>("/admin/announcement-images", formData);
 }
 
 export function discardAdminAnnouncementImage(id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/announcement-images/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/announcement-images/${encodeURIComponent(id)}`);
 }
 
 export function createAdminAnnouncement(input: { title: string; content: string; imageResourceId?: string; level: AnnouncementLevel; pinned: boolean }) {
-    return request<{ announcement: SystemAnnouncement }>(api.post("/admin/announcements", input));
+    return http.post<{ announcement: SystemAnnouncement }>("/admin/announcements", input);
 }
 
 export function updateAdminAnnouncement(id: string, input: { title: string; content: string; imageResourceId?: string; level: AnnouncementLevel; pinned: boolean }) {
-    return request<{ announcement: SystemAnnouncement }>(api.patch(`/admin/announcements/${encodeURIComponent(id)}`, input));
+    return http.patch<{ announcement: SystemAnnouncement }>(`/admin/announcements/${encodeURIComponent(id)}`, input);
 }
 
 export function closeAdminAnnouncement(id: string) {
-    return request<{ announcement: SystemAnnouncement }>(api.post(`/admin/announcements/${encodeURIComponent(id)}/close`));
+    return http.post<{ announcement: SystemAnnouncement }>(`/admin/announcements/${encodeURIComponent(id)}/close`);
 }

@@ -24,12 +24,64 @@ func withProtocolRegistry(ctx context.Context, registry *protocol.Registry) cont
 	return context.WithValue(ctx, protocolRegistryContextKey{}, registry)
 }
 
+func protocolRegistryFromContext(ctx context.Context) (*protocol.Registry, bool) {
+	registry, ok := ctx.Value(protocolRegistryContextKey{}).(*protocol.Registry)
+	return registry, ok && registry != nil
+}
+
 func protocolAdapterForContext(ctx context.Context, id string) (protocol.Adapter, bool) {
 	registry, _ := ctx.Value(protocolRegistryContextKey{}).(*protocol.Registry)
 	if registry == nil {
 		registry = emptyProtocolRegistry
 	}
 	return registry.Resolve(strings.TrimSpace(id))
+}
+
+// ensureOfficialProtocolAdapter 让未注入 registry 的调用（主要是单测）与生产一样
+// 使用官方插件包。调用方若显式放入空 registry，表示要测“插件未安装”。
+func ensureOfficialProtocolAdapter(ctx context.Context, interfaceType string) context.Context {
+	if _, present := protocolRegistryFromContext(ctx); present {
+		return ctx
+	}
+	interfaceType = strings.TrimSpace(interfaceType)
+	if interfaceType == "" {
+		return ctx
+	}
+	registry := loadOfficialFallbackRegistry()
+	adapter, ok := registry.Resolve(interfaceType)
+	if !ok || adapter.Metadata().Execution != "declarative" {
+		return ctx
+	}
+	return withProtocolRegistry(ctx, registry)
+}
+
+// officialDeclarativeVideoInterface 列出已有官方声明式视频插件的 InterfaceType。
+// 这些接口缺失 adapter 时必须报错，不能再走第二套手写实现。
+func officialDeclarativeVideoInterface(interfaceType string) (string, bool) {
+	switch strings.TrimSpace(interfaceType) {
+	case string(model.ChannelInterfaceAgnesVideo):
+		return "Agnes", true
+	case string(model.ChannelInterfaceMiniMaxVideo):
+		return "MiniMax", true
+	case string(model.ChannelInterfaceGeminiVeo):
+		return "Gemini Veo", true
+	case string(model.ChannelInterfaceNovitaVideo):
+		return "Novita", true
+	case string(model.ChannelInterfaceNewAPIChannel2):
+		return "NewAPI Video Generations", true
+	case string(model.ChannelInterfaceNewAPIChannel1):
+		return "NewAPI 媒体任务", true
+	case string(model.ChannelInterfaceXAIVideo):
+		return "xAI", true
+	case string(model.ChannelInterfaceVolcengineArkVideo):
+		return "火山方舟", true
+	case string(model.ChannelInterfaceVolcengineJiMengVideo):
+		return "即梦", true
+	case string(model.ChannelInterfaceNewAPIVideo):
+		return "OpenAI Videos", true
+	default:
+		return "", false
+	}
 }
 
 func declarativeProtocolAdapterForContext(ctx context.Context, id string) (protocol.Adapter, bool) {

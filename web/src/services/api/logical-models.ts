@@ -1,4 +1,4 @@
-import { apiClient, request } from "@/services/api/request";
+import { http } from "@/services/api/request";
 
 export type InputConstraint = { min: number; max: number };
 export type OptionConstraint = { values?: unknown[]; min?: number; max?: number; step?: number };
@@ -167,44 +167,31 @@ export type ModelCatalogResponse = {
 
 // 统一模型目录接口 - 根据 frontendModelsEnabled 开关返回前台模型或系统渠道模型
 export function getModelCatalog() {
-    return request<ModelCatalogResponse>(apiClient.get("/model-catalog"));
-}
-
-export function getAvailableModelCatalog(intent: ModelRequestIntent) {
-    return request<ModelCatalogResponse>(apiClient.post("/model-catalog/available", intent));
-}
-
-// 旧接口，保持兼容
-export function listLogicalModels() {
-    return request<{ models: PublicLogicalModel[] }>(apiClient.get("/models"));
-}
-
-export function listAvailableLogicalModels(intent: ModelRequestIntent) {
-    return request<{ models: PublicLogicalModel[] }>(apiClient.post("/models/available", intent));
+    return http.get<ModelCatalogResponse>("/model-catalog");
 }
 
 export function quoteLogicalModel(id: string, intent: ModelRequestIntent, signal?: AbortSignal) {
-    return request<{ quote: LogicalModelQuote }>(apiClient.post(`/models/${encodeURIComponent(id)}/quote`, intent, { signal }));
+    return http.post<{ quote: LogicalModelQuote }>(`/models/${encodeURIComponent(id)}/quote`, intent, { signal });
 }
 
 export function listAdminLogicalModels() {
-    return request<{ models?: AdminLogicalModel[] }>(apiClient.get("/admin/logical-models")).then((result) => ({
+    return http.get<{ models?: AdminLogicalModel[] }>("/admin/logical-models").then((result) => ({
         models: Array.isArray(result?.models) ? result.models.filter(Boolean).map(normalizeAdminLogicalModel) : [],
     }));
 }
 
 export function createAdminLogicalModel(input: LogicalModelMutation) {
-    return request<{ model: AdminLogicalModel }>(apiClient.post("/admin/logical-models", input));
+    return http.post<{ model: AdminLogicalModel }>("/admin/logical-models", input);
 }
 
 export function updateAdminLogicalModel(id: string, input: LogicalModelMutation) {
-    return request<{ model: AdminLogicalModel }>(apiClient.patch(`/admin/logical-models/${encodeURIComponent(id)}`, input));
+    return http.patch<{ model: AdminLogicalModel }>(`/admin/logical-models/${encodeURIComponent(id)}`, input);
 }
 
 export function deleteAdminLogicalModel(id: string) {
-    return request<{ ok: boolean }>(apiClient.delete(`/admin/logical-models/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/logical-models/${encodeURIComponent(id)}`);
 }
 
 export function simulateAdminLogicalModel(id: string, intent: ModelRequestIntent) {
-    return request<RouteSimulationResult>(apiClient.post(`/admin/logical-models/${encodeURIComponent(id)}/simulate`, intent));
+    return http.post<RouteSimulationResult>(`/admin/logical-models/${encodeURIComponent(id)}/simulate`, intent);
 }

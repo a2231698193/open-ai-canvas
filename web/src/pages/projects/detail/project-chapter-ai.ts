@@ -1,4 +1,5 @@
 import { runBackendCanvasGenerationTask } from "@/lib/canvas/canvas-project-generation";
+import { PromptTemplateOperation, promptTemplateTaskPlaceholder } from "@/lib/prompts";
 import { storyboardRowsFromTask } from "@/lib/canvas/canvas-project-domain";
 import { parseChapterAssetBreakdown, type ChapterAssetBreakdown } from "@/lib/canvas/chapter-asset-breakdown";
 import { parseCharacterBreakdown } from "@/lib/canvas/canvas-character-reference";
@@ -43,7 +44,7 @@ export function chapterAssetsFromGenerationTask(task: GenerationTask) {
     const result = parseBackendGenerationResult(task);
     if (!result.text?.trim()) throw new Error("模型没有返回可用的章节资产提取结果");
     // 历史角色任务的输出契约只有角色；仅按明确的模板操作恢复，不能给新任务缺字段兜底。
-    if (generationTaskMetadata(task.inputJson).promptTemplateOperation === "character_extract") {
+    if (generationTaskMetadata(task.inputJson).promptTemplateOperation === PromptTemplateOperation.CharacterExtract) {
         return { characters: parseCharacterBreakdown(result.text), scenes: [], props: [] };
     }
     return parseChapterAssetBreakdown(result.text);
@@ -123,9 +124,9 @@ async function runProjectTextTask(input: ChapterAnalysisInput, operation: string
         projectId: input.projectId,
         nodeId: `${operation}:${input.chapterId}`,
         mode: "text",
-        prompt: "使用当前启用的章节角色、场景与道具提取模板。",
+        prompt: promptTemplateTaskPlaceholder("章节角色、场景与道具提取"),
         config: { ...input.config, model },
-        metadata: { domainProjectId: input.projectId, chapterId: input.chapterId, operation, promptTemplateOperation: "chapter_assets_extract", promptTemplateVariables },
+        metadata: { domainProjectId: input.projectId, chapterId: input.chapterId, operation, promptTemplateOperation: PromptTemplateOperation.ChapterAssetsExtract, promptTemplateVariables },
         onTaskCreated: options?.onTaskUpdate,
     });
     if (!result.text?.trim()) throw new Error("模型没有返回可用结果");

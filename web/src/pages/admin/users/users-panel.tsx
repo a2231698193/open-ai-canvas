@@ -57,7 +57,7 @@ export default function UsersPanel({ onUserChanged }: { onUserChanged?: (user: L
             role: state.role === "all" ? undefined : state.role,
             status: state.status === "all" ? undefined : state.status,
             page: state.page,
-            limit: state.pageSize,
+            pageSize: state.pageSize,
         })
             .then((result) => {
                 if (sequence !== requestSequence.current) return;

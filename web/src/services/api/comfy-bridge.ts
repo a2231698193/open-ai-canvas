@@ -1,4 +1,4 @@
-import { apiClient, request } from "@/services/api/request";
+import { http } from "@/services/api/request";
 
 export type ComfyBridgeSummary = {
     id: string;
@@ -18,14 +18,14 @@ export type ComfyBridgeRegistration = {
 };
 
 export function listComfyBridges() {
-    return request<ComfyBridgeSummary[]>(apiClient.get("/comfy-bridges"));
+    return http.get<ComfyBridgeSummary[]>("/comfy-bridges");
 }
 
 export function createComfyBridge(name: string, capabilities?: Record<string, unknown>) {
-    return request<ComfyBridgeRegistration>(apiClient.post("/comfy-bridges", { name, capabilities }));
+    return http.post<ComfyBridgeRegistration>("/comfy-bridges", { name, capabilities });
 }
 
 export function revokeComfyBridge(id: string) {
     // 部分生产代理默认拦截 DELETE；后端保留 DELETE 兼容，但管理端统一走显式撤销动作。
-    return request<{ revoked: boolean }>(apiClient.post(`/comfy-bridges/${encodeURIComponent(id)}/revoke`));
+    return http.post<{ revoked: boolean }>(`/comfy-bridges/${encodeURIComponent(id)}/revoke`);
 }

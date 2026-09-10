@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"errors"
+
 	"infinite-canvas/backend/internal/model"
 )
 
@@ -139,5 +141,38 @@ func TestBackfillRejudgesLegacyNoneVideos(t *testing.T) {
 	}
 	if mp4v.PlaybackStatus != model.PlaybackStatusFailed {
 		t.Fatalf("fake mp4v 应转码失败落 failed，实际 %q", mp4v.PlaybackStatus)
+	}
+}
+
+type failingResourceSaver struct {
+	failTimes int
+	calls     int
+}
+
+func (s *failingResourceSaver) SaveResource(*model.Resource) error {
+	s.calls++
+	if s.calls <= s.failTimes {
+		return errors.New("db busy")
+	}
+	return nil
+}
+
+func TestPersistPlaybackResourceRetriesThenSucceeds(t *testing.T) {
+	saver := &failingResourceSaver{failTimes: 2}
+	if err := persistPlaybackResource(saver, &model.Resource{ID: "r1"}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if saver.calls != playbackPersistAttempts {
+		t.Fatalf("calls = %d, want %d", saver.calls, playbackPersistAttempts)
+	}
+}
+
+func TestPersistPlaybackResourceReturnsAfterExhaustedRetries(t *testing.T) {
+	saver := &failingResourceSaver{failTimes: 10}
+	if err := persistPlaybackResource(saver, &model.Resource{ID: "r1"}, "test"); err == nil {
+		t.Fatal("expected persist error")
+	}
+	if saver.calls != playbackPersistAttempts {
+		t.Fatalf("calls = %d, want %d", saver.calls, playbackPersistAttempts)
 	}
 }

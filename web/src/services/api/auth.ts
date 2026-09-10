@@ -3,11 +3,10 @@ import type { BillingOrder, CreditLedgerEntry } from "@/services/api/wallet";
 import type { GenerationTask, TaskStatus } from "@/services/api/task-center";
 import type { CanvasDrawingEngineSetting } from "@/lib/canvas/canvas-drawing-engine";
 import type { FeatureAvailability } from "@/stores/use-user-store";
-import { apiClient, request } from "@/services/api/request";
+import { http, apiBaseURL } from "@/services/api/request";
 import type { PublicLogicalModel } from "@/services/api/logical-models";
 import type { OSSConnectionTestInput, OSSConnectionTestResult, OSSProvider, S3Preset } from "@/lib/oss-settings";
 
-const api = apiClient;
 
 let authSessionRequest: Promise<AuthSessionPayload> | null = null;
 let authSessionCache: { payload: AuthSessionPayload; expiresAt: number } | null = null;
@@ -369,11 +368,11 @@ export type RuntimePolicySetting = {
 };
 
 export function getAuthSettings() {
-    return request<{ firstUser: boolean; registrationEnabled: boolean; linuxdoEnabled: boolean; emailEnabled: boolean; emailCodeRequired: boolean }>(api.get("/auth/settings"));
+    return http.get<{ firstUser: boolean; registrationEnabled: boolean; linuxdoEnabled: boolean; emailEnabled: boolean; emailCodeRequired: boolean }>("/auth/settings");
 }
 
 export function linuxDOLoginURL(next: string) {
-    const base = String(api.defaults.baseURL || "/api").replace(/\/$/, "");
+    const base = String(apiBaseURL).replace(/\/$/, "");
     return `${base}/auth/linuxdo/start?next=${encodeURIComponent(next)}`;
 }
 
@@ -381,7 +380,7 @@ export function getAuthSession() {
     const now = Date.now();
     if (authSessionCache && authSessionCache.expiresAt > now) return Promise.resolve(authSessionCache.payload);
     if (authSessionRequest) return authSessionRequest;
-    authSessionRequest = request<AuthSessionPayload>(api.get("/auth/session"))
+    authSessionRequest = http.get<AuthSessionPayload>("/auth/session")
         .then((payload) => {
             authSessionCache = { payload, expiresAt: Date.now() + 5_000 };
             return payload;
@@ -393,220 +392,220 @@ export function getAuthSession() {
 }
 
 export function getSystemChannels() {
-    return request<{ channels: ModelChannel[] }>(api.get("/channels/system"));
+    return http.get<{ channels: ModelChannel[] }>("/channels/system");
 }
 
 export function getFeatureAvailability() {
-    return request<{ features: FeatureAvailability }>(api.get("/features"));
+    return http.get<{ features: FeatureAvailability }>("/features");
 }
 
 export function getAdminFeatureAvailability() {
-    return request<{ features: FeatureAvailability }>(api.get("/admin/settings/features"));
+    return http.get<{ features: FeatureAvailability }>("/admin/settings/features");
 }
 
 export function updateAdminFeatureAvailability(features: Pick<FeatureAvailability, "shortDramaEnabled" | "taskCenterEnabled" | "creditsEnabled" | "customChannelsEnabled" | "frontendModelsEnabled" | "pluginCenterEnabled" | "systemPluginsVisibleToUsers">) {
-    return request<{ features: FeatureAvailability }>(api.patch("/admin/settings/features", features));
+    return http.patch<{ features: FeatureAvailability }>("/admin/settings/features", features);
 }
 
 export async function login(input: { username: string; password: string }) {
-    const result = await request<{ user: LocalUser }>(api.post("/auth/login", input));
+    const result = await http.post<{ user: LocalUser }>("/auth/login", input);
     // 登录会改变服务端会话身份，不能让登录前缓存的游客 session 污染后续恢复。
     invalidateAuthSessionCache();
     return result;
 }
 
 export function sendRegistrationEmailCode(email: string) {
-    return request<{ sent: boolean }>(api.post("/auth/email-code", { email }));
+    return http.post<{ sent: boolean }>("/auth/email-code", { email });
 }
 
 export function sendPasswordResetEmailCode(email: string) {
-    return request<{ sent: boolean }>(api.post("/auth/password-reset-code", { email }));
+    return http.post<{ sent: boolean }>("/auth/password-reset-code", { email });
 }
 
 export function resetPassword(input: { email: string; emailCode: string; password: string }) {
-    return request<{ reset: boolean }>(api.post("/auth/password-reset", input));
+    return http.post<{ reset: boolean }>("/auth/password-reset", input);
 }
 
 export function register(input: { username: string; email?: string; emailCode?: string; displayName?: string; password: string }) {
-    return request<{ user: LocalUser }>(api.post("/auth/register", input));
+    return http.post<{ user: LocalUser }>("/auth/register", input);
 }
 
 export async function logout() {
-    const result = await request<{ ok: boolean }>(api.post("/auth/logout"));
+    const result = await http.post<{ ok: boolean }>("/auth/logout");
     invalidateAuthSessionCache();
     return result;
 }
 
-export type AdminListParams = { keyword?: string; status?: string; role?: string; page?: number; limit?: number };
+export type AdminListParams = { keyword?: string; status?: string; role?: string; page?: number; pageSize?: number };
 
 export function listAdminUsers(params: AdminListParams = {}) {
-    return request<{ users: AdminUser[]; total: number; page: number; limit: number }>(api.get("/admin/users", { params }));
+    return http.get<{ users: AdminUser[]; total: number; page: number; pageSize: number }>("/admin/users", { params });
 }
 
 export function createAdminUser(input: { username: string; displayName: string; email?: string; password: string; role: LocalUser["role"]; status: LocalUser["status"] }) {
-    return request<{ user: AdminUser }>(api.post("/admin/users", input));
+    return http.post<{ user: AdminUser }>("/admin/users", input);
 }
 
 export function getAdminReferences() {
-    return request<AdminReferenceData>(api.get("/admin/references"));
+    return http.get<AdminReferenceData>("/admin/references");
 }
 
 export function getAdminUserDetail(id: string) {
-    return request<AdminUserDetail>(api.get(`/admin/users/${encodeURIComponent(id)}/detail`));
+    return http.get<AdminUserDetail>(`/admin/users/${encodeURIComponent(id)}/detail`);
 }
 
-export function listAdminUserLedger(id: string, params: { page?: number; limit?: number; type?: string } = {}) {
-    return request<{ entries: CreditLedgerEntry[]; total: number; page: number; limit: number }>(api.get(`/admin/users/${encodeURIComponent(id)}/ledger`, { params }));
+export function listAdminUserLedger(id: string, params: { page?: number; pageSize?: number; type?: string } = {}) {
+    return http.get<{ entries: CreditLedgerEntry[]; total: number; page: number; pageSize: number }>(`/admin/users/${encodeURIComponent(id)}/ledger`, { params });
 }
 
-export function listAdminUserTasks(id: string, params: { page?: number; limit?: number } = {}) {
-    return request<{ tasks: AdminUserTask[]; total: number; page: number; limit: number }>(api.get(`/admin/users/${encodeURIComponent(id)}/tasks`, { params }));
+export function listAdminUserTasks(id: string, params: { page?: number; pageSize?: number } = {}) {
+    return http.get<{ tasks: AdminUserTask[]; total: number; page: number; pageSize: number }>(`/admin/users/${encodeURIComponent(id)}/tasks`, { params });
 }
 
-export function listAdminUserAuditEvents(id: string, params: { page?: number; limit?: number } = {}) {
-    return request<{ events: AdminAuditEvent[]; total: number; page: number; limit: number }>(api.get(`/admin/users/${encodeURIComponent(id)}/audit-events`, { params }));
+export function listAdminUserAuditEvents(id: string, params: { page?: number; pageSize?: number } = {}) {
+    return http.get<{ events: AdminAuditEvent[]; total: number; page: number; pageSize: number }>(`/admin/users/${encodeURIComponent(id)}/audit-events`, { params });
 }
 
 export function updateAdminUser(id: string, input: Partial<Pick<LocalUser, "displayName" | "email" | "role" | "status">> & { password?: string }) {
-    return request<{ user: LocalUser }>(api.patch(`/admin/users/${encodeURIComponent(id)}`, input));
+    return http.patch<{ user: LocalUser }>(`/admin/users/${encodeURIComponent(id)}`, input);
 }
 
 export function deleteAdminUser(id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/users/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/users/${encodeURIComponent(id)}`);
 }
 
 export function bulkDisableAdminUsers(userIds: string[]) {
-    return request<{ users: LocalUser[]; disabledCount: number }>(api.post("/admin/users/bulk-disable", { userIds }));
+    return http.post<{ users: LocalUser[]; disabledCount: number }>("/admin/users/bulk-disable", { userIds });
 }
 
 export function listAdminChannels(params: AdminListParams = {}) {
-    return request<{ channels: ModelChannel[]; total: number; page: number; limit: number }>(api.get("/admin/channels", { params }));
+    return http.get<{ channels: ModelChannel[]; total: number; page: number; pageSize: number }>("/admin/channels", { params });
 }
 
 export function createAdminChannel(input: Partial<ModelChannel> & { useGlobalConcurrency?: boolean }) {
-    return request<{ channel: ModelChannel }>(api.post("/admin/channels", input));
+    return http.post<{ channel: ModelChannel }>("/admin/channels", input);
 }
 
 export function updateAdminChannel(id: string, input: Partial<ModelChannel> & { useGlobalConcurrency?: boolean }) {
-    return request<{ channel: ModelChannel }>(api.patch(`/admin/channels/${encodeURIComponent(id)}`, input));
+    return http.patch<{ channel: ModelChannel }>(`/admin/channels/${encodeURIComponent(id)}`, input);
 }
 
 export function deleteAdminChannel(id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/channels/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/channels/${encodeURIComponent(id)}`);
 }
 
 export function listAdminPromptTemplates() {
-    return request<{ templates: PromptTemplate[]; definitions: PromptOperationDefinition[] }>(api.get("/admin/prompt-templates"));
+    return http.get<{ templates: PromptTemplate[]; definitions: PromptOperationDefinition[] }>("/admin/prompt-templates");
 }
 
 export function createAdminPromptTemplate(input: Pick<PromptTemplate, "operation" | "name" | "content"> & { enabled?: boolean }) {
-    return request<{ template: PromptTemplate }>(api.post("/admin/prompt-templates", input));
+    return http.post<{ template: PromptTemplate }>("/admin/prompt-templates", input);
 }
 
 export function updateAdminPromptTemplate(id: string, input: Pick<PromptTemplate, "operation" | "name" | "content"> & { enabled?: boolean }) {
-    return request<{ template: PromptTemplate }>(api.patch(`/admin/prompt-templates/${encodeURIComponent(id)}`, input));
+    return http.patch<{ template: PromptTemplate }>(`/admin/prompt-templates/${encodeURIComponent(id)}`, input);
 }
 
 export function deleteAdminPromptTemplate(id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/prompt-templates/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/prompt-templates/${encodeURIComponent(id)}`);
 }
 
 export function listUserPromptPreferences() {
-    return request<{ preferences: UserPromptPreference[] }>(api.get("/settings/prompt-templates"));
+    return http.get<{ preferences: UserPromptPreference[] }>("/settings/prompt-templates");
 }
 
 export function updateUserPromptCustomization(operation: string, input: Pick<UserPromptCustomization, "mode" | "content">) {
-    return request<{ customization: UserPromptCustomization }>(api.patch(`/settings/prompt-templates/${encodeURIComponent(operation)}`, input));
+    return http.patch<{ customization: UserPromptCustomization }>(`/settings/prompt-templates/${encodeURIComponent(operation)}`, input);
 }
 
 export function resetUserPromptCustomization(operation: string) {
-    return request<{ ok: boolean }>(api.delete(`/settings/prompt-templates/${encodeURIComponent(operation)}`));
+    return http.delete<{ ok: boolean }>(`/settings/prompt-templates/${encodeURIComponent(operation)}`);
 }
 
 export function getAdminOSSSetting() {
-    return request<{ setting: AdminOSSSetting }>(api.get("/admin/settings/oss"));
+    return http.get<{ setting: AdminOSSSetting }>("/admin/settings/oss");
 }
 
 export function updateAdminOSSSetting(input: Partial<AdminOSSSetting>) {
-    return request<{ setting: AdminOSSSetting }>(api.patch("/admin/settings/oss", input));
+    return http.patch<{ setting: AdminOSSSetting }>("/admin/settings/oss", input);
 }
 
 export function testAdminOSSConnection(input: OSSConnectionTestInput) {
-    return request<OSSConnectionTestResult>(api.post("/admin/settings/oss/test", input));
+    return http.post<OSSConnectionTestResult>("/admin/settings/oss/test", input);
 }
 
 export function getAdminArkPrivateAssetSetting() {
-    return request<{ setting: AdminArkPrivateAssetSetting }>(api.get("/admin/settings/ark-private-assets"));
+    return http.get<{ setting: AdminArkPrivateAssetSetting }>("/admin/settings/ark-private-assets");
 }
 
 export function updateAdminArkPrivateAssetSetting(input: Partial<AdminArkPrivateAssetSetting>) {
-    return request<{ setting: AdminArkPrivateAssetSetting }>(api.patch("/admin/settings/ark-private-assets", input));
+    return http.patch<{ setting: AdminArkPrivateAssetSetting }>("/admin/settings/ark-private-assets", input);
 }
 
 export function getAdminRuntimePolicySetting() {
-    return request<{ setting: RuntimePolicySetting }>(api.get("/admin/settings/runtime-policy"));
+    return http.get<{ setting: RuntimePolicySetting }>("/admin/settings/runtime-policy");
 }
 
 export function getAdminSelfUseRuntimePolicy() {
-    return request<{ setting: RuntimePolicySetting }>(api.get("/admin/settings/runtime-policy/self-use"));
+    return http.get<{ setting: RuntimePolicySetting }>("/admin/settings/runtime-policy/self-use");
 }
 
 export function updateAdminRuntimePolicySetting(input: Pick<RuntimePolicySetting, "resource" | "task" | "request">) {
-    return request<{ setting: RuntimePolicySetting }>(api.put("/admin/settings/runtime-policy", input));
+    return http.put<{ setting: RuntimePolicySetting }>("/admin/settings/runtime-policy", input);
 }
 
 export function resetAdminRuntimePolicySetting() {
-    return request<{ setting: RuntimePolicySetting }>(api.delete("/admin/settings/runtime-policy"));
+    return http.delete<{ setting: RuntimePolicySetting }>("/admin/settings/runtime-policy");
 }
 
 export function getAdminDrawingEngineSetting() {
-    return request<{ setting: CanvasDrawingEngineSetting }>(api.get("/admin/settings/drawing-engine"));
+    return http.get<{ setting: CanvasDrawingEngineSetting }>("/admin/settings/drawing-engine");
 }
 
 export function updateAdminDrawingEngineSetting(input: Pick<CanvasDrawingEngineSetting, "defaultEngine" | "tldrawLicenseKey">) {
-    return request<{ setting: CanvasDrawingEngineSetting }>(api.patch("/admin/settings/drawing-engine", input));
+    return http.patch<{ setting: CanvasDrawingEngineSetting }>("/admin/settings/drawing-engine", input);
 }
 
 export type AdminApiLogParams = AdminListParams & { recordType?: "request" | "download" | "all" };
 
 export function listAdminApiLogs(params: AdminApiLogParams = {}) {
-    return request<{ logs: ApiCallLog[]; total: number; page: number; limit: number }>(api.get("/admin/api-logs", { params }));
+    return http.get<{ logs: ApiCallLog[]; total: number; page: number; pageSize: number }>("/admin/api-logs", { params });
 }
 
 export function getAdminApiLog(id: string) {
-    return request<{ log: ApiCallLog }>(api.get(`/admin/api-logs/${encodeURIComponent(id)}`));
+    return http.get<{ log: ApiCallLog }>(`/admin/api-logs/${encodeURIComponent(id)}`);
 }
 
 export function queryAdminApiLogTask(id: string) {
-    return request<AdminProviderTaskQueryResult>(api.post(`/admin/api-logs/${encodeURIComponent(id)}/query-task`));
+    return http.post<AdminProviderTaskQueryResult>(`/admin/api-logs/${encodeURIComponent(id)}/query-task`);
 }
 
 export async function exportAdminApiLogs(params: AdminApiLogParams & { ids?: string[] } = {}) {
-    const response = await api.get<Blob>("/admin/api-logs-export.csv", { params: { ...params, ids: params.ids?.join(",") }, responseType: "blob" });
+    const response = await http.raw<Blob>({ method: "get", url: "/admin/api-logs-export.csv", params: { ...params, ids: params.ids?.join(",") }, responseType: "blob" });
     return response.data;
 }
 
 export function getAdminAnalytics(params: AnalyticsFilters) {
-    return request<AdminAnalytics>(api.get("/admin/analytics/overview", { params }));
+    return http.get<AdminAnalytics>("/admin/analytics/overview", { params });
 }
 
 export async function exportAdminAnalytics(params: AnalyticsFilters) {
-    const response = await api.get<Blob>("/admin/analytics/export.csv", { params, responseType: "blob" });
+    const response = await http.raw<Blob>({ method: "get", url: "/admin/analytics/export.csv", params, responseType: "blob" });
     return response.data;
 }
 
 export function listAdminModelPricings() {
-    return request<{ pricings: ModelPricing[] }>(api.get("/admin/model-pricings"));
+    return http.get<{ pricings: ModelPricing[] }>("/admin/model-pricings");
 }
 
 export function createAdminModelPricing(input: Omit<ModelPricing, "id" | "createdAt" | "updatedAt">) {
-    return request<{ pricing: ModelPricing }>(api.post("/admin/model-pricings", input));
+    return http.post<{ pricing: ModelPricing }>("/admin/model-pricings", input);
 }
 
 export function updateAdminModelPricing(id: string, input: Omit<ModelPricing, "id" | "createdAt" | "updatedAt">) {
-    return request<{ pricing: ModelPricing }>(api.patch(`/admin/model-pricings/${encodeURIComponent(id)}`, input));
+    return http.patch<{ pricing: ModelPricing }>(`/admin/model-pricings/${encodeURIComponent(id)}`, input);
 }
 
 export function deleteAdminModelPricing(id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/model-pricings/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/model-pricings/${encodeURIComponent(id)}`);
 }

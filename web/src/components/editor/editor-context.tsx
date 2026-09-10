@@ -13,7 +13,7 @@ type EditorStoreHook = UseBoundStore<StoreApi<EditorStore>>;
 
 export type EditorHostContextValue = {
     projectId: string;
-    /** 项目资产列表（M3.4 asset-ingest 消费；由宿主在进入编辑器时获取）。 */
+    /** 当前用户、当前项目的资产快照；由编辑器宿主获取，素材导入插件只消费和触发刷新。 */
     assets: ProjectAsset[];
     /** 重新拉取项目资产（导入媒体后刷新列表）。 */
     refreshAssets: () => Promise<ProjectAsset[] | null>;

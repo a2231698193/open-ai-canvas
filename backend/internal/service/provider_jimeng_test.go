@@ -49,12 +49,3 @@ func TestVolcengineJiMengImageTaskUsesSignedAsyncProtocol(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 }
-
-func TestJiMengVideoFramesRejectsUnsupportedDuration(t *testing.T) {
-	if frames, err := jiMengVideoFrames("10"); err != nil || frames != 241 {
-		t.Fatalf("jiMengVideoFrames(10) = %d, %v", frames, err)
-	}
-	if _, err := jiMengVideoFrames("6"); err == nil {
-		t.Fatal("jiMengVideoFrames(6) error = nil")
-	}
-}

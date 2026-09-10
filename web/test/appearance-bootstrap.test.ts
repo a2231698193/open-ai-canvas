@@ -125,5 +125,5 @@ test("appearance management exposes a server-side reset to the built-in Yingce b
     expect(pageSource).toContain("恢复影策默认");
     expect(pageSource).toContain("resetAdminAppearance()");
     expect(pageSource).toContain("已上传文件仍保留在存储资源中");
-    expect(apiSource).toContain('apiClient.delete("/admin/settings/appearance")');
+    expect(apiSource).toContain('http.delete<{ setting: AdminAppearance }>("/admin/settings/appearance")');
 });

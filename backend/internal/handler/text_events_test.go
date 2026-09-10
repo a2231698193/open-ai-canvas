@@ -37,6 +37,20 @@ func TestTaskTextEventCursorPrefersQueryAndSupportsLastEventID(t *testing.T) {
 	}
 }
 
+func TestTaskTextEventCursorRejectsInvalidValues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, query := range []string{"after=abc", "after=-1"} {
+		t.Run(query, func(t *testing.T) {
+			request := httptest.NewRequest("GET", "/api/tasks/task-1/text-events?"+query, nil)
+			context, _ := gin.CreateTestContext(httptest.NewRecorder())
+			context.Request = request
+			if after, err := taskTextEventCursor(context); err == nil || after != 0 {
+				t.Fatalf("cursor = %d, err = %v; want a rejected cursor", after, err)
+			}
+		})
+	}
+}
+
 func TestStreamTaskTextEventsCachedReplayReachesTerminalWithoutDuplicateDelta(t *testing.T) {
 	t.Setenv("REDIS_URL", "")
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

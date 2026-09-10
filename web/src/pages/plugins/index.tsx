@@ -4,6 +4,7 @@ import { AudioLines, CalendarDays, CheckCircle2, Clock3, CreditCard, ExternalLin
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
+import { EmptyState } from "@/components/ui/product/empty-state";
 import { listRegisteredPlugins } from "@/lib/plugins/plugin-registry";
 import "@/lib/plugins/builtin";
 import { EAGLE_PLUGIN_ID } from "@/lib/plugins/builtin/eagle";
@@ -472,21 +473,24 @@ export default function PluginsPage() {
                                 })}
                             </div>
                         ) : (
-                            <div className="plugins-empty-state">
-                                <SlidersHorizontal className="size-7" aria-hidden="true" />
-                                <h3>没有匹配的插件</h3>
-                                <p>试试清空搜索词，或放宽筛选条件。</p>
-                                <Button
-                                    onClick={() => {
-                                        setSearch("");
-                                        setCategoryFilter("all");
-                                        setStatusFilter("all");
-                                        setTrustFilter("all");
-                                    }}
-                                >
-                                    清除筛选
-                                </Button>
-                            </div>
+                            <EmptyState
+                                className="min-h-[260px] rounded-[var(--plugins-card-radius)] bg-foreground/[0.03]"
+                                icon={SlidersHorizontal}
+                                title="没有匹配的插件"
+                                description="试试清空搜索词，或放宽筛选条件。"
+                                action={
+                                    <Button
+                                        onClick={() => {
+                                            setSearch("");
+                                            setCategoryFilter("all");
+                                            setStatusFilter("all");
+                                            setTrustFilter("all");
+                                        }}
+                                    >
+                                        清除筛选
+                                    </Button>
+                                }
+                            />
                         )}
 
                         <Modal

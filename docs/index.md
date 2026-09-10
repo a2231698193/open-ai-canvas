@@ -4,6 +4,15 @@
 
 ## 设计沉淀
 
+- [创作 Agent 第一期版本基线](design/creative-agent-phase-one-checkpoint.mdx)：用户基本体验验收反馈、已实现范围、执行与资源边界核对、待验收项及代码恢复说明。
+
+- [通用创作 Agent 动态规划与画布协作需求设计](design/creative-agent-dynamic-planning.mdx)：基于原会话的专业角色、动态问答与计划、创意方案和执行批次分离、统一画布与费用授权、历史恢复及分期验收（待审阅，未实施）。
+
+- [通用创作 Agent 第一期体验与实现设计](design/creative-agent-phase-one.mdx)：复核两段录屏与六张截图，细化首页连续问答、可修改方案卡、确认后画布操作、按需步骤条、费用授权和真实单段短片交付，附[交互原型](design/creative-agent-phase-one-prototype.html)（第一期代码已接入，待联调验收）。
+- [智能创作会话与执行](content/docs/backend/creative-agent-runtime.mdx)：实际代码入口、API、审批与任务幂等、画布保存和恢复边界。
+
+- [通用创作 Agent 需求与设计](content/docs/overview/creative-agent-design.mdx)：复用现有在线助手、画布、Skills、插件与生成任务，涵盖动态问答、方案确认、按需计划、费用授权、已有节点辅助编辑、自定义业务节点、插件注册与执行绑定；包含分镜、拉片/抽帧、元素替换用例及分阶段验收；不接入 Harness、不建设服务端画布 MCP、不增加草稿节点（需求与设计评审稿，未实施）。
+
 - [插件平台与市场演进调研](design/plugin-platform-and-marketplace-research.md)：插件机制代码审计、对外回应、外部 SDK 与隔离运行时、独立插件验收、受控目录到公开市场的分阶段方案（调研建议，未实施）。
 
 - [站点及外观与皮肤主题设计合同](design/site-appearance-and-skins.mdx)：品牌一致性、登录页与邮件、SEO/备案、三层皮肤令牌、无闪屏启动顺序和验收边界。
@@ -54,6 +63,7 @@
 - [AI 审美批改画布插件](content/docs/plugins/ai-art-critique.mdx)
 - [功能](content/docs/overview/features.mdx)
 - [本地开发](content/docs/backend/local-development.mdx)
+- [HTTP API 合同](content/docs/backend/http-api.mdx)
 - [后端数据库](content/docs/backend/backend-database.mdx)
 - [代码地图](content/docs/backend/code-map.mdx)
 - [待办](content/docs/progress/todo.mdx)

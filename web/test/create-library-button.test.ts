@@ -8,9 +8,17 @@ function compactSource(source: string) {
     return source.replace(/\s+/g, " ").trim();
 }
 
+function readCreateSource() {
+    return readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+}
+
+function readCreateWorkspaceSource() {
+    return readFileSync(resolve(import.meta.dir, "../src/pages/create/creation-workspace.tsx"), "utf8");
+}
+
 describe("creation library button", () => {
     test("keeps library selection in the reference area instead of the bottom dock", () => {
-        const source = readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+        const source = readCreateWorkspaceSource();
         const dockStart = source.indexOf('<footer className="creation-chat-dock">');
         const dockEnd = source.indexOf("</footer>", dockStart);
 
@@ -29,7 +37,7 @@ describe("creation library button", () => {
     });
 
     test("uploads from the library without adding a reference before confirmation", () => {
-        const source = readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+        const source = readCreateSource();
         const pickerSource = readFileSync(resolve(import.meta.dir, "../src/components/assets/asset-library-picker-modal.tsx"), "utf8");
         const uploadStart = source.indexOf("const uploadLibraryAssets = async");
         const uploadEnd = source.indexOf("const handleLibrarySelect", uploadStart);
@@ -45,7 +53,7 @@ describe("creation library button", () => {
     });
 
     test("previews prompt reference images without removing them", () => {
-        const createSource = readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+        const createSource = readCreateWorkspaceSource();
         const canvasSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-node-prompt-panel.tsx"), "utf8");
 
         expect(createSource).toContain('className="creation-user-message-attachments"');
@@ -57,7 +65,7 @@ describe("creation library button", () => {
     });
 
     test("参考内容层叠轨道支持折叠、展开和 Reorder 排序", () => {
-        const source = readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+        const source = readCreateWorkspaceSource();
         const styles = readFileSync(resolve(import.meta.dir, "../src/styles/globals.css"), "utf8");
 
         expect(source).toContain('import { Reorder } from "motion/react"');
@@ -108,7 +116,7 @@ describe("creation library button", () => {
 
     test("resolves remote asset images from their stable resource key", () => {
         const assets = readFileSync(resolve(import.meta.dir, "../src/pages/create/creation-assets.ts"), "utf8");
-        const createSource = readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8");
+        const createSource = readCreateWorkspaceSource();
 
         expect(assets).toContain("resolveResourceUrl(asset.data.storageKey");
         expect(createSource).toContain("<CachedResourceImage storageKey={item.storageKey}");
@@ -128,7 +136,7 @@ describe("creation library button", () => {
     });
 
     test("删除按钮在指针按下阶段隔离拖拽，素材库入口职责独立", () => {
-        const source = compactSource(readFileSync(resolve(import.meta.dir, "../src/pages/create/index.tsx"), "utf8"));
+        const source = compactSource(readCreateWorkspaceSource());
 
         expect(source).toContain("onPointerDownCapture={(event) => event.stopPropagation()}");
         expect(source).toContain("onRemove(item.id)");

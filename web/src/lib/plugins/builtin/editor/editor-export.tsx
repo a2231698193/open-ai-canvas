@@ -1,8 +1,5 @@
-// 导出（editor-shell 预设插件贡献 export-renderer 插槽，M3.7）。
-// M4.2：默认提交后端渲染任务（POST /timeline/renders，ffmpeg 服务端合成，
-// 产物落资源存储，ResultJSON 返回 resourceId 供内嵌预览/下载）；
-// ffmpeg.wasm 本地导出保留为离线/降级路径。
-// §3.1 引用契约：缺失 nodeId 源（节点已删除）按计划跳过，成片不因悬空引用失败。
+// 默认由后端 ffmpeg 渲染并把产物写入资源存储；浏览器 ffmpeg.wasm 只承担离线降级。
+// 构建渲染计划时跳过已失去媒体来源的片段，避免悬空 nodeId 阻断其余有效片段导出。
 
 import { useMemo, useState } from "react";
 import { Download, Loader2, PackageOpen, Server } from "lucide-react";

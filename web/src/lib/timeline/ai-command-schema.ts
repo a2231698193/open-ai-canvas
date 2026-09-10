@@ -1,7 +1,6 @@
-// AI 编辑命令契约（ADR-0007 / Runbook M6.1）：宿主校验 + LLM 提示词约束的双契约。
-// 本文件不复制 handler 约束——命令合法性硬守门在 M2.1 命令注册表（fail-closed），
-// 这里只做：(1) LLM 输出 JSON 的结构解析与批级预检（dry-run 走同一注册表，零重复），
-// (2) 生成喂给 LLM 的 op 契约（op 集合与注册表黄金同步，见测试）。
+// AI 编辑命令的边界层：同一份注册表同时约束模型输出和宿主执行，避免提示词与真实能力列表分叉。
+// 本文件只负责 JSON 结构解析、批量预检和提示词契约生成；命令的参数合法性仍由编辑命令注册表统一判定。
+// 预检使用与正式执行相同的纯函数注册表，保证“模型看见的能力”和“宿主实际允许的能力”一致。
 
 import { getEditorCommandRegistry, type EditCommand } from "@/lib/timeline/editor-commands";
 import type { TimelineProject } from "@/types/timeline";
@@ -79,8 +78,8 @@ function assertPlanShape(raw: unknown): asserts raw is AiCommandPlan {
 }
 
 /**
- * 解析 LLM 文本输出为 AiCommandPlan；结构非法时抛 AiCommandPlanError（供 UI 展示并回填模型）。
- * commands 为空数组表示「只读问答 / 无法用现有命令完成」，面板直接展示 reasoning 作为回答。
+ * 解析模型文本为 AiCommandPlan；结构非法时抛 AiCommandPlanError，调用方可将明确原因展示给用户或回传模型修正。
+ * commands 为空数组表示只读问答或当前能力无法完成，调用方不应把它当成“执行成功的空修改”。
  */
 export function parseAiCommandPlan(text: string): AiCommandPlan {
     let raw: unknown;
@@ -96,8 +95,8 @@ export function parseAiCommandPlan(text: string): AiCommandPlan {
 
 /**
  * 批级预检：把整批命令按序 dry-run 到当前时间线（immutable 纯函数，无副作用）。
- * 任何一条触发注册表 fail-closed（未知 op / 非法 payload / 引用不存在）即整批拒绝，
- * 返回首个出错命令的下标与消息——ADR-0007「任一非法→整批拒绝，错误回填 LLM 修正」。
+ * 任何一条触发注册表的拒绝规则（未知 op、非法 payload 或引用不存在）即整批拒绝，
+ * 返回首个失败命令的位置和原因；正式执行不得绕过这一步或只提交部分命令。
  */
 export function validateAiCommandBatch(project: TimelineProject, plan: AiCommandPlan): AiCommandBatchVerdict {
     const registry = getEditorCommandRegistry();
@@ -114,13 +113,13 @@ export function validateAiCommandBatch(project: TimelineProject, plan: AiCommand
 }
 
 // ---------------------------------------------------------------------------
-// LLM 提示词契约（ADR-0007：schema 同时用于宿主校验与模型输出约束）
+// 模型提示词契约：schema 同时用于宿主校验与模型输出约束，具体交互决策见 ADR-0007。
 // ---------------------------------------------------------------------------
 
-/** AI 命令 schema 版本（Runbook M6.1）：提示词契约/解析规则变更时递增，供 golden 与缓存失效对齐。 */
+/** AI 命令 schema 版本；提示词契约或解析规则变化时递增，用于 golden 测试和缓存失效对齐。 */
 export const AI_COMMAND_SCHEMA_VERSION = 1;
 
-/** 单次 AI 编辑最多允许的命令条数（ADR-0007：防止模型一次输出失控编辑）。 */
+/** 单次 AI 编辑最多允许的命令条数，防止一次模型输出造成不可控的大范围变更。 */
 export const AI_EDITING_MAX_COMMANDS = 8;
 
 /** 12 个黄金 op 的 LLM 可读 payload 契约；op 集合与注册表黄金同步（见测试）。 */
@@ -203,7 +202,7 @@ export const AI_EDITING_OUTPUT_FORMAT = `输出要求：
 const AI_EDITING_OUTPUT_EXAMPLE = `示例：
 { "reasoning": "把第一个视频片段移到第 5 秒", "commands": [ { "op": "moveClip", "payload": { "id": "clip-a", "startMs": 5000 } } ] }`;
 
-/** 组装 AI 编辑系统提示词：时间线摘要 + op 契约 + 输出约束（M6.3 面板喂给模型）。 */
+/** 组装 AI 编辑系统提示词：时间线摘要、可用 op 契约和输出约束必须来自同一份注册表。 */
 export function buildAiEditingSystemPrompt(timelineSummary: string): string {
     const catalogLines = AI_EDITING_OP_CATALOG.map(
         (entry) => `- ${entry.op}：${entry.desc}。payload：${entry.payload}`,

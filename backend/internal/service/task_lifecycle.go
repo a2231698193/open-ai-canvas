@@ -38,6 +38,9 @@ func (w *taskLifecycleCoordinator) retryTask(userID string, id string) (*model.T
 	if err != nil {
 		return nil, err
 	}
+	if task.CreationSubmissionID != nil {
+		return nil, creationConflict("智能创作重做需要新的报价批准，请回到创作会话继续")
+	}
 	if task.Status != model.TaskStatusFailed && task.Status != model.TaskStatusCancelled {
 		return nil, errors.New("only failed or cancelled tasks can be retried")
 	}

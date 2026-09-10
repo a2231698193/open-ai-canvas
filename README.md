@@ -98,7 +98,7 @@ Issue 反馈、技术讨论和产品升级建议都可以在 微信 群中沟通
 Codex 插件（`plugins/yingce/`）负责把 MCP 接入 Codex App。
 ```
 
-前端默认把 `/api` 代理到 `http://127.0.0.1:8080`；生产环境由网页容器的 Nginx 代理到后端，只有 web 的 `3000` 端口需要对外暴露。系统模型和文本任务的 SSE 只在明确的流式路径关闭代理缓冲，详见 [`nginx.conf`](nginx.conf) 和 [SSE 文档](docs/content/docs/overview/docker.mdx)。
+前端默认把 `/api` 代理到 `http://127.0.0.1:8080`；生产环境由网页容器的 Nginx 代理到后端，只有 web 的 `3000` 端口需要对外暴露。信封和错误码见 [HTTP API](docs/content/docs/backend/http-api.mdx)。系统模型和文本任务的 SSE 只在明确的流式路径关闭代理缓冲，详见 [`nginx.conf`](nginx.conf) 和 [SSE 文档](docs/content/docs/overview/docker.mdx)。
 
 ## 本地开发
 
@@ -240,8 +240,8 @@ npx -y @ddcat666/open-ai-canvas-agent
 
 ```bash
 cd canvas-agent
-npm install
-npm run build
+bun install
+bun run build
 node dist/index.js
 ```
 
@@ -253,13 +253,13 @@ node dist/index.js
 
 ```bash
 # 前端
-cd web && bun run build
+cd web && bun run lint && bun run build
 
 # 后端
 cd backend && go test ./...
 
 # Canvas Agent
-cd canvas-agent && npm test && npm run build
+cd canvas-agent && bun run test && bun run build
 
 # 文档站
 cd docs && bun run types:check

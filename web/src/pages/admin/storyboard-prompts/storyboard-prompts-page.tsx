@@ -1,4 +1,4 @@
-import { App, Button, Drawer, Form, Input, Popconfirm, Select, Tabs } from "antd";
+import { App, Button, Form, Input, Popconfirm, Select, Tabs } from "antd";
 import { StatusBadge } from "@/components/ui/base/badges";
 import { Callout } from "@/components/ui/product/callout";
 import type { ColumnsType } from "antd/es/table";
@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { PaginationBar } from "@/components/layout/workspace-page";
+import { AppDrawer } from "@/components/ui/product/app-drawer/app-drawer";
 import { PromptCodeEditor, type PromptCodeEditorHandle } from "@/components/prompt/prompt-code-editor";
 import {
     createAdminPromptTemplate,
@@ -187,7 +188,8 @@ export default function StoryboardPromptsPage() {
                 footer={<PaginationBar alwaysShow current={page} pageSize={pageSize} total={filtered.length} onChange={(nextPage, nextPageSize) => { setPage(nextPageSize !== pageSize ? 1 : nextPage); setPageSize(nextPageSize); }} />}
             />
 
-            <Drawer
+            <AppDrawer
+                flush
                 title={baseTemplate ? `基于 v${baseTemplate.version} 新建版本` : "新建提示词版本"}
                 open={drawerOpen}
                 size="min(1180px, 100vw)"
@@ -196,8 +198,6 @@ export default function StoryboardPromptsPage() {
                 closable={false}
                 mask={{ closable: false }}
                 keyboard={false}
-                destroyOnHidden
-                styles={{ body: { padding: 0 } }}
                 extra={<div className="flex gap-2"><Popconfirm disabled={!dirty} title="放弃模板修改？" description="尚未保存的新版本内容将丢失。" okText="放弃修改" cancelText="继续编辑" okButtonProps={{ danger: true }} onConfirm={closeDrawer}><Button disabled={saving} onClick={() => { if (!dirty) closeDrawer(); }}>关闭</Button></Popconfirm><Button type="primary" loading={saving} disabled={!draftOperation || !draftName.trim() || !editorContent.trim()} onClick={() => void save()}>保存版本</Button></div>}
             >
                 <Form form={form} layout="vertical" requiredMark={false} className="flex min-h-full flex-col">
@@ -253,7 +253,7 @@ export default function StoryboardPromptsPage() {
                         </aside>
                     </div>
                 </Form>
-            </Drawer>
+            </AppDrawer>
         </AdminPageFrame>
     );
 }

@@ -24,7 +24,7 @@ type WalletSummary struct {
 	Entries []model.CreditLedgerEntry `json:"entries"`
 	Total   int64                     `json:"total"`
 	Page    int                       `json:"page"`
-	Limit   int                       `json:"limit"`
+	Limit   int                       `json:"pageSize"`
 	Policy  PublicCreditPolicy        `json:"policy"`
 }
 
@@ -32,7 +32,7 @@ type RedeemBatchPage struct {
 	Batches []model.RedeemBatch `json:"batches"`
 	Total   int64               `json:"total"`
 	Page    int                 `json:"page"`
-	Limit   int                 `json:"limit"`
+	Limit   int                 `json:"pageSize"`
 }
 
 type AdminRedeemCodeDetail struct {
@@ -55,14 +55,14 @@ type AdminRedeemCodePage struct {
 	PlaintextAvailable bool                    `json:"plaintextAvailable"`
 	Total              int64                   `json:"total"`
 	Page               int                     `json:"page"`
-	Limit              int                     `json:"limit"`
+	Limit              int                     `json:"pageSize"`
 }
 
 type BillingOrderPage struct {
 	Orders []model.BillingOrder `json:"orders"`
 	Total  int64                `json:"total"`
 	Page   int                  `json:"page"`
-	Limit  int                  `json:"limit"`
+	Limit  int                  `json:"pageSize"`
 }
 
 type CreateRedeemBatchRequest struct {

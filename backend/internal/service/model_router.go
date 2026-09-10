@@ -65,6 +65,13 @@ func ModelRequestIntentFromTaskInput(input map[string]any, taskType string, oper
 		explicitOptions = true
 		for key, value := range options {
 			name := canonicalCapabilityOptionName(key)
+			// auto/any 表示调用方不指定质量；不能把它当作模型必须声明的
+			// 枚举值，否则未列出 auto 的模型会被错误判定为参数不支持。
+			if name == "quality" {
+				if normalized, ok := value.(string); ok && (strings.EqualFold(strings.TrimSpace(normalized), "auto") || strings.EqualFold(strings.TrimSpace(normalized), "any")) {
+					continue
+				}
+			}
 			intent.Options[name] = normalizeModelRequestOption(name, value)
 		}
 	}
@@ -630,6 +637,9 @@ func (s *Service) loadRouteCatalog() (*routeCatalogSnapshot, error) {
 	return snapshot, nil
 }
 
+// ResolveLogicalModel 将创作意图解析为一次可执行的路由快照。
+// 解析同时约束能力合同、启用状态、价格档和渠道协议；调用方不得在解析完成后自行替换其中任一供应链字段，
+// 否则会出现“目录显示可用、任务实际走另一条线路”的配置漂移。
 func (s *Service) ResolveLogicalModel(logicalModelID string, intent ModelRequestIntent) (*RoutedModel, error) {
 	snapshot, err := s.routeCatalogSnapshot()
 	if err != nil {

@@ -26,7 +26,8 @@ import { flushCanvasStorePersistence } from "@/stores/canvas/use-canvas-store";
 import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
-import { App, Button, Modal } from "antd";
+import { App, Button } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { getNodeSpec } from "@/constant/canvas";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
@@ -47,8 +48,8 @@ import { CanvasVideoFrameDialog } from "@/components/canvas/canvas-video-frame-d
 import { CanvasVideoSegmentDialog } from "@/components/canvas/canvas-video-segment-dialog";
 import { CanvasTimelineDialog } from "@/components/canvas/canvas-timeline-dialog";
 import { syncNodeSubtitlesToTimeline } from "@/lib/timeline/timeline-build";
-import type { TimelineDirectMedia } from "@/types/timeline";
 import { CanvasNodeAnglePanel } from "@/components/canvas/canvas-node-angle-dialog";
+import { CanvasNodeLightingPanel } from "@/components/canvas/canvas-node-lighting-dialog";
 import { CanvasTextEditorModal } from "@/components/canvas/canvas-text-editor-modal";
 import { CanvasNodeSearchModal } from "@/components/canvas/canvas-node-search-modal";
 import { CanvasStylePickerModal } from "@/components/canvas/canvas-style-picker-modal";
@@ -60,7 +61,7 @@ import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { useCanvasCreateCommands } from "@/components/canvas/use-canvas-create-commands";
-import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
+import { AssetPickerModal } from "@/components/canvas/asset-picker-modal";
 import { getProject } from "@/services/api/projects";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasShareModal } from "@/components/canvas/canvas-share-modal";
@@ -126,6 +127,7 @@ import { useCanvasSelectionController } from "./use-canvas-selection-controller"
 import { useCanvasShortDrama } from "./use-canvas-short-drama";
 import { useCanvasStoryboard } from "./use-canvas-storyboard";
 import { useCanvasUpload } from "./use-canvas-upload";
+import { useCanvasTimelineAssetInsert } from "./use-canvas-timeline-asset-insert";
 import { useCanvasViewportController } from "./use-canvas-viewport-controller";
 import { usePortraitClearanceCoordinator } from "./use-portrait-clearance-coordinator";
 import {
@@ -205,7 +207,8 @@ export default function CanvasPage() {
 }
 
 function InfiniteCanvasPage() {
-    const { message } = App.useApp();
+    // 命令式确认必须走 App.useApp().modal；静态 Modal.confirm 拿不到主题和 App 上下文。
+    const { message, modal } = App.useApp();
     const queryClient = useQueryClient();
     const params = useParams<{ id: string }>();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -281,10 +284,6 @@ function InfiniteCanvasPage() {
     const [stylePickerOpen, setStylePickerOpen] = useState(false);
     // 新建导演台镜头必须先选模板：null 表示未在选择中，undefined position 表示用画布中心。
     const [directorTemplateRequest, setDirectorTemplateRequest] = useState<{ position?: Position } | null>(null);
-    const [projectAssetOpen, setProjectAssetOpen] = useState(false);
-    const [projectAssetInitialCategory, setProjectAssetInitialCategory] = useState("all");
-    const [projectAssetInitialFolderId, setProjectAssetInitialFolderId] = useState("all");
-    const [projectAssetInsertPosition, setProjectAssetInsertPosition] = useState<Position | undefined>();
     const [infoNodeId, setInfoNodeId] = useState<string | null>(null);
     const [subtitleNodeId, setSubtitleNodeId] = useState<string | null>(null);
     const [timelineNodeId, setTimelineNodeId] = useState<string | null>(null);
@@ -293,6 +292,8 @@ function InfiniteCanvasPage() {
     const [scriptEditorNodeId, setScriptEditorNodeId] = useState<string | null>(null);
     const [portraitClearanceNodeId, setPortraitClearanceNodeId] = useState<string | null>(null);
     const [artCritiqueNodeId, setArtCritiqueNodeId] = useState<string | null>(null);
+    const artCritiqueRunningRef = useRef(false);
+    const [artCritiqueStartRequest, setArtCritiqueStartRequest] = useState<{ nodeId: string; id: string; restart: boolean } | null>(null);
     const [scriptScrollTopById, setScriptScrollTopById] = useState<Record<string, number>>({});
     const [directorNodeId, setDirectorNodeId] = useState<string | null>(null);
     const [versionCompareRootId, setVersionCompareRootId] = useState<string | null>(null);
@@ -523,7 +524,7 @@ function InfiniteCanvasPage() {
                 message.warning("官方即梦 CLI 当前不支持可靠取消，请等待官方状态同步");
                 return;
             }
-            Modal.confirm({
+            modal.confirm({
                 title: "取消生成任务？",
                 content: "任务会立即停止本地执行；如果已经提交到上游，系统会继续核对取消结果和积分状态。",
                 okText: "取消任务",
@@ -543,7 +544,7 @@ function InfiniteCanvasPage() {
                 },
             });
         },
-        [bindGenerationTask, message, nodesRef, projectId, queryClient, setTaskDetail],
+        [bindGenerationTask, message, modal, nodesRef, projectId, queryClient, setTaskDetail],
     );
 
     useEffect(() => {
@@ -554,6 +555,21 @@ function InfiniteCanvasPage() {
         }
         openAgent("local");
     }, [codexAutoConnect, codexCompactAgent, openAgent, projectLoaded, setAgentMode]);
+
+    useEffect(() => {
+        const sessionId = searchParams.get("conversation");
+        if (!projectLoaded || !sessionId) return;
+        if (!chatSessions.some((session) => session.id === sessionId)) {
+            message.warning("未找到要接续的会话，请从首页重新进入。");
+        } else {
+            activeChatIdRef.current = sessionId;
+            setActiveChatId(sessionId);
+            openAgent("online");
+        }
+        const next = new URLSearchParams(searchParams);
+        next.delete("conversation");
+        setSearchParams(next, { replace: true });
+    }, [projectLoaded, chatSessions, searchParams, setSearchParams, openAgent, message]);
 
     // 沉浸专注进入时收起智能体与小地图、重置 Dock 唤出态；仅响应「进入」瞬间，避免关闭专注内主动唤出的面板。
     const prevFocusModeRef = useRef(focusMode);
@@ -703,6 +719,28 @@ function InfiniteCanvasPage() {
         setDialogNodeId,
     });
     const replaceCanvasNodeMedia = useCallback((node: CanvasNodeData) => handleUploadRequest(node.id), [handleUploadRequest]);
+    const {
+        timelineAddNodeRef,
+        timelineMediaAddRef,
+        assetInsertScope,
+        projectAssetScope,
+        projectAssetOpen,
+        projectAssetInitialCategory,
+        projectAssetInitialFolderId,
+        projectAssetInsertPosition,
+        handleLibraryAssetsInsert,
+        handleTimelineProjectAssetsInsert,
+        openProjectAssets,
+        openCanvasAssetLibrary,
+        openTimelineAssetLibrary,
+        closeProjectAssets,
+    } = useCanvasTimelineAssetInsert({
+        linkedProjectId,
+        refetchLinkedProject,
+        handleAssetsInsert,
+        handleProjectAssetsInsert,
+        openAssetsAtPosition,
+    });
 
     useEffect(() => {
         if (!projectLoaded || searchParams.get("mode") !== "handoff") return;
@@ -745,105 +783,9 @@ function InfiniteCanvasPage() {
         });
     }, [assets, assetsHydrated, handleProjectAssetsInsert, message, nodesRef, projectId, projectLoaded, searchParams, setSearchParams, updateProject]);
 
-    // 时间线弹窗内新增素材的回填通道：素材库/上传创建节点后由弹窗通过 ref 加入草稿。
-    const timelineAddNodeRef = useRef<((node: CanvasNodeData) => void) | null>(null);
-    // 时间线作用域直连媒体入轨通道：素材库/项目资产/本地上传不落画布，仅加入时间线草稿。
-    const timelineMediaAddRef = useRef<((media: TimelineDirectMedia) => void) | null>(null);
-    // 素材库与项目资产弹窗的插入作用域：时间线弹窗内打开时为 timeline，其余为 canvas。
-    const [assetInsertScope, setAssetInsertScope] = useState<"canvas" | "timeline">("canvas");
-    const [projectAssetScope, setProjectAssetScope] = useState<"canvas" | "timeline">("canvas");
-
-    // InsertAssetPayload → 直连媒体：仅音视频支持直接入轨；图片/文本/角色返回 null（避免在画布重复出现）。
-    const payloadToTimelineMedia = (payload: InsertAssetPayload): TimelineDirectMedia | null => {
-        const randomSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        if (payload.kind === "video") {
-            return {
-                id: payload.assetId || `asset-${randomSuffix}`,
-                kind: "video",
-                title: payload.title,
-                storageKey: payload.storageKey,
-                url: payload.url,
-                width: payload.width,
-                height: payload.height,
-                durationMs: payload.durationMs,
-                bytes: payload.bytes,
-                mimeType: payload.mimeType,
-            };
-        }
-        if (payload.kind === "audio") {
-            return { id: payload.assetId || `asset-${randomSuffix}`, kind: "audio", title: payload.title, storageKey: payload.storageKey, url: payload.url, durationMs: payload.durationMs, bytes: payload.bytes, mimeType: payload.mimeType };
-        }
-        return null;
-    };
-
-    const handleLibraryAssetsInsert = useCallback(
-        async (payloads: InsertAssetPayload[]) => {
-            if (assetInsertScope === "timeline") {
-                const media = payloads.map(payloadToTimelineMedia).filter((item): item is TimelineDirectMedia => Boolean(item));
-                if (media.length !== payloads.length) throw new Error("图片和文本素材暂不支持直接入轨，请先插入画布");
-                media.forEach((item) => timelineMediaAddRef.current?.(item));
-                return;
-            }
-            const created = await handleAssetsInsert(payloads);
-            created.forEach((node) => timelineAddNodeRef.current?.(node));
-        },
-        [assetInsertScope, handleAssetsInsert],
-    );
-
-    // 项目资产库引入到时间线：复用现有引入逻辑，把创建出的节点回填到弹窗草稿。
-    const handleTimelineProjectAssetsInsert = useCallback(
-        async (payloads: InsertAssetPayload[]) => {
-            if (projectAssetScope === "timeline") {
-                let inserted = 0;
-                for (const payload of payloads) {
-                    const media = payloadToTimelineMedia(payload);
-                    if (media) {
-                        timelineMediaAddRef.current?.(media);
-                        inserted += 1;
-                    }
-                }
-                if (inserted < payloads.length) message.info("图片/文本/角色素材暂不支持直接入轨，仅音视频素材已加入时间线");
-                return;
-            }
-            const created = await handleProjectAssetsInsert(payloads, projectAssetInsertPosition);
-            created.forEach((node) => timelineAddNodeRef.current?.(node));
-        },
-        [handleProjectAssetsInsert, message, projectAssetInsertPosition, projectAssetScope],
-    );
-
-    const openProjectAssets = useCallback(
-        (initialCategory = "all", position?: Position, scope: "canvas" | "timeline" = "canvas", initialFolderId = "all") => {
-            setProjectAssetScope(scope);
-            setProjectAssetInitialCategory(initialCategory);
-            setProjectAssetInitialFolderId(initialFolderId);
-            setProjectAssetInsertPosition(position);
-            setProjectAssetOpen(true);
-            // 资产与项目实时同步：打开弹窗前刷新关联短剧项目资产，避免缓存导致资产列表空白/过期。
-            if (linkedProjectId) void refetchLinkedProject();
-        },
-        [linkedProjectId, refetchLinkedProject],
-    );
-
-    // 素材库打开入口：画布作用域（工具栏/空态/侧栏）与时间线作用域（时间线弹窗）分别标记插入目标。
-    const openCanvasAssetLibrary = useCallback(
-        (position?: Position) => {
-            setAssetInsertScope("canvas");
-            openAssetsAtPosition(position);
-        },
-        [openAssetsAtPosition],
-    );
-    const openTimelineAssetLibrary = useCallback(() => {
-        setAssetInsertScope("timeline");
-        openAssetsAtPosition();
-    }, [openAssetsAtPosition]);
-    const closeProjectAssets = useCallback(() => {
-        setProjectAssetOpen(false);
-        setProjectAssetInsertPosition(undefined);
-        setProjectAssetInitialFolderId("all");
-    }, []);
-
     const {
         angleNodeId,
+        lightingNodeId,
         emotionNodeId,
         annotationNodeId,
         createImageReversePromptNodes,
@@ -857,6 +799,7 @@ function InfiniteCanvasPage() {
         extractingVideoFramesNodeId,
         frameDialogNodeId,
         generateAngleNode,
+        generateLightingNode,
         generateEmotionNode,
         handleSegmentConfirm,
         maskEditImageNode,
@@ -871,6 +814,7 @@ function InfiniteCanvasPage() {
         setFrameDialogNodeId,
         setSegmentDialogNodeId,
         setAngleNodeId,
+        setLightingNodeId,
         setEmotionNodeId,
         setAnnotationNodeId,
         setCropNodeId,
@@ -923,6 +867,7 @@ function InfiniteCanvasPage() {
             setSplitNodeId(clearDeletedId);
             setUpscaleNodeId(clearDeletedId);
             setAngleNodeId(clearDeletedId);
+            setLightingNodeId(clearDeletedId);
             setEmotionNodeId(clearDeletedId);
             setSuperResolveNodeId(clearDeletedId);
             setPreviewNodeId(clearDeletedId);
@@ -940,7 +885,7 @@ function InfiniteCanvasPage() {
             }
             cleanupCanvasFiles({ projectId, nodes: nextNodes, chatSessions });
         },
-        [chatSessions, cleanupCanvasFiles, message, projectId, setAngleNodeId, setAnnotationNodeId, setArtCritiqueNodeId, setCropNodeId, setEmotionNodeId, setFrameDialogNodeId, setMaskEditNodeId, setSegmentDialogNodeId, setSplitNodeId, setUpscaleNodeId, setRunningNodeId],
+        [chatSessions, cleanupCanvasFiles, message, projectId, setAngleNodeId, setAnnotationNodeId, setArtCritiqueNodeId, setCropNodeId, setEmotionNodeId, setFrameDialogNodeId, setLightingNodeId, setMaskEditNodeId, setSegmentDialogNodeId, setSplitNodeId, setUpscaleNodeId, setRunningNodeId],
     );
 
     const {
@@ -1279,6 +1224,7 @@ function InfiniteCanvasPage() {
         activeScriptNode,
         activeStylePresetId,
         angleNode,
+        lightingNode,
         emotionNode,
         annotationNode,
         batchChildCountById,
@@ -1329,6 +1275,7 @@ function InfiniteCanvasPage() {
         upscaleNodeId,
         superResolveNodeId,
         angleNodeId,
+        lightingNodeId,
         emotionNodeId,
         previewNodeId,
         contextMenu,
@@ -1511,7 +1458,8 @@ function InfiniteCanvasPage() {
         focusSelection: fitCanvasSelection,
     });
 
-    const { selectCanvasStyle, styleApplying } = useCanvasStyleWorkflow({
+    const { selectCanvasStyle, applyCanvasStyleAsync, styleApplying } = useCanvasStyleWorkflow({
+        canvasId: projectId,
         domainProjectId: currentProject?.projectId,
         nodesRef,
         selectedNodeIdsRef,
@@ -1581,6 +1529,7 @@ function InfiniteCanvasPage() {
         setMaskEditNodeId(null);
         setAnnotationNodeId(null);
         setAngleNodeId(null);
+        setLightingNodeId(null);
         setEmotionNodeId(null);
         setPreviewNodeId(null);
         setRunningNodeId(null);
@@ -1739,14 +1688,14 @@ function InfiniteCanvasPage() {
     }, [arkPrivateAssetUploadNodeId, currentProject?.projectId, handleConfigNodeChange, message, projectId]);
 
     const confirmUploadNodeImageToArkPrivateAsset = useCallback((node: CanvasNodeData) => {
-        Modal.confirm({
+        modal.confirm({
             title: "上传到方舟素材库",
             content: "仅可上传你拥有肖像、版权或其他合法使用权的图片。方舟审核通过后，Seedance 会使用受控素材标识生成视频。",
             okText: "确认拥有使用权并上传",
             cancelText: "取消",
             onOk: () => uploadNodeImageToArkPrivateAsset(node),
         });
-    }, [uploadNodeImageToArkPrivateAsset]);
+    }, [modal, uploadNodeImageToArkPrivateAsset]);
 
     const handleCanvasContextMenu = useCallback(
         (event: ReactMouseEvent) => {
@@ -2209,6 +2158,7 @@ function InfiniteCanvasPage() {
                             onRedo={redoCanvas}
                             onShare={() => setShareModalOpen(true)}
                             agentOpen={assistantOpen}
+                            agentPanelWidth={assistantMounted ? assistantWidth : undefined}
                             compactAgentStatus={codexCompactAgent ? { connected: localAgentConnected, enabled: localAgentEnabled, activity: localAgentActivity } : undefined}
                             onToggleAgent={() => (assistantOpen ? closeAgent() : openAgent())}
                             shortcutRequestNonce={shortcutRequestNonce}
@@ -2457,7 +2407,7 @@ function InfiniteCanvasPage() {
                         </div>
 
                         {assistantMounted ? (
-                            <AssistantPanelColumn width={assistantWidth} closing={assistantClosing} topInset={focusMode ? "0px" : "var(--canvas-topbar-offset)"} onWidthChange={setAssistantWidth}>
+                                    <AssistantPanelColumn width={assistantWidth} closing={assistantClosing} topInset="0px" onWidthChange={setAssistantWidth}>
                                 {(resizing) => (
                                     <CanvasAssistantPanel
                                         nodes={nodes}
@@ -2469,6 +2419,13 @@ function InfiniteCanvasPage() {
                                         onSelectNodeIds={setSelectedNodeIds}
                                         onSessionsChange={handleAssistantSessionsChange}
                                         onApplyOps={applyAgentOps}
+                                        onApplyStyle={applyCanvasStyleAsync}
+                                        onGenerateStoryboard={generateScriptRows}
+                                        onStartArtCritique={(nodeId, restart) => {
+                                            if (artCritiqueRunningRef.current) throw new Error("已有审美分析正在进行，请先完成或停止当前分析");
+                                            setArtCritiqueStartRequest({ nodeId, id: nanoid(), restart });
+                                            setArtCritiqueNodeId(nodeId);
+                                        }}
                                         canUndoOps={canUndoAgentOps}
                                         undoOpsCount={agentUndoCount}
                                         onUndoOps={undoAgentOps}
@@ -2488,13 +2445,13 @@ function InfiniteCanvasPage() {
                     </div>
 
                     {angleNode?.metadata?.content ? (
-                        <Modal
+                        <AppModal
+                            flush
                             open
                             centered
                             title="多角度编辑器"
                             footer={null}
                             width={620}
-                            destroyOnHidden
                             onCancel={() => setAngleNodeId(null)}
                         >
                             <CanvasNodeAnglePanel
@@ -2504,7 +2461,27 @@ function InfiniteCanvasPage() {
                                     void generateAngleNode(angleNode, params);
                                 }}
                             />
-                        </Modal>
+                        </AppModal>
+                    ) : null}
+
+                    {lightingNode?.metadata?.content ? (
+                        <AppModal
+                            flush
+                            open
+                            centered
+                            title="打光效果"
+                            footer={null}
+                            width={900}
+                            onCancel={() => setLightingNodeId(null)}
+                        >
+                            <CanvasNodeLightingPanel
+                                dataUrl={lightingNode.metadata.content}
+                                onClose={() => setLightingNodeId(null)}
+                                onConfirm={(options, prompt) => {
+                                    void generateLightingNode(lightingNode, options, prompt);
+                                }}
+                            />
+                        </AppModal>
                     ) : null}
 
                     {emotionNode?.metadata?.content && !isCanvasNodeMoving ? (
@@ -2607,6 +2584,10 @@ function InfiniteCanvasPage() {
                         onAngle={(node) => {
                             setDialogNodeId(null);
                             setAngleNodeId((current) => (current === node.id ? null : node.id));
+                        }}
+                        onLighting={(node) => {
+                            setDialogNodeId(null);
+                            setLightingNodeId((current) => (current === node.id ? null : node.id));
                         }}
                         onViewImage={(node) => setPreviewNodeId(node.id)}
                         onExtractVideoFrames={openVideoFrameExtractor}
@@ -2837,6 +2818,9 @@ function InfiniteCanvasPage() {
                         />
 
                         <AiArtCritiqueModal
+                            startRequestId={artCritiqueStartRequest && artCritiqueStartRequest.nodeId === artCritiqueNode?.id ? artCritiqueStartRequest.id : undefined}
+                            restartRequested={artCritiqueStartRequest?.nodeId === artCritiqueNode?.id && artCritiqueStartRequest?.restart}
+                            onRunningChange={(running) => { artCritiqueRunningRef.current = running; }}
                             node={artCritiqueNode}
                             upstreamNodes={artCritiqueInputs}
                             open={Boolean(artCritiqueNode)}

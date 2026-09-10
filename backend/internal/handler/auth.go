@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -231,8 +231,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		page, limit, err := parsePaginationQuery(c, 20)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		users, err := svc.AdminUsers(user, service.AdminListQuery{Keyword: c.Query("keyword"), Type: c.Query("role"), Status: c.Query("status"), Page: page, Limit: limit})
 		if err != nil {
 			failService(c, err)
@@ -310,8 +313,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		page, limit, err := parsePaginationQuery(c, 20)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		result, err := svc.AdminUserLedger(user, c.Param("id"), c.Query("type"), page, limit)
 		if err != nil {
 			failService(c, err)
@@ -325,8 +331,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		page, limit, err := parsePaginationQuery(c, 20)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		result, err := svc.AdminUserTasks(user, c.Param("id"), page, limit)
 		if err != nil {
 			failService(c, err)
@@ -340,8 +349,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		page, limit, err := parsePaginationQuery(c, 20)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		result, err := svc.AdminUserAuditEvents(user, c.Param("id"), page, limit)
 		if err != nil {
 			failService(c, err)
@@ -385,8 +397,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		page, limit, err := parsePaginationQuery(c, 20)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		channels, err := svc.AdminSystemChannelPage(user, service.AdminListQuery{Keyword: c.Query("keyword"), Status: c.Query("status"), Page: page, Limit: limit})
 		if err != nil {
 			failService(c, err)
@@ -685,8 +700,11 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		page, limit, err := parsePaginationQuery(c, 50)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		logs, err := svc.AdminAPICallLogs(user, service.APICallLogQuery{AnalyticsQuery: analyticsQuery(c), RecordType: c.Query("recordType"), Keyword: c.Query("keyword"), Status: c.Query("status"), Page: page, Limit: limit})
 		if err != nil {
 			failService(c, err)
@@ -933,7 +951,6 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 	}
 	validatedTarget, err := svc.ValidateChannelOutboundURL(target, channel.AllowLocalChannel, false)
 	if err != nil {
-		_ = svc.RefundBilling(billingOrderID, "系统渠道地址校验失败")
 		failService(c, err)
 		return
 	}
@@ -961,7 +978,7 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 		if order != nil {
 			billingOrderID = order.ID
 			if err := svc.MarkBillingRunning(billingOrderID); err != nil {
-				_ = svc.RefundBilling(billingOrderID, "系统渠道请求尚未发出")
+				refundSystemProxyBilling(svc, billingOrderID, "系统渠道请求尚未发出")
 				failService(c, err)
 				return
 			}
@@ -969,7 +986,7 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 	}
 	upstreamReq, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, validatedTarget.String(), bytes.NewReader(body))
 	if err != nil {
-		_ = svc.RefundBilling(billingOrderID, "系统渠道请求构造失败")
+		refundSystemProxyBilling(svc, billingOrderID, "系统渠道请求构造失败")
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
@@ -997,7 +1014,7 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 	if err != nil {
 		status = model.ApiCallStatusFailed
 		errorText = err.Error()
-		_ = svc.MarkBillingUncertain(billingOrderID, "系统渠道连接中断，费用状态待核对")
+		markSystemProxyBillingUncertain(svc, billingOrderID, "系统渠道连接中断，费用状态待核对")
 		logSystemProxyCall(svc, apiCallLog(user, channel, billingOrderID, capability, protocol, c.Request.Method, path, target, body, c.GetHeader("Content-Type"), status, statusCode, time.Since(startedAt), errorText, concurrencyLimit), nil)
 		fail(c, http.StatusBadGateway, errors.New("系统渠道连接失败"))
 		return
@@ -1023,7 +1040,7 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 		if errors.Is(readErr, errSystemProxyResponseTooLarge) {
 			billingNote = "上游已响应但流式响应体超过限制，费用状态待核对"
 		}
-		_ = svc.MarkBillingUncertain(billingOrderID, billingNote)
+		markSystemProxyBillingUncertain(svc, billingOrderID, billingNote)
 		logSystemProxyCall(svc, apiCallLog(user, channel, billingOrderID, capability, protocol, c.Request.Method, path, target, body, c.GetHeader("Content-Type"), status, statusCode, time.Since(startedAt), errorText, concurrencyLimit), responseBody)
 		// SSE 响应头已经发送，流中断后只能关闭连接；非流式响应仍返回结构化错误。
 		if !streamed {
@@ -1032,27 +1049,47 @@ func proxySystemRequestPath(c *gin.Context, svc *service.Service, user *model.Us
 		return
 	}
 	if int64(len(responseBody)) > responseLimit {
-		_ = svc.MarkBillingUncertain(billingOrderID, "上游已响应但响应体超过限制，费用状态待核对")
+		markSystemProxyBillingUncertain(svc, billingOrderID, "上游已响应但响应体超过限制，费用状态待核对")
 		fail(c, http.StatusBadGateway, fmt.Errorf("系统渠道响应超过 %dMB 限制", policy.Request.SystemRelayResponseMB))
 		return
 	}
 	logErr := logSystemProxyCall(svc, apiCallLog(user, channel, billingOrderID, capability, protocol, c.Request.Method, path, target, body, c.GetHeader("Content-Type"), status, statusCode, time.Since(startedAt), errorText, concurrencyLimit), responseBody)
 	if status == model.ApiCallStatusSucceeded {
 		if logErr != nil {
-			_ = svc.MarkBillingUncertain(billingOrderID, "上游成功但调用日志写入失败，费用状态待核对")
+			markSystemProxyBillingUncertain(svc, billingOrderID, "上游成功但调用日志写入失败，费用状态待核对")
 		} else if err := svc.SettleBilling(billingOrderID, ""); err != nil {
-			_ = svc.MarkBillingUncertain(billingOrderID, "上游成功但积分结算失败："+err.Error())
+			markSystemProxyBillingUncertain(svc, billingOrderID, "上游成功但积分结算失败："+err.Error())
 		}
 	} else if statusCode == 524 {
-		_ = svc.MarkBillingUncertain(billingOrderID, "上游返回 524，费用状态待核对")
+		markSystemProxyBillingUncertain(svc, billingOrderID, "上游返回 524，费用状态待核对")
 	} else {
-		_ = svc.RefundBilling(billingOrderID, "上游明确返回失败")
+		refundSystemProxyBilling(svc, billingOrderID, "上游明确返回失败")
 	}
 	if streamed {
 		return
 	}
 	copySystemProxyResponseHeaders(c, resp)
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), responseBody)
+}
+
+func refundSystemProxyBilling(svc *service.Service, billingOrderID string, reason string) {
+	if billingOrderID == "" {
+		return
+	}
+	if err := svc.RefundBilling(billingOrderID, reason); err != nil {
+		log.Printf("system proxy billing refund failed: billing_order_id=%s error=%v", billingOrderID, err)
+		// 退款写失败不能当没发生：转待核对，避免订单停在 running 被当成已扣费。
+		markSystemProxyBillingUncertain(svc, billingOrderID, "退款失败，费用状态待核对："+err.Error())
+	}
+}
+
+func markSystemProxyBillingUncertain(svc *service.Service, billingOrderID string, reason string) {
+	if billingOrderID == "" {
+		return
+	}
+	if err := svc.MarkBillingUncertain(billingOrderID, reason); err != nil {
+		log.Printf("system proxy billing uncertainty update failed: billing_order_id=%s error=%v", billingOrderID, err)
+	}
 }
 
 func apiCallLog(user *model.User, channel *model.ModelChannel, billingOrderID string, capability string, protocol model.ChannelInterfaceType, method string, path string, target string, body []byte, contentType string, status model.ApiCallStatus, statusCode int, duration time.Duration, errorText string, concurrencyLimit int) model.ApiCallLog {

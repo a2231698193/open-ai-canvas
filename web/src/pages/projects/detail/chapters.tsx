@@ -1,4 +1,5 @@
 import { App, Button, Dropdown, Form, Input, InputNumber, Modal, Popconfirm } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -754,7 +755,7 @@ function ImportNovelModal({ open, loading, onClose, onImport }: { open: boolean;
         setText(decodeNovelText(await file.arrayBuffer()));
     };
     return (
-        <Modal title={null} open={open} footer={null} destroyOnHidden onCancel={onClose} width={760} styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0 } }}>
+        <AppModal flush title={null} open={open} footer={null} onCancel={onClose} width={760}>
             <div className="flex min-h-[478px] flex-col">
                 <header className="flex h-12 shrink-0 items-center border-b border-border px-4"><div><h2 className="text-sm font-semibold">导入小说</h2><p className="mt-0.5 text-[var(--fs-tiny)] text-foreground/42">自动识别章节标题，确认后追加到当前项目</p></div></header>
                 <div className="grid min-h-[430px] flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px]">
@@ -770,7 +771,7 @@ function ImportNovelModal({ open, loading, onClose, onImport }: { open: boolean;
                 </div>
                 </div>
             </div>
-        </Modal>
+        </AppModal>
     );
 }
 

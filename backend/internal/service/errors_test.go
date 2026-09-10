@@ -25,7 +25,14 @@ func TestAppErrorPreservesSafeProjectionAndCause(t *testing.T) {
 func TestAuthErrorAliasRemainsCompatible(t *testing.T) {
 	var err *AuthError = BadAuthRequest("请求参数错误")
 	var appErr *AppError
-	if !errors.As(err, &appErr) || appErr.Status != 400 || appErr.Message != "请求参数错误" {
+	if !errors.As(err, &appErr) || appErr.Status != 400 || appErr.Code != 400 || appErr.Reason != ReasonInvalidArgument || appErr.Message != "请求参数错误" {
 		t.Fatalf("AuthError compatibility = %#v", err)
+	}
+}
+
+func TestQuotaExceededUsesStableCodeAndReason(t *testing.T) {
+	err := QuotaExceeded("账号素材数量已达到 1 个上限")
+	if err.Status != 403 || err.Code != CodeQuotaExceeded || err.Reason != ReasonQuotaExceeded {
+		t.Fatalf("QuotaExceeded = %#v", err)
 	}
 }

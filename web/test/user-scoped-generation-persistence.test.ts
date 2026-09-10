@@ -3992,6 +3992,9 @@ test("account switching keeps new generation consumers closed while old persiste
 
 test("an in-flight provider request is aborted and drained before the account changes", async () => {
     const originalWindow = (globalThis as { window?: unknown }).window;
+    const originalGetItem = localforage.getItem.bind(localforage);
+    const originalSetItem = localforage.setItem.bind(localforage);
+    const indexedValues = new Map<string, string>();
     const localStorageValues = new Map<string, string>();
     Object.defineProperty(globalThis, "window", {
         configurable: true,
@@ -4003,6 +4006,11 @@ test("an in-flight provider request is aborted and drained before the account ch
             },
         },
     });
+    localforage.getItem = (async (key: string) => indexedValues.get(key) ?? null) as typeof localforage.getItem;
+    localforage.setItem = (async (key: string, value: string) => {
+        indexedValues.set(key, value);
+        return value;
+    }) as typeof localforage.setItem;
     setActiveUserScope("account-A");
     const request = beginGenerationConsumer();
     let abortObserved = false;
@@ -4023,6 +4031,8 @@ test("an in-flight provider request is aborted and drained before the account ch
         expect(getActiveUserScope()).toBe("account-B");
     } finally {
         request.release();
+        localforage.getItem = originalGetItem;
+        localforage.setItem = originalSetItem;
         if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
         else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
     }
@@ -4441,14 +4451,14 @@ test("incremental sessions leave cached entities untouched and fetch only the op
     }
 });
 
-test("a remote asset page normalizes legacy records before they reach the store", async () => {
+test("a remote asset page rejects incomplete records instead of patching them into the store", async () => {
     const previousAdapter = apiClient.defaults.adapter;
     const previousAssets = useAssetStore.getState().assets;
     const legacy = {
         id: "legacy-remote-image",
         kind: "image",
         title: "镜头01 · 图片",
-        category: "image",
+        category: "material",
         coverUrl: "opaque://legacy",
         createdAt: "2026-09-01T00:00:00.000Z",
         updatedAt: "2026-09-01T00:00:00.000Z",
@@ -4478,10 +4488,8 @@ test("a remote asset page normalizes legacy records before they reach the store"
     try {
         useAssetStore.setState({ assets: [] });
         await initializeRemoteUserDataSession("account-legacy");
-        await loadAssetLibraryPage({ page: 1, pageSize: 40 });
-        const stored = useAssetStore.getState().assets.find((asset) => asset.id === legacy.id);
-        expect(stored?.tags).toEqual([]);
-        expect(() => stored?.tags.join(" ")).not.toThrow();
+        await expect(loadAssetLibraryPage({ page: 1, pageSize: 40 })).rejects.toThrow(/tags/);
+        expect(useAssetStore.getState().assets).toEqual([]);
     } finally {
         resetRemoteUserDataSync();
         apiClient.defaults.adapter = previousAdapter;

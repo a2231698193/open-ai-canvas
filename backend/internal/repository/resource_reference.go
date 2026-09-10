@@ -118,6 +118,20 @@ func (r *Repository) ResourceReferenceSnapshot(userID string, excludingAssetID s
 	for _, session := range sessions {
 		snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "会话", ID: session.ID, Title: session.Prompt, PrimaryJSON: session.CanvasSnapshotJSON, SecondaryJSON: session.CanvasOpsJSON})
 	}
+	var runs []model.CreationRun
+	if err := r.db.Where("user_id = ?", userID).Find(&runs).Error; err != nil {
+		return snapshot, err
+	}
+	for _, run := range runs {
+		snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "创作会话", ID: run.ID, Title: "智能创作", PrimaryJSON: run.StateJSON, SecondaryJSON: run.ApprovedOperationsJSON})
+	}
+	var submissions []model.CreationSubmission
+	if err := r.db.Where("user_id = ? AND revoked_at IS NULL", userID).Find(&submissions).Error; err != nil {
+		return snapshot, err
+	}
+	for _, submission := range submissions {
+		snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "创作执行项", ID: submission.ID, Title: submission.ItemKey, PrimaryJSON: submission.RequestJSON})
+	}
 
 	var messages []model.Message
 	if err := r.db.Select("id", "content", "payload").Where("user_id = ?", userID).Find(&messages).Error; err != nil {

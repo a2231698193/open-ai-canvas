@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -92,60 +91,6 @@ func runVolcengineJiMengImageTask(ctx context.Context, input canvasGenerationInp
 		}
 	}
 	return nil, fmt.Errorf("即梦图片生成超时（任务 %s）", taskID)
-}
-
-func runVolcengineJiMengVideoTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
-	if len(input.ReferenceImages) > 1 || len(input.ReferenceVideos) > 0 || len(input.ReferenceAudios) > 0 {
-		return nil, errors.New("即梦视频协议只支持一张首帧图，不支持参考视频或音频")
-	}
-	frames, err := jiMengVideoFrames(input.Config.VideoSeconds)
-	if err != nil {
-		return nil, err
-	}
-	body := map[string]interface{}{
-		"req_key": input.Config.Model,
-		"prompt":  strings.TrimSpace(input.Prompt),
-		"frames":  frames,
-	}
-	if len(input.ReferenceImages) == 0 {
-		body["aspect_ratio"] = jiMengVideoAspectRatio(input.Config.Size)
-	} else {
-		raw, _, err := mediaBytes(input.ReferenceImages[0])
-		if err != nil {
-			return nil, fmt.Errorf("读取即梦视频首帧图失败：%w", err)
-		}
-		body["binary_data_base64"] = []string{base64.StdEncoding.EncodeToString(raw)}
-	}
-
-	taskID, err := submitJiMengTask(ctx, input.Config, body)
-	if err != nil {
-		return nil, err
-	}
-	for deadline := providerPollingDeadline(ctx); time.Now().Before(deadline); {
-		result, err := pollJiMengTask(ctx, input.Config, taskID, "")
-		if err != nil {
-			return nil, err
-		}
-		switch strings.ToLower(strings.TrimSpace(result.Data.Status)) {
-		case "done":
-			videoURL := strings.TrimSpace(result.Data.VideoURL)
-			if videoURL == "" {
-				return nil, fmt.Errorf("即梦视频任务 %s 已完成但没有返回视频地址", taskID)
-			}
-			data, mimeType, err := getExternalBinary(withProviderRequestKind(ctx, "download"), videoURL)
-			if err != nil {
-				return nil, fmt.Errorf("即梦视频任务 %s 下载失败：%w", taskID, err)
-			}
-			mimeType = normalizedMediaMimeType(mimeType, data)
-			return map[string]interface{}{"mode": "video", "video": map[string]interface{}{"dataUrl": dataURL(mimeType, data), "mimeType": mimeType}}, nil
-		case "not_found", "expired":
-			return nil, fmt.Errorf("即梦视频任务 %s 已失效，请重新生成", taskID)
-		}
-		if err := sleepContext(ctx, 5*time.Second); err != nil {
-			return nil, err
-		}
-	}
-	return nil, fmt.Errorf("即梦视频生成超时（任务 %s）", taskID)
 }
 
 func submitJiMengTask(ctx context.Context, config providerConfig, body map[string]interface{}) (string, error) {
@@ -259,48 +204,4 @@ func jiMengImageDimensions(value string) (int, int) {
 		return 0, 0
 	}
 	return width, height
-}
-
-func jiMengVideoFrames(value string) (int, error) {
-	seconds, _ := strconv.Atoi(strings.TrimSpace(value))
-	switch seconds {
-	case 5:
-		return 121, nil
-	case 10:
-		return 241, nil
-	default:
-		return 0, errors.New("即梦视频仅支持 5 秒或 10 秒，请调整视频时长")
-	}
-}
-
-func jiMengVideoAspectRatio(value string) string {
-	allowed := []string{"16:9", "4:3", "1:1", "3:4", "9:16", "21:9"}
-	value = strings.TrimSpace(value)
-	for _, candidate := range allowed {
-		if value == candidate {
-			return candidate
-		}
-	}
-	parts := strings.Split(strings.ToLower(value), "x")
-	if len(parts) != 2 {
-		return "16:9"
-	}
-	width, widthErr := strconv.ParseFloat(parts[0], 64)
-	height, heightErr := strconv.ParseFloat(parts[1], 64)
-	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
-		return "16:9"
-	}
-	ratio := width / height
-	best := allowed[0]
-	bestDistance := math.MaxFloat64
-	for _, candidate := range allowed {
-		parts := strings.Split(candidate, ":")
-		left, _ := strconv.ParseFloat(parts[0], 64)
-		right, _ := strconv.ParseFloat(parts[1], 64)
-		if distance := math.Abs(ratio - left/right); distance < bestDistance {
-			best = candidate
-			bestDistance = distance
-		}
-	}
-	return best
 }

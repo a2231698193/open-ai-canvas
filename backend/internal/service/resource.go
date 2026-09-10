@@ -320,8 +320,9 @@ func (s *Service) uploadResource(userID string, header *multipart.FileHeader, ki
 	return resource, err
 }
 
-// UploadResourceFile 接收已完整落盘的本地文件（分片上传合并后调用），语义与 UploadResource 一致；
-// 唯一差异是豁免“单文件大小上限”——分片会话已在 handler 按片校验，此处只受日上传与账号存储总量约束。
+// UploadResourceFile 接收已完整落盘的本地文件（分片上传合并后调用）。
+// 它与 UploadResource 共享资源幂等、媒体探测、配额和持久化语义，唯一差异是分片会话已在 handler 校验单文件上限，
+// 因而此处不再重复该上限检查；uploadIdentity 用于跨请求重试时复用同一逻辑资源，避免重复对象。
 func (s *Service) UploadResourceFile(userID string, fileName string, size int64, kind string, width int, height int, durationMs int64, file io.ReadSeeker, uploadIdentity ...string) (*model.Resource, error) {
 	if file == nil || size <= 0 {
 		return nil, BadAuthRequest("请选择要上传的文件")
@@ -779,7 +780,7 @@ func (s *Service) persistGeneratedMediaValueMode(userID string, value interface{
 				if enforceQuota {
 					s.commitUserUploadQuota(userID, int64(len(data)))
 				}
-				resourceURL := "/api/resources/" + resource.ID + "/file"
+				resourceURL := resourceFileURL(resource.ID)
 				for _, key := range []string{"dataUrl", "content", "url", "coverUrl"} {
 					if text, ok := item[key].(string); ok && (text == raw || strings.HasPrefix(text, "blob:")) {
 						item[key] = resourceURL

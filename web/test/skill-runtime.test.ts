@@ -5,61 +5,70 @@ import { createSkillRuntime, resolveSkillMentions } from "../src/services/skill-
 
 function skill(overrides: Partial<Skill> = {}): Skill {
     return {
-        skill_id: "director",
-        skill_name: "AI导演",
+        skillId: "director",
+        skillName: "AI导演",
         description: "导演工作流",
-        version_id: "version-2",
+        versionId: "version-2",
         version: "2.0.0",
-        content_hash: "hash",
-        file_count: 5,
-        total_bytes: 1024,
-        source_type: "zip",
-        source_url: "",
-        source_ref: "",
-        source_subdir: "",
-        source_commit: "",
-        sync_status: "synced",
-        auto_update: false,
-        last_checked_at: 0,
-        last_synced_at: 0,
+        contentHash: "hash",
+        fileCount: 5,
+        totalBytes: 1024,
+        sourceType: "zip",
+        sourceUrl: "",
+        sourceRef: "",
+        sourceSubdir: "",
+        sourceCommit: "",
+        syncStatus: "synced",
+        autoUpdate: false,
+        lastCheckedAt: "2026-01-01T00:00:00.000Z",
+        lastSyncedAt: "2026-01-01T00:00:00.000Z",
         status: 1,
-        markdown_url: "",
-        create_time: 0,
-        update_time: 0,
+        markdownUrl: "",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
         source: 0,
         tag: "影视",
-        sort_weight: 0,
-        is_private: true,
-        like_count: 0,
-        is_like: false,
-        owner_uid: "user",
-        effective_user: { name: "用户", avatar_url: "", uid: "user" },
-        original_skill_id: null,
-        showcase_media: [],
-        added_count: 1,
-        is_test: false,
-        extra_info: "",
-        is_added: true,
-        is_owner: true,
+        sortWeight: 0,
+        isPrivate: true,
+        likeCount: 0,
+        isLike: false,
+        ownerUid: "user",
+        effectiveUser: { name: "用户", avatarUrl: "", uid: "user" },
+        originalSkillId: null,
+        showcaseMedia: [],
+        addedCount: 1,
+        isTest: false,
+        extraInfo: "",
+        isAdded: true,
+        isOwner: true,
         ...overrides,
     };
 }
 
 function file(path: string, content: string, kind: SkillPackageFile["kind"] = "markdown"): SkillPackageFileContent {
     return {
-        file: { path, kind, mime_type: "text/markdown", size: content.length, sha256: `sha-${path}` },
+        file: { path, kind, mimeType: "text/markdown", size: content.length, sha256: `sha-${path}` },
         content,
         binary: false,
     };
 }
 
 describe("skill runtime", () => {
+    test("可检索首屏之外的技能并分页，不暴露未加入技能", async () => {
+        const runtime = createSkillRuntime();
+        const skills = Array.from({ length: 45 }, (_, index) => skill({ skillId: `skill-${index}`, skillName: `技能 ${index}`, description: index === 44 ? "商品构图" : "通用" }));
+        skills.push(skill({ skillId: "hidden", description: "商品构图", isAdded: false }));
+        const first = await runtime.executeAgentTool("onlineAgent", "canvas_list_skills", {}, skills);
+        expect(first?.ok && first.data).toMatchObject({ total: 45, nextOffset: 40 });
+        const found = await runtime.executeAgentTool("onlineAgent", "canvas_list_skills", { query: "商品" }, skills);
+        expect(found?.ok && found.data).toMatchObject({ total: 1, nextOffset: null, items: [{ skillId: "skill-44" }] });
+    });
     test("技能引用解析由统一规则同时支持稳定 token 和自然提及", () => {
         const director = skill();
-        const storyboard = skill({ skill_id: "storyboard", skill_name: "小说转分镜" });
+        const storyboard = skill({ skillId: "storyboard", skillName: "小说转分镜" });
 
-        expect(resolveSkillMentions("用 @[skill:director] 处理", [director, storyboard]).map((item) => item.skill_id)).toEqual(["director"]);
-        expect(resolveSkillMentions("请用 @小说转分镜。", [director, storyboard]).map((item) => item.skill_id)).toEqual(["storyboard"]);
+        expect(resolveSkillMentions("用 @[skill:director] 处理", [director, storyboard]).map((item) => item.skillId)).toEqual(["director"]);
+        expect(resolveSkillMentions("请用 @小说转分镜。", [director, storyboard]).map((item) => item.skillId)).toEqual(["storyboard"]);
         expect(resolveSkillMentions("@AI导演增强版", [director])).toEqual([]);
     });
 
@@ -108,13 +117,13 @@ describe("skill runtime", () => {
             searchFiles: async () => ({ results: [] }),
             getBundle: async () => ({
                 bundle: {
-                    skill_id: "director",
+                    skillId: "director",
                     name: "AI导演",
                     description: "导演工作流",
-                    version_id: "version-2",
+                    versionId: "version-2",
                     version: "2.0.0",
-                    content_hash: "hash",
-                    files: [{ path: "SKILL.md", mime_type: "text/markdown", content_base64: "IyBBSuWvv+a8lA==" }],
+                    contentHash: "hash",
+                    files: [{ path: "SKILL.md", mimeType: "text/markdown", contentBase64: "IyBBSuWvv+a8lA==" }],
                 },
             }),
         });

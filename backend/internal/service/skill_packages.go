@@ -49,14 +49,14 @@ type SkillGitHubInstallRequest struct {
 	Ref        string `json:"ref"`
 	Subdir     string `json:"subdir"`
 	Tag        string `json:"tag"`
-	IsPrivate  bool   `json:"is_private"`
-	AutoUpdate bool   `json:"auto_update"`
+	IsPrivate  bool   `json:"isPrivate"`
+	AutoUpdate bool   `json:"autoUpdate"`
 }
 
 type SkillPackageFileItem struct {
 	Path     string `json:"path"`
 	Kind     string `json:"kind"`
-	MimeType string `json:"mime_type"`
+	MimeType string `json:"mimeType"`
 	Size     int64  `json:"size"`
 	SHA256   string `json:"sha256"`
 }
@@ -69,17 +69,17 @@ type SkillPackageFileContent struct {
 
 type SkillPackageBundleFile struct {
 	Path          string `json:"path"`
-	MimeType      string `json:"mime_type"`
-	ContentBase64 string `json:"content_base64"`
+	MimeType      string `json:"mimeType"`
+	ContentBase64 string `json:"contentBase64"`
 }
 
 type SkillPackageBundle struct {
-	SkillID     string                   `json:"skill_id"`
+	SkillID     string                   `json:"skillId"`
 	Name        string                   `json:"name"`
 	Description string                   `json:"description"`
-	VersionID   string                   `json:"version_id"`
+	VersionID   string                   `json:"versionId"`
 	Version     string                   `json:"version"`
-	ContentHash string                   `json:"content_hash"`
+	ContentHash string                   `json:"contentHash"`
 	Files       []SkillPackageBundleFile `json:"files"`
 }
 

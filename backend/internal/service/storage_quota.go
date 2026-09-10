@@ -34,7 +34,7 @@ func structuredBytes(usage repository.UserStorageUsage) int64 {
 
 func validateStructuredStorageQuotaWithPolicy(usage repository.UserStorageUsage, kind string, creating bool, deltaBytes int64, policy RuntimeResourcePolicy) error {
 	if structuredBytes(usage)+deltaBytes > megabytes(policy.StructuredDataMB) {
-		return BadAuthRequest(fmt.Sprintf("账号画布、素材和会话数据已达到 %dMB 上限，请先删除不需要的内容", policy.StructuredDataMB))
+		return QuotaExceeded(fmt.Sprintf("账号画布、素材和会话数据已达到 %dMB 上限，请先删除不需要的内容", policy.StructuredDataMB))
 	}
 	if !creating {
 		return nil
@@ -42,15 +42,15 @@ func validateStructuredStorageQuotaWithPolicy(usage repository.UserStorageUsage,
 	switch kind {
 	case "asset":
 		if usage.AssetCount >= policy.AssetCount {
-			return BadAuthRequest(fmt.Sprintf("账号素材数量已达到 %d 个上限", policy.AssetCount))
+			return QuotaExceeded(fmt.Sprintf("账号素材数量已达到 %d 个上限", policy.AssetCount))
 		}
 	case "canvas":
 		if usage.CanvasCount >= policy.CanvasCount {
-			return BadAuthRequest(fmt.Sprintf("账号画布数量已达到 %d 个上限", policy.CanvasCount))
+			return QuotaExceeded(fmt.Sprintf("账号画布数量已达到 %d 个上限", policy.CanvasCount))
 		}
 	case "session":
 		if usage.SessionCount >= policy.SessionCount {
-			return BadAuthRequest(fmt.Sprintf("账号 Agent 会话数量已达到 %d 个上限", policy.SessionCount))
+			return QuotaExceeded(fmt.Sprintf("账号 Agent 会话数量已达到 %d 个上限", policy.SessionCount))
 		}
 	}
 	return nil
@@ -58,21 +58,21 @@ func validateStructuredStorageQuotaWithPolicy(usage repository.UserStorageUsage,
 
 func validateTaskStorageQuotaWithPolicy(usage repository.UserStorageUsage, incomingBytes int64, policy RuntimeResourcePolicy) error {
 	if usage.TaskCount >= policy.TaskCount {
-		return BadAuthRequest(fmt.Sprintf("账号任务历史已达到 %d 条上限，请联系管理员归档", policy.TaskCount))
+		return QuotaExceeded(fmt.Sprintf("账号任务历史已达到 %d 条上限，请联系管理员归档", policy.TaskCount))
 	}
 	return validateTaskDataGrowthQuotaWithPolicy(usage, incomingBytes, policy)
 }
 
 func validateTaskDataGrowthQuotaWithPolicy(usage repository.UserStorageUsage, incomingBytes int64, policy RuntimeResourcePolicy) error {
 	if usage.TaskBytes+incomingBytes > gigabytes(policy.TaskDataGB) {
-		return BadAuthRequest(fmt.Sprintf("账号任务历史数据已达到 %dGB 上限，请联系管理员归档", policy.TaskDataGB))
+		return QuotaExceeded(fmt.Sprintf("账号任务历史数据已达到 %dGB 上限，请联系管理员归档", policy.TaskDataGB))
 	}
 	return nil
 }
 
 func validateAPICallLogQuotaWithPolicy(usage repository.UserStorageUsage, incomingBytes int64, policy RuntimeResourcePolicy) error {
 	if usage.APICallCount >= policy.APICallLogCount {
-		return BadAuthRequest(fmt.Sprintf("账号上游请求日志已达到 %d 条上限，请联系管理员归档", policy.APICallLogCount))
+		return QuotaExceeded(fmt.Sprintf("账号上游请求日志已达到 %d 条上限，请联系管理员归档", policy.APICallLogCount))
 	}
 	return validateTaskDataGrowthQuotaWithPolicy(usage, incomingBytes, policy)
 }
@@ -82,12 +82,12 @@ func validateStructuredReplacementQuotaWithPolicy(usage repository.UserStorageUs
 	switch kind {
 	case "asset":
 		if int64(count) > policy.AssetCount {
-			return BadAuthRequest(fmt.Sprintf("账号素材数量不能超过 %d 个", policy.AssetCount))
+			return QuotaExceeded(fmt.Sprintf("账号素材数量不能超过 %d 个", policy.AssetCount))
 		}
 		deltaBytes -= usage.AssetBytes
 	case "canvas":
 		if int64(count) > policy.CanvasCount {
-			return BadAuthRequest(fmt.Sprintf("账号画布数量不能超过 %d 个", policy.CanvasCount))
+			return QuotaExceeded(fmt.Sprintf("账号画布数量不能超过 %d 个", policy.CanvasCount))
 		}
 		deltaBytes -= usage.CanvasBytes
 	}
@@ -97,7 +97,11 @@ func validateStructuredReplacementQuotaWithPolicy(usage repository.UserStorageUs
 func (s *Service) createTaskWithinStorageQuota(task *model.Task, billingOrder *model.BillingOrder, policy RuntimePolicySetting) error {
 	s.storageMu.Lock()
 	defer s.storageMu.Unlock()
-	usage, err := s.repo.UserStorageUsage(task.UserID)
+	return createTaskWithStorageQuotaRepository(s.repo, task, billingOrder, policy)
+}
+
+func createTaskWithStorageQuotaRepository(repo *repository.Repository, task *model.Task, billingOrder *model.BillingOrder, policy RuntimePolicySetting) error {
+	usage, err := repo.UserStorageUsage(task.UserID)
 	if err != nil {
 		return err
 	}
@@ -106,9 +110,9 @@ func (s *Service) createTaskWithinStorageQuota(task *model.Task, billingOrder *m
 		return err
 	}
 	if billingOrder != nil {
-		return s.repo.CreateTaskWithCreditReservation(task, billingOrder, policy.Task.ActiveTaskLimit)
+		return repo.CreateTaskWithCreditReservation(task, billingOrder, policy.Task.ActiveTaskLimit)
 	}
-	return s.repo.CreateTaskWithActiveLimit(task, policy.Task.ActiveTaskLimit)
+	return repo.CreateTaskWithActiveLimit(task, policy.Task.ActiveTaskLimit)
 }
 
 // 任务完成会同时扩张任务历史和 Agent 会话数据，必须在同一临界区核算并原子写入。

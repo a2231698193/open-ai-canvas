@@ -1,4 +1,5 @@
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
+import { PromptTemplateOperation } from "@/lib/prompts";
 import { STORYBOARD_HEADER_HEIGHT, STORYBOARD_ROW_HEIGHT, storyboardTableHeight } from "@/lib/canvas/canvas-storyboard-layout";
 import { normalizeStoryboardAssetBindings } from "@/lib/canvas/canvas-storyboard-assets";
 import { bindingForConnectedNode, storyboardComposerContent, storyboardRowReferenceNodeIds } from "@/lib/canvas/canvas-storyboard-materializer";
@@ -93,7 +94,7 @@ export function createStoryboardRow(shotNumber: number, patch: Partial<Storyboar
 export function storyboardPromptTemplateMetadata(row: StoryboardRow, kind: "image" | "video"): Pick<CanvasNodeMetadata, "promptTemplateOperation" | "promptTemplateVariables"> {
     const variables = kind === "image" ? row.imagePromptTemplateVariables : row.videoPromptTemplateVariables;
     return variables
-        ? { promptTemplateOperation: kind === "image" ? "storyboard_first_frame" : "storyboard_video", promptTemplateVariables: variables }
+        ? { promptTemplateOperation: kind === "image" ? PromptTemplateOperation.StoryboardFirstFrame : PromptTemplateOperation.StoryboardVideo, promptTemplateVariables: variables }
         : { promptTemplateOperation: undefined, promptTemplateVariables: undefined };
 }
 

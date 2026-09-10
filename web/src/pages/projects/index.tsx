@@ -12,6 +12,7 @@ import { ModelPicker } from "@/components/model-picker";
 import { createStyleProfileSnapshot, parseStyleProfile, serializeStyleProfile } from "@/lib/canvas/style-profile";
 import { projectSummaryCompletion, projectSummaryStage } from "@/lib/project-workbench";
 import { settingsPath } from "@/lib/settings-navigation";
+import { PromptTemplateOperation, parseGeneratedStory, promptTemplateTaskPlaceholder, shortDramaOutlineVariables } from "@/lib/prompts";
 import { runBackendGenerationTask } from "@/services/api/generation-task";
 import { createProject, deleteProject, importProjectUnits, listProjects, type ProjectSummary } from "@/services/api/projects";
 import { modelDisplayName, useEffectiveConfig } from "@/stores/use-config-store";
@@ -89,13 +90,26 @@ export default function ProjectsPage() {
         try {
             const project = await createUniqueProjectName(story, selectedStyle);
             setGenerationStatus("AI 正在生成故事大纲与章节…");
-            const systemPrompt = `你是短剧编剧。根据用户的一句话故事，生成一部短剧的标题、一句话简介和 ${generateChapterCount} 个章节。生成要求：叙事采用${generateStructure}结构，每章约 ${generateWordCount} 字，使用${generatePerspective}视角，整体基调${generateTone}，主要角色约 ${generateCharacterScale}，章节篇幅${generateChapterLength}。只输出一个 JSON 对象，不要输出 markdown 代码块或其他文字。JSON 结构：{"title":"剧名","synopsis":"一句话简介","chapters":[{"title":"章节标题","content":"本章情节"}]}`;
             const result = await runBackendGenerationTask({
                 projectId: project.project.id,
                 mode: "text",
-                prompt: story,
-                config: { ...effectiveConfig, model: textModel, imageModel: textModel, videoModel: textModel, textModel, systemPrompt },
-                metadata: { source: "project-story-generator", projectId: project.project.id },
+                prompt: promptTemplateTaskPlaceholder("短剧大纲"),
+                config: { ...effectiveConfig, model: textModel, imageModel: textModel, videoModel: textModel, textModel },
+                metadata: {
+                    source: "project-story-generator",
+                    projectId: project.project.id,
+                    promptTemplateOperation: PromptTemplateOperation.ShortDramaOutline,
+                    promptTemplateVariables: shortDramaOutlineVariables({
+                        story,
+                        chapterCount: generateChapterCount,
+                        structure: generateStructure,
+                        wordCount: generateWordCount,
+                        perspective: generatePerspective,
+                        tone: generateTone,
+                        characterScale: generateCharacterScale,
+                        chapterLength: generateChapterLength,
+                    }),
+                },
                 onTextDelta: setGenerationPreview,
             });
             const answer = result.text || "";
@@ -309,26 +323,6 @@ export default function ProjectsPage() {
     );
 }
 
-function parseGeneratedStory(answer: string) {
-    const cleaned = answer
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    const payload = match ? JSON.parse(match[0]) : {};
-    const title = String(payload.title || "").trim();
-    const synopsis = String(payload.synopsis || "").trim();
-    const chapters = Array.isArray(payload.chapters)
-        ? payload.chapters
-            .map((chapter: unknown) => {
-                const item = typeof chapter === "object" && chapter ? chapter as Record<string, unknown> : {};
-                return { title: String(item.title || "").trim(), content: String(item.content || "").trim() };
-            })
-            .filter((chapter: { title: string; content: string }) => chapter.title && chapter.content)
-        : [];
-    return { title: title || storyTitleFromAnswer(answer), synopsis, chapters };
-}
-
 async function createUniqueProjectName(story: string, selectedStyle: CanvasStylePreset | null) {
     const base = story.trim().slice(0, 24);
     const buildInput = (name: string) => ({
@@ -350,11 +344,6 @@ async function createUniqueProjectName(story: string, selectedStyle: CanvasStyle
             attempt += 1;
         }
     }
-}
-
-function storyTitleFromAnswer(answer: string) {
-    const line = answer.split(/\r?\n/).find((item) => item.trim());
-    return line ? line.trim().slice(0, 24) : "AI 生成短剧";
 }
 
 const generationSteps = [

@@ -1,7 +1,6 @@
-// 预览监视器（editor-shell 预设插件贡献 preview-renderer 插槽，M3.2）。
 // 浏览器内近似预览：真实媒体帧（storageKey → resolveMediaUrl）+ 播放头 + 时间码。
-// 近似渲染与导出（M3.7 的 buildTimelineRenderPlan）共享同一条"片段→媒体"解析路径，
-// 但这里只做时序呈现，不承诺像素级预览——像素级交给导出任务（M4）。
+// 预览与 buildTimelineRenderPlan 共享“片段→媒体”解析规则，但浏览器预览只保证时序一致；
+// 最终画面、编码和滤镜结果以后端导出任务为准。
 //
 // 播放模型：时间线 transport（store.transportMs）与监视器共享。
 // - 本地 playbackRef 以 rAF 逐帧推进（60fps 时间码），节流回写 store（~80ms），
@@ -461,7 +460,7 @@ export function EditorPreviewMonitor() {
                         <div className="max-w-xs text-xs leading-relaxed text-white/70">
                             {project && project.clips.length > 0
                                 ? activeClip
-                                    ? "当前时间点片段无媒体源（占位/字幕/音频）"
+                                    ? "当前时间点没有可显示画面（字幕或音频片段）"
                                     : "播放头位于空白处"
                                 : "时间线暂无片段，导入素材后在此预览"}
                         </div>

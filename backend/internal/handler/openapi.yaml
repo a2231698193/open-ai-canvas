@@ -1,0 +1,215 @@
+openapi: 3.0.3
+info:
+  title: 影策 HTTP API
+  version: "1.0.0"
+  description: |
+    路径前缀是 `/api`。前后端一起发布，不按路径做 API 版本。
+
+    业务 JSON 信封为 `{ code, data, msg, reason }`。`code === 0` 表示成功；失败时 HTTP status 与
+    `code` 都表达失败。`code` 默认等于 HTTP 状态；同一状态下的细分原因使用 `status*100+n`
+    （例如 40301 配额、42901 限流）。机器判断请用 `reason`，不要解析 `msg`。
+
+    TypeScript 调用面仍是 `web/src/services/api` 的 `http` 模块，不从本规范生成客户端。
+servers:
+  - url: /api
+security:
+  - sessionCookie: []
+tags:
+  - name: meta
+  - name: auth
+  - name: projects
+  - name: resources
+  - name: tasks
+  - name: assets
+paths:
+  /openapi.yaml:
+    get:
+      tags: [meta]
+      security: []
+      summary: 本 OpenAPI 文档
+      responses:
+        "200":
+          description: OpenAPI 3.0 YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /auth/session:
+    get:
+      tags: [auth]
+      summary: 当前登录会话
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "401":
+          $ref: "#/components/responses/Error"
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: 登录并设置会话 Cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "401":
+          $ref: "#/components/responses/Error"
+  /projects:
+    get:
+      tags: [projects]
+      summary: 短剧项目列表
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [projects]
+      summary: 创建短剧项目
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "400":
+          $ref: "#/components/responses/Error"
+  /resources:
+    get:
+      tags: [resources]
+      summary: 当前用户资源列表
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+    post:
+      tags: [resources]
+      summary: 上传资源文件
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          description: 配额用尽（code=40301, reason=quota_exceeded）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /resources/{id}/file:
+    get:
+      tags: [resources]
+      summary: 读取资源二进制（非 JSON 信封）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 文件流
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: 创建生成任务
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "400":
+          $ref: "#/components/responses/Error"
+  /tasks/{id}/text-events:
+    get:
+      tags: [tasks]
+      summary: 文本任务 SSE
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: after
+          schema: { type: integer }
+          description: 递增事件游标，不要用任务 ID
+      responses:
+        "200":
+          description: text/event-stream
+  /assets:
+    get:
+      tags: [assets]
+      summary: 用户素材库
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: open_ai_canvas_session
+  schemas:
+    Envelope:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          type: integer
+          description: 0 成功；失败时默认等于 HTTP 状态，或 status*100+n 的细分码
+        data: {}
+        msg:
+          type: string
+        reason:
+          type: string
+          description: 仅失败时出现。稳定机器可读原因。
+    ErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          properties:
+            code:
+              type: integer
+              enum: [400, 401, 403, 404, 409, 429, 500, 502, 503, 504, 40301, 40901, 42901]
+            data:
+              nullable: true
+            reason:
+              type: string
+              enum:
+                - invalid_argument
+                - unauthorized
+                - forbidden
+                - not_found
+                - conflict
+                - failed_precondition
+                - quota_exceeded
+                - rate_limited
+                - unavailable
+                - timeout
+                - internal
+                - bad_gateway
+                - model_capability_not_supported
+                - model_price_not_configured
+                - model_route_unavailable
+                - provider_request_failed
+                - model_catalog_mismatch
+                - invalid_model_selection
+  responses:
+    Envelope:
+      description: 业务成功信封
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    Error:
+      description: 业务失败信封
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

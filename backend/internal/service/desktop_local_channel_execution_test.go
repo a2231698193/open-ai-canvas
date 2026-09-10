@@ -51,7 +51,12 @@ func TestLocalExecutionPathsApplyLoopbackPolicyBeyondConfigResolution(t *testing
 			config: providerConfig{BaseURL: upstream.URL + "/v1", APIKey: "key", Model: "video-model", InterfaceType: string(model.ChannelInterfaceNewAPIChannel2), AllowLocalChannel: true},
 			path:   "/v1/video/generations/recovery-task",
 			runRequest: func(ctx context.Context, config providerConfig) error {
-				_, _, err := queryNewAPIChannel2VideoTask(ctx, canvasGenerationInput{Mode: "video", Config: config}, "recovery-task")
+				ctx = ensureOfficialProtocolAdapter(ctx, config.InterfaceType)
+				adapter, ok := declarativeProtocolAdapterForContext(ctx, config.InterfaceType)
+				if !ok {
+					return fmt.Errorf("official newapi-channel-2 adapter missing")
+				}
+				_, _, err := queryProtocolAdapterVideoTask(ctx, canvasGenerationInput{Mode: "video", Config: config}, adapter, "recovery-task")
 				return err
 			},
 		},

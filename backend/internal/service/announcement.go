@@ -33,7 +33,7 @@ type AnnouncementPage struct {
 	Announcements []model.Announcement `json:"announcements"`
 	Total         int64                `json:"total"`
 	Page          int                  `json:"page"`
-	Limit         int                  `json:"limit"`
+	Limit         int                  `json:"pageSize"`
 }
 
 type UserAnnouncementFeed struct {

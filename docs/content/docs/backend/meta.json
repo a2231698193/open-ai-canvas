@@ -4,6 +4,7 @@
   "defaultOpen": true,
   "pages": [
     "local-development",
+    "http-api",
     "code-map",
     "backend-database",
     "task-runtime-stability",

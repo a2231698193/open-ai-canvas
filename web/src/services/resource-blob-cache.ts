@@ -19,6 +19,7 @@ const objectUrls = new Map<string, string>();
 const sessionBlobs = new Map<string, Blob>();
 const inFlight = new Map<string, Promise<string>>();
 const scheduled = new Set<string>();
+const cacheMetaTouchWarnings = new Set<string>();
 const downloadQueue: Array<() => void> = [];
 let activeDownloads = 0;
 let persistQueue: Promise<void> = Promise.resolve();
@@ -57,7 +58,11 @@ export function scheduleResourceBlobCache(storageKey: string, delayMs = 4_000) {
     scheduled.add(storageKey);
     const run = () => {
         void cacheResourceObjectUrl(storageKey)
-            .catch(() => "")
+            .catch((error) => {
+                // 这是播放后的后台缓存优化，不应让播放器失败；但下载/持久化异常必须可观测。
+                console.warn("后台缓存资源 Blob 失败", { storageKey, error });
+                return "";
+            })
             .finally(() => scheduled.delete(storageKey));
     };
     if (typeof window === "undefined") {
@@ -98,7 +103,7 @@ export async function getCachedResourceBlob(storageKey: string) {
     if (!target) return null;
     const cached = await blobStore.getItem<Blob>(target.key);
     if (cached) {
-        void touchCacheMeta(target).catch(() => undefined);
+        touchCacheMetaSafely(target);
         return cached;
     }
     const sessionBlob = sessionBlobs.get(target.key);
@@ -128,26 +133,53 @@ async function downloadResourceBlob(storageKey: string, target: ResourceCacheMet
 
 function enqueuePersist(target: ResourceCacheMeta, blob: Blob) {
     const task = persistQueue.then(() => persistBlob(target, blob));
-    persistQueue = task.catch(() => undefined);
-    return task.catch(() => undefined);
+    // IndexedDB 缓存是读性能优化，不得反向判定服务端资源上传失败；但失败必须可观测，
+    // 并把队列恢复为 fulfilled，避免一个坏条目永久阻断后续缓存写入。
+    const observed = task.catch((error) => {
+        console.warn("媒体缓存持久化失败，当前会话仍可继续读取", { resourceId: target.resourceId, version: target.version, error });
+    });
+    persistQueue = observed;
+    return observed;
 }
 
 async function persistBlob(target: ResourceCacheMeta, blob: Blob) {
     // 不尝试写入超过当前缓存预算的单个媒体，避免触发浏览器配额异常和无效的全量淘汰。
     if (blob.size > (await cacheBudget())) return;
     await evictFor(blob.size, target.key);
-    try {
+
+    const write = async () => {
         await blobStore.setItem(target.key, blob);
-        await metaStore.setItem(target.key, { ...target, size: blob.size, mimeType: blob.type || target.mimeType, lastAccessedAt: Date.now() });
-    } catch (error) {
+        await metaStore.setItem(target.key, {
+            ...target,
+            size: blob.size,
+            mimeType: blob.type || target.mimeType,
+            lastAccessedAt: Date.now(),
+        });
+    };
+
+    try {
+        await write();
+        return;
+    } catch (firstError) {
+        // 第一次失败通常意味着浏览器配额不足；激进淘汰后只允许再尝试一次，
+        // 避免缓存层无限重试拖慢资源读取，也不把缓存失败误报成服务端资源失败。
         await evictFor(blob.size, target.key, true);
         try {
-            await blobStore.setItem(target.key, blob);
-            await metaStore.setItem(target.key, { ...target, size: blob.size, mimeType: blob.type || target.mimeType, lastAccessedAt: Date.now() });
-        } catch {
-            await blobStore.removeItem(target.key);
-            await metaStore.removeItem(target.key);
-            throw error;
+            await write();
+            return;
+        } catch (retryError) {
+            const cleanupResults = await Promise.allSettled([blobStore.removeItem(target.key), metaStore.removeItem(target.key)]);
+            const cleanupError = cleanupResults.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+            if (cleanupError) {
+                console.error("媒体缓存写入失败后的清理也失败", {
+                    resourceId: target.resourceId,
+                    version: target.version,
+                    firstError,
+                    retryError,
+                    cleanupError,
+                });
+            }
+            throw retryError;
         }
     }
 }
@@ -155,12 +187,12 @@ async function persistBlob(target: ResourceCacheMeta, blob: Blob) {
 async function readCachedObjectUrl(target: ResourceCacheMeta) {
     const existing = objectUrls.get(target.key);
     if (existing) {
-        void touchCacheMeta(target).catch(() => undefined);
+        touchCacheMetaSafely(target);
         return existing;
     }
     const blob = await blobStore.getItem<Blob>(target.key);
     if (!blob) return "";
-    void touchCacheMeta(target).catch(() => undefined);
+    touchCacheMetaSafely(target);
     return objectUrl(target.key, blob);
 }
 
@@ -187,6 +219,16 @@ async function touchCacheMeta(target: ResourceCacheMeta) {
     const current = await metaStore.getItem<ResourceCacheMeta>(target.key);
     if (!current || Date.now() - current.lastAccessedAt < TOUCH_INTERVAL_MS) return;
     await metaStore.setItem(target.key, { ...current, lastAccessedAt: Date.now() });
+}
+
+
+function touchCacheMetaSafely(target: ResourceCacheMeta) {
+    void touchCacheMeta(target).catch((error) => {
+        // 访问时间只服务于缓存淘汰，不影响资源读取；失败可降级，但不能无痕吞掉。
+        if (cacheMetaTouchWarnings.has(target.key)) return;
+        cacheMetaTouchWarnings.add(target.key);
+        console.warn("更新资源缓存访问时间失败", { storageKey: target.key, error });
+    });
 }
 
 async function evictFor(incomingBytes: number, protectedKey: string, aggressive = false) {

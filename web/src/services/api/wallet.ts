@@ -1,6 +1,5 @@
-import { apiClient, request } from "@/services/api/request";
+import { http } from "@/services/api/request";
 
-const api = apiClient;
 
 export type CreditAccount = {
     userId: string;
@@ -32,7 +31,7 @@ export type WalletSummary = {
     entries: CreditLedgerEntry[];
     total: number;
     page: number;
-    limit: number;
+    pageSize: number;
     policy: {
         signupBonusMicrocredits: number;
         checkinBonusMicrocredits: number;
@@ -188,7 +187,7 @@ export type AdminRedeemCodePage = {
     plaintextAvailable: boolean;
     total: number;
     page: number;
-    limit: number;
+    pageSize: number;
 };
 
 export type BillingOrder = {
@@ -223,121 +222,121 @@ export type BillingOrder = {
     updatedAt: string;
 };
 
-export function getWallet(page = 1, limit = 30, type = "all") {
-    return request<WalletSummary>(api.get("/wallet", { params: { type, page, limit } }));
+export function getWallet(page = 1, pageSize = 30, type = "all") {
+    return http.get<WalletSummary>("/wallet", { params: { type, page, pageSize } });
 }
 
 export function redeemCredits(code: string) {
-    return request<{ account: CreditAccount }>(api.post("/wallet/redeem", { code }));
+    return http.post<{ account: CreditAccount }>("/wallet/redeem", { code });
 }
 
 export function checkinCredits() {
-    return request<{ account: CreditAccount; granted: boolean }>(api.post("/wallet/checkin"));
+    return http.post<{ account: CreditAccount; granted: boolean }>("/wallet/checkin");
 }
 
 export function getAdminCreditPolicy() {
-    return request<{ policy: CreditPolicy }>(api.get("/admin/settings/credits"));
+    return http.get<{ policy: CreditPolicy }>("/admin/settings/credits");
 }
 
 export function updateAdminCreditPolicy(policy: CreditPolicy) {
-    return request<{ policy: CreditPolicy }>(api.patch("/admin/settings/credits", policy));
+    return http.patch<{ policy: CreditPolicy }>("/admin/settings/credits", policy);
 }
 
 export function getAdminLinuxDOSetting() {
-    return request<{ setting: LinuxDOSetting }>(api.get("/admin/settings/linuxdo"));
+    return http.get<{ setting: LinuxDOSetting }>("/admin/settings/linuxdo");
 }
 
 export function updateAdminLinuxDOSetting(input: Partial<LinuxDOSetting>) {
-    return request<{ setting: LinuxDOSetting }>(api.patch("/admin/settings/linuxdo", input));
+    return http.patch<{ setting: LinuxDOSetting }>("/admin/settings/linuxdo", input);
 }
 
 export function getAdminRegistrationSetting() {
-    return request<{ setting: RegistrationSetting }>(api.get("/admin/settings/registration"));
+    return http.get<{ setting: RegistrationSetting }>("/admin/settings/registration");
 }
 
 export function updateAdminRegistrationSetting(enabled: boolean) {
-    return request<{ setting: RegistrationSetting }>(api.patch("/admin/settings/registration", { enabled }));
+    return http.patch<{ setting: RegistrationSetting }>("/admin/settings/registration", { enabled });
 }
 
 export function getAdminEmailSetting() {
-    return request<{ setting: EmailSetting }>(api.get("/admin/settings/email"));
+    return http.get<{ setting: EmailSetting }>("/admin/settings/email");
 }
 
 export function updateAdminEmailSetting(input: Partial<EmailSetting>) {
-    return request<{ setting: EmailSetting }>(api.patch("/admin/settings/email", input));
+    return http.patch<{ setting: EmailSetting }>("/admin/settings/email", input);
 }
 
 export function listAdminChannelModels(channelId: string) {
-    return request<{ models: ChannelModel[] }>(api.get(`/admin/channels/${encodeURIComponent(channelId)}/models`));
+    return http.get<{ models: ChannelModel[] }>(`/admin/channels/${encodeURIComponent(channelId)}/models`);
 }
 
 // 管理员从上游读取模型目录；确认导入后才会写入渠道模型，价格和启用仍需人工确认。
 export function fetchAdminChannelModels(channelId: string) {
-    return request<{ models: string[] }>(api.post(`/admin/channels/${encodeURIComponent(channelId)}/models/fetch`));
+    return http.post<{ models: string[] }>(`/admin/channels/${encodeURIComponent(channelId)}/models/fetch`);
 }
 
 export function importAdminChannelModels(channelId: string, models: string[]) {
-    return request<{ models: string[]; added: number }>(api.post(`/admin/channels/${encodeURIComponent(channelId)}/models/import`, { models }));
+    return http.post<{ models: string[]; added: number }>(`/admin/channels/${encodeURIComponent(channelId)}/models/import`, { models });
 }
 
 export function testAdminChannelModel(channelId: string, input: Pick<ChannelModel, "modelKey" | "providerModelKey" | "capability" | "protocol"> & { capabilityConfig?: ChannelModel["capabilityConfig"] }) {
-    return request<{ durationMs: number }>(api.post(`/admin/channels/${encodeURIComponent(channelId)}/models/test`, input, { timeout: 10 * 60 * 1000 }));
+    return http.post<{ durationMs: number }>(`/admin/channels/${encodeURIComponent(channelId)}/models/test`, input, { timeout: 10 * 60 * 1000 });
 }
 
 export function createAdminChannelModel(channelId: string, input: ChannelModelMutation) {
-    return request<{ model: ChannelModel }>(api.post(`/admin/channels/${encodeURIComponent(channelId)}/models`, input));
+    return http.post<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models`, input);
 }
 
 export function updateAdminChannelModel(channelId: string, id: string, input: ChannelModelMutation) {
-    return request<{ model: ChannelModel }>(api.patch(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input));
+    return http.patch<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input);
 }
 
 export function updateAdminChannelModelSort(channelId: string, id: string, sortOrder: number) {
-    return request<{ updated: boolean }>(api.patch(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}/sort`, { sortOrder }));
+    return http.patch<{ updated: boolean }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}/sort`, { sortOrder });
 }
 
 export function deleteAdminChannelModel(channelId: string, id: string) {
-    return request<{ ok: boolean }>(api.delete(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`));
+    return http.delete<{ ok: boolean }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`);
 }
 
 export function deleteAdminChannelModels(channelId: string, modelIds: string[]) {
-    return request<{ deleted: number }>(api.post(`/admin/channels/${encodeURIComponent(channelId)}/models/batch-delete`, { modelIds }));
+    return http.post<{ deleted: number }>(`/admin/channels/${encodeURIComponent(channelId)}/models/batch-delete`, { modelIds });
 }
 
-export type AdminFinanceListParams = { keyword?: string; status?: string; validity?: string; page?: number; limit?: number };
+export type AdminFinanceListParams = { keyword?: string; status?: string; validity?: string; page?: number; pageSize?: number };
 
 export function listAdminRedeemBatches(params: AdminFinanceListParams = {}) {
-    return request<{ batches: RedeemBatch[]; total: number; page: number; limit: number }>(api.get("/admin/redeem-batches", { params }));
+    return http.get<{ batches: RedeemBatch[]; total: number; page: number; pageSize: number }>("/admin/redeem-batches", { params });
 }
 
 export function createAdminRedeemBatch(input: { amountMicrocredits: number; count: number; note?: string; expiresAt?: string }) {
-    return request<{ batch: RedeemBatch; codes: string[] }>(api.post("/admin/redeem-batches", input, { timeout: 30_000 }));
+    return http.post<{ batch: RedeemBatch; codes: string[] }>("/admin/redeem-batches", input, { timeout: 30_000 });
 }
 
-export function listAdminRedeemBatchCodes(batchId: string, params: { status?: string; page?: number; limit?: number } = {}) {
-    return request<AdminRedeemCodePage>(api.get(`/admin/redeem-batches/${encodeURIComponent(batchId)}/codes`, { params }));
+export function listAdminRedeemBatchCodes(batchId: string, params: { status?: string; page?: number; pageSize?: number } = {}) {
+    return http.get<AdminRedeemCodePage>(`/admin/redeem-batches/${encodeURIComponent(batchId)}/codes`, { params });
 }
 
 export function disableAdminRedeemBatch(batchId: string) {
-    return request<{ disabledCount: number }>(api.post(`/admin/redeem-batches/${encodeURIComponent(batchId)}/disable`));
+    return http.post<{ disabledCount: number }>(`/admin/redeem-batches/${encodeURIComponent(batchId)}/disable`);
 }
 
 export function disableAdminRedeemCode(batchId: string, codeId: string) {
-    return request<{ ok: boolean }>(api.post(`/admin/redeem-batches/${encodeURIComponent(batchId)}/codes/${encodeURIComponent(codeId)}/disable`));
+    return http.post<{ ok: boolean }>(`/admin/redeem-batches/${encodeURIComponent(batchId)}/codes/${encodeURIComponent(codeId)}/disable`);
 }
 
 export function adjustAdminUserCredits(userId: string, input: { amountMicrocredits: number; note: string }) {
-    return request<{ account: CreditAccount }>(api.post(`/admin/users/${encodeURIComponent(userId)}/credits/adjust`, input));
+    return http.post<{ account: CreditAccount }>(`/admin/users/${encodeURIComponent(userId)}/credits/adjust`, input);
 }
 
 export function listAdminBillingOrders(params: AdminFinanceListParams = {}) {
-    return request<{ orders: BillingOrder[]; total: number; page: number; limit: number }>(api.get("/admin/billing-orders", { params }));
+    return http.get<{ orders: BillingOrder[]; total: number; page: number; pageSize: number }>("/admin/billing-orders", { params });
 }
 
 export function resolveAdminBillingOrder(id: string, input: { action: "settle" | "refund"; note: string }) {
-    return request<{ order: BillingOrder }>(api.post(`/admin/billing-orders/${encodeURIComponent(id)}/resolve`, input));
+    return http.post<{ order: BillingOrder }>(`/admin/billing-orders/${encodeURIComponent(id)}/resolve`, input);
 }
 
 export function resolveAdminBillingOrders(input: { ids: string[]; action: "settle" | "refund"; note: string }) {
-    return request<{ resolvedCount: number; failed: Array<{ id: string; message: string }> }>(api.post("/admin/billing-orders/batch-resolve", input));
+    return http.post<{ resolvedCount: number; failed: Array<{ id: string; message: string }> }>("/admin/billing-orders/batch-resolve", input);
 }

@@ -1,4 +1,5 @@
-import { Button, InputNumber, Modal, Popconfirm, Segmented, Select, Tag } from "antd";
+import { Button, InputNumber, Popconfirm, Segmented, Select, Tag } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { Switch } from "@/components/ui/base/switch";
 import { Callout } from "@/components/ui/product/callout";
 import { StatusBadge } from "@/components/ui/base/badges";
@@ -11,7 +12,7 @@ import { portraitVisionModelError, portraitVisionModelLabel, portraitVisionModel
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
-import { cancelPortraitTask, createPortraitClearanceTask, deletePortraitTask, downloadPortraitReport, imageNodeDataUrl, installPortraitClearanceModels, listPortraitTasks, portraitOwnerScopeHash, readPortraitRuntimeStatus, readPortraitTaskResult, retryPortraitTask, type PortraitRuntimeStatus, type PortraitRuntimeTask } from "@/services/portrait-clearance-runtime";
+import { cancelPortraitTask, createPortraitClearanceTask, deletePortraitTask, downloadPortraitReport, imageNodeDataUrl, installPortraitClearanceModels, listPortraitTasks, portraitOwnerScopeHash, readPortraitRuntimeStatus, readPortraitTaskImage, readPortraitTaskResult, retryPortraitTask, type PortraitRuntimeStatus, type PortraitRuntimeTask } from "@/services/portrait-clearance-runtime";
 import type { PortraitFeatureKey, PortraitPairResult, PortraitRiskLevel } from "@/lib/portrait-clearance/contracts";
 
 type PortraitClearanceModalProps = {
@@ -249,7 +250,7 @@ export function PortraitClearanceModal({ projectId, node, upstreamNodes, open, o
     };
 
     return (
-        <Modal
+        <AppModal
             open={open}
             onCancel={onClose}
             footer={null}
@@ -259,7 +260,7 @@ export function PortraitClearanceModal({ projectId, node, upstreamNodes, open, o
             centered
             destroyOnHidden={false}
             className="portrait-clearance-modal"
-            styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0 } }}
+            flush
         >
             <div className="flex max-h-[calc(100dvh-32px)] min-h-[min(680px,calc(100dvh-32px))] flex-col overflow-hidden bg-background text-foreground">
                 <header className="flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--border)" }}>
@@ -334,7 +335,7 @@ export function PortraitClearanceModal({ projectId, node, upstreamNodes, open, o
                     <div className="flex flex-wrap items-center justify-end gap-2"><Select size="small" value={reportFormat} disabled={!state.lastResult || Boolean(busyAction)} options={[{ value: "html", label: "HTML 报告" }, { value: "md", label: "Markdown 报告" }, { value: "docx", label: "DOCX 报告" }, { value: "json", label: "JSON 结果" }]} onChange={(value) => setReportFormat(value as "json" | "md" | "html" | "docx")} /><Button icon={<Download className="size-3.5" />} loading={busyAction === "export"} disabled={!state.lastResult} onClick={() => void exportReport()}>导出</Button>{state.activeTaskId && state.task?.status !== "failed" && state.task?.status !== "cancelled" ? <Popconfirm title="停止当前排查？" description="已下载的候选和本机任务会保留，可稍后查看或重试。" onConfirm={() => void stopTask()}><Button danger icon={<Pause className="size-3.5" />} loading={busyAction === "stop"}>停止</Button></Popconfirm> : null}{state.task?.status === "failed" || state.task?.status === "cancelled" ? <Button icon={<Play className="size-3.5" />} loading={busyAction === "retry"} onClick={() => void retryTask()}>重试</Button> : null}<Button type="primary" icon={<Play className="size-3.5" />} loading={starting} disabled={!canStart} onClick={() => void startTask()}>开始排查</Button></div>
                 </footer>
             </div>
-        </Modal>
+        </AppModal>
     );
 }
 
@@ -411,9 +412,15 @@ const PORTRAIT_FEATURE_SIMILARITY_LABELS = { high: "高度相似", medium: "中�
 function ResultPairCard({ taskId, pair, candidate, onAddCandidate }: { taskId: string; pair: PortraitPairResult; candidate?: PortraitResultView["candidates"][number]; onAddCandidate?: PortraitClearanceModalProps["onAddCandidate"] }) {
     const [image, setImage] = useState("");
     useEffect(() => {
-        let disposed = false;
-        void import("@/services/portrait-clearance-runtime").then(({ readPortraitTaskImage }) => readPortraitTaskImage(taskId, pair.comparisonImageId)).then((value) => { if (!disposed) setImage(value.dataUrl); }).catch(() => undefined);
-        return () => { disposed = true; };
+        const controller = new AbortController();
+        void readPortraitTaskImage(taskId, pair.comparisonImageId, controller.signal)
+            .then((value) => setImage(value.dataUrl))
+            .catch((error) => {
+                if (controller.signal.aborted) return;
+                // 结果正文仍可阅读，但图片读取失败必须留下任务与图片上下文，不能静默伪装成“尚未加载”。
+                console.warn("读取肖像对比图片失败", { taskId, imageId: pair.comparisonImageId, error });
+            });
+        return () => controller.abort();
     }, [pair.comparisonImageId, taskId]);
     const vision = pair.visionComparison;
     return <article className="overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>

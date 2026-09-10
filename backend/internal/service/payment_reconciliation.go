@@ -26,7 +26,7 @@ type AdminPaymentReconciliationPage struct {
 	Runs  []model.PaymentReconciliationRun `json:"runs"`
 	Total int64                            `json:"total"`
 	Page  int                              `json:"page"`
-	Limit int                              `json:"limit"`
+	Limit int                              `json:"pageSize"`
 }
 
 type AdminPaymentReconciliationItemPage struct {
@@ -34,7 +34,7 @@ type AdminPaymentReconciliationItemPage struct {
 	Items []model.PaymentReconciliationItem `json:"items"`
 	Total int64                             `json:"total"`
 	Page  int                               `json:"page"`
-	Limit int                               `json:"limit"`
+	Limit int                               `json:"pageSize"`
 }
 
 func (s *Service) RunPaymentReconciliation(ctx context.Context, actor *model.User, request RunPaymentReconciliationRequest) (*model.PaymentReconciliationRun, error) {

@@ -1,9 +1,61 @@
 import { describe, expect, test } from "bun:test";
 
-import { applyCanvasConnectionPromptSync, buildAssetMentionReferences, buildCanvasNodeMentionReferenceMap, buildNodeMentionReferences, buildOrderedCanvasResourceReferences, canvasResourceMentionToken, collectUpstreamVideoNodes, imageGenerationReferenceConnections } from "../src/lib/canvas/canvas-resource-references";
+import { autoMentionCanvasResourceReferences, findCanvasResourceAutoLinkMatch, type CanvasResourceReference, applyCanvasConnectionPromptSync, buildAssetMentionReferences, buildCanvasNodeMentionReferenceMap, buildNodeMentionReferences, buildOrderedCanvasResourceReferences, canvasResourceMentionToken, collectUpstreamVideoNodes, imageGenerationReferenceConnections } from "../src/lib/canvas/canvas-resource-references";
 import { canvasNodeToAsset } from "../src/lib/canvas/canvas-node-asset";
 import { buildNodeGenerationInputs } from "../src/components/canvas/canvas-node-generation";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "../src/types/canvas";
+
+const smartReferences: CanvasResourceReference[] = [
+    { id: "image-6", nodeId: "image-6", kind: "image", label: "图片6", title: "宫门全景", active: true },
+    { id: "character", nodeId: "character", kind: "character", label: "角色1", title: "唐妙菱", active: true },
+];
+
+describe("canvas smart references", () => {
+    test("converts repeated names and aliases without rewriting existing mentions", () => {
+        expect(autoMentionCanvasResourceReferences("图片6在前景，图6退后；宫门全景可见。唐妙菱看向图片60。", smartReferences))
+            .toBe("@图片6 在前景，@图片6 退后；@图片6 可见。@角色1 看向图片60。");
+        const existing = "已有 @图片6 和 @[node:image-6]、@[asset:宫门全景]。";
+        expect(autoMentionCanvasResourceReferences(existing, smartReferences)).toBe(existing);
+        expect(autoMentionCanvasResourceReferences("请使用 2。不要改约2秒。", smartReferences)).toBe("请使用 @角色1。不要改约2秒。");
+    });
+
+    test("returns exact replacement offsets for names and shelf orders", () => {
+        for (const alias of ["唐妙菱", "角色1", "2", "image2", "image 2"]) {
+            const prompt = `请使用 ${alias}，然后继续`;
+            expect(findCanvasResourceAutoLinkMatch(prompt, 4 + alias.length, smartReferences))
+                .toEqual({ reference: smartReferences[1], start: 4, end: 4 + alias.length, query: alias });
+        }
+    });
+
+    test("skips inactive, library and skill references and ambiguous names", () => {
+        const excluded: CanvasResourceReference[] = [
+            { ...smartReferences[0], active: false },
+            { ...smartReferences[1], assetId: "library" },
+            { ...smartReferences[1], kind: "skill" },
+        ];
+        expect(autoMentionCanvasResourceReferences("宫门全景 唐妙菱 1", excluded)).toBe("宫门全景 唐妙菱 1");
+        expect(findCanvasResourceAutoLinkMatch("唐妙菱", 3, excluded)).toBeNull();
+        const ambiguous = [smartReferences[0], { ...smartReferences[1], title: "宫门全景" }];
+        expect(autoMentionCanvasResourceReferences("宫门全景", ambiguous)).toBe("宫门全景");
+        expect(findCanvasResourceAutoLinkMatch("宫门全景", 4, ambiguous)).toBeNull();
+    });
+
+    test("does not complete partial identifiers, existing tokens or ordinary numbers", () => {
+        for (const [prompt, cursor] of [
+            ["@图片6", 4], ["@[node:宫门全景", 10], ["@前缀宫门全景", 7],
+            ["myimage2", 8], ["图片60", 3], ["2秒", 1], ["约2", 2], ["20", 1],
+            ["", 0], ["2", 5],
+        ] as const) {
+            expect(findCanvasResourceAutoLinkMatch(prompt, cursor, smartReferences)).toBeNull();
+        }
+    });
+
+    test("escapes regular expression characters and preserves explicit mention tokens", () => {
+        const reference = { ...smartReferences[0], title: "场景(夜)+", mentionToken: "@[node:image-6]" };
+        expect(autoMentionCanvasResourceReferences("场景(夜)+出现", [reference])).toBe("@[node:image-6] 出现");
+        expect(findCanvasResourceAutoLinkMatch(reference.title, reference.title.length, [reference])?.reference).toBe(reference);
+    });
+});
 
 function videoNode(id: string): CanvasNodeData {
     return {
@@ -117,6 +169,20 @@ describe("canvas resource mention slots", () => {
         expect(asset && "coverUrl" in asset ? asset.coverUrl : "").toBe("https://cdn.example.com/poster.jpg");
     });
 
+    test("仅有持久资源键的媒体节点仍可恢复为素材且不伪造临时地址", () => {
+        const node = videoNode("storage-key-only-video");
+        node.metadata = {
+            storageKey: "  video:user:durable  ",
+            mimeType: "video/mp4",
+        };
+
+        const asset = canvasNodeToAsset(node, { canvasId: "canvas", source: "canvas-upload" });
+
+        expect(asset?.kind).toBe("video");
+        expect(asset?.kind === "video" ? asset.data.url : "not-video").toBe("");
+        expect(asset?.kind === "video" ? asset.data.storageKey : undefined).toBe("video:user:durable");
+    });
+
     test("上传视频作为生成设置引用时携带首帧预览，而不是播放器地址", () => {
         const source = videoNode("uploaded-video");
         source.metadata = {
@@ -191,7 +257,7 @@ describe("canvas resource mention slots", () => {
         expect(references.get(target.id)?.map((reference) => reference.nodeId)).toEqual([audio.id]);
         expect(references.get(config.id)?.map((reference) => reference.nodeId)).toEqual([target.id, audio.id]);
         expect(references.get(image.id)?.map((reference) => reference.nodeId)).toEqual([]);
-        expect(buildNodeMentionReferences(image, nodes, connections)).toEqual([]);
+        expect(buildNodeMentionReferences(image, nodes, connections).map((reference) => reference.nodeId)).toEqual([image.id]);
     });
 
     test("素材库身份 token 保持稳定", () => {

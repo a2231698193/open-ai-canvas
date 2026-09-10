@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { App, Button, Descriptions, Drawer, Progress, Skeleton, Tabs } from "antd";
+import { App, Button, Descriptions, Progress, Skeleton, Tabs } from "antd";
+import { AppDrawer } from "@/components/ui/product/app-drawer";
 import { IconButton } from "@/components/ui/base/buttons";
 import { EmptyState } from "@/components/ui/product/empty-state";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -46,7 +47,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
     useEffect(() => {
         if (!userId) return;
         let active = true;
-        void listAdminUserLedger(userId, { page: ledgerPage, limit: 20 })
+        void listAdminUserLedger(userId, { page: ledgerPage, pageSize: 20 })
             .then((result) => {
                 if (active) {
                     setLedger(result.entries);
@@ -61,7 +62,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
     useEffect(() => {
         if (!userId) return;
         let active = true;
-        void listAdminUserTasks(userId, { page: taskPage, limit: 20 })
+        void listAdminUserTasks(userId, { page: taskPage, pageSize: 20 })
             .then((result) => {
                 if (active) {
                     setTasks(result.tasks);
@@ -76,7 +77,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
     useEffect(() => {
         if (!userId) return;
         let active = true;
-        void listAdminUserAuditEvents(userId, { page: auditPage, limit: 20 })
+        void listAdminUserAuditEvents(userId, { page: auditPage, pageSize: 20 })
             .then((result) => {
                 if (active) {
                     setEvents(result.events);
@@ -90,12 +91,11 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
     }, [auditPage, message, userId]);
 
     return (
-        <Drawer
+        <AppDrawer
             title={detail ? `${detail.user.displayName || detail.user.username} · 用户详情` : "用户详情"}
             open={Boolean(userId)}
             onClose={onClose}
             size="min(920px, 100vw)"
-            destroyOnHidden
             rootClassName="admin-drawer"
             extra={onNavigate ? (
                 <div className="flex items-center gap-1">
@@ -229,7 +229,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
             ) : (
                 <EmptyState size="compact" title="没有用户详情" />
             )}
-        </Drawer>
+        </AppDrawer>
     );
 }
 

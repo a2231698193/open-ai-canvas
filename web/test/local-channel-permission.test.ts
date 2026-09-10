@@ -1,18 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import axios from "axios";
-
 import { desktopLocalChannelUiVisible } from "../src/lib/desktop-local-channel";
 import { fetchChannelModels } from "../src/services/api/image";
 import { channelRequest } from "../src/services/api/custom-channel-relay";
 import { backendProviderConfig } from "../src/services/api/generation-task";
+import { apiClient } from "../src/services/api/request";
 import { channelConnectionSignature, createModelChannel, defaultConfig, normalizeConfigSnapshot, resolveModelRequestConfig, type ModelChannel } from "../src/stores/use-config-store";
 import { defaultFeatureAvailability, useUserStore } from "../src/stores/use-user-store";
 
-const originalAxiosPost = axios.post;
+const originalApiRequest = apiClient.request;
 const originalWindow = globalThis.window;
 
 afterEach(() => {
-    axios.post = originalAxiosPost;
+    apiClient.request = originalApiRequest;
     useUserStore.setState({ features: defaultFeatureAvailability });
     if (originalWindow === undefined) delete (globalThis as { window?: Window }).window;
     else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
@@ -88,10 +87,10 @@ describe("允许本机渠道前端请求合同", () => {
 
     test("登录态模型拉取同样消费运行时投影而不是 forged persisted flag", async () => {
         const bodies: Record<string, unknown>[] = [];
-        axios.post = (async (_url: string, body: Record<string, unknown>) => {
-            bodies.push(body);
+        apiClient.request = (async (request) => {
+            bodies.push(request.data as Record<string, unknown>);
             return { data: { code: 0, data: { models: [{ id: "local-model" }] }, msg: "ok" } };
-        }) as typeof axios.post;
+        }) as typeof apiClient.request;
         const channel: ModelChannel = forgedLocalGenerationConfig().channels[0];
 
         setLocalChannelRuntime(false, "127.0.0.1");

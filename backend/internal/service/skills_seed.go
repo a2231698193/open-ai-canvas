@@ -13,25 +13,37 @@ import (
 //go:embed seed/skills.json
 var builtinSkillsJSON []byte
 
+type seedShowcaseMedia struct {
+	Type        string `json:"type"`
+	ShowcaseURI string `json:"showcase_uri"`
+	ShowcaseURL string `json:"showcase_url"`
+}
+
+type seedEffectiveUser struct {
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+	UID       string `json:"uid"`
+}
+
 type builtinSkillDefinition struct {
-	SkillID       string               `json:"skill_id"`
-	SkillName     string               `json:"skill_name"`
-	Description   string               `json:"description"`
-	Instruction   string               `json:"instruction"`
-	Status        int                  `json:"status"`
-	MarkdownURL   string               `json:"markdown_url"`
-	CreateTime    int64                `json:"create_time"`
-	UpdateTime    int64                `json:"update_time"`
-	Source        int                  `json:"source"`
-	Tag           string               `json:"tag"`
-	SortWeight    int                  `json:"sort_weight"`
-	IsPrivate     bool                 `json:"is_private"`
-	LikeCount     int64                `json:"like_count"`
-	OwnerUID      string               `json:"owner_uid"`
-	EffectiveUser SkillEffectiveUser   `json:"effective_user"`
-	ShowcaseMedia []SkillShowcaseMedia `json:"showcase_media"`
-	AddedCount    int64                `json:"added_count"`
-	ExtraInfo     string               `json:"extra_info"`
+	SkillID       string              `json:"skill_id"`
+	SkillName     string              `json:"skill_name"`
+	Description   string              `json:"description"`
+	Instruction   string              `json:"instruction"`
+	Status        int                 `json:"status"`
+	MarkdownURL   string              `json:"markdown_url"`
+	CreateTime    int64               `json:"create_time"`
+	UpdateTime    int64               `json:"update_time"`
+	Source        int                 `json:"source"`
+	Tag           string              `json:"tag"`
+	SortWeight    int                 `json:"sort_weight"`
+	IsPrivate     bool                `json:"is_private"`
+	LikeCount     int64               `json:"like_count"`
+	OwnerUID      string              `json:"owner_uid"`
+	EffectiveUser seedEffectiveUser   `json:"effective_user"`
+	ShowcaseMedia []seedShowcaseMedia `json:"showcase_media"`
+	AddedCount    int64               `json:"added_count"`
+	ExtraInfo     string              `json:"extra_info"`
 }
 
 // EnsureBuiltinSkills 校验并同步内置技能正文；用户关系独立保存，因此重复启动不会清空加入或收藏状态。
@@ -67,10 +79,14 @@ func (s *Service) EnsureBuiltinSkills() error {
 		if authorName == "" || (authorAvatarURL != "" && !validSkillURL(authorAvatarURL)) {
 			return fmt.Errorf("内置技能作者信息无效: %s", id)
 		}
+		media := make([]SkillShowcaseMedia, 0, len(definition.ShowcaseMedia))
+		for _, item := range definition.ShowcaseMedia {
+			media = append(media, SkillShowcaseMedia{Type: item.Type, ShowcaseURI: item.ShowcaseURI, ShowcaseURL: item.ShowcaseURL})
+		}
 		normalized, mediaJSON, err := normalizeSkillMutationRequest(SkillMutationRequest{
 			SkillName: definition.SkillName, Description: definition.Description, Instruction: definition.Instruction,
 			Tag: definition.Tag, IsPrivate: definition.IsPrivate, MarkdownURL: definition.MarkdownURL,
-			ShowcaseMedia: definition.ShowcaseMedia, ExtraInfo: definition.ExtraInfo,
+			ShowcaseMedia: media, ExtraInfo: definition.ExtraInfo,
 		}, true)
 		if err != nil {
 			return fmt.Errorf("内置技能 %s 数据无效: %w", id, err)

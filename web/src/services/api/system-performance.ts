@@ -1,4 +1,4 @@
-import { apiClient, request } from "./request";
+import { http } from "./request";
 
 export type DatabasePoolStats = {
     maxOpenConnections: number;
@@ -117,9 +117,9 @@ export type RuntimeCacheClearResult = {
 };
 
 export function getSystemPerformance(signal?: AbortSignal) {
-    return request<SystemPerformance>(apiClient.get("/admin/system-performance", { signal }));
+    return http.get<SystemPerformance>("/admin/system-performance", { signal });
 }
 
 export function clearRuntimeCache() {
-    return request<RuntimeCacheClearResult>(apiClient.post("/admin/system-performance/cache/clear", { scope: "runtime" }));
+    return http.post<RuntimeCacheClearResult>("/admin/system-performance/cache/clear", { scope: "runtime" });
 }

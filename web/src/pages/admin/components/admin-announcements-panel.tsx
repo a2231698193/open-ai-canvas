@@ -121,7 +121,7 @@ export default function AdminAnnouncementsPanel({
                     keyword: queryKeyword || undefined,
                     status: queryStatus === "all" ? undefined : queryStatus,
                     page: targetPage,
-                    limit: targetPageSize,
+                    pageSize: targetPageSize,
                 }),
                 targetPage,
                 targetPageSize,
@@ -1024,13 +1024,13 @@ function assertAnnouncementMutationResult(
     }
 }
 
-function assertAnnouncementListResult(result: unknown, expectedPage: number, expectedLimit: number) {
-    if (!isRecord(result) || !Array.isArray(result.announcements) || !Number.isInteger(result.total) || (result.total as number) < 0 || result.page !== expectedPage || result.limit !== expectedLimit) {
+function assertAnnouncementListResult(result: unknown, expectedPage: number, expectedPageSize: number) {
+    if (!isRecord(result) || !Array.isArray(result.announcements) || !Number.isInteger(result.total) || (result.total as number) < 0 || result.page !== expectedPage || result.pageSize !== expectedPageSize) {
         throw new Error("公告列表返回格式不完整");
     }
     const announcements = result.announcements.map((value) => normalizeAnnouncementListItem(value));
     if ((result.total as number) < announcements.length) throw new Error("公告列表总数与当前页数据不一致");
-    return { announcements, total: result.total as number, page: expectedPage, limit: expectedLimit };
+    return { announcements, total: result.total as number, page: expectedPage, pageSize: expectedPageSize };
 }
 
 function normalizeAnnouncementListItem(value: unknown): SystemAnnouncement {
@@ -1076,9 +1076,9 @@ async function inspectPendingReview(review: AnnouncementPendingReview) {
     for (const title of queryTitles) {
         let targetPage = 1;
         while (targetPage <= 50) {
-            const data = assertAnnouncementListResult(await listAdminAnnouncements({ keyword: title, page: targetPage, limit: 100 }), targetPage, 100);
+            const data = assertAnnouncementListResult(await listAdminAnnouncements({ keyword: title, page: targetPage, pageSize: 100 }), targetPage, 100);
             data.announcements.forEach((announcement) => candidates.set(announcement.id, announcement));
-            if (targetPage >= Math.max(1, Math.ceil(data.total / data.limit))) break;
+            if (targetPage >= Math.max(1, Math.ceil(data.total / data.pageSize))) break;
             if (targetPage === 50) throw new Error("同名匹配记录过多，无法安全定位目标；请稍后重试。");
             targetPage += 1;
         }

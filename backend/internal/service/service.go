@@ -83,17 +83,18 @@ type CreateSessionRequest struct {
 }
 
 type CreateTaskRequest struct {
-	SessionID      string         `json:"sessionId"`
-	ProjectID      string         `json:"projectId"`
-	Type           string         `json:"type"`
-	Operation      string         `json:"operation"`
-	Prompt         string         `json:"prompt"`
-	Provider       string         `json:"provider"`
-	Model          string         `json:"model"`
-	LogicalModelID string         `json:"logicalModelId"`
-	Input          map[string]any `json:"input"`
-	TraceID        string         `json:"-"`
-	RequestID      string         `json:"-"`
+	creationPrepare *creationTaskPreparation
+	SessionID       string         `json:"sessionId"`
+	ProjectID       string         `json:"projectId"`
+	Type            string         `json:"type"`
+	Operation       string         `json:"operation"`
+	Prompt          string         `json:"prompt"`
+	Provider        string         `json:"provider"`
+	Model           string         `json:"model"`
+	LogicalModelID  string         `json:"logicalModelId"`
+	Input           map[string]any `json:"input"`
+	TraceID         string         `json:"-"`
+	RequestID       string         `json:"-"`
 }
 
 type SessionDetail struct {

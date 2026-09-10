@@ -10,7 +10,7 @@ test("connection menu omits the header and provides descriptions for every optio
     expect(component).not.toContain("ChevronRight");
     expect(component).not.toContain("absolute inset-x-8 top-0 h-px");
     const options = component.match(/<ConnectionCreateOption [^\n]+/g) || [];
-    expect(options).toHaveLength(7);
+    expect(options).toHaveLength(8);
     for (const option of options) expect(option).toMatch(/description="[^"]+"/);
 });
 

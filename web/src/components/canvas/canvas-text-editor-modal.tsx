@@ -1,4 +1,5 @@
-import { App, Button, ColorPicker, Dropdown, Input, Modal, Popover } from "antd";
+import { App, Button, ColorPicker, Dropdown, Input, Popover } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -109,7 +110,7 @@ export function CanvasTextEditorModal({ node, open, onClose, onSave }: CanvasTex
     }, [dirty, editor, node?.id, open, saving, title]);
 
     return (
-        <Modal
+        <AppModal
             className="canvas-text-editor-modal"
             open={open && Boolean(node)}
             title={null}
@@ -119,7 +120,7 @@ export function CanvasTextEditorModal({ node, open, onClose, onSave }: CanvasTex
             destroyOnHidden
             width="min(1180px, calc(100vw - 24px))"
             onCancel={close}
-            styles={{ container: { padding: 0, overflow: "hidden", borderRadius: 8 }, body: { padding: 0 } }}
+            flush styles={{ container: { borderRadius: 8 } }}
         >
             <section className="flex h-[min(88dvh,840px)] flex-col overflow-hidden" style={{ background: theme.node.panel, color: theme.node.text }}>
                 <header className="flex h-13 shrink-0 items-center gap-3 border-b px-3" style={{ borderColor: theme.node.stroke }}>
@@ -154,7 +155,7 @@ export function CanvasTextEditorModal({ node, open, onClose, onSave }: CanvasTex
                     <span className="ml-auto">Ctrl/⌘S 保存</span>
                 </footer>
             </section>
-        </Modal>
+        </AppModal>
     );
 }
 

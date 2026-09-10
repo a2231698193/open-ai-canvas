@@ -3,6 +3,7 @@ package model
 import "time"
 
 type Task struct {
+	CreationSubmissionID   *string    `json:"creationSubmissionId,omitempty" gorm:"size:36;uniqueIndex"`
 	ID                     string     `json:"id" gorm:"primaryKey;size:36"`
 	UserID                 string     `json:"userId" gorm:"index;size:36;index:idx_tasks_user_created,priority:1;index:idx_tasks_user_project_created,priority:1"`
 	TraceID                string     `json:"-" gorm:"index;size:96"`

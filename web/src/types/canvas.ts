@@ -5,6 +5,7 @@ import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-textu
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
 import type { PortraitClearanceNodeState } from "@/lib/portrait-clearance/contracts";
 import type { ArtCritiqueNodeState } from "@/lib/art-critique/contracts";
+import type { CameraControlOptions } from "@/lib/canvas/camera-prompt-library";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
 
 export type Position = {
@@ -429,6 +430,8 @@ export type CanvasNodeMetadata = {
     portraitClearance?: PortraitClearanceNodeState;
     /** AI 审美批改节点只保存当前报告和输入指纹，不保存图片二进制。 */
     artCritique?: ArtCritiqueNodeState;
+    /** 摄像机控制选项，启用后生成时自动追加摄影机/镜头/焦距/光圈提示词。 */
+    cameraControl?: CameraControlOptions;
 };
 
 export type CanvasNodeData = {

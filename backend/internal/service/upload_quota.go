@@ -61,7 +61,7 @@ func (s *Service) reserveRetryUploadQuota(userID string, size int64) (string, er
 	defer s.storageMu.Unlock()
 	if err := s.repo.ReserveDailyUpload(userID, day, size, megabytes(policy.Resource.DailyUploadMB)); err != nil {
 		if errors.Is(err, repository.ErrDailyUploadLimitExceeded) {
-			return "", BadAuthRequest(fmt.Sprintf("每个账号 UTC 自然日上传总量必须小于 %s", formatStorageLimit(megabytes(policy.Resource.DailyUploadMB))))
+			return "", QuotaExceeded(fmt.Sprintf("每个账号 UTC 自然日上传总量必须小于 %s", formatStorageLimit(megabytes(policy.Resource.DailyUploadMB))))
 		}
 		return "", err
 	}
@@ -86,13 +86,13 @@ func (s *Service) reserveUserStoredFileQuota(userID string, size int64, exclusiv
 		s.pendingStorage = map[string]int64{}
 	}
 	if storedBytes+s.pendingStorage[userID]+size >= storedLimit {
-		return "", BadAuthRequest(fmt.Sprintf("账号资源和会话附件已达到 %s 上限，请联系管理员清理历史文件", formatStorageLimit(storedLimit)))
+		return "", QuotaExceeded(fmt.Sprintf("账号资源和会话附件已达到 %s 上限，请联系管理员清理历史文件", formatStorageLimit(storedLimit)))
 	}
 	s.pendingStorage[userID] += size
 	if err := s.repo.ReserveDailyUpload(userID, day, size, dailyLimit); err != nil {
 		s.decreasePendingStorage(userID, size)
 		if errors.Is(err, repository.ErrDailyUploadLimitExceeded) {
-			return "", BadAuthRequest(fmt.Sprintf("每个账号 UTC 自然日上传总量必须小于 %s", formatStorageLimit(dailyLimit)))
+			return "", QuotaExceeded(fmt.Sprintf("每个账号 UTC 自然日上传总量必须小于 %s", formatStorageLimit(dailyLimit)))
 		}
 		return "", err
 	}

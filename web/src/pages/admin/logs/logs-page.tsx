@@ -46,7 +46,7 @@ export default function LogsPage() {
     useEffect(() => {
         const sequence = ++requestSequence.current;
         setLoading(true);
-        void listAdminApiLogs({ recordType, keyword: debouncedKeyword || undefined, status: status === "all" ? undefined : status, page, limit: pageSize })
+        void listAdminApiLogs({ recordType, keyword: debouncedKeyword || undefined, status: status === "all" ? undefined : status, page, pageSize })
             .then((result) => {
                 if (sequence !== requestSequence.current) return;
                 setLogs(result.logs);

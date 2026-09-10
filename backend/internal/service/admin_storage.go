@@ -45,7 +45,7 @@ type AdminResourcePage struct {
 	Items []AdminStorageResourceView `json:"items"`
 	Total int64                      `json:"total"`
 	Page  int                        `json:"page"`
-	Limit int                        `json:"limit"`
+	Limit int                        `json:"pageSize"`
 }
 
 type AdminStorageStats struct {

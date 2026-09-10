@@ -393,7 +393,7 @@ export function CanvasScriptNodeContent({
                     className="thin-scrollbar h-full min-h-0 w-full touch-pan-y resize-none overflow-y-auto overflow-x-hidden overscroll-contain rounded-md border bg-transparent px-3 py-2 text-sm leading-5 outline-none transition placeholder:opacity-45 focus:ring-1"
                     style={{ borderColor: theme.node.stroke, color: theme.node.text, "--tw-ring-color": theme.node.muted } as CSSProperties}
                     value={prompt}
-                    placeholder="描述想生成的脚本或视频内容"
+                    placeholder="输入剧本或剧情，以及总时长等要求，自动拆分为镜头"
                     onContentSizeChange={resizePrompt}
                     onChange={(value) => {
                         setPrompt(value);
@@ -447,11 +447,11 @@ export function CanvasScriptNodeContent({
                             value={shotDuration}
                             disabled={node.metadata?.status === "loading"}
                             options={[
-                                { value: "auto", label: "时长自动" },
-                                { value: "5", label: "5 秒" },
-                                { value: "10", label: "10 秒" },
-                                { value: "15", label: "15 秒" },
-                                { value: "30", label: "30 秒" },
+                                { value: "auto", label: "单镜时长自动" },
+                                { value: "5", label: "每镜 5 秒" },
+                                { value: "10", label: "每镜 10 秒" },
+                                { value: "15", label: "每镜 15 秒" },
+                                { value: "30", label: "每镜 30 秒" },
                             ]}
                             popupMatchSelectWidth={false}
                             onChange={onShotDurationChange}

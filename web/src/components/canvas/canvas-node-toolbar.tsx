@@ -41,6 +41,7 @@ type CanvasNodeToolbarProps = {
     onUpscale: (node: CanvasNodeData) => void;
     onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
+    onLighting: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onExtractVideoFrames: (node: CanvasNodeData) => void;
     onExtractAudioFromVideo: (node: CanvasNodeData) => void;
@@ -101,6 +102,7 @@ export function CanvasNodeToolbar({
     onUpscale,
     onSuperResolve,
     onAngle,
+    onLighting,
     onViewImage,
     onExtractVideoFrames,
     onExtractAudioFromVideo,
@@ -217,7 +219,7 @@ export function CanvasNodeToolbar({
         }
         copyText(prompt, "提示词已复制");
     };
-    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onAnnotate, onMaskEdit, onEmotion, onPortraitTexture, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt });
+    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onAnnotate, onMaskEdit, onEmotion, onPortraitTexture, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onLighting, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt });
 
     // 构建 ToolContext——供注册表解析工具
     const nodeHoverHandlers = {

@@ -8,12 +8,12 @@
 npx -y @ddcat666/open-ai-canvas-agent
 ```
 
-本仓库开发时也可以直接运行：
+本仓库开发时也可以直接运行。依赖锁定在 `bun.lock`，不要用 pnpm 或 npm 覆盖同一套 `node_modules`：
 
 ```bash
 cd canvas-agent
-npm install
-npm run build
+bun install
+bun run build
 node dist/index.js
 ```
 

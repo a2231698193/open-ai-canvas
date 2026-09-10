@@ -180,10 +180,10 @@ func TestQueryAPICallLogsHidesInternalPollStages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 3 || len(items) != 3 {
-		t.Fatalf("visible logs = total:%d items:%#v, want create and download logs without polls", total, items)
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("visible logs = total:%d items:%#v, want only create logs without polls or downloads", total, items)
 	}
-	if items[0].ID != "video-create" || items[1].ID != "image-download" || items[2].ID != "image-create" {
-		t.Fatalf("visible logs = %#v, want video-create, image-download, image-create", items)
+	if items[0].ID != "video-create" || items[1].ID != "image-create" {
+		t.Fatalf("visible logs = %#v, want video-create and image-create", items)
 	}
 }

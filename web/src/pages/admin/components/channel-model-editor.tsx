@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Alert, App, Button, Form, Input, Modal, Segmented, Switch, Tabs } from "antd";
+import { Alert, App, Button, Form, Input, Segmented, Switch, Tabs } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { FlaskConical, Plus } from "lucide-react";
 import { ModelIconPicker } from "@/components/model-logo";
 import { ModelIcon } from "@/components/model-picker";
@@ -166,7 +167,7 @@ export function ChannelModelEditor({
     };
 
     return (
-        <Modal
+        <AppModal
             open
             title={
                 <div className="admin-model-editor-title">
@@ -183,7 +184,7 @@ export function ChannelModelEditor({
             keyboard={!busy}
             closable={!busy}
             onCancel={requestClose}
-            styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0, minHeight: 0, flex: 1 }, header: { margin: 0 }, footer: { margin: 0 } }}
+            flush styles={{ body: { minHeight: 0, flex: 1 }, header: { margin: 0 }, footer: { margin: 0 } }}
             footer={
                 <div className="admin-model-editor-footer-actions">
                     <div className="admin-model-editor-footer-status">
@@ -396,7 +397,7 @@ export function ChannelModelEditor({
                     ]}
                 />
             </Form>
-        </Modal>
+        </AppModal>
     );
 }
 

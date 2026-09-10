@@ -2,20 +2,25 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
+
 	"infinite-canvas/backend/internal/model"
 )
 
-// ModelCatalogSource 表示模型目录来源
+// ModelCatalogSource 决定 ModelCatalogResponse 中哪一个集合具有语义。
+// frontend 与 system 的数据形状互斥，调用方不能把缺失集合解释成空目录。
 type ModelCatalogSource string
 
 const (
-	// ModelCatalogSourceFrontend 前台模型虚拟渠道
+	// ModelCatalogSourceFrontend 表示目录由前台逻辑模型组成。
 	ModelCatalogSourceFrontend ModelCatalogSource = "frontend"
-	// ModelCatalogSourceSystem 脱敏的系统渠道模型
+	// ModelCatalogSourceSystem 表示目录由脱敏后的系统渠道与渠道模型组成。
 	ModelCatalogSourceSystem ModelCatalogSource = "system"
 )
 
-// ModelCatalogResponse 统一模型目录响应
+// ModelCatalogResponse 是创作端模型选择的统一读模型。
+// Source=frontend 时读取 Models；Source=system 时读取 Channels。
 type ModelCatalogResponse struct {
 	Source   ModelCatalogSource     `json:"source"`
 	Models   []PublicLogicalModel   `json:"models,omitempty"`
@@ -61,8 +66,8 @@ type PublicChannelModelPriceTier struct {
 	CachedTokenPriceMicrocredits int64             `json:"cachedTokenPriceMicrocredits"`
 }
 
-// ModelCatalog 返回统一的模型目录
-// 根据 frontendModelsEnabled 开关返回前台模型或系统渠道模型
+// ModelCatalog 按功能开关返回互斥的数据形状：frontend 使用 Models，system 使用 Channels。
+// 系统渠道目录只负责安全发布可解释的读模型；任务创建仍会用持久化能力与价格档再次强校验。
 func (s *Service) ModelCatalog(intent *ModelRequestIntent) (*ModelCatalogResponse, error) {
 	frontendEnabled, err := s.FeatureEnabled(FeatureFrontendModels)
 	if err != nil {
@@ -70,7 +75,6 @@ func (s *Service) ModelCatalog(intent *ModelRequestIntent) (*ModelCatalogRespons
 	}
 
 	if frontendEnabled {
-		// 返回前台模型目录
 		models, err := s.PublicLogicalModels(intent)
 		if err != nil {
 			return nil, err
@@ -81,7 +85,6 @@ func (s *Service) ModelCatalog(intent *ModelRequestIntent) (*ModelCatalogRespons
 		}, nil
 	}
 
-	// 返回脱敏的系统渠道模型目录
 	channels, err := s.publicSystemChannelCatalog(intent)
 	if err != nil {
 		return nil, err
@@ -92,8 +95,8 @@ func (s *Service) ModelCatalog(intent *ModelRequestIntent) (*ModelCatalogRespons
 	}, nil
 }
 
-// publicSystemChannelCatalog 返回脱敏后的系统渠道模型目录
-// 只包含普通用户可见的信息，不包含密钥、Base URL、供应商信息等
+// publicSystemChannelCatalog 组装普通用户可见的系统渠道读模型，不暴露密钥、Base URL 等执行凭证。
+// 这是读展示路径：单个损坏模型被隔离并记录诊断；仓储查询失败仍整体返回错误，避免伪装成空目录。
 func (s *Service) publicSystemChannelCatalog(intent *ModelRequestIntent) ([]PublicChannelCatalog, error) {
 	channels, err := s.repo.SystemChannels(true)
 	if err != nil {
@@ -117,12 +120,24 @@ func (s *Service) publicSystemChannelCatalog(intent *ModelRequestIntent) ([]Publ
 				continue
 			}
 
-			// 如果提供了意图，进行能力过滤
-			if intent != nil && !s.channelModelMatchesIntent(&cm, intent) {
-				continue
+			// 目录是读路径：单个损坏模型应被隔离并记录诊断，不能拖垮其余可用模型；
+			// 同一记录进入任务创建写路径时会失败关闭，不会绕过能力合同。
+			if intent != nil {
+				matched, matchErr := s.channelModelMatchesIntent(&cm, intent)
+				if matchErr != nil {
+					log.Printf("system channel model omitted from catalog id=%s: invalid capability: %v", cm.ID, matchErr)
+					continue
+				}
+				if !matched {
+					continue
+				}
 			}
 
-			publicModel := s.sanitizeChannelModel(&cm)
+			publicModel, sanitizeErr := s.sanitizeChannelModel(&cm)
+			if sanitizeErr != nil {
+				log.Printf("system channel model omitted from catalog id=%s: %v", cm.ID, sanitizeErr)
+				continue
+			}
 			publicModels = append(publicModels, publicModel)
 		}
 
@@ -140,12 +155,15 @@ func (s *Service) publicSystemChannelCatalog(intent *ModelRequestIntent) ([]Publ
 	return result, nil
 }
 
-// sanitizeChannelModel 脱敏渠道模型，只保留用户可见的信息
-func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) PublicChannelModel {
-	// 价格档已经在 cm.PriceTiers 中加载
+// sanitizeChannelModel 脱敏渠道模型，只保留用户可见且可执行的信息。
+// 能力 JSON 无效时返回错误，由目录聚合层执行“隔离 + 告警”，禁止发布缺失能力合同的模型。
+func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) (PublicChannelModel, error) {
+	if cm == nil {
+		return PublicChannelModel{}, fmt.Errorf("渠道模型为空")
+	}
+	// 仓储层已预加载价格档；这里只发布当前启用且价格字段自洽的活动档位。
 	priceTiers := cm.PriceTiers
 
-	// 转换为公开的价格档
 	publicTiers := make([]PublicChannelModelPriceTier, 0, len(priceTiers))
 	for _, tier := range priceTiers {
 		if !tier.Enabled || !tier.PriceConfigured || !ValidatePriceTierPrice(&tier, cm.Capability, cm.Protocol) {
@@ -164,19 +182,18 @@ func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) PublicChannelMode
 		})
 	}
 
-	// 计算价格展示
+	// 展示价格和 Available 必须从同一批有效档位派生，不能回退旧标量价格制造“可用”假象。
 	pricingMode, displayPrice, priceLabel := computeChannelModelPriceDisplay(cm, publicTiers)
 
-	// 解析能力配置
 	var capabilityConfig map[string]any
-	if cm.CapabilityConfigJSON != "" {
-		config, _ := DecodeModelCapabilityConfig(cm.CapabilityConfigJSON)
-		if config != nil {
-			normalized, _ := NormalizeModelCapabilityConfigForModel(cm.Capability, string(cm.Protocol), firstNonEmpty(cm.ProviderModelKey, cm.ModelKey), config)
-			if normalized != nil {
-				// 转换为 map[string]any
-				capabilityConfig = modelCapabilityConfigToMap(normalized)
-			}
+	normalized, err := normalizedChannelModelCapability(cm)
+	if err != nil {
+		return PublicChannelModel{}, err
+	}
+	if normalized != nil {
+		capabilityConfig, err = modelCapabilityConfigToMap(normalized)
+		if err != nil {
+			return PublicChannelModel{}, fmt.Errorf("投影渠道模型能力配置失败：%w", err)
 		}
 	}
 
@@ -193,11 +210,12 @@ func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) PublicChannelMode
 		PricingMode:      pricingMode,
 		DisplayPrice:     displayPrice,
 		PriceLabel:       priceLabel,
-		Available:        len(publicTiers) > 0 || (len(priceTiers) == 0 && HasValidPrice(cm)),
-	}
+		Available:        len(publicTiers) > 0,
+	}, nil
 }
 
-// computeChannelModelPriceDisplay 计算渠道模型的价格展示信息
+// computeChannelModelPriceDisplay 从已过滤的公开价格档生成展示信息。
+// 无有效档位时明确标记未配置；多档位不猜测用户最终规格。
 func computeChannelModelPriceDisplay(cm *model.ChannelModel, priceTiers []PublicChannelModelPriceTier) (string, *int64, string) {
 	if len(priceTiers) == 0 {
 		return "provider", nil, "未配置"
@@ -229,27 +247,42 @@ func getChannelTierDisplayPrice(tier PublicChannelModelPriceTier) int64 {
 	return 0
 }
 
-// channelModelMatchesIntent 检查渠道模型是否匹配意图
-func (s *Service) channelModelMatchesIntent(cm *model.ChannelModel, intent *ModelRequestIntent) bool {
-	if intent.Capability != "" && cm.Capability != intent.Capability {
-		return false
+// channelModelMatchesIntent 使用与任务 admission 相同的服务端能力合同过滤目录。
+// 音频能力当前没有可编辑的细分能力 JSON，只校验能力类型；其参数仍由 provider 专用校验负责。
+func (s *Service) channelModelMatchesIntent(cm *model.ChannelModel, intent *ModelRequestIntent) (bool, error) {
+	if cm == nil || intent == nil {
+		return true, nil
 	}
-	// 这里可以添加更多的能力匹配逻辑
-	return true
+	if normalizeCapability(intent.Capability) != "" && normalizeCapability(cm.Capability) != normalizeCapability(intent.Capability) {
+		return false, nil
+	}
+	if normalizeCapability(cm.Capability) == "audio" {
+		return true, nil
+	}
+	config, err := normalizedChannelModelCapability(cm)
+	if err != nil {
+		return false, err
+	}
+	spec, err := CapabilitySpecFromModelCapabilityConfig(config, cm.Capability)
+	if err != nil {
+		return false, err
+	}
+	match := MatchCapability(spec, *intent)
+	return match.Matched, nil
 }
 
 // modelCapabilityConfigToMap 将 ModelCapabilityConfig 转换为 map[string]any
-func modelCapabilityConfigToMap(config *ModelCapabilityConfig) map[string]any {
+func modelCapabilityConfigToMap(config *ModelCapabilityConfig) (map[string]any, error) {
 	if config == nil {
-		return nil
+		return nil, nil
 	}
 	encoded, err := json.Marshal(config)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var result map[string]any
 	if err := json.Unmarshal(encoded, &result); err != nil {
-		return nil
+		return nil, err
 	}
-	return result
+	return result, nil
 }

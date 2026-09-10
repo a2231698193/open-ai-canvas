@@ -35,6 +35,7 @@ type UseCanvasRenderModelOptions = {
     upscaleNodeId: string | null;
     superResolveNodeId: string | null;
     angleNodeId: string | null;
+    lightingNodeId: string | null;
     emotionNodeId: string | null;
     previewNodeId: string | null;
     contextMenu: ContextMenuState | null;
@@ -65,6 +66,7 @@ export function useCanvasRenderModel({
     upscaleNodeId,
     superResolveNodeId,
     angleNodeId,
+    lightingNodeId,
     emotionNodeId,
     previewNodeId,
     contextMenu,
@@ -225,6 +227,7 @@ export function useCanvasRenderModel({
     const upscaleNode = upscaleNodeId ? nodeById.get(upscaleNodeId) || null : null;
     const superResolveNode = superResolveNodeId ? nodeById.get(superResolveNodeId) || null : null;
     const angleNode = angleNodeId ? nodeById.get(angleNodeId) || null : null;
+    const lightingNode = lightingNodeId ? nodeById.get(lightingNodeId) || null : null;
     const emotionNode = emotionNodeId ? nodeById.get(emotionNodeId) || null : null;
     const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
     const contextMenuNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
@@ -361,6 +364,7 @@ export function useCanvasRenderModel({
         activeScriptNode,
         activeStylePresetId,
         angleNode,
+        lightingNode,
         emotionNode,
         annotationNode,
         batchChildCountById,

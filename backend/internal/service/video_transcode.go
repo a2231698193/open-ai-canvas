@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,13 +27,14 @@ import (
 var ErrPlaybackNotReady = errors.New("播放副本尚未就绪")
 
 const (
-	playbackDirName  = "playback"
-	videoCodecH264   = "h264"
-	videoCodecH265   = "h265"
-	videoCodecAV1    = "av1"
-	videoCodecVP9    = "vp9"
-	videoCodecMPEG4  = "mpeg4"
-	probeMaxMoovSize = 128 << 20
+	playbackDirName         = "playback"
+	videoCodecH264          = "h264"
+	videoCodecH265          = "h265"
+	videoCodecAV1           = "av1"
+	videoCodecVP9           = "vp9"
+	videoCodecMPEG4         = "mpeg4"
+	probeMaxMoovSize        = 128 << 20
+	playbackPersistAttempts = 3
 )
 
 // probeVideoCodec 解析本地 mp4 的 stsd 首个视频 sample entry fourcc，返回 h264/h265 等。
@@ -200,13 +202,16 @@ func (s *Service) maybeStartPlaybackTranscode(resource *model.Resource) {
 	}
 }
 
-// markPlaybackNone 将资源标记为无需播放副本（幂等，写失败不影响上传主流程）。
+// markPlaybackNone 将资源标记为无需播放副本（幂等）。写失败必须可见：空状态会被前端当成 processing 轮询。
 func markPlaybackNone(s *Service, resource *model.Resource) {
 	if resource.PlaybackStatus == model.PlaybackStatusNone {
 		return
 	}
+	previous := resource.PlaybackStatus
 	resource.PlaybackStatus = model.PlaybackStatusNone
-	_ = s.repo.SaveResource(resource)
+	if err := persistPlaybackResource(s.repo, resource, "mark_none"); err != nil {
+		resource.PlaybackStatus = previous
+	}
 }
 
 // runPlaybackTranscode 转码本地原件到 playback/<id>.mp4 并回写状态（幂等按 id 重载）。
@@ -217,7 +222,7 @@ func (s *Service) runPlaybackTranscode(userID string, resourceID string, src str
 			if res, err := s.repo.ResourceForUser(userID, resourceID); err == nil && res != nil {
 				res.PlaybackStatus = model.PlaybackStatusFailed
 				res.PlaybackError = clipText(fmt.Sprintf("转码 panic：%v", r), 1000)
-				_ = s.repo.SaveResource(res)
+				_ = persistPlaybackResource(s.repo, res, "panic")
 			}
 		}
 	}()
@@ -237,12 +242,29 @@ func (s *Service) runPlaybackTranscode(userID string, resourceID string, src str
 	}
 	res, err := s.repo.ResourceForUser(userID, resourceID)
 	if err != nil || res == nil {
+		log.Printf("playback transcode persist skipped: resource=%s user=%s lookup_error=%v", resourceID, userID, err)
 		return
 	}
 	res.PlaybackStatus = status
 	res.PlaybackObjectKey = objectKey
 	res.PlaybackError = errText
-	_ = s.repo.SaveResource(res)
+	_ = persistPlaybackResource(s.repo, res, "transcode_complete")
+}
+
+type resourcePersister interface {
+	SaveResource(resource *model.Resource) error
+}
+
+func persistPlaybackResource(saver resourcePersister, resource *model.Resource, context string) error {
+	var err error
+	for attempt := 1; attempt <= playbackPersistAttempts; attempt++ {
+		err = saver.SaveResource(resource)
+		if err == nil {
+			return nil
+		}
+	}
+	log.Printf("playback transcode persist failed: resource=%s context=%s attempts=%d error=%v", resource.ID, context, playbackPersistAttempts, err)
+	return err
 }
 
 // runH264Transcode 用 ffmpeg 将任意输入转为 H.264/AAC mp4（faststart、yuv420p、偶数尺寸）。

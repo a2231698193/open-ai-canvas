@@ -326,7 +326,7 @@ X-Diagnostic-Bundle-ID: DIAG_8F3K2P
 X-Diagnostic-Schema-Version: 1
 ```
 
-由于成功响应是二进制，不经过只处理 JSON 信封的 `request<T>` 解包函数；仍复用现有 `apiClient` 的认证和 Base URL，设置 `responseType: "blob"`。错误响应继续使用统一 `{ code, data, msg }` 语义，前端按响应类型解析。
+由于成功响应是二进制，不经过 JSON 信封解包；前端用 `http.raw`（同一 `apiClient` 的认证和 Base URL），设置 `responseType: "blob"`。错误响应继续使用统一 `{ code, data, msg }` 语义，前端按响应类型解析。
 
 ### 权限规则
 

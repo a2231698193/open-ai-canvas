@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { after, afterEach, test } from "node:test";
 import os from "node:os";
 import path from "node:path";
-import axios from "axios";
 import { createServer } from "vite";
 
 const webRoot = process.cwd();
@@ -24,14 +23,15 @@ const userStore = await runtime.ssrLoadModule("/src/stores/use-user-store.ts");
 const generationTask = await runtime.ssrLoadModule("/src/services/api/generation-task.ts");
 const relay = await runtime.ssrLoadModule("/src/services/api/custom-channel-relay.ts");
 const imageApi = await runtime.ssrLoadModule("/src/services/api/image.ts");
-const originalAxiosPost = axios.post;
+const requestModule = await runtime.ssrLoadModule("/src/services/api/request.ts");
+const originalApiRequest = requestModule.apiClient.request;
 
 after(async () => {
     await runtime.close();
 });
 
 afterEach(() => {
-    axios.post = originalAxiosPost;
+    requestModule.apiClient.request = originalApiRequest;
     userStore.useUserStore.setState({ features: userStore.defaultFeatureAvailability });
     if (originalWindow === undefined) delete globalThis.window;
     else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
@@ -89,8 +89,8 @@ test("actual generation request config reprojects forged persisted local permiss
 
 test("authenticated model fetch reprojects forged persisted local permission before backend request", async () => {
     const bodies = [];
-    axios.post = async (_url, body) => {
-        bodies.push(body);
+    requestModule.apiClient.request = async (request) => {
+        bodies.push(request.data);
         return { data: { code: 0, data: { models: [{ id: "local-model" }] }, msg: "ok" } };
     };
     const channel = forgedConfig().channels[0];

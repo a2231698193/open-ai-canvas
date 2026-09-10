@@ -318,6 +318,9 @@ func assetFromJSON(userID string, raw json.RawMessage) (model.Asset, error) {
 	if utf8.RuneCountInString(primaryVersionID) > 36 {
 		return model.Asset{}, BadAuthRequest("素材主版本 ID 不能超过 36 个字符")
 	}
+	if err := validateUserAssetDocument(raw); err != nil {
+		return model.Asset{}, err
+	}
 	category := model.NormalizeAssetCategory(model.AssetCategory(payload.Category), payload.Kind)
 	status := model.AssetVersionStatus(strings.TrimSpace(payload.Status))
 	if status == "" {

@@ -104,8 +104,9 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	if err != nil {
 		return nil, err
 	}
+	ctx = ensureOfficialProtocolAdapter(ctx, config.InterfaceType)
 	adapter, declarative := declarativeProtocolAdapterForContext(ctx, config.InterfaceType)
-	if !declarative && config.InterfaceType != string(model.ChannelInterfaceNewAPIChannel2) {
+	if !declarative {
 		return nil, BadAuthRequest("该任务的请求协议不支持安全查询上游状态")
 	}
 	input.Config = config
@@ -138,11 +139,7 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	queryCtx = withProviderOutboundPolicy(queryCtx, input.Config)
 	var result map[string]interface{}
 	var providerStatus string
-	if declarative {
-		result, providerStatus, err = queryProtocolAdapterVideoTask(queryCtx, input, adapter, providerRequestID)
-	} else {
-		result, providerStatus, err = queryNewAPIChannel2VideoTask(queryCtx, input, providerRequestID)
-	}
+	result, providerStatus, err = queryProtocolAdapterVideoTask(queryCtx, input, adapter, providerRequestID)
 	if err != nil {
 		_ = s.log(task.UserID, task.ID, "error", "人工查询上游视频任务失败", err.Error())
 		return nil, err

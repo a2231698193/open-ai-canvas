@@ -10,7 +10,7 @@ export function getPanelWidthBounds(): { min: number; max: number } {
 }
 
 // 智能体面板列包裹器：承载面板宽度管理、resize 拖拽和顶部停靠偏移。
-// 面板始终作为 flex 子元素避让画布；topInset 用于避让绝对定位的顶部栏（沉浸专注时顶部栏隐藏，传 0）。
+// 面板停靠在画布工具栏下方，避免悬浮工具栏遮挡 Agent 标题和消息；沉浸模式传 0。
 // closing 期间保持宽度和渲染，让面板播放滑出动画；动画结束后由父组件卸载列。
 export function AssistantPanelColumn({
     width,
@@ -53,7 +53,7 @@ export function AssistantPanelColumn({
     return (
         <div
             ref={columnRef}
-            className="relative flex shrink-0 overflow-hidden"
+            className="relative z-[var(--z-toolbar)] flex shrink-0 overflow-hidden"
             style={{
                 width,
                 paddingTop: topInset,

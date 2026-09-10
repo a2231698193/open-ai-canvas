@@ -35,13 +35,15 @@ test("task-center forwards explicit task/session provider config without inferri
     assert.equal(generationTask.backendProviderConfig({ ...explicitConfig, model: "local-enabled::same-model" }).allowLocalChannel, true);
 
     const bodies = [];
-    const originalPost = requestModule.apiClient.post;
-    requestModule.apiClient.post = async (url, body) => {
+    const originalRequest = requestModule.apiClient.request;
+    requestModule.apiClient.request = async (config) => {
+        const url = typeof config === "string" ? config : config.url;
+        const body = typeof config === "object" ? config.data : undefined;
         bodies.push({ url, body });
         if (url === "/sessions") {
-            return { data: { code: 0, data: { session: { id: "session", status: "active", prompt: "p", createdAt: "now", updatedAt: "now" }, messages: [], tasks: [], results: [] }, msg: "ok" } };
+            return { data: { code: 0, data: { session: { id: "session", status: "active", prompt: "p", createdAt: "now", updatedAt: "now" }, messages: [], tasks: [], results: [] }, msg: "ok" }, status: 200, headers: {} };
         }
-        return { data: { code: 0, data: { id: "task", type: "canvas_text", status: "queued", prompt: "p", attempts: 1, createdAt: "now", updatedAt: "now" }, msg: "ok" } };
+        return { data: { code: 0, data: { id: "task", type: "canvas_text", status: "queued", prompt: "p", attempts: 1, createdAt: "now", updatedAt: "now" }, msg: "ok" }, status: 200, headers: {} };
     };
     try {
         const providerConfig = {
@@ -58,7 +60,7 @@ test("task-center forwards explicit task/session provider config without inferri
             input: { mode: "text", config: providerConfig },
         });
     } finally {
-        requestModule.apiClient.post = originalPost;
+        requestModule.apiClient.request = originalRequest;
         userStore.useUserStore.setState({ features: userStore.defaultFeatureAvailability });
         globalThis.window = previousWindow;
         store.useConfigStore.setState({ config: previousConfig });

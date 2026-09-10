@@ -73,7 +73,7 @@ export default function CreditOperationsPanel({ users, activeOperation, onOperat
                 keyword: debouncedKeyword || undefined,
                 status: orderStatus,
                 page: targetPage,
-                limit: targetPageSize,
+                pageSize: targetPageSize,
             });
             if (requestId !== ordersRequestRef.current) return;
             if (targetPage > 1 && result.total > 0 && result.orders.length === 0) {
@@ -134,7 +134,7 @@ export default function CreditOperationsPanel({ users, activeOperation, onOperat
         if (activeOperation !== "adjustment") return;
         const requestId = ++userSearchRequestRef.current;
         setSearchingUsers(true);
-        void listAdminUsers({ keyword: debouncedAdjustmentSearch.trim() || undefined, page: 1, limit: 50 })
+        void listAdminUsers({ keyword: debouncedAdjustmentSearch.trim() || undefined, page: 1, pageSize: 50 })
             .then((result) => {
                 if (requestId !== userSearchRequestRef.current) return;
                 const selectedId = adjustmentForm.getFieldValue("userId");

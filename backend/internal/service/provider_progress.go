@@ -12,8 +12,8 @@ var providerProgressKeys = []string{"progress", "progresspercent", "progressperc
 
 var providerProgressContainers = []string{"data", "result", "task", "output", "operation", "response", "meta", "metadata"}
 
-// syncProviderTaskProgress is deliberately best-effort: progress telemetry must
-// never turn a successful provider response into a failed generation request.
+// syncProviderTaskProgress 只同步观测性进度，不参与生成结果提交。
+// 因此进度解析或持久化失败只记录日志，不能把已经成功的 Provider 响应改判为生成失败。
 func (s *Service) syncProviderTaskProgress(taskID string, responseBody []byte) {
 	if s == nil || s.repo == nil || strings.TrimSpace(taskID) == "" {
 		return

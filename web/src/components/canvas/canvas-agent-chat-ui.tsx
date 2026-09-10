@@ -3,7 +3,7 @@ import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowUp, AtSign, CheckCircle2, CircleAlert, ImagePlus, LoaderCircle, RotateCcw, Sparkles, UserRound, Wrench, X, XCircle } from "lucide-react";
+import { ArrowUp, AtSign, CheckCircle2, ChevronDown, CircleAlert, ImagePlus, LoaderCircle, RotateCcw, Sparkles, UserRound, Wrench, X, XCircle } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { CanvasAgentOperationImpact } from "@/lib/canvas/canvas-agent-ops";
@@ -100,10 +100,7 @@ export function AgentChatMessage({
     if (item.role === "tool") {
         if (objectField(item.detail, "status") === "pending") return <AgentPendingToolCard summary={item.text} detail={item.detail} theme={theme} onReject={() => onRejectTool?.(item.id)} onApprove={() => onApproveTool?.(item.id)} />;
         return (
-            <div className="flex items-start gap-2.5">
-                <AgentAvatar theme={theme} />
-                <AgentToolCard title={item.title || "工具调用"} text={item.text} detail={item.detail} theme={theme} />
-            </div>
+            <AgentToolCard title={item.title || "工具调用"} text={item.text} detail={item.detail} theme={theme} />
         );
     }
     return (
@@ -151,26 +148,26 @@ export function AgentPendingToolCard({ summary, detail, theme, onReject, onAppro
     return (
         <div className="flex items-start gap-2.5">
             <AgentAvatar theme={theme} />
-            <div className="min-w-0 flex-1 rounded-md p-3.5" style={{ background: "rgba(217,119,6,.07)", color: theme.node.text }}>
+            <div className="agent-pending-tool min-w-0 flex-1 rounded-md p-2.5" style={{ background: "rgba(217,119,6,.07)", color: theme.node.text }}>
                 <div className="flex items-start gap-3">
-                    <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md" style={{ color: "#d97706", background: "rgba(217,119,6,.1)" }}>
+                    <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md" style={{ color: "#d97706", background: "rgba(217,119,6,.1)" }}>
                         <CircleAlert className="size-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-5">
+                        <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold leading-5">
                             <span>确认工具调用</span>
                             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[var(--fs-label)] font-medium" style={{ color: "#d97706", background: "rgba(217,119,6,.1)" }}>
                                 等待确认
                             </span>
                         </div>
-                        <div className="mt-2 text-sm leading-6" style={{ color: theme.node.text }}>
+                        <div className="mt-1 text-xs leading-5" style={{ color: theme.node.text }}>
                             {summary}
                         </div>
                     </div>
                 </div>
                 {impact?.operationCount ? (
                     <div className="mt-3 pt-1">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-4 gap-1">
                             <ImpactMetric label="操作" value={impact.operationCount} theme={theme} />
                             <ImpactMetric label="涉及节点" value={impact.affectedNodeCount} theme={theme} />
                             <ImpactMetric label="删除" value={impact.destructiveCount} attention={impact.destructiveCount > 0} theme={theme} />
@@ -198,11 +195,11 @@ export function AgentPendingToolCard({ summary, detail, theme, onReject, onAppro
                     </details>
                 ) : null}
                 {onReject || onApprove ? (
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                        <Button danger className="!h-9" icon={<XCircle className="size-4" />} onClick={() => onReject?.()}>
+                    <div className="mt-2 flex gap-2">
+                        <Button danger size="small" className="!h-8 flex-1" icon={<XCircle className="size-3.5" />} onClick={() => onReject?.()}>
                             拒绝执行
                         </Button>
-                        <Button className="!h-9" icon={<CheckCircle2 className="size-4" />} style={{ borderColor: "rgba(22,163,74,.42)", color: "#16a34a", background: "transparent" }} onClick={() => onApprove?.()}>
+                        <Button size="small" className="!h-8 flex-1" icon={<CheckCircle2 className="size-3.5" />} style={{ borderColor: "rgba(22,163,74,.42)", color: "#16a34a", background: "transparent" }} onClick={() => onApprove?.()}>
                             批准执行
                         </Button>
                     </div>
@@ -242,27 +239,21 @@ function agentImpactFromDetail(detail: unknown) {
 export function AgentToolCard({ title, text, detail, theme }: { title: string; text: string; detail?: unknown; theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
     const state = toolCardState(title, text, detail);
     return (
-        <details className="min-w-0 flex-1 rounded-md px-3 py-3 text-left" style={{ background: theme.spatial.surface, color: theme.node.text }}>
-            <summary className="cursor-pointer list-none">
-                <div className="flex items-start gap-3">
-                    <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md" style={{ color: state.color, background: state.softBg }}>
+        <details data-agent-tool-card className="agent-tool-row group min-w-0 flex-1 text-left" style={{ color: theme.node.text }}>
+            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div className="flex min-h-7 items-center gap-2">
+                    <span className="agent-tool-status" style={{ color: state.isError ? state.color : theme.node.muted }}>
                         {state.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-5">
+                        <div className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
                             <span className="min-w-0 truncate">{title}</span>
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[var(--fs-label)] font-medium" style={{ color: state.color, background: state.softBg }}>
+                            <span className="agent-tool-label" style={{ color: state.color }}>
                                 {state.label}
                             </span>
-                            {detail ? (
-                                <span className="ml-auto text-xs font-normal" style={{ color: theme.node.muted }}>
-                                    详情
-                                </span>
-                            ) : null}
+                            {detail ? <ChevronDown className="ml-auto size-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: theme.node.muted }} aria-hidden="true" /> : null}
                         </div>
-                        <div className="mt-2 text-sm leading-6" style={{ color: state.isError ? state.color : theme.node.muted }}>
-                            {text}
-                        </div>
+                        <div className="truncate text-xs leading-5" style={{ color: state.isError ? state.color : theme.node.muted, maxWidth: "100%" }}>{text}</div>
                     </div>
                 </div>
             </summary>
@@ -340,7 +331,7 @@ export function AgentChatComposer({
     };
 
     const applySlashSkill = (skill: Skill) => {
-        const token = `@[skill:${skill.skill_id}] `;
+        const token = `@[skill:${skill.skillId}] `;
         const next = slash ? `${prompt.slice(0, slash.start)}${token}${prompt.slice(slash.start + slash.query.length)}` : prompt ? `${prompt.replace(/\s+$/u, "")} ${token}` : token;
         setSlash(null);
         setSlashIndex(0);
@@ -443,10 +434,10 @@ export function AgentChatComposer({
                             value={prompt}
                             references={composerReferences}
                             includeAssetLibrary={includeAssetLibrary}
-                            sendOnEnter={false}
+                            sendOnEnter
                             disabled={disabled}
                             onChange={handlePromptChange}
-                            onSubmit={onSubmit}
+                            onSubmit={() => { if (canSubmit) onSubmit(); }}
                             className="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-5 outline-none placeholder:opacity-45"
                             containerClassName="min-h-[60px]"
                             style={{ color: theme.node.text }}
@@ -463,7 +454,7 @@ export function AgentChatComposer({
                         >
                             {availableSlashSkills.map((skill, index) => (
                                 <button
-                                    key={skill.skill_id}
+                                    key={skill.skillId}
                                     type="button"
                                     className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs"
                                     style={{ background: index === activeSlashIndex ? theme.toolbar.itemHover : "transparent", color: theme.node.text }}
@@ -471,7 +462,7 @@ export function AgentChatComposer({
                                     onClick={() => applySlashSkill(skill)}
                                 >
                                     <Sparkles className="size-3.5 shrink-0 opacity-70" />
-                                    <span className="min-w-0 truncate font-medium">{skill.skill_name}</span>
+                                    <span className="min-w-0 truncate font-medium">{skill.skillName}</span>
                                     {skill.description ? <span className="min-w-0 flex-1 truncate opacity-50">{skill.description}</span> : null}
                                 </button>
                             ))}
@@ -512,6 +503,7 @@ export function AgentChatComposer({
                         type="button"
                         disabled={!canSubmit}
                         aria-label={sending ? "发送中" : "发送"}
+                        title="回车发送，Shift+回车换行"
                         onClick={() => void onSubmit()}
                         whileHover={canSubmit && !reducedMotion ? { scale: 1.06, y: -1 } : undefined}
                         whileTap={canSubmit && !reducedMotion ? { scale: 0.9, y: 1 } : undefined}

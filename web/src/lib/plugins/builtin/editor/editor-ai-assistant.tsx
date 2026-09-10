@@ -1,10 +1,6 @@
-// AI 编辑助手（editor-shell 预设插件贡献 ai-assistant 插槽，M3.8 注册；入口在编辑器顶部工具按钮浮层）。
-// M6.3：对话面板 —— 时间线摘要注入 system prompt，LLM 输出受 ai-command-schema 约束；
-// ≤3 条命令直执行，>3 条先预览确认（ADR-0007：AI 编辑交互=预设插件且命令受约束）。
-// 命令逐条 dispatch；宿主 fail-closed：无效命令被 registry 拒绝并写入 saveError（顶部提示条），
-// 面板汇报为中性“已提交”，执行结果以时间线实际变化为准。
-// 模型显式选择：不再盲信 config.model 默认值（历史默认可能是图像模型导致文本请求失败），
-// 面板顶部提供文本能力模型下拉，请求时同时覆写 config.model/textModel，避免默认模型错误。
+// 时间线摘要作为上下文发送给文本模型，模型输出必须通过 ai-command-schema 校验。
+// 小批命令直接进入统一 dispatch，大批命令先由用户确认；宿主拒绝无效命令并显示 saveError。
+// 请求显式携带用户选择的文本模型，不能沿用可能指向图片模型的全局默认值。
 import { useRef, useState, useEffect } from "react";
 import { Bot, Loader2, RotateCcw, Send, ShieldAlert } from "lucide-react";
 import { requestImageQuestion } from "@/services/api/image";

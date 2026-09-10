@@ -3,69 +3,12 @@ import { Input, Popover } from "antd";
 import { LayoutTemplate, Search, WandSparkles } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { CANVAS_BUILTIN_PRESETS, type CanvasPromptPreset } from "@/lib/prompts";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasGenerationMode } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 
-export type CanvasPromptPreset = {
-    id: string;
-    name: string;
-    description: string;
-    prompt: string;
-    modes: CanvasGenerationMode[];
-    source: "builtin" | "skill";
-};
-
-const BUILTIN_PRESETS: CanvasPromptPreset[] = [
-    {
-        id: "character-sheet",
-        name: "角色设定图",
-        description: "正面、侧面、背面与表情参考，锁定角色一致性",
-        prompt: "生成角色设定图：保持同一角色身份、五官、发型、服装和体态一致，包含正面、侧面、背面和关键表情参考，背景简洁，便于后续镜头复用。",
-        modes: ["image"],
-        source: "builtin",
-    },
-    {
-        id: "multi-angle",
-        name: "多机位视角",
-        description: "围绕同一主体生成连续、可衔接的机位变化",
-        prompt: "围绕同一主体设计多机位画面，保持人物、服装、场景和光线一致，分别给出远景、全景、中景、近景、特写、侧面、背面和俯拍视角，镜头之间具有连续性。",
-        modes: ["image", "video"],
-        source: "builtin",
-    },
-    {
-        id: "next-shot",
-        name: "画面推演",
-        description: "推演当前画面的前后动作与镜头衔接",
-        prompt: "基于当前画面推演下一个连续镜头：保持角色和场景一致，明确主体接下来的动作、视线、环境变化、镜头运动和自然衔接方式，不要跳变构图或身份。",
-        modes: ["image", "video"],
-        source: "builtin",
-    },
-    {
-        id: "story-beats",
-        name: "连续镜头",
-        description: "将短剧情拆成可生成的连续镜头节拍",
-        prompt: "把这段内容拆成连续镜头节拍。每个镜头写清主体动作、景别、构图、机位、运镜、光线、情绪和与前后镜头的衔接，并保持角色、场景和道具一致。",
-        modes: ["text", "image", "video"],
-        source: "builtin",
-    },
-    {
-        id: "cinematic-light",
-        name: "电影光影优化",
-        description: "保留内容，优化真实光线、层次和融合感",
-        prompt: "保留主体身份、动作和原始构图，优化为真实电影摄影光线：明确主光方向、环境反射、阴影层次、肤色和背景融合，降低塑料感与过度锐化，不改变画面内容。",
-        modes: ["image", "video"],
-        source: "builtin",
-    },
-    {
-        id: "video-prompt",
-        name: "视频提示词优化",
-        description: "整理为模型更容易执行的时序化镜头指令",
-        prompt: "将当前要求改写为结构化视频提示词，按时间顺序描述开场画面、主体动作、镜头运动、环境变化、声音和结束画面；消除冲突指令，保留所有关键约束。",
-        modes: ["text", "video"],
-        source: "builtin",
-    },
-];
+export type { CanvasPromptPreset };
 
 export function CanvasPresetPicker({
     mode,
@@ -100,17 +43,17 @@ export function CanvasPresetPicker({
             if (!reference.skill) return [];
             return [
                 {
-                    id: `skill:${reference.skill.skill_id}`,
-                    name: reference.skill.skill_name,
+                    id: `skill:${reference.skill.skillId}`,
+                    name: reference.skill.skillName,
                     description: reference.skill.description || reference.skill.instruction || "已加入技能",
-                    prompt: `@${reference.skill.skill_name} `,
+                    prompt: `@${reference.skill.skillName} `,
                     modes: ["text", "image", "video", "audio"],
                     source: "skill",
                 },
             ];
         });
         const normalized = query.trim().toLowerCase();
-        return [...BUILTIN_PRESETS.filter((preset) => preset.modes.includes(mode)), ...skills].filter((preset) => !normalized || `${preset.name} ${preset.description}`.toLowerCase().includes(normalized));
+        return [...CANVAS_BUILTIN_PRESETS.filter((preset) => preset.modes.includes(mode)), ...skills].filter((preset) => !normalized || `${preset.name} ${preset.description}`.toLowerCase().includes(normalized));
     }, [mode, query, skillReferences]);
 
     const content = (

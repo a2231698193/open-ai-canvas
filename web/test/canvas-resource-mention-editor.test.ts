@@ -99,7 +99,7 @@ describe("canvas resource mention editor", () => {
 
         expect(component).toContain('reference.kind === "skill" ? "is-skill" : ""');
         expect(component).toContain("reference.skill?.description");
-        expect(component).toContain("reference.skill?.file_count");
+        expect(component).toContain("reference.skill?.fileCount");
         expect(component).toContain("<Workflow aria-hidden />");
         expect(css).toContain(".canvas-resource-mention-item.is-skill");
         expect(css).toContain(".canvas-resource-mention-meta");

@@ -31,55 +31,55 @@ var skillCategoryLabels = map[string]string{
 
 type SkillShowcaseMedia struct {
 	Type        string `json:"type"`
-	ShowcaseURI string `json:"showcase_uri"`
-	ShowcaseURL string `json:"showcase_url"`
+	ShowcaseURI string `json:"showcaseUri"`
+	ShowcaseURL string `json:"showcaseUrl"`
 }
 
 type SkillEffectiveUser struct {
 	Name      string `json:"name"`
-	AvatarURL string `json:"avatar_url"`
+	AvatarURL string `json:"avatarUrl"`
 	UID       string `json:"uid"`
 }
 
 type SkillItem struct {
-	SkillID         string               `json:"skill_id"`
-	SkillName       string               `json:"skill_name"`
+	SkillID         string               `json:"skillId"`
+	SkillName       string               `json:"skillName"`
 	Description     string               `json:"description"`
 	Instruction     string               `json:"instruction,omitempty"`
-	VersionID       string               `json:"version_id"`
+	VersionID       string               `json:"versionId"`
 	Version         string               `json:"version"`
-	ContentHash     string               `json:"content_hash"`
-	FileCount       int                  `json:"file_count"`
-	TotalBytes      int64                `json:"total_bytes"`
-	SourceType      string               `json:"source_type"`
-	SourceURL       string               `json:"source_url"`
-	SourceRef       string               `json:"source_ref"`
-	SourceSubdir    string               `json:"source_subdir"`
-	SourceCommit    string               `json:"source_commit"`
-	SyncStatus      string               `json:"sync_status"`
-	SyncError       string               `json:"sync_error,omitempty"`
-	AutoUpdate      bool                 `json:"auto_update"`
-	LastCheckedAt   int64                `json:"last_checked_at"`
-	LastSyncedAt    int64                `json:"last_synced_at"`
+	ContentHash     string               `json:"contentHash"`
+	FileCount       int                  `json:"fileCount"`
+	TotalBytes      int64                `json:"totalBytes"`
+	SourceType      string               `json:"sourceType"`
+	SourceURL       string               `json:"sourceUrl"`
+	SourceRef       string               `json:"sourceRef"`
+	SourceSubdir    string               `json:"sourceSubdir"`
+	SourceCommit    string               `json:"sourceCommit"`
+	SyncStatus      string               `json:"syncStatus"`
+	SyncError       string               `json:"syncError,omitempty"`
+	AutoUpdate      bool                 `json:"autoUpdate"`
+	LastCheckedAt   *time.Time           `json:"lastCheckedAt,omitempty"`
+	LastSyncedAt    *time.Time           `json:"lastSyncedAt,omitempty"`
 	Status          int                  `json:"status"`
-	MarkdownURL     string               `json:"markdown_url"`
-	CreateTime      int64                `json:"create_time"`
-	UpdateTime      int64                `json:"update_time"`
+	MarkdownURL     string               `json:"markdownUrl"`
+	CreatedAt       time.Time            `json:"createdAt"`
+	UpdatedAt       time.Time            `json:"updatedAt"`
 	Source          int                  `json:"source"`
 	Tag             string               `json:"tag"`
-	SortWeight      int                  `json:"sort_weight"`
-	IsPrivate       bool                 `json:"is_private"`
-	LikeCount       int64                `json:"like_count"`
-	IsLike          bool                 `json:"is_like"`
-	OwnerUID        string               `json:"owner_uid"`
-	EffectiveUser   SkillEffectiveUser   `json:"effective_user"`
-	OriginalSkillID *string              `json:"original_skill_id"`
-	ShowcaseMedia   []SkillShowcaseMedia `json:"showcase_media"`
-	AddedCount      int64                `json:"added_count"`
-	IsTest          bool                 `json:"is_test"`
-	ExtraInfo       string               `json:"extra_info"`
-	IsAdded         bool                 `json:"is_added"`
-	IsOwner         bool                 `json:"is_owner"`
+	SortWeight      int                  `json:"sortWeight"`
+	IsPrivate       bool                 `json:"isPrivate"`
+	LikeCount       int64                `json:"likeCount"`
+	IsLike          bool                 `json:"isLike"`
+	OwnerUID        string               `json:"ownerUid"`
+	EffectiveUser   SkillEffectiveUser   `json:"effectiveUser"`
+	OriginalSkillID *string              `json:"originalSkillId"`
+	ShowcaseMedia   []SkillShowcaseMedia `json:"showcaseMedia"`
+	AddedCount      int64                `json:"addedCount"`
+	IsTest          bool                 `json:"isTest"`
+	ExtraInfo       string               `json:"extraInfo"`
+	IsAdded         bool                 `json:"isAdded"`
+	IsOwner         bool                 `json:"isOwner"`
 }
 
 type SkillCategory struct {
@@ -98,23 +98,23 @@ type SkillListRequest struct {
 
 type SkillList struct {
 	Skills     []SkillItem     `json:"skills"`
-	TotalCount int64           `json:"total_count"`
-	HasMore    bool            `json:"has_more"`
-	NextOffset int             `json:"next_offset"`
+	TotalCount int64           `json:"totalCount"`
+	HasMore    bool            `json:"hasMore"`
+	NextOffset int             `json:"nextOffset"`
 	Page       int             `json:"page"`
-	PageSize   int             `json:"page_size"`
+	PageSize   int             `json:"pageSize"`
 	Categories []SkillCategory `json:"categories"`
 }
 
 type SkillMutationRequest struct {
-	SkillName     string               `json:"skill_name"`
+	SkillName     string               `json:"skillName"`
 	Description   string               `json:"description"`
 	Instruction   string               `json:"instruction"`
 	Tag           string               `json:"tag"`
-	IsPrivate     bool                 `json:"is_private"`
-	MarkdownURL   string               `json:"markdown_url"`
-	ShowcaseMedia []SkillShowcaseMedia `json:"showcase_media"`
-	ExtraInfo     string               `json:"extra_info"`
+	IsPrivate     bool                 `json:"isPrivate"`
+	MarkdownURL   string               `json:"markdownUrl"`
+	ShowcaseMedia []SkillShowcaseMedia `json:"showcaseMedia"`
+	ExtraInfo     string               `json:"extraInfo"`
 }
 
 func (s *Service) Skills(userID string, req SkillListRequest) (*SkillList, error) {
@@ -297,9 +297,9 @@ func (s *Service) skillItems(userID string, skills []model.Skill, includeInstruc
 	}
 	items := make([]SkillItem, 0, len(skills))
 	for _, skill := range skills {
-		var showcaseMedia []SkillShowcaseMedia
-		if err := json.Unmarshal([]byte(skill.ShowcaseMediaJSON), &showcaseMedia); err != nil {
-			return nil, errors.New("技能展示媒体数据格式错误")
+		showcaseMedia, err := parseShowcaseMedia(skill.ShowcaseMediaJSON)
+		if err != nil {
+			return nil, err
 		}
 		owner := owners[skill.OwnerID]
 		ownerName := strings.TrimSpace(skill.AuthorName)
@@ -324,8 +324,8 @@ func (s *Service) skillItems(userID string, skills []model.Skill, includeInstruc
 			SkillID: skill.ID, SkillName: skill.Name, Description: skill.Description, Instruction: instruction,
 			VersionID: skill.CurrentVersionID, Version: skill.VersionLabel, ContentHash: skill.ContentHash, FileCount: skill.FileCount, TotalBytes: skill.TotalBytes,
 			SourceType: skill.SourceType, SourceURL: skill.SourceURL, SourceRef: skill.SourceRef, SourceSubdir: skill.SourceSubdir, SourceCommit: skill.SourceCommit,
-			SyncStatus: skill.SyncStatus, SyncError: skill.SyncError, AutoUpdate: skill.AutoUpdate, LastCheckedAt: unixMillis(skill.LastCheckedAt), LastSyncedAt: unixMillis(skill.LastSyncedAt),
-			Status: skill.Status, MarkdownURL: skill.MarkdownURL, CreateTime: skill.CreatedAt.UnixMilli(), UpdateTime: skill.UpdatedAt.UnixMilli(),
+			SyncStatus: skill.SyncStatus, SyncError: skill.SyncError, AutoUpdate: skill.AutoUpdate, LastCheckedAt: skill.LastCheckedAt, LastSyncedAt: skill.LastSyncedAt,
+			Status: skill.Status, MarkdownURL: skill.MarkdownURL, CreatedAt: skill.CreatedAt, UpdatedAt: skill.UpdatedAt,
 			Source: skill.Source, Tag: skill.Tag, SortWeight: skill.SortWeight, IsPrivate: skill.IsPrivate,
 			LikeCount: metric.LikeCount, IsLike: state.Liked, OwnerUID: skill.OwnerID,
 			EffectiveUser: SkillEffectiveUser{Name: ownerName, AvatarURL: ownerAvatarURL, UID: skill.OwnerID}, ShowcaseMedia: showcaseMedia,
@@ -471,9 +471,39 @@ func skillCategories() []SkillCategory {
 	}
 }
 
-func unixMillis(value *time.Time) int64 {
-	if value == nil {
-		return 0
+// parseShowcaseMedia 读取库内展示媒体 JSON。历史记录可能仍是 snake_case，只在持久化层转换；对外 API 只输出 camelCase。
+func parseShowcaseMedia(raw string) ([]SkillShowcaseMedia, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return []SkillShowcaseMedia{}, nil
 	}
-	return value.UnixMilli()
+	var items []SkillShowcaseMedia
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil, errors.New("技能展示媒体数据格式错误")
+	}
+	if showcaseMediaHasURL(items) {
+		return items, nil
+	}
+	var legacy []struct {
+		Type        string `json:"type"`
+		ShowcaseURI string `json:"showcase_uri"`
+		ShowcaseURL string `json:"showcase_url"`
+	}
+	if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
+		return nil, errors.New("技能展示媒体数据格式错误")
+	}
+	converted := make([]SkillShowcaseMedia, 0, len(legacy))
+	for _, item := range legacy {
+		converted = append(converted, SkillShowcaseMedia{Type: item.Type, ShowcaseURI: item.ShowcaseURI, ShowcaseURL: item.ShowcaseURL})
+	}
+	return converted, nil
+}
+
+func showcaseMediaHasURL(items []SkillShowcaseMedia) bool {
+	for _, item := range items {
+		if strings.TrimSpace(item.ShowcaseURI) != "" || strings.TrimSpace(item.ShowcaseURL) != "" {
+			return true
+		}
+	}
+	return len(items) == 0
 }

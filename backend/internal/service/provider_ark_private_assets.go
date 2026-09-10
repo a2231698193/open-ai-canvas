@@ -27,8 +27,8 @@ const (
 	arkPrivateAssetPollLimit  = 3 * time.Minute
 )
 
-// Tests can inject a local control-plane server. Production derives the Ark
-// control-plane address from the administrator's explicit Region setting.
+// 测试可以注入本地控制面服务；生产环境必须根据管理员显式配置的 Region 推导方舟控制面地址，
+// 不能接受客户端传入任意控制面 URL。
 var arkPrivateAssetAPIBaseURLOverride string
 
 type taskExecutionIDContextKey struct{}
@@ -134,9 +134,8 @@ type ArkPrivateAssetSyncResult struct {
 	Status     string `json:"status"`
 }
 
-// SyncResourceToArkPrivateAsset is the explicit user action for preloading a
-// reference image. It keeps the same team-scoped ownership and review rules as
-// the task worker, so clients cannot submit arbitrary URLs to Ark.
+// SyncResourceToArkPrivateAsset 是用户显式触发的参考图预同步入口。
+// 它与任务 worker 共用团队资源归属、就绪状态和审核规则，客户端不能借此向方舟提交任意 URL。
 func (s *Service) SyncResourceToArkPrivateAsset(ctx context.Context, actor *model.User, resourceID string) (*ArkPrivateAssetSyncResult, error) {
 	resourceID = strings.TrimSpace(resourceID)
 	if resourceID == "" {

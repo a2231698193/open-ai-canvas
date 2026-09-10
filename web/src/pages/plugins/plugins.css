@@ -826,29 +826,6 @@
     font-size: var(--fs-label);
 }
 
-.plugins-empty-state {
-    display: grid;
-    min-height: 260px;
-    place-items: center;
-    align-content: center;
-    gap: var(--space-2);
-    border-radius: var(--plugins-card-radius);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    text-align: center;
-}
-
-.plugins-empty-state h3 {
-    margin-top: var(--space-2);
-    color: color-mix(in srgb, var(--foreground) 78%, transparent);
-    font-size: var(--fs-body-lg);
-    font-weight: 650;
-}
-
-.plugins-empty-state p {
-    font-size: var(--fs-caption);
-}
-
 @media (max-width: 900px) {
     .plugins-page-layout {
         display: block;

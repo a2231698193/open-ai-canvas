@@ -379,46 +379,67 @@ func validatePromptTemplateResult(operation string, result map[string]interface{
 		return nil
 	}
 	text, _ := result["text"].(string)
-	extractor := extractJSONText
-	// 角色卡契约要求顶层对象，模型正文里若先出现数组（例如先列一遍角色名）会让通用提取命中错误片段，
-	// 因此这里优先挑出带 characters 键的对象候选。
-	if operation == promptOperationCharacterExtract || operation == promptOperationChapterAssetsExtract {
-		extractor = func(raw string) (string, error) { return extractPreferredJSONText(raw, "characters") }
-	}
-	jsonText, err := extractor(text)
+	jsonText, err := promptResultJSONExtractor(operation)(text)
 	if err != nil {
 		return fmt.Errorf("%s 返回内容不符合受保护 JSON 契约：%w", definition.Label, err)
 	}
-	if operation == promptOperationChapterAssetsExtract {
-		var assets struct {
-			Characters *[]map[string]interface{} `json:"characters"`
-			Scenes     *[]map[string]interface{} `json:"scenes"`
-			Props      *[]map[string]interface{} `json:"props"`
-		}
-		if err := json.Unmarshal([]byte(jsonText), &assets); err != nil {
-			return fmt.Errorf("章节资产提取 JSON 无法解析：%w", err)
-		}
-		if assets.Characters == nil || assets.Scenes == nil || assets.Props == nil {
-			return errors.New("章节资产提取结果必须包含 characters、scenes 和 props 数组")
-		}
-		for _, group := range [][]map[string]interface{}{*assets.Scenes, *assets.Props} {
-			for _, asset := range group {
-				for _, field := range []string{"name", "description", "prompt"} {
-					value, ok := asset[field].(string)
-					if !ok || strings.TrimSpace(value) == "" {
-						return fmt.Errorf("章节场景或道具缺少有效的 %s", field)
-					}
+	switch operation {
+	case promptOperationChapterAssetsExtract:
+		return validateChapterAssetsResult(jsonText)
+	case promptOperationCharacterExtract:
+		return validateCharacterExtractResult(jsonText)
+	case promptOperationShortDramaOutline:
+		return validateShortDramaOutlineResult(jsonText)
+	case promptOperationSkillDraft:
+		return validateSkillDraftResult(jsonText)
+	default:
+		return nil
+	}
+}
+
+func promptResultJSONExtractor(operation string) func(string) (string, error) {
+	switch operation {
+	case promptOperationCharacterExtract, promptOperationChapterAssetsExtract:
+		// 角色卡契约要求顶层对象，模型正文里若先出现数组（例如先列一遍角色名）会让通用提取命中错误片段。
+		return func(raw string) (string, error) { return extractPreferredJSONText(raw, "characters") }
+	case promptOperationShortDramaOutline:
+		return func(raw string) (string, error) { return extractPreferredJSONText(raw, "chapters") }
+	case promptOperationSkillDraft:
+		return func(raw string) (string, error) { return extractPreferredJSONText(raw, "skillName") }
+	default:
+		return extractJSONText
+	}
+}
+
+func validateChapterAssetsResult(jsonText string) error {
+	var assets struct {
+		Characters *[]map[string]interface{} `json:"characters"`
+		Scenes     *[]map[string]interface{} `json:"scenes"`
+		Props      *[]map[string]interface{} `json:"props"`
+	}
+	if err := json.Unmarshal([]byte(jsonText), &assets); err != nil {
+		return fmt.Errorf("章节资产提取 JSON 无法解析：%w", err)
+	}
+	if assets.Characters == nil || assets.Scenes == nil || assets.Props == nil {
+		return errors.New("章节资产提取结果必须包含 characters、scenes 和 props 数组")
+	}
+	for _, group := range [][]map[string]interface{}{*assets.Scenes, *assets.Props} {
+		for _, asset := range group {
+			for _, field := range []string{"name", "description", "prompt"} {
+				value, ok := asset[field].(string)
+				if !ok || strings.TrimSpace(value) == "" {
+					return fmt.Errorf("章节场景或道具缺少有效的 %s", field)
 				}
 			}
 		}
-		if len(*assets.Characters) > 0 {
-			return validatePromptTemplateResult(promptOperationCharacterExtract, map[string]interface{}{"text": jsonText})
-		}
-		return nil
 	}
-	if operation != promptOperationCharacterExtract {
-		return nil
+	if len(*assets.Characters) > 0 {
+		return validatePromptTemplateResult(promptOperationCharacterExtract, map[string]interface{}{"text": jsonText})
 	}
+	return nil
+}
+
+func validateCharacterExtractResult(jsonText string) error {
 	jsonText = normalizeCharacterBreakdownRootJSON(jsonText)
 	var payload struct {
 		Characters *[]map[string]interface{} `json:"characters"`
@@ -439,6 +460,63 @@ func validatePromptTemplateResult(operation string, result map[string]interface{
 				return fmt.Errorf("角色卡提取结果中第 %d 个角色缺少字段 %s", index+1, field)
 			}
 		}
+	}
+	return nil
+}
+
+func validateShortDramaOutlineResult(jsonText string) error {
+	var payload struct {
+		Title    string `json:"title"`
+		Synopsis string `json:"synopsis"`
+		Chapters *[]struct {
+			Title   string `json:"title"`
+			Content string `json:"content"`
+		} `json:"chapters"`
+	}
+	if err := json.Unmarshal([]byte(jsonText), &payload); err != nil {
+		return fmt.Errorf("短剧大纲 JSON 无法解析：%w", err)
+	}
+	if strings.TrimSpace(payload.Title) == "" {
+		return errors.New("短剧大纲缺少 title")
+	}
+	if strings.TrimSpace(payload.Synopsis) == "" {
+		return errors.New("短剧大纲缺少 synopsis")
+	}
+	if payload.Chapters == nil {
+		return errors.New("短剧大纲缺少 chapters 数组")
+	}
+	if len(*payload.Chapters) == 0 {
+		return errors.New("短剧大纲没有生成任何章节")
+	}
+	for index, chapter := range *payload.Chapters {
+		if strings.TrimSpace(chapter.Title) == "" || strings.TrimSpace(chapter.Content) == "" {
+			return fmt.Errorf("短剧大纲第 %d 章缺少 title 或 content", index+1)
+		}
+	}
+	return nil
+}
+
+func validateSkillDraftResult(jsonText string) error {
+	var payload struct {
+		SkillName   string `json:"skillName"`
+		Tag         string `json:"tag"`
+		Description string `json:"description"`
+		Instruction string `json:"instruction"`
+	}
+	if err := json.Unmarshal([]byte(jsonText), &payload); err != nil {
+		return fmt.Errorf("技能草稿 JSON 无法解析：%w", err)
+	}
+	if strings.TrimSpace(payload.SkillName) == "" {
+		return errors.New("技能草稿缺少 skillName")
+	}
+	if strings.TrimSpace(payload.Tag) == "" {
+		return errors.New("技能草稿缺少 tag")
+	}
+	if strings.TrimSpace(payload.Description) == "" {
+		return errors.New("技能草稿缺少 description")
+	}
+	if strings.TrimSpace(payload.Instruction) == "" {
+		return errors.New("技能草稿缺少 instruction")
 	}
 	return nil
 }

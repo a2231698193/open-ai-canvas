@@ -1,5 +1,6 @@
-import { App, Button, Dropdown, Modal, Popconfirm } from "antd";
+import { App, Button, Dropdown, Popconfirm } from "antd";
 import type { MenuProps } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import { Check, ChevronDown, FileText, FolderOpen, HardDrive, Image as ImageIcon, LoaderCircle, Music2, Puzzle, RotateCcw, Search, Trash2, Upload, UserRound, Video } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -12,7 +13,7 @@ import { PaginationBar } from "@/components/layout/workspace-page";
 import { cn } from "@/lib/utils";
 import type { ExternalAssetPickerReference } from "@/lib/plugins/plugin-types";
 import { flushAssetStorePersistence, useAssetStore, type Asset } from "@/stores/use-asset-store";
-import { deleteAssetWithRemoteSync, loadAssetLibraryPage, saveRemoteUserDataNow } from "@/services/user-data-sync";
+import { deleteAssetWithRemoteSync, loadAssetLibraryPage, localSavedRemotePendingMessage, saveRemoteUserDataNow } from "@/services/user-data-sync";
 
 export type AssetPickerMediaKind = "image" | "video" | "audio" | "text";
 
@@ -271,8 +272,8 @@ export function AssetLibraryPickerModal({
             setSelected(new Set());
             message.success(`已还原 ${archivedSelectedIds.length} 个素材至素材库`);
             setCategory("all");
-        } catch {
-            message.warning("已在本地还原，稍后自动同步至云端");
+        } catch (error) {
+            message.warning(localSavedRemotePendingMessage("已在本地还原", error));
         } finally {
             setWorking(false);
             if (remoteEnabled) void remoteQuery.refetch();
@@ -380,7 +381,7 @@ export function AssetLibraryPickerModal({
     const uploading = uploadingCount > 0;
 
     return (
-        <Modal
+        <AppModal
             centered
             open={open}
             footer={null}
@@ -393,7 +394,7 @@ export function AssetLibraryPickerModal({
                 if (!working) onClose();
             }}
             className="workspace-modal workspace-modal-wide asset-library-picker-modal"
-            styles={{ container: { padding: 0 }, body: { padding: 0 } }}
+            flush
         >
             <div className="asset-picker-shell">
                 <header className="asset-picker-toolbar">
@@ -559,7 +560,7 @@ export function AssetLibraryPickerModal({
                     </div>
                 </footer>
             </div>
-        </Modal>
+        </AppModal>
     );
 }
 

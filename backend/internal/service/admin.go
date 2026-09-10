@@ -51,7 +51,7 @@ type AdminUserPage struct {
 	Users []AdminUser `json:"users"`
 	Total int64       `json:"total"`
 	Page  int         `json:"page"`
-	Limit int         `json:"limit"`
+	Limit int         `json:"pageSize"`
 }
 
 type AdminUser struct {
@@ -64,7 +64,7 @@ type AdminChannelPage struct {
 	Channels []PublicModelChannel `json:"channels"`
 	Total    int64                `json:"total"`
 	Page     int                  `json:"page"`
-	Limit    int                  `json:"limit"`
+	Limit    int                  `json:"pageSize"`
 }
 
 type AdminUserReference struct {

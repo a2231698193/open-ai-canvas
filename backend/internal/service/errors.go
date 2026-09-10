@@ -7,6 +7,7 @@ import "fmt"
 type AppError struct {
 	Status    int
 	Code      int
+	Reason    ErrorReason
 	Message   string
 	Retryable bool
 	Cause     error
@@ -27,11 +28,21 @@ func (e *AppError) Unwrap() error {
 }
 
 func NewAppError(status int, message string) *AppError {
-	return &AppError{Status: status, Message: message}
+	return &AppError{Status: status, Code: status, Reason: ReasonForStatus(status), Message: message}
 }
 
 func WrapAppError(status int, message string, cause error) *AppError {
-	return &AppError{Status: status, Message: message, Cause: cause}
+	err := NewAppError(status, message)
+	err.Cause = cause
+	return err
+}
+
+func RateLimited(message string) *AppError {
+	return &AppError{Status: CodeTooManyRequests, Code: CodeRateLimited, Reason: ReasonRateLimited, Message: message, Retryable: true}
+}
+
+func QuotaExceeded(message string) *AppError {
+	return &AppError{Status: CodeForbidden, Code: CodeQuotaExceeded, Reason: ReasonQuotaExceeded, Message: message}
 }
 
 // ModelErrorCode 定义模型相关的错误码
@@ -52,8 +63,8 @@ const (
 	ErrCodeInvalidModelSelection ModelErrorCode = "invalid_model_selection"
 )
 
-// ModelError 模型相关的错误，包含错误码和详细信息
-// 继承 AppError 以保持兼容性
+// ModelError 为模型选择、路由和供应商调用提供稳定的机器可读错误码。
+// 嵌入 AppError，使统一 HTTP 投影仍能通过 errors.As 读取状态、reason 和安全文案。
 type ModelError struct {
 	*AppError
 	ErrorCode ModelErrorCode
@@ -69,8 +80,10 @@ func (e *ModelError) Error() string {
 
 // NewModelError 创建模型错误
 func NewModelError(code ModelErrorCode, message string) *ModelError {
+	err := NewAppError(400, message)
+	err.Reason = ErrorReason(code)
 	return &ModelError{
-		AppError:  NewAppError(400, message),
+		AppError:  err,
 		ErrorCode: code,
 		Details:   make(map[string]any),
 	}

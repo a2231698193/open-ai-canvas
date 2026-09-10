@@ -1,4 +1,4 @@
-// 时间线确定性摘要（Runbook M6.2）：把 TimelineProject v2 压缩成喂给 LLM 的中文上下文。
+// 时间线确定性摘要：把 TimelineProject 压缩成稳定、可控长度的中文上下文，供 AI 编辑和诊断使用。
 // 同一输入永远产出同一输出（无时间戳/无随机），供命令引用 id 与 AI 面板上下文注入。
 
 import type { TimelineClip, TimelineProject, TimelineTrack } from "@/types/timeline";

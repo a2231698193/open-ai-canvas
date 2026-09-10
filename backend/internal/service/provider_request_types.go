@@ -14,18 +14,6 @@ func requestAsMap(value interface{}) (map[string]interface{}, error) {
 	return result, nil
 }
 
-type newAPIVideoRequest struct {
-	Model         string   `json:"model"`
-	Prompt        string   `json:"prompt"`
-	Seconds       string   `json:"seconds"`
-	AspectRatio   string   `json:"aspect_ratio"`
-	Resolution    string   `json:"resolution,omitempty"`
-	GenerateAudio *bool    `json:"generate_audio,omitempty"`
-	ImageURLs     []string `json:"image_urls,omitempty"`
-	VideoURLs     []string `json:"video_urls,omitempty"`
-	AudioURLs     []string `json:"audio_urls,omitempty"`
-}
-
 type seedanceVideosRequest struct {
 	Model              string   `json:"model"`
 	Prompt             string   `json:"prompt"`
@@ -37,20 +25,6 @@ type seedanceVideosRequest struct {
 	ImageURLs          []string `json:"image_urls,omitempty"`
 	ReferenceVideos    []string `json:"reference_videos,omitempty"`
 	ReferenceAudios    []string `json:"reference_audios,omitempty"`
-}
-
-type xaiVideoRequest struct {
-	Model           string          `json:"model"`
-	Prompt          string          `json:"prompt"`
-	Duration        int             `json:"duration"`
-	AspectRatio     string          `json:"aspect_ratio"`
-	Resolution      string          `json:"resolution"`
-	Image           *xaiVideoImage  `json:"image,omitempty"`
-	ReferenceImages []xaiVideoImage `json:"reference_images,omitempty"`
-}
-
-type xaiVideoImage struct {
-	URL string `json:"url"`
 }
 
 type grokImageRequest struct {
@@ -66,28 +40,6 @@ type grokImageRequest struct {
 
 type grokImageInput struct {
 	URL string `json:"url"`
-}
-
-type geminiVeoRequest struct {
-	Instances  []geminiVeoInstance `json:"instances"`
-	Parameters geminiVeoParameters `json:"parameters"`
-}
-
-type geminiVeoInstance struct {
-	Prompt string          `json:"prompt"`
-	Image  *geminiVeoImage `json:"image,omitempty"`
-}
-
-type geminiVeoImage struct {
-	BytesBase64Encoded string `json:"bytesBase64Encoded"`
-	MIMEType           string `json:"mimeType"`
-}
-
-type geminiVeoParameters struct {
-	AspectRatio     string `json:"aspectRatio"`
-	DurationSeconds int    `json:"durationSeconds"`
-	Resolution      string `json:"resolution"`
-	SampleCount     int    `json:"sampleCount"`
 }
 
 type geminiImageRequest struct {
@@ -129,26 +81,4 @@ type seedanceAgentPlanRequest struct {
 	Duration      int                      `json:"duration"`
 	GenerateAudio *bool                    `json:"generate_audio,omitempty"`
 	Watermark     *bool                    `json:"watermark,omitempty"`
-}
-
-type miniMaxVideoRequest struct {
-	Model         string                `json:"model"`
-	Content       []miniMaxVideoContent `json:"content"`
-	Resolution    string                `json:"resolution"`
-	Duration      int                   `json:"duration"`
-	Ratio         string                `json:"ratio,omitempty"`
-	AIGCWatermark *bool                 `json:"aigc_watermark,omitempty"`
-}
-
-type miniMaxVideoContent struct {
-	Type     string           `json:"type"`
-	Text     string           `json:"text,omitempty"`
-	ImageURL *miniMaxMediaURL `json:"image_url,omitempty"`
-	VideoURL *miniMaxMediaURL `json:"video_url,omitempty"`
-	AudioURL *miniMaxMediaURL `json:"audio_url,omitempty"`
-	Role     string           `json:"role,omitempty"`
-}
-
-type miniMaxMediaURL struct {
-	URL string `json:"url"`
 }

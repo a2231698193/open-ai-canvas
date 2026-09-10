@@ -41,8 +41,7 @@
 - `base/tooltip/` — Tooltip（RAC 浮层，AntD 8 向 placement 映射，title 空不渲染）
 - `base/switch/` — Switch（button role=switch + data-state，checkedChildren 文本轨、loading、Form.Item 注入）
 - `product/empty-state/` — EmptyState（空态占位）
-- `product/callout/` — Callout（规划中，P0）
-- `base/badges/` — StatusBadge（状态点徽章；NodeTypeBadge 规划中）
-- `product/empty-state/` — EmptyState（空态占位）
-- `product/callout/` — Callout（规划中，P0）
+- `product/callout/` — Callout
+- `product/app-modal/` — AppModal（产品弹窗壳，`flush` 去掉 AntD 默认内边距）
+- `product/app-drawer/` — AppDrawer（产品侧栏壳）
 - `base/buttons/` — IconButton / ToolButton / ButtonGroup（规划中，P0）

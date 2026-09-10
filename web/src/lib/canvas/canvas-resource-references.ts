@@ -39,7 +39,7 @@ export function canvasNodeMentionToken(nodeId: string) {
 
 export function canvasResourceMentionToken(reference: CanvasResourceReference) {
     if (reference.mentionToken) return reference.mentionToken;
-    if (reference.kind === "skill" && reference.skill?.skill_id) return canvasSkillMentionToken(reference.skill.skill_id);
+    if (reference.kind === "skill" && reference.skill?.skillId) return canvasSkillMentionToken(reference.skill.skillId);
     if (reference.assetId) return `@[asset:${reference.assetId}]`;
     return `@${reference.label}`;
 }
@@ -49,6 +49,105 @@ export function normalizeCanvasNodeMentionTokens(prompt: string, references: Can
         if (!reference.nodeId || reference.assetId || reference.kind === "skill") return value;
         return value.split(canvasNodeMentionToken(reference.nodeId)).join(`@${reference.label}`);
     }, prompt);
+}
+
+/** 将提示词内已连接素材的名称替换为对应引用；同名的每处指代都会保留为独立引用。 */
+export function autoMentionCanvasResourceReferences(prompt: string, references: CanvasResourceReference[]) {
+    const referenceByName = new Map<string, CanvasResourceReference | null>();
+    references
+        .filter((reference) => reference.active && !reference.assetId && reference.kind !== "skill")
+        .forEach((reference, index) => {
+            canvasResourceMentionNames(reference, index, true).forEach((name) => {
+                if (!referenceByName.has(name)) {
+                    referenceByName.set(name, reference);
+                    return;
+                }
+                if (referenceByName.get(name)?.id !== reference.id) referenceByName.set(name, null);
+            });
+        });
+    const names = [...referenceByName]
+        .filter(([, reference]) => Boolean(reference))
+        .map(([name]) => name)
+        .sort((left, right) => right.length - left.length);
+    if (!names.length) return prompt;
+
+    const matcher = new RegExp(`(^|[^A-Za-z0-9_@])(${names.map(escapeRegExp).join("|")})(?![A-Za-z0-9_])`, "gu");
+    return prompt
+        .split(/(@\[[^\]]+\]|@[^\s@,.;:!?，。；：！？、)\]}】）]+)/gu)
+        .map((part) => {
+            if (part.startsWith("@")) return part;
+            return part.replace(matcher, (match, prefix: string, name: string, offset: number, source: string) => {
+                const nextCharacter = source[offset + match.length];
+                if (/^\d+$/u.test(name) && ((prefix && !/[\s,.!?;:，。！？；：、)\]}】）]/u.test(prefix)) || (nextCharacter && !/[\s,.!?;:，。！？；：、)\]}】）]/u.test(nextCharacter)))) return match;
+                const separator = needsAutoMentionSeparator(nextCharacter) ? " " : "";
+                return `${prefix}${canvasResourceMentionToken(referenceByName.get(name)!)}${separator}`;
+            });
+        })
+        .join("");
+}
+
+export type CanvasResourceAutoLinkMatch = {
+    reference: CanvasResourceReference;
+    start: number;
+    end: number;
+    query: string;
+};
+
+export function findCanvasResourceAutoLinkMatch(prompt: string, cursor: number, references: CanvasResourceReference[]): CanvasResourceAutoLinkMatch | null {
+    if (cursor <= 0 || cursor > prompt.length) return null;
+    const prefix = prompt.slice(0, cursor);
+    if (/@(?:\[[^\]]*|[^\s@,.;:!?，。；：！？、)\]}】）]*)$/u.test(prefix)) return null;
+    const aliases = new Map<string, CanvasResourceReference | null>();
+    references
+        .filter((reference) => reference.active && !reference.assetId && reference.kind !== "skill")
+        .forEach((reference, index) => {
+            canvasResourceMentionNames(reference, index, true).forEach((name) => {
+                if (!aliases.has(name)) aliases.set(name, reference);
+                else if (aliases.get(name)?.id !== reference.id) aliases.set(name, null);
+            });
+        });
+    const candidates = [...aliases]
+        .filter(([, reference]) => Boolean(reference))
+        .map(([name, reference]) => ({ name, reference: reference!, isBareOrder: /^\d+$/u.test(name) }))
+        .sort((left, right) => right.name.length - left.name.length);
+    for (const candidate of candidates) {
+        if (!prefix.endsWith(candidate.name)) continue;
+        const start = cursor - candidate.name.length;
+        const previous = prompt[start - 1];
+        const next = prompt[cursor];
+        if (previous === "@") continue;
+        if (next && /[A-Za-z0-9_]/u.test(next)) continue;
+        if (candidate.isBareOrder && previous && !/[\s,.!?;:，。！？；：、)\]}】）]/u.test(previous)) continue;
+        if (candidate.isBareOrder && next && !/[\s,.!?;:，。！？；：、)\]}】）]/u.test(next)) continue;
+        if (/^[A-Za-z0-9_]+$/u.test(candidate.name) && previous && /[A-Za-z0-9_]/u.test(previous)) continue;
+        return { reference: candidate.reference, start, end: cursor, query: candidate.name };
+    }
+    return null;
+}
+
+function canvasResourceMentionNames(reference: CanvasResourceReference, index: number, includeBareNumber: boolean) {
+    const names = new Set([reference.label.trim(), reference.title.trim()].filter(Boolean));
+    const order = index + 1;
+    names.add(`图片${order}`);
+    names.add(`图${order}`);
+    names.add(`image${order}`);
+    names.add(`image ${order}`);
+    const imageLabelMatch = /^图片(\d+)$/u.exec(reference.label.trim());
+    if (imageLabelMatch) {
+        names.add(`图${imageLabelMatch[1]}`);
+        names.add(`image${imageLabelMatch[1]}`);
+        names.add(`image ${imageLabelMatch[1]}`);
+    }
+    if (includeBareNumber) names.add(String(order));
+    return names;
+}
+
+function escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function needsAutoMentionSeparator(nextCharacter: string | undefined) {
+    return Boolean(nextCharacter && !/[\s,.!?;:，。！？；：、)\]}】）]/u.test(nextCharacter));
 }
 
 const CANVAS_RESOURCE_MENTION_BOUNDARY = /(?:$|\s|[,.!?;:，。！？；：、)\]}】）])/;
@@ -239,7 +338,10 @@ export function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[],
     if (configInputs.length) return configInputs;
     const ownInputs = getContextResourceNodes(nodeId, nodes, connections);
     if (ownInputs.length) return ownInputs;
-    return [];
+    // 没有入边时，资源节点可以把自身当作 @图片1 / @视频1，用于图生图、视频再编辑。
+    // 有入边时仍只暴露上游，避免自身把槽位序号挤掉。
+    const self = nodes.find((node) => node.id === nodeId);
+    return self && isResourceNode(self) ? [self] : [];
 }
 
 export function getGenerationResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {

@@ -244,7 +244,7 @@ func findTaskMediaPreview(value any, hint string) (string, string) {
 	switch item := value.(type) {
 	case string:
 		text := strings.TrimSpace(item)
-		if !strings.HasPrefix(text, "/api/resources/") && !strings.HasPrefix(text, "http://") && !strings.HasPrefix(text, "https://") {
+		if !isResourceFileURL(text) && !strings.HasPrefix(text, "http://") && !strings.HasPrefix(text, "https://") {
 			return "", ""
 		}
 		kind := hint

@@ -69,7 +69,7 @@ export default function StorageResourcesPanel() {
                 provider: provider === "all" ? undefined : provider,
                 userId: debouncedUserId || undefined,
                 page,
-                limit: pageSize,
+                pageSize: pageSize,
             },
             controller.signal,
         )

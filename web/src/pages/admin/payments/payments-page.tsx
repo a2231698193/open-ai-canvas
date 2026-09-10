@@ -121,14 +121,14 @@ export default function AdminPaymentsPage() {
         }
     };
 
-    const loadOrders = async (page = orderPage, limit = orderPageSize) => {
+    const loadOrders = async (page = orderPage, pageSize = orderPageSize) => {
         setOrdersLoading(true);
         try {
-            const result = await listAdminPaymentOrders({ status: orderStatusFilter === "all" ? undefined : orderStatusFilter, keyword: orderKeyword.trim() || undefined, page, limit });
+            const result = await listAdminPaymentOrders({ status: orderStatusFilter === "all" ? undefined : orderStatusFilter, keyword: orderKeyword.trim() || undefined, page, pageSize });
             setOrders(result.orders);
             setOrderTotal(result.total);
             setOrderPage(result.page);
-            setOrderPageSize(result.limit);
+            setOrderPageSize(result.pageSize);
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取支付订单失败");
         } finally {
@@ -136,14 +136,14 @@ export default function AdminPaymentsPage() {
         }
     };
 
-    const loadRuns = async (page = runPage, limit = runPageSize) => {
+    const loadRuns = async (page = runPage, pageSize = runPageSize) => {
         setRunsLoading(true);
         try {
-            const result = await listAdminPaymentReconciliations({ providerId: runProviderFilter === "all" ? undefined : runProviderFilter, page, limit });
+            const result = await listAdminPaymentReconciliations({ providerId: runProviderFilter === "all" ? undefined : runProviderFilter, page, pageSize });
             setRuns(result.runs);
             setRunTotal(result.total);
             setRunPage(result.page);
-            setRunPageSize(result.limit);
+            setRunPageSize(result.pageSize);
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取对账记录失败");
         } finally {
@@ -287,16 +287,16 @@ export default function AdminPaymentsPage() {
         }
     };
 
-    const openRunDetails = async (run: PaymentReconciliationRun, page = 1, limit = detailPageSize, result = detailResult) => {
+    const openRunDetails = async (run: PaymentReconciliationRun, page = 1, pageSize = detailPageSize, result = detailResult) => {
         setDetailRun(run);
         setDetailLoading(true);
         try {
-            const response = await listAdminPaymentReconciliationItems(run.id, { result: result === "all" ? undefined : result, page, limit });
+            const response = await listAdminPaymentReconciliationItems(run.id, { result: result === "all" ? undefined : result, page, pageSize });
             setDetailRun(response.run);
             setDetailItems(response.items);
             setDetailTotal(response.total);
             setDetailPage(response.page);
-            setDetailPageSize(response.limit);
+            setDetailPageSize(response.pageSize);
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取对账明细失败");
         } finally {

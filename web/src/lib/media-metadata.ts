@@ -1,7 +1,5 @@
-// 媒体时长探测（纯前端工具，M3.4）。
-// 上传视频/音频前用 <video>/<audio> 元数据读取真实时长（毫秒），
-// 随上传 meta 传给后端存 Resource.DurationMs → 资产 summary 透出 → 时间线片段真实时长。
-// 解码能力仅用于读取 duration，不需要能播放编码。
+// 媒体时长探测工具：上传前通过 <video>/<audio> 元数据读取真实时长（毫秒）。
+// 结果随上传 meta 传给后端，供资源摘要和时间线片段使用；这里不负责验证完整播放能力。
 
 const PROBE_TIMEOUT_MS = 8000;
 
@@ -9,31 +7,37 @@ function isProbeable(file: File): boolean {
     return /^video\//.test(file.type) || /^audio\//.test(file.type);
 }
 
+/**
+ * 返回可确认的媒体时长；非音视频、浏览器不支持解码、元数据错误或超时都返回 undefined。
+ * 这是上传附加信息而不是写入前置条件，调用方必须允许缺少时长，但不能编造默认时长。
+ */
 export async function probeMediaDurationMs(file: File): Promise<number | undefined> {
     if (!isProbeable(file)) return undefined;
     const url = URL.createObjectURL(file);
     const el: HTMLVideoElement | HTMLAudioElement = /^video\//.test(file.type)
         ? document.createElement("video")
         : document.createElement("audio");
+    let timeoutId: number | undefined;
     el.preload = "metadata";
-    el.muted = true; // video 自动加载元数据在某些浏览器需要非 autoplay；muted 仅避免噪音
+    // 某些浏览器只有在静音时才允许视频元素主动加载元数据；这里只禁止声音，不触发自动播放。
+    el.muted = true;
     try {
-        const timeout = new Promise<never>((_, reject) => {
-            window.setTimeout(() => reject(new Error("probe timeout")), PROBE_TIMEOUT_MS);
-        });
-        const meta = new Promise<number>((resolve) => {
+        const durationMs = await new Promise<number>((resolve, reject) => {
+            timeoutId = window.setTimeout(() => reject(new Error("媒体元数据读取超时")), PROBE_TIMEOUT_MS);
             el.onloadedmetadata = () => {
-                const d = el.duration;
-                resolve(Number.isFinite(d) && d > 0 ? Math.round(d * 1000) : 0);
+                const durationSeconds = el.duration;
+                resolve(Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : 0);
             };
             el.onerror = () => resolve(0);
+            el.src = url;
         });
-        el.src = url;
-        const durationMs = await Promise.race([meta, timeout]);
         return durationMs > 0 ? durationMs : undefined;
     } catch {
         return undefined;
     } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        el.onloadedmetadata = null;
+        el.onerror = null;
         el.removeAttribute("src");
         el.load();
         URL.revokeObjectURL(url);

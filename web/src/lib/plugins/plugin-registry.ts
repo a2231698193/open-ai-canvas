@@ -51,6 +51,11 @@ function assertManifestV2(manifest: PluginManifestV2) {
 
 export function registerPlugin(plugin: RegisteredPlugin) {
     assertManifest(plugin.manifest);
+    const actionIds = new Set<string>();
+    for (const action of plugin.agentActions || []) {
+        if (!action.id.trim() || !action.description.trim() || actionIds.has(action.id) || typeof action.buildOperations !== "function") throw new Error("插件 Agent 动作需要唯一 ID、说明和操作构建器");
+        actionIds.add(action.id);
+    }
     const existing = registeredPlugins.get(plugin.manifest.id);
     if (existing && existing.manifest.version !== plugin.manifest.version) {
         throw new Error(`插件 ${plugin.manifest.id} 已注册其他版本`);

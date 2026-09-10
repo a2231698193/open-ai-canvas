@@ -1,7 +1,5 @@
-// 字幕转写（editor-shell 预设插件贡献 transcription-provider 插槽，M3.6）。
-// M4 后端转写任务（whisper.cpp 本地执行）：创建 POST /timeline/transcriptions
-// → waitForGenerationTask 轮询进度 → 结果 segments 按 ADR-0004 协议以
-// SrtEntry[] 落字幕轨道（rebuildSubtitleClips 重建快照），UI 契约与 M3.6 mock 一致。
+// 转写由后端 whisper.cpp 任务执行；前端只提交资源 ID、观察任务状态，
+// 并将成功结果转换为 SrtEntry[]，通过 rebuildSubtitleClips 原子替换字幕轨道快照。
 
 import { useEffect, useMemo, useState } from "react";
 import { AudioLines, Loader2 } from "lucide-react";

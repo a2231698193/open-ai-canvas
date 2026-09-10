@@ -95,9 +95,15 @@ function runWithBrowserCanvasStorageLock<T>(scope: string, operation: () => Prom
     return operation();
 }
 
+/**
+ * 串行化同一用户作用域的画布持久化，并在一次失败后允许队列继续前进。
+ *
+ * `pending` 必须把当前写入的真实结果返回给调用方；只有前一个 tail 的失败被
+ * 转换成已处理的 void，才不会让一次旧失败永久毒化后续保存队列。
+ */
 export function withCanvasStorePersistenceLock<T>(scope: string, operation: () => Promise<T>, options: CanvasStorageLockOptions = {}): Promise<T> {
     const previous = canvasStorageTails.get(scope) ?? Promise.resolve();
-    const pending = previous.catch(() => undefined).then(() => runWithBrowserCanvasStorageLock(scope, operation, options));
+    const pending = previous.then(() => undefined, () => undefined).then(() => runWithBrowserCanvasStorageLock(scope, operation, options));
     const tail = pending.then(
         () => undefined,
         () => undefined,
@@ -409,7 +415,10 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         clearCanvasSaveTimer(scope);
         const timer = setTimeout(() => {
             if (canvasSaveTimers.get(scope) === timer) canvasSaveTimers.delete(scope);
-            void writeQueuedCanvasPersist(scope, token).catch(() => undefined);
+            void writeQueuedCanvasPersist(scope, token).catch((error) => {
+                // 自动保存无法把异常返回给原始状态更新调用方，但失败队列仍会保留给下一次写入或显式 flush 重试。
+                console.error("画布本地持久化失败，已保留待写队列", { scope, error });
+            });
         }, 400);
         canvasSaveTimers.set(scope, timer);
     },

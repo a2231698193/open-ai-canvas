@@ -1,6 +1,6 @@
 // 编辑器状态机（ADR-0002）：命令唯一入口 + 有界快照撤销 + 1.5s 防抖保存。
 // - dispatch：同步 apply 命令，失败（fail-closed）不改状态、错误进 saveError 供 UI 上报
-// - 保存层依赖注入（saveTimeline），M4 前不绑定后端；保存串行化防止旧快照覆盖新状态
+// - 保存层依赖注入（saveTimeline），当前由页面绑定本地存储；保存串行化防止旧快照覆盖新状态
 // - previewGesture/commitGesture/cancelGesture：拖拽等连续手势期间只改渲染态，
 //   松手提交时一次性入历史（手势不逐帧污染撤销栈）
 
@@ -58,6 +58,13 @@ export type EditorStoreOptions = {
     debounceMs?: number;
 };
 
+/**
+ * 创建一个项目级时间线状态容器。
+ *
+ * 状态容器不负责服务端持久化：saveTimeline 是调用方注入的本地存储适配器，
+ * 这里仅保证命令、撤销历史和保存队列的一致性。保存失败必须保留 isDirty，
+ * 让 UI 能提示未落盘并在下一次变更或卸载冲刷时重试。
+ */
 export function createEditorStore(options: EditorStoreOptions = {}): UseBoundStore<StoreApi<EditorStore>> {
     const registry = options.registry ?? getEditorCommandRegistry();
     const saveTimeline = options.saveTimeline;

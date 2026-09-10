@@ -23,14 +23,14 @@ type AdminTaskPage struct {
 	Tasks []model.Task `json:"tasks"`
 	Total int64        `json:"total"`
 	Page  int          `json:"page"`
-	Limit int          `json:"limit"`
+	Limit int          `json:"pageSize"`
 }
 
 type AdminAuditPage struct {
 	Events []model.AdminAuditEvent `json:"events"`
 	Total  int64                   `json:"total"`
 	Page   int                     `json:"page"`
-	Limit  int                     `json:"limit"`
+	Limit  int                     `json:"pageSize"`
 }
 
 func (s *Service) appendAdminAudit(actor *model.User, action string, targetType string, targetID string, summary string, metadata any) error {

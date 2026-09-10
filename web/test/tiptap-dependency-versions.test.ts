@@ -9,13 +9,13 @@ const version = manifest.dependencies["@tiptap/core"];
 const isTiptap = (name: string) => name.startsWith("@tiptap/");
 
 describe("Tiptap dependency alignment", () => {
-    test("pins direct dependencies and matching Bun/npm and pnpm overrides", () => {
+    test("pins direct dependencies and matching Bun overrides", () => {
         expect(version).toMatch(/^\d+\.\d+\.\d+$/);
         for (const [name, specifier] of Object.entries(manifest.dependencies)) {
             if (isTiptap(name)) expect(specifier).toBe(version);
         }
         const overrides = Object.fromEntries(Object.entries(manifest.overrides).filter(([name]) => isTiptap(name)));
-        expect(manifest.pnpm.overrides).toEqual(overrides);
+        expect(manifest.pnpm).toBeUndefined();
         for (const specifier of Object.values(overrides)) expect(specifier).toBe(version);
     });
 

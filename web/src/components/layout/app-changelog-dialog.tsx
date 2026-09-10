@@ -1,8 +1,8 @@
-import { Modal } from "antd";
 import { motion, useReducedMotion } from "motion/react";
 import { ScrollText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+import { AppModal } from "@/components/ui/product/app-modal/app-modal";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 
 export function AppChangelogDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -10,7 +10,8 @@ export function AppChangelogDialog({ open, onClose }: { open: boolean; onClose: 
     const version = `v${__APP_VERSION__.replace(/^v/, "")}`;
 
     return (
-        <Modal
+        <AppModal
+            flush
             rootClassName="app-spatial-modal app-changelog-modal"
             title={
                 <div className="app-changelog-heading">
@@ -29,7 +30,6 @@ export function AppChangelogDialog({ open, onClose }: { open: boolean; onClose: 
             footer={null}
             centered
             onCancel={onClose}
-            styles={{ body: { padding: 0 } }}
             modalRender={(node) => (
                 <motion.div initial={reducedMotion ? false : { opacity: 0, y: 14, scale: 0.975 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }}>
                     {node}
@@ -61,6 +61,6 @@ export function AppChangelogDialog({ open, onClose }: { open: boolean; onClose: 
                     {__APP_CHANGELOG__}
                 </ReactMarkdown>
             </div>
-        </Modal>
+        </AppModal>
     );
 }

@@ -1,4 +1,5 @@
-import { Modal, Tabs } from "antd";
+import { Tabs } from "antd";
+import { AppModal } from "@/components/ui/product/app-modal";
 import type { ReactNode } from "react";
 import "./model-editor-modal.css";
 
@@ -31,7 +32,7 @@ export function ModelEditorModal({
     const content = typeof children === "function" ? children(tabs) : children || tabs;
 
     return (
-        <Modal
+        <AppModal
             open={open}
             centered
             width={1120}
@@ -48,9 +49,9 @@ export function ModelEditorModal({
             closable={!busy}
             onCancel={onClose}
             footer={footer}
-            styles={{ container: { padding: 0, overflow: "hidden" }, body: { padding: 0, minHeight: 0, flex: 1 }, header: { margin: 0 }, footer: { margin: 0 } }}
+            flush styles={{ body: { minHeight: 0, flex: 1 }, header: { margin: 0 }, footer: { margin: 0 } }}
         >
             {content}
-        </Modal>
+        </AppModal>
     );
 }

@@ -1,15 +1,12 @@
-import axios from "axios";
-
 import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
-import { channelRequest } from "@/services/api/custom-channel-relay";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
 import { withOpenAIPromptCacheKey } from "@/lib/openai-prompt-cache";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@/lib/model-capabilities";
 import { buildGeminiImageGenerationConfig, parseGeminiImageDataUrl, type GeminiImageGenerationConfig } from "@/lib/gemini-image";
-import { aiApiUrl, aiHeaders, geminiApiUrl, geminiHeaders, postChannelJSON, postGeminiJSON, postVolcengineArkImage } from "@/services/api/image-transport";
+import { aiApiUrl, aiHeaders, imageChannelTransport, postChannelJSON, postGeminiJSON, postVolcengineArkImage } from "@/services/api/image-transport";
 
 const IMAGE_OUTPUT_FORMAT = "png";
 import type { AiTextMessage, GeminiPart, ImageApiResponse, RequestOptions, ResponseApiPayload, ResponseFunctionTool, ResponseInputMessage, ToolChoice, ToolResponseResult } from "@/services/api/image-contracts";
@@ -224,9 +221,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     if (mask) formData.set("mask", dataUrlToFile(mask));
 
     try {
-        const request = channelRequest(requestConfig, aiApiUrl(requestConfig, "/images/edits"), aiHeaders(requestConfig));
-        const response = await axios.post<ImageApiResponse>(request.url, formData, { headers: request.headers, withCredentials: request.credentials === "include", signal: options?.signal });
-        const images = parseImagePayload(response.data);
+        const images = parseImagePayload(await imageChannelTransport(requestConfig).postForm<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { signal: options?.signal, headers: aiHeaders(requestConfig) }));
         return images;
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));

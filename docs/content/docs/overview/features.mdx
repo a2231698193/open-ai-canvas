@@ -5,6 +5,12 @@ description: 当前项目已实现的核心工作台能力与使用入口
 
 # 功能清单
 
+## 画布智能引用
+
+节点提示词面板提供“智能引用”入口，支持 AutoLink 开关和“一键引用全文”。输入已连接素材的名称、标签或素材栏序号后，按 Tab 或点击光标旁的候选项插入引用；全文引用会批量转换匹配到的指代，没有可转换内容时按钮禁用。
+
+匹配仅覆盖当前已连接且激活的画布素材，跳过技能、素材库条目、重名歧义和已有引用。支持 `图1`、`图片1`、`image1`、`image 1` 及独立序号；普通数字文本如“约2秒”保持原样。AutoLink 默认在节点面板开启，开关为面板临时状态。
+
 ## 画布抓手与框选
 
 画布底部主工具栏用一个胶囊开关切换「区域选择」和「抓手工具」。默认是区域选择，空白处拖动框选节点；切到抓手后拖动平移画布。按住空格或中键仍可临时平移，不改变当前工具。
@@ -70,6 +76,20 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 - `web/src/pages/auth/login.tsx`、`web/src/pages/auth/forgot-password.tsx`：登录入口与两阶段邮箱验证界面。
 - `backend/internal/service/password_reset.go`：发送策略、验证码校验和密码重置业务边界。
 - `backend/internal/repository/repository.go`：密码更新、验证码消费和登录会话撤销事务。
+
+## 官方提示词模板
+
+平台级 LLM 任务只走后端提示词目录，不在页面里手写整段系统指令。运营可在管理后台维护版本，用户可在设置里跟随、追加或改写创作层；动态上下文和 JSON 输出契约由服务端编译时注入，不能被模板或个人偏好覆盖。
+
+当前操作包括：章节资产提取、分镜规划/修复、分镜首帧、分镜视频、角色卡提取、角色三视图、短剧大纲、技能草稿。短剧一句话生成和技能库 AI 草稿只提交 `promptTemplateOperation` 与变量，占位 prompt 不会成为模型看到的正文。
+
+画布内置预设、反推提示词、工作流起步稿、文本改写包装、视频操作包装、字幕高亮指令和在线 Agent 协议提示词属于客户端目录 `web/src/lib/prompts` 与 `web/src/lib/canvas/canvas-agent-protocol.ts`。Agent 系统提示词是产品契约，不开放运营改写，避免把工具权限改坏。
+
+### 相关实现
+
+- `backend/internal/service/prompt_template.go`、`prompt_template_defaults.go`：操作定义、编译、受保护契约和结果校验。
+- `web/src/lib/prompts/`：前端操作名、客户端起始/包装提示词和短剧大纲解析。
+- `web/src/pages/settings/prompt-preferences-pane.tsx`、`web/src/pages/admin/storyboard-prompts/storyboard-prompts-page.tsx`：用户偏好与运营版本。
 
 ## AI 提示词优化器
 

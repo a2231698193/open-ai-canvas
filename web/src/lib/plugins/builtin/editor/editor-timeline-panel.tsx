@@ -1,8 +1,7 @@
-// 时间线面板（editor-shell 预设插件贡献，M2.4 手势 echo 最小件）。
 // 渲染链路：store.project（当前命令状态）→ 轨道/片段绝对定位 → 拖拽手势
 // （moveClip / trimClip）经 previewGesture 逐帧预览、commitGesture 一次性入历史。
 // 手势数学与渲染同源（同一 pxPerMs），保证拖拽所见即所得。
-// 撤销/重做与保存状态移入宿主顶栏（Concat 主菜单区），本面板保留缩放与片段统计。
+// 撤销、重做和保存由编辑器宿主统一处理，本面板只负责时间线交互和可视状态。
 
 import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, Film, Magnet, Maximize, MousePointer2, Music2, Plus, Scissors, Slice, Subtitles, Trash2, Volume2, VolumeX, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -42,7 +41,7 @@ const TOOL_FG_ACTIVE = "bg-[var(--director-dock-active-surface)] text-[var(--dir
 
 type GestureMode = "move" | "trim-start" | "trim-end" | null;
 
-// 与时间线相关的场景：playheadMs 是标尺交互的临时坐标，随缩放同步换算。
+// 工具模式只影响指针手势解释；时间线数据修改仍必须通过命令分发。
 type TimelineTool = "select" | "razor";
 
 type GestureState = {
@@ -300,7 +299,7 @@ export function EditorTimelinePanel() {
                 {project.clips.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-[var(--director-dock-fg)]">
                         <Scissors className="size-8" />
-                        <p className="text-sm">时间线暂无片段，从素材库拖入或后续接入画布节点</p>
+                        <p className="text-sm">从素材库加入素材后即可开始剪辑</p>
                     </div>
                 ) : (
                     <div className="relative min-w-full" style={{ width: contentWidth }}>
@@ -399,7 +398,7 @@ function TimelineRuler({
     };
     return (
         <div className="sticky top-0 z-10 flex h-6 shrink-0 w-full items-end border-b border-[var(--director-sequencer-border)] bg-[var(--director-sequencer-surface-raised)]">
-            {/* 左列占位与 TrackRow 轨道标签列（w-48）同宽，sticky 跟随横向滚动，保证 0ms 刻度与片段区起点对齐 */}
+            {/* 左侧空白列与轨道标签列同宽，保证 0ms 刻度和片段绘制区域使用同一坐标原点。 */}
             <div className="sticky left-0 z-10 w-48 shrink-0 self-stretch border-r border-[var(--director-sequencer-border)] bg-[var(--director-sequencer-surface-raised)]">
                 {/* 当前播放头时码，跟随拖动实时刷新 */}
                 <span className="absolute bottom-1 right-2 text-[10px] tabular-nums text-[var(--director-danger)]">{formatTimelineTime(playheadMs)}</span>
