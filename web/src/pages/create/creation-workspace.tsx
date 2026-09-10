@@ -22,6 +22,8 @@ import { CanvasResourceMentionTextarea } from "@/components/canvas/canvas-resour
 import { VoiceRecordingButton } from "@/components/conversation/voice-recording-button";
 import { ModelPicker } from "@/components/model-picker";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
+import { modelQuoteRequest } from "@/lib/model-pricing";
+import { quoteLogicalModel } from "@/services/api/logical-models";
 import { ASSET_CATEGORY_LABELS } from "@/lib/asset-category";
 import { formatShotOrdinal } from "@/lib/shot-label";
 import { useCopyText } from "@/hooks/use-copy-text";
@@ -359,13 +361,48 @@ export function CreationComposer(props: ComposerProps) {
     const priceChannel = resolveModelChannel(props.config, props.model);
     const canOptimizePrompt = Boolean(props.promptOptimizerProvider) && (props.mode === "image" || props.mode === "video");
     const optimizerReferences = props.references.filter((reference) => reference.active && reference.kind !== "skill");
-    const credits = requestCreditCost({
+    const pricingCapability = props.mode === "text" ? undefined : props.mode;
+    const pricingConfig = useMemo(() => ({
+        ...props.config,
+        model: props.model,
+        imageModel: props.mode === "image" ? props.model : props.config.imageModel,
+        videoModel: props.mode === "video" ? props.model : props.config.videoModel,
+        size: props.ratio || props.config.size,
+        quality: props.quality || props.config.quality,
+        vquality: props.videoQuality || props.config.vquality,
+        videoSeconds: props.mode === "video" ? props.seconds : props.config.videoSeconds,
+        count: props.mode === "image" ? props.count : props.config.count,
+    }), [props.config, props.count, props.mode, props.model, props.quality, props.ratio, props.seconds, props.videoQuality]);
+    const configuredCredits = requestCreditCost({
         channelMode: priceChannel.scope === "system" ? "remote" : "local",
         modelCosts: priceChannel.modelCosts,
         model: modelOptionName(props.model),
         count: props.mode === "image" ? props.count : 1,
         seconds: props.mode === "video" ? props.seconds : 1,
+        capability: pricingCapability,
+        config: pricingConfig,
+        requirements: props.modelRequirements,
     });
+    const quoteRequest = useMemo(() => modelQuoteRequest(pricingConfig, props.model, pricingCapability, props.modelRequirements), [pricingCapability, pricingConfig, props.model, props.modelRequirements]);
+    const quoteRequestKey = JSON.stringify(quoteRequest || null);
+    const [quotedCredits, setQuotedCredits] = useState<number | null>(null);
+    useEffect(() => {
+        if (!creditsEnabled || !quoteRequest) {
+            setQuotedCredits(null);
+            return;
+        }
+        const controller = new AbortController();
+        setQuotedCredits(null);
+        quoteLogicalModel(quoteRequest.logicalModelID, quoteRequest.intent, controller.signal)
+            .then(({ quote }) => setQuotedCredits(quote.amountMicrocredits / 1_000_000))
+            .catch(() => {
+                if (!controller.signal.aborted) setQuotedCredits(null);
+            });
+        return () => controller.abort();
+        // quoteRequestKey captures the full normalized request without retriggering on object identity.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [creditsEnabled, quoteRequestKey]);
+    const credits = quotedCredits ?? configuredCredits;
     const showCost = creditsEnabled && credits !== null;
     const formattedCredits = credits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
     const actionLabel = props.referenceReplacementBusy ? "正在替换参考图" : interactionBusy || (props.generationActive && !canSubmit) ? "生成中" : showCost ? `预计消耗 ${formattedCredits} 积分，发送` : "发送";

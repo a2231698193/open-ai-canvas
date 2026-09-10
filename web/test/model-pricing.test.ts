@@ -168,6 +168,25 @@ describe("model request pricing", () => {
         ).toBe(0.125);
     });
 
+    test("homepage composer needs current video specs to show channel prices", () => {
+        const config = systemConfig({
+            tiers: [
+                { selector: { operation: "text_to_video", vquality: "720p", videoSeconds: "9" }, billingMode: "fixed_request", unitPriceMicrocredits: 1_800_000 },
+                { selector: { operation: "text_to_video", vquality: "1080p", videoSeconds: "9" }, billingMode: "fixed_request", unitPriceMicrocredits: 3_600_000 },
+            ],
+        });
+        const channel = resolveModelChannel(config, config.model);
+        const composerConfig = { ...config, vquality: "720P", videoSeconds: "9" };
+        const composerRequirements: ModelRequirements = {
+            ...textVideoRequirements,
+            videoSeconds: "9",
+            options: { size: "16:9", vquality: "720", videoSeconds: 9 },
+        };
+
+        expect(requestCreditCost({ channelMode: "remote", modelCosts: channel.modelCosts, model: "agnes-video-2.5", seconds: "9" })).toBe(null);
+        expect(requestCreditCost({ channelMode: "remote", modelCosts: channel.modelCosts, model: "agnes-video-2.5", capability: "video", config: composerConfig, requirements: composerRequirements, seconds: "9" })).toBe(1.8);
+    });
+
     test("displays zero-price system tiers as configured free pricing", () => {
         const fixedConfig = systemConfig({
             capability: "image",
