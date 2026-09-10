@@ -4,6 +4,8 @@
 
 ## 设计沉淀
 
+- [影策品牌首页](design/story-creation-homepage.md)：六幕电影卷轴、公开入口、故事素材、工作台预览与响应式降级。
+
 - [创作 Agent 第一期版本基线](design/creative-agent-phase-one-checkpoint.mdx)：用户基本体验验收反馈、已实现范围、执行与资源边界核对、待验收项及代码恢复说明。
 
 - [通用创作 Agent 动态规划与画布协作需求设计](design/creative-agent-dynamic-planning.mdx)：基于原会话的专业角色、动态问答与计划、创意方案和执行批次分离、统一画布与费用授权、历史恢复及分期验收（待审阅，未实施）。

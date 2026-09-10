@@ -16,6 +16,8 @@ runLocalRuntimeBootstrap(
         },
     },
     () => {
-        void bootstrapAppearance().finally(() => import("./application"));
+        // Keep the public film page independent of workspace and appearance requests.
+        if (/^\/welcome\/?$/.test(window.location.pathname)) void import("./welcome-application");
+        else void bootstrapAppearance().finally(() => import("./application"));
     },
 );
