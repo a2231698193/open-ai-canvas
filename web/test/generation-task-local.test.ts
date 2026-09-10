@@ -8,7 +8,7 @@ import { LocalDreaminaGenerationClientError, runLocalDreaminaGenerationTask, typ
 import { createGenerationBatchRetryContexts, createGenerationRetryContext, generationTaskMetadata, runBackendCanvasGenerationTask, runCanvasGenerationTaskToConsumer } from "../src/lib/canvas/canvas-project-generation";
 import { runCanvasAgentGenerationOps } from "../src/pages/canvas/use-canvas-agent-operations";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
-import { onlineToolToOps } from "../src/components/canvas/canvas-assistant-online-tools";
+import { buildToolAgentMessages, onlineToolToOps } from "../src/components/canvas/canvas-assistant-online-tools";
 import { generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "../src/lib/generation-task-display";
 import { generationErrorMessage } from "../src/lib/generation-error";
 import { generationTaskNodeId, syncGenerationTaskToCanvasStore } from "../src/lib/canvas/canvas-generation-task-sync";
@@ -337,6 +337,58 @@ test("backend text generation forwards streaming callbacks and thinking options"
     expect(createdInput?.input?.textOptions).toEqual({ stream: true, thinking: true });
     expect(streamedText).toBe("实时正文");
     expect(result).toEqual({ mode: "text", text: "完整正文", reasoning: "思考摘要" });
+});
+
+test("online node retry creates a backend task and preserves retry identity in task metadata", async () => {
+    let createdInput: Parameters<NonNullable<Parameters<typeof runBackendGenerationTask>[1]>["createTask"]>[0] | undefined;
+    const running: GenerationTask = { id: "retry-task-new", type: "canvas_image", status: "running", prompt: "retry", attempts: 1, createdAt: "", updatedAt: "" };
+    await runBackendGenerationTask(
+        {
+            projectId: "canvas-retry",
+            mode: "image",
+            prompt: "retry",
+            config: backendModelConfig("retry-image-model"),
+            clientOperationId: "retry:operation-0000000000000001",
+            retryOf: "retry-task-old",
+            attemptGroupId: "retry-group",
+        },
+        {
+            createTask: async (input) => {
+                createdInput = input;
+                return running;
+            },
+            waitTask: async () => ({ ...running, status: "succeeded", resultJson: JSON.stringify({ mode: "image", images: [] }) }),
+            runLocal: async () => { throw new Error("must not use local Runtime"); },
+            createId: () => "unused-retry-id",
+            now: () => "2026-09-10T00:00:00.000Z",
+        },
+    );
+    expect(createdInput?.input?.metadata).toMatchObject({
+        clientOperationId: "retry:operation-0000000000000001",
+        retryOf: "retry-task-old",
+        attemptGroupId: "retry-group",
+    });
+});
+
+test("online canvas Agent sends resource references instead of inline image bodies", async () => {
+    const snapshot = { projectId: "canvas-agent", title: "Agent", nodes: [], connections: [], selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 } };
+    const messages = await buildToolAgentMessages(snapshot, [], {
+        id: "message",
+        role: "user",
+        text: "分析图片",
+        references: [{ id: "image", type: CanvasNodeType.Image, title: "参考图", dataUrl: `data:image/png;base64,${"A".repeat(1024)}`, storageKey: "resource:image-remote" }],
+    });
+    const serialized = JSON.stringify(messages);
+    expect(serialized).toContain("resource:image-remote");
+    expect(serialized).not.toContain("data:image/png");
+    expect(serialized.length).toBeLessThan(20_000);
+
+    await expect(buildToolAgentMessages(snapshot, [], {
+        id: "local-message",
+        role: "user",
+        text: "分析本地图片",
+        references: [{ id: "local-image", type: CanvasNodeType.Image, title: "未上传图片", dataUrl: "data:image/png;base64,AAAA" }],
+    })).rejects.toThrow("引用图片尚未同步到服务器");
 });
 
 test("the shared local generation entry projects pre-receipt work as submitting without fake progress", async () => {

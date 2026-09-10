@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ImageSizePicker } from "../src/components/image-size-picker";
+import { applyImageSizeSelection } from "../src/components/image-settings-panel";
 import { ImageSizePresetsEditor } from "../src/components/image-size-presets-editor";
 import { ModelCapabilityEditor } from "../src/components/model-capability-editor";
 import { defaultImageCapabilityConfig, normalizeModelCapabilityConfig } from "../src/lib/model-capabilities";
@@ -10,6 +11,12 @@ import { resolveImageRequestSize, validateImageSize } from "../src/services/api/
 import { buildGeminiImageGenerationConfig } from "../src/lib/gemini-image";
 
 describe("统一图片分辨率与宽高比", () => {
+    test("比例协议切换 4K 时同时提交尺寸和真实质量档位", () => {
+        const changes: Array<[string, string]> = [];
+        applyImageSizeSelection((key, value) => changes.push([key, value]), "16:9", "high");
+        expect(changes).toEqual([["size", "16:9"], ["quality", "high"]]);
+    });
+
     test("像素协议从旧比例配置切换 4K 后发送真实像素，不回退到 1K", () => {
         const profile = defaultImageCapabilityConfig();
         profile.size = { parameter: "size", values: ["16:9"], default: "16:9", allowCustom: true };

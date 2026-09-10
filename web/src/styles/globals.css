@@ -9588,11 +9588,39 @@
         box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent);
     }
 
+    .canvas-node-reference-chip[data-dragging="true"] {
+        opacity: 0.58;
+    }
+
+    .canvas-node-reference-drag-handle {
+        display: grid;
+        width: 18px;
+        flex: 0 0 18px;
+        place-items: center;
+        border: 0;
+        border-right: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+        border-radius: var(--r-md) 0 0 var(--r-md);
+        background: transparent;
+        padding: 0;
+        color: color-mix(in srgb, var(--foreground) 42%, transparent);
+        cursor: grab;
+    }
+
+    .canvas-node-reference-drag-handle:hover,
+    .canvas-node-reference-drag-handle:focus-visible {
+        background: var(--canvas-composer-control-hover);
+        color: var(--foreground);
+    }
+
+    .canvas-node-reference-drag-handle:active {
+        cursor: grabbing;
+    }
+
     .canvas-node-reference-order {
         position: absolute;
         z-index: 1;
         top: 2px;
-        left: 2px;
+        left: 20px;
         display: grid;
         width: 16px;
         height: 16px;
@@ -9613,7 +9641,7 @@
         flex: 0 0 var(--canvas-reference-chip-size, 44px);
         overflow: hidden;
         border: 0;
-        border-radius: var(--r-md) 0 0 var(--r-md);
+        border-radius: 0;
         background: transparent;
         padding: 0;
         cursor: zoom-in;

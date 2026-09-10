@@ -58,8 +58,8 @@ func (s *Service) UserAssetsPage(userID string, page int, pageSize int, filter U
 	}
 	rawAssets := make([]json.RawMessage, 0, len(assets))
 	for _, asset := range assets {
-		if strings.TrimSpace(asset.PayloadJSON) != "" {
-			rawAssets = append(rawAssets, json.RawMessage(asset.PayloadJSON))
+		if payload := clientAssetPayload(asset); len(payload) > 0 {
+			rawAssets = append(rawAssets, payload)
 		}
 	}
 	kindRows, categoryRows, folderRows, err := s.repo.UserAssetFacets(userID, filter.Status)

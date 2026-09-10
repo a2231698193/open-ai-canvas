@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { type ResponseInputMessage, type ResponseToolCall } from "@/services/api/image";
 import { runBackendToolGenerationTask } from "@/services/api/generation-task";
-import { imageToDataUrl } from "@/services/image-storage";
+import { resourceIdFromStorageKey } from "@/services/api/resources";
 import { normalizeModelOptionValue, resolveModelRequestConfig, selectableModelsByCapability, type AiConfig } from "@/stores/use-config-store";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { CanvasNodeType, type CanvasAssistantMessage, type CanvasAssistantReference, type CanvasAssistantSession, type CanvasNodeData } from "@/types/canvas";
@@ -476,6 +476,12 @@ export function buildAssistantReferences(nodes: CanvasNodeData[], selectedNodeId
 
 export async function buildToolAgentMessages(snapshot: CanvasAgentSnapshot, history: CanvasAssistantMessage[], userMessage: CanvasAssistantMessage, skills: Skill[] = []): Promise<ResponseInputMessage[]> {
     const refs = userMessage.references || [];
+    const imageRefs = refs.filter((item) => item.type === CanvasNodeType.Image);
+    const unavailableImageRefs = imageRefs.filter((item) => !resourceIdFromStorageKey(item.storageKey));
+    if (unavailableImageRefs.length) {
+        const names = unavailableImageRefs.map((item) => item.title || item.id).join("、");
+        throw new Error(`引用图片尚未同步到服务器：${names}。请等待上传完成后重试`);
+    }
     const skillCatalog = skills
         .filter((skill) => skill.isAdded)
         .slice(0, 40)
@@ -493,7 +499,7 @@ export async function buildToolAgentMessages(snapshot: CanvasAgentSnapshot, hist
             content: [
                 ...refs.flatMap((item) => (item.text ? [{ type: "text" as const, text: `选中节点 ${item.title}：${item.text}` }] : [])),
                 { type: "text", text: `当前画布：${JSON.stringify(compactSnapshot(snapshot))}\n\n用户需求：${userMessage.text}` },
-                ...(await Promise.all(refs.filter((item) => item.dataUrl).map(async (item) => ({ type: "image_url" as const, image_url: { url: await imageToDataUrl(item) } })))),
+                ...imageRefs.map((item) => ({ type: "image_url" as const, image_url: { url: item.storageKey! } })),
             ],
         },
     ];

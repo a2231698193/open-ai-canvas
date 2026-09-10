@@ -28,7 +28,9 @@ func (s *Service) UserAssetsByIDs(userID string, ids []string) ([]json.RawMessag
 	}
 	result := make([]json.RawMessage, 0, len(assets))
 	for _, asset := range assets {
-		result = append(result, json.RawMessage(asset.PayloadJSON))
+		if payload := clientAssetPayload(asset); len(payload) > 0 {
+			result = append(result, payload)
+		}
 	}
 	return result, nil
 }

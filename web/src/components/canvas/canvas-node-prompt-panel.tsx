@@ -1,7 +1,7 @@
 import { Button, Image as AntImage, InputNumber, Modal, Popover } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
+import { ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -36,6 +36,7 @@ import { quoteLogicalModel } from "@/services/api/logical-models";
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
 type CanvasNodePromptPanelProps = {
+    projectId: string;
     node: CanvasNodeData;
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
@@ -43,6 +44,7 @@ type CanvasNodePromptPanelProps = {
     onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
     mentionReferences?: CanvasResourceReference[];
     onRemoveReference?: (nodeId: string, reference: CanvasResourceReference) => void;
+    onReorderReferences?: (nodeId: string, orderedNodeIds: string[]) => void;
     onClose?: () => void;
     onNodeMouseDown?: (event: ReactPointerEvent, nodeId: string) => void;
     onImageSettingsOpenChange?: (open: boolean) => void;
@@ -60,7 +62,7 @@ const PROMPT_EDITOR_VERTICAL_PADDING = 12;
 const PROMPT_EDITOR_EXPANDED_VERTICAL_PADDING = 20;
 const PROMPT_EDITOR_MAX_LINES = 8;
 
-export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onRemoveReference, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional" }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onRemoveReference, onReorderReferences, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional" }: CanvasNodePromptPanelProps) {
     const globalConfig = useEffectiveConfig();
     const themeName = useThemeStore((state) => state.theme);
     const theme = canvasThemes[themeName];
@@ -83,7 +85,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const [paramsExpanded, setParamsExpanded] = useState(false); // #98 决策2：B区参数区折叠状态（手风琴）
     const [promptOptimizerOpen, setPromptOptimizerOpen] = useState(false);
     const [autoLinkEnabled, setAutoLinkEnabled] = useState(true);
-    const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences);
+    const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences, { projectId });
     const normalizedSavedPrompt = useMemo(() => normalizeCanvasNodeMentionTokens(savedPrompt, mentionReferences), [mentionReferences, savedPrompt]);
     const activeReferences = resolvedMentionReferences.filter((item) => item.active && item.kind !== "skill");
     const requirements: ModelRequirements = {
@@ -436,7 +438,13 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         return (
             <>
                 <div className="canvas-node-composer-editor" style={{ height }}>
-                    <ConnectedReferenceShelf references={resolvedMentionReferences} theme={theme} onInsert={insertPromptReference} onRemove={(reference) => onRemoveReference?.(node.id, reference)} />
+                    <ConnectedReferenceShelf
+                        references={resolvedMentionReferences}
+                        theme={theme}
+                        onInsert={insertPromptReference}
+                        onRemove={(reference) => onRemoveReference?.(node.id, reference)}
+                        onReorder={onReorderReferences ? (orderedNodeIds) => onReorderReferences(node.id, orderedNodeIds) : undefined}
+                    />
                     <CanvasResourceMentionTextarea
                         value={prompt}
                         references={resolvedMentionReferences}
@@ -655,10 +663,29 @@ function referenceShelfHeading(references: CanvasResourceReference[]) {
     return `${label} · ${references.length}`;
 }
 
-function ConnectedReferenceShelf({ references, theme, onInsert, onRemove }: { references: CanvasResourceReference[]; theme: CanvasTheme; onInsert: (reference: CanvasResourceReference) => void; onRemove?: (reference: CanvasResourceReference) => void }) {
+function ConnectedReferenceShelf({ references, theme, onInsert, onRemove, onReorder }: { references: CanvasResourceReference[]; theme: CanvasTheme; onInsert: (reference: CanvasResourceReference) => void; onRemove?: (reference: CanvasResourceReference) => void; onReorder?: (orderedNodeIds: string[]) => void }) {
     const activeReferences = references.filter((item) => item.active && item.kind !== "skill");
     const [imagePreview, setImagePreview] = useState<CanvasResourceReference | null>(null);
+    const [draggedReferenceId, setDraggedReferenceId] = useState<string | null>(null);
     if (!activeReferences.length) return null;
+
+    const moveReference = (sourceId: string, targetId: string) => {
+        if (!onReorder || sourceId === targetId) return;
+        const sourceIndex = activeReferences.findIndex((reference) => reference.nodeId === sourceId);
+        const targetIndex = activeReferences.findIndex((reference) => reference.nodeId === targetId);
+        if (sourceIndex < 0 || targetIndex < 0) return;
+        const ordered = [...activeReferences];
+        const [moved] = ordered.splice(sourceIndex, 1);
+        ordered.splice(targetIndex, 0, moved);
+        onReorder(ordered.map((reference) => reference.nodeId));
+    };
+
+    const moveReferenceByOffset = (sourceId: string, offset: -1 | 1) => {
+        const sourceIndex = activeReferences.findIndex((reference) => reference.nodeId === sourceId);
+        const target = activeReferences[sourceIndex + offset];
+        if (!target) return;
+        moveReference(sourceId, target.nodeId);
+    };
 
     return (
         <>
@@ -667,7 +694,45 @@ function ConnectedReferenceShelf({ references, theme, onInsert, onRemove }: { re
                     {activeReferences.map((reference, index) => {
                         const canPreview = Boolean(reference.previewUrl) && (reference.kind === "image" || reference.kind === "character" || reference.kind === "video");
                         return (
-                            <span key={reference.id} className="canvas-node-reference-chip">
+                            <span
+                                key={reference.id}
+                                className="canvas-node-reference-chip"
+                                data-dragging={draggedReferenceId === reference.nodeId || undefined}
+                                onDragOver={(event) => {
+                                    if (!onReorder || !draggedReferenceId) return;
+                                    event.preventDefault();
+                                    event.dataTransfer.dropEffect = "move";
+                                }}
+                                onDrop={(event) => {
+                                    event.preventDefault();
+                                    const sourceId = draggedReferenceId || event.dataTransfer.getData("text/plain");
+                                    setDraggedReferenceId(null);
+                                    moveReference(sourceId, reference.nodeId);
+                                }}
+                            >
+                                {onReorder ? (
+                                    <button
+                                        type="button"
+                                        className="canvas-node-reference-drag-handle"
+                                        draggable
+                                        title={`拖动调整 ${reference.label} 的顺序`}
+                                        aria-label={`调整 ${reference.label} 的顺序；使用左右方向键也可移动`}
+                                        onDragStart={(event) => {
+                                            setDraggedReferenceId(reference.nodeId);
+                                            event.dataTransfer.effectAllowed = "move";
+                                            event.dataTransfer.setData("text/plain", reference.nodeId);
+                                        }}
+                                        onDragEnd={() => setDraggedReferenceId(null)}
+                                        onKeyDown={(event) => {
+                                            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                                            event.preventDefault();
+                                            moveReferenceByOffset(reference.nodeId, event.key === "ArrowLeft" ? -1 : 1);
+                                        }}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                    >
+                                        <GripVertical className="size-3" />
+                                    </button>
+                                ) : null}
                                 <span className="canvas-node-reference-order" aria-hidden>{index + 1}</span>
                                 <button
                                     type="button"

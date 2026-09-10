@@ -117,7 +117,7 @@ export async function runBackendGenerationTask(
     assertBackendRuntimeConfigured(config, mode);
     const prepared = await prepareGenerationReferences({ referenceImages, referenceVideos, referenceAudios, mask });
     throwIfAborted(signal);
-    return createAndWaitGenerationTask({ projectId, mode, prompt, config, referenceImages, referenceVideos, referenceAudios, textHistory, signal, metadata, onTaskUpdate, onTextDelta, streamText, enableThinking }, prepared, dependencies);
+    return createAndWaitGenerationTask({ projectId, mode, prompt, config, referenceImages, referenceVideos, referenceAudios, textHistory, signal, metadata, onTaskUpdate, onTextDelta, streamText, enableThinking, clientOperationId, retryOf, attemptGroupId }, prepared, dependencies);
 }
 
 // 分镜等后台生产流程只需要可靠提交任务；任务状态与产物由项目工作区轮询和
@@ -492,7 +492,12 @@ function backendGenerationTaskInput(options: BackendGenerationTaskOptions, prepa
             referenceVideos: prepared.referenceVideos,
             referenceAudios: prepared.referenceAudios,
             mask: prepared.mask,
-            metadata: generationMetadata(config, metadata),
+            metadata: generationMetadata(config, {
+                ...metadata,
+                ...(options.clientOperationId ? { clientOperationId: options.clientOperationId } : {}),
+                ...(options.retryOf ? { retryOf: options.retryOf } : {}),
+                ...(options.attemptGroupId ? { attemptGroupId: options.attemptGroupId } : {}),
+            }),
         },
     };
 }

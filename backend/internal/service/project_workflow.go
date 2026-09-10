@@ -597,11 +597,35 @@ func (s *Service) ensureGeneratedProjectAsset(task model.Task, projectID string,
 		title = "镜头产物"
 	}
 	title += " · " + label
+	width := resource.Width
+	height := resource.Height
+	if width <= 0 {
+		width = 1
+	}
+	if height <= 0 {
+		height = 1
+	}
+	resourceURL := "/api/resources/" + resourceID + "/file"
+	data := map[string]any{
+		"storageKey": "resource:" + resourceID,
+		"mimeType":   resource.MimeType,
+		"bytes":      resource.Size,
+		"width":      width,
+		"height":     height,
+	}
+	if mediaType == "image" {
+		data["dataUrl"] = resourceURL
+	} else {
+		data["url"] = resourceURL
+		if resource.DurationMs > 0 {
+			data["durationMs"] = resource.DurationMs
+		}
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"id": assetID, "kind": mediaType, "category": model.AssetCategoryMaterial, "status": model.AssetVersionStatusConfirmed,
-		"primaryVersionId": versionID, "title": title,
-		"data":     map[string]any{"storageKey": "resource:" + resourceID, "url": "/api/resources/" + resourceID + "/file", "mimeType": resource.MimeType, "bytes": resource.Size},
-		"metadata": map[string]any{"source": "short-drama-workflow", "taskId": task.ID, "shotId": shot.ID, "projectIds": []string{projectID}},
+		"primaryVersionId": versionID, "title": title, "coverUrl": resourceURL, "tags": []string{},
+		"createdAt": now.UTC().Format(time.RFC3339Nano), "updatedAt": now.UTC().Format(time.RFC3339Nano),
+		"data": data, "metadata": map[string]any{"source": "short-drama-workflow", "taskId": task.ID, "shotId": shot.ID, "projectIds": []string{projectID}},
 	})
 	asset := &model.Asset{ID: assetID, UserID: task.UserID, Kind: mediaType, Category: model.AssetCategoryMaterial, Status: model.AssetVersionStatusConfirmed, PrimaryVersionID: versionID, Title: title, PayloadJSON: string(payload), CreatedAt: now, UpdatedAt: now}
 	version := &model.AssetVersion{ID: versionID, AssetID: assetID, Version: 1, Status: model.AssetVersionStatusConfirmed, DefinitionJSON: "{}", Prompt: task.Prompt, Note: "工作流生成产物", CreatedAt: now, UpdatedAt: now}

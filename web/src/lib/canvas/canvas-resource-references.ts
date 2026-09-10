@@ -20,6 +20,9 @@ export type CanvasResourceReference = {
     storageKey?: string;
     /** 视频首帧是独立的图片资源，不能用视频 storageKey 解析。 */
     previewStorageKey?: string;
+    /** 绘图预览保存在按项目隔离的本地绘图仓库，不复用普通图片 storageKey。 */
+    drawingId?: string;
+    drawingRevision?: number;
     text?: string;
     active: boolean;
     sourceType?: CanvasNodeTypeId;
@@ -379,6 +382,32 @@ export function getContextResourceNodes(nodeId: string, nodes: CanvasNodeData[],
         .filter((node): node is CanvasNodeData => Boolean(node && isResourceNode(node)));
 }
 
+/**
+ * 调整目标节点的素材输入边顺序。连接数组是引用编号的唯一顺序源；只替换相关
+ * 输入边所在槽位，避免改变主链和其他节点的连线顺序。
+ */
+export function reorderCanvasResourceConnections(targetNodeId: string, orderedNodeIds: string[], nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const uniqueOrder = [...new Set(orderedNodeIds.filter(Boolean))];
+    if (uniqueOrder.length < 2) return connections;
+    const configNodeId = connections.find((connection) => connection.fromNodeId === targetNodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config)?.toNodeId;
+    const configInputs = configNodeId ? getContextResourceNodes(configNodeId, nodes, connections).filter((node) => node.id !== targetNodeId) : [];
+    const receiverId = configInputs.length ? configNodeId! : targetNodeId;
+    const orderSet = new Set(uniqueOrder);
+    const slots = connections
+        .map((connection, index) => ({ connection, index }))
+        .filter(({ connection }) => connection.toNodeId === receiverId && orderSet.has(connection.fromNodeId));
+    if (slots.length !== uniqueOrder.length) return connections;
+    const connectionBySource = new Map(slots.map(({ connection }) => [connection.fromNodeId, connection]));
+    if (uniqueOrder.some((nodeId) => !connectionBySource.has(nodeId))) return connections;
+    const reordered = uniqueOrder.map((nodeId) => connectionBySource.get(nodeId)!);
+    if (slots.every(({ connection }, index) => connection === reordered[index])) return connections;
+    const next = [...connections];
+    slots.forEach(({ index }, orderIndex) => {
+        next[index] = reordered[orderIndex];
+    });
+    return next;
+}
+
 function getConnectedConfigResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
     const configConnection = connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config);
     if (!configConnection) return [];
@@ -409,6 +438,8 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                         : node.metadata?.previewContent || node.metadata?.content,
                 storageKey: node.metadata?.storageKey,
                 previewStorageKey: node.type === CanvasNodeType.Video ? node.metadata?.videoPreview?.storageKey : undefined,
+                drawingId: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingId : undefined,
+                drawingRevision: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingRevision : undefined,
                 text: node.metadata?.workflowKind === "character" ? node.metadata.characterPrompt : node.type === CanvasNodeType.Text ? node.metadata?.content || node.metadata?.prompt : node.type === CanvasNodeType.Skill ? skillResourceText(node) : undefined,
                 active,
                 sourceType: node.type,
