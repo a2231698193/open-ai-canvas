@@ -11,7 +11,7 @@ description: 从产品功能快速定位主要代码入口
 
 | 功能 | 页面入口 | 主要协作模块 |
 | --- | --- | --- |
-| 首页与导航 | `web/src/pages/home/`、`web/src/layouts/user-layout.tsx` | `components/layout/`、`router.tsx` |
+| 首页与导航 | `web/src/pages/home/`、`web/src/layouts/user-layout.tsx` | 未登录公开首页 `pages/home/public-landing.tsx`；已登录 `/` 仍进创作页；侧栏 `components/layout/`、`router.tsx` |
 | 创作工作台 | `web/src/pages/create/index.tsx` | `creation-workspace.tsx`、`creation-conversations.ts`、`creation-types.ts`、`creation-assets.ts`、`creation-references.ts` |
 | 登录注册 | `web/src/pages/auth/` | `stores/use-user-store.ts`、`services/api/auth.ts`、后端 `service/linuxdo.go` |
 | 积分与计费 | `web/src/pages/wallet/`、`pages/admin/components/platform-finance-panel.tsx` | `services/api/wallet.ts`、后端 `service/finance.go`、`repository/finance.go` |

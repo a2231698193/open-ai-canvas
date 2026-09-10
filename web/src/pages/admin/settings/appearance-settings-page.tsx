@@ -646,7 +646,7 @@ export default function AppearanceSettingsPage() {
                         className="admin-appearance-section"
                         icon={<Globe2 className="size-4" aria-hidden="true" />}
                         title="4. 首页页尾与备案"
-                        description="配置公开登录首页底部的版权和备案信息；备案号启用后固定链接工信部备案管理系统。"
+                        description="配置公开首页和登录页底部的版权和备案信息；备案号启用后固定链接工信部备案管理系统。"
                         status={<AdminStatusBadge label={icpFilingEnabled ? "展示备案号" : "未展示备案号"} tone={icpFilingEnabled ? "success" : "neutral"} />}
                     >
                         <div className="admin-appearance-section-form admin-appearance-footer-settings">
@@ -668,7 +668,7 @@ export default function AppearanceSettingsPage() {
                             <div className="admin-appearance-logo-frame-option">
                                 <div className="admin-appearance-logo-frame-copy">
                                     <strong>在首页底部显示备案号</strong>
-                                    <p id="appearance-icp-help">启用后，备案号会显示在登录、注册和找回密码页底部，并链接至 https://beian.miit.gov.cn/ 供公众查询。</p>
+                                    <p id="appearance-icp-help">启用后，备案号会显示在公开首页以及登录、注册和找回密码页底部，并链接至 https://beian.miit.gov.cn/ 供公众查询。</p>
                                 </div>
                                 <div className="admin-appearance-logo-frame-control">
                                     <span>{icpFilingEnabled ? "已显示" : "未显示"}</span>
