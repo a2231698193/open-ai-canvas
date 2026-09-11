@@ -1,5 +1,5 @@
 export const chapters = [
-    { id: "opening", label: "序幕", title: "影策", subtitle: "让一个故事，从文字走向银幕。", description: "面向 AI 影视与短剧创作的开源工作台。" },
+    { id: "opening", label: "序幕", title: "品牌", subtitle: "让一个故事，从文字走向银幕。", description: "面向 AI 影视与短剧创作的工作台。" },
     { id: "story", label: "故事", title: "一念，成故事。" },
     { id: "world", label: "角色", title: "让想象，有了面孔。" },
     { id: "shots", label: "分镜", title: "字里行间，皆是镜头。" },

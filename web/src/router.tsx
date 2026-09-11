@@ -94,6 +94,7 @@ export const router = createBrowserRouter([
         ],
     },
     { path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> },
+    { path: "/welcome", element: <Navigate to="/" replace /> },
     { path: "/share/canvas/:token", element: fullScreenDeferred(<SharedCanvasPage />), errorElement: <RouteErrorPage /> },
     ...(import.meta.env.DEV ? devRoutes() : []),
     {

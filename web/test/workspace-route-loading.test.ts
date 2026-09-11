@@ -34,20 +34,13 @@ describe("workspace route loading", () => {
     test("keeps the creation page at root for signed-in users and preserves the create compatibility route", () => {
         const router = source("../src/router.tsx");
         const home = source("../src/pages/home/index.tsx");
-        const landing = source("../src/pages/home/public-landing.tsx");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
 
         expect(router).toContain('{ path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> }');
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
-        expect(router).not.toContain('{ path: "/", element: <RequireAuth>{deferred(<CreatePage />)}</RequireAuth> }');
-        expect(router).not.toContain('path: "/home"');
-        expect(home).toContain("if (!user) return <PublicLanding />");
-        expect(home).toContain("<CreatePage />");
-        expect(landing).toContain('to={enterTo}');
-        expect(landing).toContain("<SiteComplianceFooter variant=\"auth\"");
-        expect(navigation).toContain('{ id: "home", title: "首页", icon: Home, to: "/" }');
-        expect(navigation).not.toContain('to: "/create"');
-        expect(navigation).not.toContain('to: "/home"');
+        expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
+        expect(home).toContain("return <WelcomePage />");
+        expect(navigation).toContain('{ id: "home", title: "首页", icon: Home, to: "/create" }');
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {
