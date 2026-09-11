@@ -231,6 +231,20 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         image.outputFormat = { supported: false };
         image.maxOutputs = 4;
     }
+    if (protocol === "apimart-image") {
+        image.references.maskSupported = false;
+        image.size = {
+            parameter: "aspect_ratio",
+            values: ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "3:1", "1:3", "21:9", "9:21"],
+            default: "1:1",
+            allowCustom: true,
+        };
+        image.quality = { supported: true, values: ["1k", "2k", "4k"], default: "2k" };
+        image.transparentBackground = { supported: false, default: false };
+        image.responseFormat = { supported: false };
+        image.outputFormat = { supported: false };
+        image.maxOutputs = 4;
+    }
     if (protocol !== "grok-image" && model.trim().toLowerCase().startsWith("grok-imagine-image")) {
         image.references.maxImages = 0;
         image.references.maskSupported = false;

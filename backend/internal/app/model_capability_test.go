@@ -116,6 +116,13 @@ func TestDefaultVideoCapabilityUsesProtocolSpecificResolutionTiers(t *testing.T)
 	}
 }
 
+func TestAPIMartImageCapabilityUsesRatioAndResolutionTiers(t *testing.T) {
+	image := DefaultImageCapabilityConfig("apimart-image", "gpt-image-2")
+	if image.Size.Parameter != "aspect_ratio" || image.Quality.Default != "2k" || image.References.MaskSupported || image.MaxOutputs != 4 {
+		t.Fatalf("APIMart image capability = %#v", image)
+	}
+}
+
 func TestAPIMartVideoCapabilitiesUseModelLimits(t *testing.T) {
 	miniMax := DefaultModelCapabilityConfigForModel("apimart-video", "MiniMax-H3").Video
 	if miniMax.DefaultResolution != "2K" || miniMax.References.MaxVideos != 3 || miniMax.GenerateAudio.Supported {

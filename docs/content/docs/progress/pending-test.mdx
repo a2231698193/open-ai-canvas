@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## APIMart 图片协议插件
+
+- 新增官方声明式协议 `apimart-image`：`POST /v1/images/generations` 创建、`GET /v1/tasks/{task_id}` 查询。
+- 系统渠道模型协议可选 `APIMart Image`；`size` 走比例/像素，`quality` 映射 `1k/2k/4k`，参考图走 `image_urls`。不覆盖 Midjourney 独立路由。
+- [ ] 系统渠道绑定 `gpt-image-2` 等 APIMart 图片模型后，画布文生图能提交并轮询出图。
+- [ ] 带参考图时上游请求包含 `image_urls`，蒙版编辑被能力配置拒绝。
+- [ ] 选 1K/2K/4K 后上游 `resolution` 为 `1k/2k/4k`。
+
 ## 用户端隐藏本机 Agent 入口
 
 - 画布 Agent 面板不再显示「网站 / 本机」切换，只走网站 Agent。
@@ -1641,7 +1649,6 @@ v2（用户反馈首版难看后重做）：菜单改用 antd Dropdown（placeme
 - [ ] 多个绘图节点连接到生成节点后，参考栏显示各自最新缩略图；编辑并保存绘图后重新打开面板，缩略图随 revision 更新。
 - [ ] 用拖动手柄或聚焦后按左右方向键调整参考顺序，标签编号和提示词中的 `@图片N` 同步更新；刷新画布后顺序保持，配置节点承接引用时同样有效。
 - [ ] 明暗主题下拖动手柄、缩略图预览、删除按钮和横向滚动无错位；拖动引用不触发画布节点拖拽。
-<<<<<<< HEAD
 
 ## 创作首页视频报价
 
@@ -1649,6 +1656,3 @@ v2（用户反馈首版难看后重做）：菜单改用 antd Dropdown（placeme
 
 - [x] `cd web && bun test test/model-pricing.test.ts`
 - [ ] 首页视频生成选 kling 等分档模型、720P 与 9 秒后，发送按钮显示具体积分；改分辨率或时长后数字跟着变。
-
-=======
->>>>>>> upstream/main

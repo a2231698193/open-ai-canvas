@@ -604,6 +604,44 @@ add({
   })
 });
 
+const apimartImageResolutionSource = lower(trim(coalesce(ref("request.quality"), ref("request.resolution"))));
+const apimartImageSizeSource = lower(trim(ref("request.aspectRatio")));
+add({
+  id: "apimart-image", providerId: "apimart-image", name: "APIMart Image", vendor: "APIMart", capability: "image",
+  baseUrl: "https://api.apimart.ai", auth: bearer, params: imageParams, requiresPublicMediaUrls: true,
+  notes: "APIMart 图片统一异步接口：创建使用 /v1/images/generations，查询使用 /v1/tasks/{task_id}。size 为比例或像素尺寸，resolution 为 1k/2k/4k；参考图走 image_urls。Midjourney 等独立路由必须使用独立协议。",
+  create: jsonCreate("/v1/images/generations", {
+    model: ref("request.model"), prompt: omit(ref("request.prompt")),
+    n: omit(conditional(gt(ref("request.imageCount"), 0), ref("request.imageCount"))),
+    size: omit(conditional({ $in: [apimartImageSizeSource, ["", "auto"]] }, null, ref("request.aspectRatio"))),
+    resolution: omit({
+      $switch: {
+        cases: [
+          { when: { $in: [apimartImageResolutionSource, ["1k", "low"]] }, then: "1k" },
+          { when: { $in: [apimartImageResolutionSource, ["2k", "medium", "hd"]] }, then: "2k" },
+          { when: { $in: [apimartImageResolutionSource, ["4k", "high"]] }, then: "4k" },
+          { when: { $in: [apimartImageResolutionSource, ["", "auto"]] }, then: null }
+        ],
+        default: apimartImageResolutionSource
+      }
+    }),
+    image_urls: omit(map(filter(sorted(ref("request.images")), "media", ne(ref("media.role"), "mask")), "media", ref("media.value")))
+  }),
+  poll: { method: "GET", path: "/v1/tasks/{{taskId}}" },
+  response: asyncResponse("image", {
+    taskId: coalesce(ref("response.data.0.task_id"), ref("response.data.0.taskId"), ref("response.data.task_id"), ref("response.task_id"), ref("taskId")),
+    status: coalesce(ref("response.data.0.status"), ref("response.data.status"), ref("response.status"), "pending"),
+    message: coalesce(ref("response.data.error.message"), ref("response.error.message"), ref("response.message"), ref("response.fail_reason")),
+    images: coalesce(
+      map(ref("response.data.result.images"), "image", { $at: [{ $ref: "image.url" }, 0] }),
+      map(ref("response.data.images"), "image", { $at: [{ $ref: "image.url" }, 0] }),
+      ref("response.data.result.image_url"), ref("response.data.image_url"), ref("response.image_url")
+    ),
+    errorPaths: ["response.data.error.code", "response.data.error.message", "response.error.code"],
+    messagePaths: ["response.data.error.message", "response.error.message", "response.message"]
+  })
+});
+
 add({
   id: "newapi-video-generations-v1", providerId: "newapi-channel-2", name: "NewAPI Video Generations Channel 2", vendor: "NewAPI", capability: "video",
   baseUrl: "http://127.0.0.1:3000", auth: bearer, params: videoParams, requiresPublicMediaUrls: true,

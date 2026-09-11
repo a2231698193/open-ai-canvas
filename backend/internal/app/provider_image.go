@@ -19,8 +19,14 @@ import (
 )
 
 func runImageTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
+	if input.Config.InterfaceType == string(model.ChannelInterfaceAPIMartImage) {
+		ctx = ensureOfficialProtocolAdapter(ctx, input.Config.InterfaceType)
+	}
 	if _, ok := declarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
 		return runDeclarativeProtocolTask(ctx, input)
+	}
+	if input.Config.InterfaceType == string(model.ChannelInterfaceAPIMartImage) {
+		return nil, errors.New("APIMart 图片插件未安装")
 	}
 	if input.Config.InterfaceType == string(model.ChannelInterfaceGrokImage) {
 		return runGrokImageTask(ctx, input)

@@ -229,6 +229,50 @@ func TestAPIMartVideoProfile(t *testing.T) {
 	}
 }
 
+func TestAPIMartImageProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "apimart-image.yingce-plugin", "apimart-image")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "gpt-image-2", Prompt: "a cat", AspectRatio: "16:9", Quality: "4k", ImageCount: 2,
+		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "edit_source"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	images, _ := body["image_urls"].([]any)
+	if create.Method != "POST" || create.Path != "/v1/images/generations" || body["model"] != "gpt-image-2" || body["size"] != "16:9" || body["resolution"] != "4k" || body["n"] != float64(2) || len(images) != 1 || images[0] != "https://cdn.example/ref.png" {
+		t.Fatalf("APIMart image create = %#v, body = %#v", create, body)
+	}
+
+	auto, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "qwen-image", Prompt: "still", AspectRatio: "auto", Quality: "auto"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	autoBody := manifestTestBody(t, auto)
+	if _, ok := autoBody["size"]; ok {
+		t.Fatalf("auto size must be omitted: %#v", autoBody)
+	}
+	if _, ok := autoBody["resolution"]; ok {
+		t.Fatalf("auto resolution must be omitted: %#v", autoBody)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task-img-1"}]}`))
+	if err != nil || created.TaskID != "task-img-1" || created.Status != StatusPending {
+		t.Fatalf("APIMart image create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "task-img-1"})
+	if err != nil || poll.Path != "/v1/tasks/task-img-1" {
+		t.Fatalf("APIMart image poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "task-img-1"}, []byte(`{"code":200,"data":{"id":"task-img-1","status":"completed","result":{"images":[{"url":["https://cdn.example/image.png"]}]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Images) != 1 || result.Result.Images[0].URL != "https://cdn.example/image.png" {
+		t.Fatalf("APIMart image response = %#v", result)
+	}
+}
+
 func TestOfficialAgentProfilesMapToolRequestsAndResponses(t *testing.T) {
 	requests := map[string]any{
 		"chatCompletion": map[string]any{"messages": []any{map[string]any{"role": "user", "content": "inspect"}}, "tools": []any{map[string]any{"type": "function"}}, "tool_choice": "required", "marker": "chat"},

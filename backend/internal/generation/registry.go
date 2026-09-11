@@ -93,6 +93,8 @@ func OfficialDeclarativeImageInterface(interfaceType string) (string, bool) {
 		return "火山方舟图片", true
 	case string(model.ChannelInterfaceVolcengineJiMengImage):
 		return "即梦图片", true
+	case string(model.ChannelInterfaceAPIMartImage):
+		return "APIMart 图片", true
 	default:
 		return "", false
 	}

@@ -177,16 +177,20 @@ func authorizeSystemProxy(channel *model.ModelChannel, protocol model.ChannelInt
 	if method == http.MethodGet && requestPath == "/models" {
 		return nil
 	}
-	if protocol == model.ChannelInterfaceAPIMartVideo {
+	if protocol == model.ChannelInterfaceAPIMartVideo || protocol == model.ChannelInterfaceAPIMartImage {
 		if method == http.MethodGet && systemAPIMartTaskPath.MatchString(requestPath) {
 			return nil
 		}
-		if method != http.MethodPost || requestPath != "/v1/videos/generations" {
+		createPath := "/v1/videos/generations"
+		if protocol == model.ChannelInterfaceAPIMartImage {
+			createPath = "/v1/images/generations"
+		}
+		if method != http.MethodPost || requestPath != createPath {
 			return errors.New("系统渠道不允许访问该上游接口")
 		}
 		mediaType, _, err := mime.ParseMediaType(contentType)
 		if err != nil || mediaType != "application/json" {
-			return errors.New("APIMart 视频生成请求必须使用 application/json")
+			return errors.New("APIMart 生成请求必须使用 application/json")
 		}
 		modelName := proxyRequestModel(contentType, body)
 		if modelName == "" || !channelAllowsModel(channel, modelName) {
@@ -266,7 +270,7 @@ func interfaceAllowsProxyPath(interfaceType model.ChannelInterfaceType, requestP
 		return requestPath == "/images/generations"
 	case model.ChannelInterfaceOpenAIAudio:
 		return requestPath == "/audio/speech"
-	case model.ChannelInterfaceAsyncAudio, model.ChannelInterfaceNewAPIVideo, model.ChannelInterfaceNewAPIChannel1, model.ChannelInterfaceNewAPIChannel2, model.ChannelInterfaceAPIMartVideo, model.ChannelInterfaceXAIVideo, model.ChannelInterfaceVolcengineArkVideo, model.ChannelInterfaceVolcengineJiMengImage, model.ChannelInterfaceVolcengineJiMengVideo, model.ChannelInterfaceGeminiVeo, model.ChannelInterfaceGeminiImage, model.ChannelInterfaceNovitaVideo, model.ChannelInterfaceMiniMaxVideo:
+	case model.ChannelInterfaceAsyncAudio, model.ChannelInterfaceNewAPIVideo, model.ChannelInterfaceNewAPIChannel1, model.ChannelInterfaceNewAPIChannel2, model.ChannelInterfaceAPIMartVideo, model.ChannelInterfaceAPIMartImage, model.ChannelInterfaceXAIVideo, model.ChannelInterfaceVolcengineArkVideo, model.ChannelInterfaceVolcengineJiMengImage, model.ChannelInterfaceVolcengineJiMengVideo, model.ChannelInterfaceGeminiVeo, model.ChannelInterfaceGeminiImage, model.ChannelInterfaceNovitaVideo, model.ChannelInterfaceMiniMaxVideo:
 		return false
 	default:
 		return true
