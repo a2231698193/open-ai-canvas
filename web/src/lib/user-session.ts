@@ -91,14 +91,8 @@ export async function refreshSystemChannels() {
 
 // 模型目录来源决定数据形状；这里统一做运行时收口，避免畸形响应被当成“空目录”写入用户配置。
 function modelCatalogChannels(catalog: ModelCatalogResponse): ModelChannel[] {
-    if (catalog.source === "frontend") {
-        if (!Array.isArray(catalog.models)) throw new Error("模型目录响应缺少前台模型列表");
-        return managedModelChannels(catalog.models);
-    }
-    if (catalog.source === "system") {
-        if (!Array.isArray(catalog.channels)) throw new Error("模型目录响应缺少系统渠道列表");
-        return systemChannelModelChannels(catalog.channels);
-    }
+    if (catalog.source === "frontend") return managedModelChannels(Array.isArray(catalog.models) ? catalog.models : []);
+    if (catalog.source === "system") return systemChannelModelChannels(Array.isArray(catalog.channels) ? catalog.channels : []);
     throw new Error("模型目录响应来源无效");
 }
 
