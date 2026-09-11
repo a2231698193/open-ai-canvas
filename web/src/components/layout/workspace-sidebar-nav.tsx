@@ -125,9 +125,6 @@ function WorkspaceSwitcher({ collapsed, onNavigate, onExpand }: { collapsed: boo
                             <div className="mt-0.5 truncate text-[var(--fs-label)] text-foreground/45">创作工作台</div>
                         </div>
                         <div className="mx-2 my-1 h-px bg-[var(--workspace-border)]" />
-                        <a href="/" className="flex w-full items-center gap-2 px-3 py-2 text-[var(--fs-body)] text-foreground/80 transition-colors hover:bg-surface-hover hover:text-foreground">
-                            品牌首页
-                        </a>
                         {[
                             { label: "创作", to: "/create" },
                             { label: "画布", to: "/canvas" },

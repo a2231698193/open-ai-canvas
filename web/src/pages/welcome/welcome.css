@@ -20,7 +20,18 @@
     letter-spacing: 0;
     -webkit-font-smoothing: antialiased;
 }
-body:has(.welcome-page) { margin: 0; background: #080808; }
+html:has(.welcome-page),
+body:has(.welcome-page),
+#root:has(.welcome-page),
+.ant-app:has(.welcome-page) {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+    overscroll-behavior: auto;
+    background: #080808;
+}
+#root:has(.welcome-page) { position: static; }
+body:has(.welcome-page) { margin: 0; }
 .welcome-page *, .welcome-page *::before, .welcome-page *::after { box-sizing: border-box; }
 .welcome-page h1, .welcome-page h2, .welcome-page h3, .welcome-page p { margin: 0; }
 .welcome-page button, .welcome-page a { -webkit-tap-highlight-color: transparent; }
