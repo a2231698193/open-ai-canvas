@@ -150,7 +150,7 @@ export function AdminShell() {
                     <div className="admin-sidebar-footer shrink-0">
                         <Tooltip delay={100} title={collapsed ? "返回创作台" : undefined} placement="right">
                             <NavLink
-                                to="/"
+                                to="/create"
                                 aria-label={collapsed ? "返回创作台" : undefined}
                                 className={cn("app-workspace-nav-link group flex h-8 items-center text-foreground/62 transition-colors hover:bg-surface-hover hover:text-foreground", collapsed ? "justify-center px-0" : "gap-2.5 px-2.5")}
                             >
@@ -274,7 +274,7 @@ function MobileAdminNavigation() {
             </Dropdown>
             <div className="flex shrink-0 items-center gap-1">
                 <Tooltip title="返回创作台">
-                    <Link to="/" className="admin-mobile-navigation-action" aria-label="返回创作台">
+                    <Link to="/create" className="admin-mobile-navigation-action" aria-label="返回创作台">
                         <Home className="size-4" aria-hidden="true" />
                     </Link>
                 </Tooltip>
