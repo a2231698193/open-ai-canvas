@@ -39,7 +39,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
                     {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
                 </button>
                 <nav className={`${extension ? "hidden 2xl:flex" : "flex"} min-w-0 items-center gap-2 text-[var(--fs-caption)] text-foreground/50`} aria-label="当前位置">
-                    <Link to="/" className="shrink-0 font-medium text-foreground/70 transition-colors hover:text-foreground">{brandName}</Link>
+                    <Link to="/create" className="shrink-0 font-medium text-foreground/70 transition-colors hover:text-foreground">{brandName}</Link>
                     <span className="shrink-0 text-foreground/30">/</span>
                     <span className="truncate font-medium text-foreground">{pageTitle}</span>
                 </nav>
