@@ -5,6 +5,10 @@ import (
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/repository"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func mustEncodeModelCapabilityConfig(t *testing.T, config *ModelCapabilityConfig) string {
@@ -157,6 +161,33 @@ func TestSanitizeChannelModelAvailabilityRequiresValidPriceTier(t *testing.T) {
 	}
 	if !public.Available || len(public.PriceTiers) != 1 {
 		t.Fatalf("valid price tier was not published: %#v", public)
+	}
+}
+
+func TestSanitizeChannelModelAppliesCreditMultiplier(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.SystemSetting{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: creditPolicySettingKey, ValueJSON: `{"signupBonusMicrocredits":0,"checkinBonusMicrocredits":0,"defaultMultiplierBasisPoints":20000,"modelMultiplierBasisPoints":{}}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{repo: repository.New(db)}
+	public, err := svc.sanitizeChannelModel(&model.ChannelModel{
+		ID: "image-model", ModelKey: "image-model", Capability: "image", Protocol: model.ChannelInterfaceOpenAIImage,
+		CapabilityConfigJSON: mustEncodeModelCapabilityConfig(t, DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceOpenAIImage), "image-model")),
+		PriceTiers: []model.ChannelModelPriceTier{{
+			ID: "tier-1", BillingMode: "fixed_request", UnitPriceMicrocredits: 1_000_000, Enabled: true, PriceConfigured: true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public.PriceTiers) != 1 || public.PriceTiers[0].UnitPriceMicrocredits != 2_000_000 {
+		t.Fatalf("user-facing price = %#v", public.PriceTiers)
 	}
 }
 

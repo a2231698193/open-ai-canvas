@@ -606,10 +606,7 @@ func (s *Service) newBillingOrderWithPriceTier(userID string, taskID string, ide
 	if err != nil {
 		return nil, err
 	}
-	multiplierBPS := policy.DefaultMultiplierBPS
-	if configured := policy.ModelMultiplierBPS[modelKey]; configured > 0 {
-		multiplierBPS = configured
-	}
+	multiplierBPS := creditMultiplierBPS(policy, modelKey)
 	if tier.BillingMode == "token" {
 		amount, err = tokenEstimateAmount(&model.ChannelModel{InputTokenPriceMicrocredits: tier.InputTokenPriceMicrocredits, OutputTokenPriceMicrocredits: tier.OutputTokenPriceMicrocredits, CachedTokenPriceMicrocredits: tier.CachedTokenPriceMicrocredits}, tokenEstimate, multiplierBPS)
 	} else {

@@ -79,6 +79,54 @@ func TestImageSpecificationQuoteAgreesWithTaskBilling(t *testing.T) {
 	}
 }
 
+func TestPublicCatalogPriceAppliesCreditMultiplier(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.SystemSetting{Key: creditPolicySettingKey, ValueJSON: `{"signupBonusMicrocredits":0,"checkinBonusMicrocredits":0,"defaultMultiplierBasisPoints":15000,"modelMultiplierBasisPoints":{}}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	channelModel := model.ChannelModel{
+		ID: "image-channel-model", ChannelID: "image-channel", ModelKey: "image-model", Capability: "image",
+		Protocol: model.ChannelInterfaceOpenAIImage, Enabled: true, PriceConfigured: true,
+	}
+	if err := db.Create(&channelModel).Error; err != nil {
+		t.Fatal(err)
+	}
+	channelModel.PriceTiers = []model.ChannelModelPriceTier{{
+		ID: "tier-1k", ChannelModelID: channelModel.ID, SelectorKey: `{"quality":"1k"}`, SelectorJSON: `{"quality":"1k"}`,
+		Resolution: "*", BillingMode: "fixed_request", UnitPriceMicrocredits: 1_000_000, Enabled: true, PriceConfigured: true,
+	}}
+	if err := db.Create(&channelModel.PriceTiers).Error; err != nil {
+		t.Fatal(err)
+	}
+	spec := CapabilitySpec{Version: 1, Capability: "image", Options: map[string]OptionConstraint{"quality": {Values: []any{"1k"}}}}
+	cached := cachedLogicalModel{
+		Model: model.LogicalModel{ID: "logical-image", PricePolicy: "channel", Capability: "image"},
+		ProductSpec: spec, Defaults: map[string]any{"quality": "1k"},
+		Routes: []cachedLogicalRoute{{Route: model.LogicalModelRoute{ID: "image-route", Enabled: true, Weight: 1}, CapabilitySpec: spec, ChannelModel: channelModel}},
+	}
+	svc := &Service{repo: repository.New(db), routeCatalogTTL: time.Hour, routeCatalog: &routeCatalogSnapshot{LoadedAt: time.Now(), Models: map[string]cachedLogicalModel{"logical-image": cached}, Ordered: []string{"logical-image"}}}
+	models, err := svc.PublicLogicalModels(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || len(models[0].PriceTiers) != 1 || models[0].PriceTiers[0].UnitPriceMicrocredits != 1_500_000 {
+		t.Fatalf("public catalog price = %#v", models)
+	}
+	quote, err := svc.QuoteLogicalModel("logical-image", ModelRequestIntent{Capability: "image", Options: map[string]any{"quality": "1k"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quote.AmountMicrocredits != 1_500_000 {
+		t.Fatalf("quote = %#v", quote)
+	}
+}
+
 func TestTaskBillingOrderMatchesSystemImagePriceTierFromRequestedSpec(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+newID()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

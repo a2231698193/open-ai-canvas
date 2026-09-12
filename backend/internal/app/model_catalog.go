@@ -164,9 +164,18 @@ func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) (PublicChannelMod
 	// 仓储层已预加载价格档；这里只发布当前启用且价格字段自洽的活动档位。
 	priceTiers := cm.PriceTiers
 
+	policy, err := s.userCreditPolicy()
+	if err != nil {
+		return PublicChannelModel{}, err
+	}
+	multiplierBPS := creditMultiplierBPS(policy, cm.ModelKey)
 	publicTiers := make([]PublicChannelModelPriceTier, 0, len(priceTiers))
 	for _, tier := range priceTiers {
 		if !tier.Enabled || !tier.PriceConfigured || !ValidatePriceTierPrice(&tier, cm.Capability, cm.Protocol) {
+			continue
+		}
+		unitPrice, inputPrice, outputPrice, cachedPrice, priceErr := billedCreditPrices(tier.UnitPriceMicrocredits, tier.InputTokenPriceMicrocredits, tier.OutputTokenPriceMicrocredits, tier.CachedTokenPriceMicrocredits, multiplierBPS)
+		if priceErr != nil {
 			continue
 		}
 		publicTiers = append(publicTiers, PublicChannelModelPriceTier{
@@ -175,10 +184,10 @@ func (s *Service) sanitizeChannelModel(cm *model.ChannelModel) (PublicChannelMod
 			Resolution:                   tier.Resolution,
 			VideoSeconds:                 tier.VideoSeconds,
 			BillingMode:                  tier.BillingMode,
-			UnitPriceMicrocredits:        tier.UnitPriceMicrocredits,
-			InputTokenPriceMicrocredits:  tier.InputTokenPriceMicrocredits,
-			OutputTokenPriceMicrocredits: tier.OutputTokenPriceMicrocredits,
-			CachedTokenPriceMicrocredits: tier.CachedTokenPriceMicrocredits,
+			UnitPriceMicrocredits:        unitPrice,
+			InputTokenPriceMicrocredits:  inputPrice,
+			OutputTokenPriceMicrocredits: outputPrice,
+			CachedTokenPriceMicrocredits: cachedPrice,
 		})
 	}
 

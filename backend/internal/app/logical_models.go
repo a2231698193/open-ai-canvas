@@ -135,6 +135,10 @@ func (s *Service) PublicLogicalModels(intent *ModelRequestIntent) ([]PublicLogic
 	if err != nil {
 		return nil, err
 	}
+	policy, err := s.userCreditPolicy()
+	if err != nil {
+		return nil, err
+	}
 	result := make([]PublicLogicalModel, 0, len(snapshot.Ordered))
 	for _, id := range snapshot.Ordered {
 		cached := snapshot.Models[id]
@@ -158,12 +162,12 @@ func (s *Service) PublicLogicalModels(intent *ModelRequestIntent) ([]PublicLogic
 				}
 			}
 		}
-		result = append(result, publicLogicalModel(cached, available))
+		result = append(result, publicLogicalModel(cached, available, &policy))
 	}
 	return result, nil
 }
 
-func publicLogicalModel(cached cachedLogicalModel, available bool) PublicLogicalModel {
+func publicLogicalModel(cached cachedLogicalModel, available bool, policy *CreditPolicy) PublicLogicalModel {
 	item := cached.Model
 	routeSpecs := make([]CapabilitySpec, 0, len(cached.Routes))
 	for _, route := range cached.Routes {
@@ -183,7 +187,7 @@ func publicLogicalModel(cached cachedLogicalModel, available bool) PublicLogical
 		}
 	}
 
-	priceTiers := publicLogicalModelPriceTiers(cached)
+	priceTiers := publicLogicalModelPriceTiers(cached, policy)
 	pricingMode, displayPrice, priceLabel := computeModelPriceDisplay(item, priceTiers)
 
 	return PublicLogicalModel{
@@ -201,7 +205,7 @@ func publicLogicalModel(cached cachedLogicalModel, available bool) PublicLogical
 	}
 }
 
-func publicLogicalModelPriceTiers(cached cachedLogicalModel) []PublicLogicalModelPriceTier {
+func publicLogicalModelPriceTiers(cached cachedLogicalModel, policy *CreditPolicy) []PublicLogicalModelPriceTier {
 	if cached.Model.PricePolicy != "channel" {
 		return []PublicLogicalModelPriceTier{}
 	}
@@ -210,6 +214,10 @@ func publicLogicalModelPriceTiers(cached cachedLogicalModel) []PublicLogicalMode
 	for _, route := range cached.Routes {
 		if !route.Route.Enabled || route.Route.Weight <= 0 {
 			continue
+		}
+		multiplierBPS := int64(10_000)
+		if policy != nil {
+			multiplierBPS = creditMultiplierBPS(*policy, route.ChannelModel.ModelKey)
 		}
 		for _, tier := range route.ChannelModel.PriceTiers {
 			if !tier.Enabled || !tier.PriceConfigured {
@@ -220,12 +228,16 @@ func publicLogicalModelPriceTiers(cached cachedLogicalModel) []PublicLogicalMode
 			if selectorErr != nil {
 				continue
 			}
-			key := fmt.Sprintf("%s:%s:%d:%d:%d:%d", selectorKey, tier.BillingMode, tier.UnitPriceMicrocredits, tier.InputTokenPriceMicrocredits, tier.OutputTokenPriceMicrocredits, tier.CachedTokenPriceMicrocredits)
+			unitPrice, inputPrice, outputPrice, cachedPrice, priceErr := billedCreditPrices(tier.UnitPriceMicrocredits, tier.InputTokenPriceMicrocredits, tier.OutputTokenPriceMicrocredits, tier.CachedTokenPriceMicrocredits, multiplierBPS)
+			if priceErr != nil {
+				continue
+			}
+			key := fmt.Sprintf("%s:%s:%d:%d:%d:%d", selectorKey, tier.BillingMode, unitPrice, inputPrice, outputPrice, cachedPrice)
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			result = append(result, PublicLogicalModelPriceTier{Selector: selector, Resolution: normalizeChannelModelTierResolution(tier.Resolution), VideoSeconds: tier.VideoSeconds, BillingMode: tier.BillingMode, UnitPriceMicrocredits: tier.UnitPriceMicrocredits, InputTokenPriceMicrocredits: tier.InputTokenPriceMicrocredits, OutputTokenPriceMicrocredits: tier.OutputTokenPriceMicrocredits, CachedTokenPriceMicrocredits: tier.CachedTokenPriceMicrocredits})
+			result = append(result, PublicLogicalModelPriceTier{Selector: selector, Resolution: normalizeChannelModelTierResolution(tier.Resolution), VideoSeconds: tier.VideoSeconds, BillingMode: tier.BillingMode, UnitPriceMicrocredits: unitPrice, InputTokenPriceMicrocredits: inputPrice, OutputTokenPriceMicrocredits: outputPrice, CachedTokenPriceMicrocredits: cachedPrice})
 		}
 	}
 	return result
@@ -406,7 +418,7 @@ func (s *Service) buildAdminLogicalModel(item model.LogicalModel, graph *reposit
 	for _, channelModel := range graph.ChannelModels {
 		channelModelByID[channelModel.ID] = channelModel
 	}
-	admin := AdminLogicalModel{PublicLogicalModel: publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: map[string]any{}}, false), Enabled: item.Enabled, ActiveRevisionID: graph.Revision.ID, RevisionVersion: graph.Revision.Version, Routes: []AdminLogicalRoute{}}
+	admin := AdminLogicalModel{PublicLogicalModel: publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: map[string]any{}}, false, nil), Enabled: item.Enabled, ActiveRevisionID: graph.Revision.ID, RevisionVersion: graph.Revision.Version, Routes: []AdminLogicalRoute{}}
 	for _, route := range graph.Routes {
 		channelModel, channelOK := channelModelByID[route.ChannelModelID]
 		if !channelOK {
@@ -431,7 +443,7 @@ func (s *Service) buildAdminLogicalModel(item model.LogicalModel, graph *reposit
 	if err != nil {
 		return nil, err
 	}
-	admin.PublicLogicalModel = publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: defaults}, false)
+	admin.PublicLogicalModel = publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: defaults}, false, nil)
 	// publicLogicalModel above has no route list; admin routes are already attached
 	// and the enriched product spec is the source used by the editor.
 	admin.CapabilitySpec = productSpec

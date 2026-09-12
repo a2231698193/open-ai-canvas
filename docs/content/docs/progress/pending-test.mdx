@@ -5,6 +5,13 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 用户端积分展示含计费倍率
+
+后台积分策略倍率只影响实际扣费时，用户目录和创作页本地估算会显示未乘倍率的渠道单价。现已在用户可见价格投影中按同一套整数向上取整规则写入最终积分，不向用户暴露倍率字段。后台模型编辑仍显示配置单价。
+
+- [x] `cd backend && go test ./internal/app -run 'TestSanitizeChannelModelAppliesCreditMultiplier|TestPublicCatalogPriceAppliesCreditMultiplier' -count=1`
+- [ ] 将默认倍率改为 2 后，创作页/画布发送按钮显示的积分数与实际预扣一致，后台渠道模型编辑页仍显示原配置单价。
+
 ## APIMart 图片协议插件
 
 - 新增官方声明式协议 `apimart-image`：`POST /v1/images/generations` 创建、`GET /v1/tasks/{task_id}` 查询。

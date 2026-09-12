@@ -49,6 +49,51 @@ func validateCreditPolicy(policy CreditPolicy) error {
 	return nil
 }
 
+func creditMultiplierBPS(policy CreditPolicy, modelKey string) int64 {
+	multiplier := policy.DefaultMultiplierBPS
+	if multiplier <= 0 {
+		multiplier = 10_000
+	}
+	if configured := policy.ModelMultiplierBPS[strings.TrimSpace(modelKey)]; configured > 0 {
+		multiplier = configured
+	}
+	return multiplier
+}
+
+func billedCreditPrice(unit int64, multiplierBPS int64) (int64, error) {
+	if unit <= 0 {
+		return unit, nil
+	}
+	return creditAmount(unit, 1, multiplierBPS)
+}
+
+func billedCreditPrices(unit int64, input int64, output int64, cached int64, multiplierBPS int64) (int64, int64, int64, int64, error) {
+	unit, err := billedCreditPrice(unit, multiplierBPS)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	input, err = billedCreditPrice(input, multiplierBPS)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	output, err = billedCreditPrice(output, multiplierBPS)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	cached, err = billedCreditPrice(cached, multiplierBPS)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return unit, input, output, cached, nil
+}
+
+func (s *Service) userCreditPolicy() (CreditPolicy, error) {
+	if s == nil || s.repo == nil {
+		return defaultCreditPolicy(), nil
+	}
+	return s.creditPolicy()
+}
+
 func (s *Service) creditPolicy() (CreditPolicy, error) {
 	setting, err := s.repo.SystemSetting(creditPolicySettingKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
