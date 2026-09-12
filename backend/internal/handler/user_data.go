@@ -294,8 +294,8 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		if delivery.RedirectURL != "" {
-			// CDN 或对象存储直连地址不进入应用缓存，也不作为后续请求的 Referer 泄露。
-			c.Header("Cache-Control", "private, no-store")
+			// CDN 或对象存储直连地址允许安全短期缓存
+			c.Header("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600")
 			c.Header("Referrer-Policy", "no-referrer")
 			c.Header("X-Content-Type-Options", "nosniff")
 			c.Redirect(http.StatusTemporaryRedirect, delivery.RedirectURL)
@@ -311,8 +311,14 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 		if usePlayback {
 			serveETag = etag + ":pb"
 		}
-		// 私有资源允许浏览器保存响应，但每次复用前必须重新鉴权；304 会在读取 OSS 前返回。
-		c.Header("Cache-Control", "private, no-cache")
+		// 资源 ID 内容不可变（上传永远生成新 ID，不会原地覆盖）：图片可以放心交给浏览器
+		// 磁盘强缓存 30 天，大画布二次打开零请求直读磁盘缓存。视频/音频涉及转码副本
+		// 就绪与 Range 语义，保持逐次条件请求（304）。
+		if strings.HasPrefix(resource.MimeType, "image/") {
+			c.Header("Cache-Control", "private, max-age=2592000, stale-while-revalidate=86400")
+		} else {
+			c.Header("Cache-Control", "private, no-cache")
+		}
 		c.Header("ETag", serveETag)
 		c.Header("Accept-Ranges", "bytes")
 		c.Header("X-Content-Type-Options", "nosniff")

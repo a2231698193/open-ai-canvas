@@ -11,28 +11,7 @@ import { canvasNodeMentionToken, canvasResourceMentionToken, type CanvasResource
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { scopedLocalStorage } from "@/lib/user-scope";
 import type { GenerationTask } from "@/services/api/task-center";
-import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type CanvasWorkspaceMode, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
-
-const CANVAS_WORKSPACE_MODE_STORAGE_KEY = "canvas-workspace-mode-v1";
-
-export function readCanvasWorkspaceMode(): CanvasWorkspaceMode {
-    if (typeof window === "undefined") return "professional";
-    try {
-        return scopedLocalStorage.getItem(CANVAS_WORKSPACE_MODE_STORAGE_KEY) === "simple" ? "simple" : "professional";
-    } catch (error) {
-        console.warn("读取画布工作模式失败，已使用专业模式", error);
-        return "professional";
-    }
-}
-
-export function persistCanvasWorkspaceMode(mode: CanvasWorkspaceMode) {
-    try {
-        scopedLocalStorage.setItem(CANVAS_WORKSPACE_MODE_STORAGE_KEY, mode);
-    } catch (error) {
-        console.warn("保存画布工作模式失败", error);
-    }
-}
-
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
 export function createCanvasNode(type: CanvasNodeTypeId, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const builtinSpec = type in NODE_DEFAULT_SIZE ? getNodeSpec(type as CanvasNodeType) : undefined;

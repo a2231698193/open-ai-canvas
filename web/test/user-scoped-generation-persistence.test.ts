@@ -4451,6 +4451,78 @@ test("incremental sessions leave cached entities untouched and fetch only the op
     }
 });
 
+test("concurrent canvas opens share one remote detail request", async () => {
+    const originalWindow = (globalThis as { window?: unknown }).window;
+    const previousAdapter = apiClient.defaults.adapter;
+    const previousProjects = useCanvasStore.getState().projects;
+    const requests: string[] = [];
+    const project = storedCanvasProject("concurrent-open", "Concurrent");
+    Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: { setTimeout: () => 1, clearTimeout: () => undefined, localStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined } },
+    });
+    apiClient.defaults.adapter = async (config) => {
+        requests.push(`${config.method} ${config.url}`);
+        throw new Error("detail unavailable");
+    };
+    try {
+        resetRemoteUserDataSync();
+        useCanvasStore.setState({ projects: [project] });
+        await initializeRemoteUserDataSession("concurrent-open-owner");
+        const first = loadCanvasProjectForEditing(project.id).catch((error: unknown) => error);
+        const second = loadCanvasProjectForEditing(project.id).catch((error: unknown) => error);
+        const firstError = await first;
+        const secondError = await second;
+        expect(firstError).toBeInstanceOf(Error);
+        expect(secondError).toBeInstanceOf(Error);
+        expect((firstError as Error).message).toContain("detail unavailable");
+        expect((secondError as Error).message).toContain("detail unavailable");
+        expect(requests).toEqual(["get /canvas-projects/concurrent-open"]);
+    } finally {
+        resetRemoteUserDataSync();
+        useCanvasStore.setState({ projects: previousProjects });
+        apiClient.defaults.adapter = previousAdapter;
+        if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
+        else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    }
+});
+
+test("remote canvas conflict refreshes the baseline and overwrites once without repeating detail reads", async () => {
+    const originalWindow = (globalThis as { window?: unknown }).window;
+    const previousAdapter = apiClient.defaults.adapter;
+    const previousProjects = useCanvasStore.getState().projects;
+    const requests: string[] = [];
+    const cached = storedCanvasProject("latched-conflict", "Cached");
+    const remote = { ...cached, updatedAt: "2026-09-11T00:00:00.000Z" };
+    Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: { setTimeout: () => 1, clearTimeout: () => undefined, localStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined } },
+    });
+    apiClient.defaults.adapter = async (config) => {
+        requests.push(`${config.method} ${config.url}`);
+        const project = config.method === "put" ? { ...remote, ...cached, title: "Edited locally" } : remote;
+        return { data: { code: 0, data: { project }, msg: "" }, status: 200, statusText: "OK", headers: {}, config };
+    };
+    try {
+        resetRemoteUserDataSync();
+        useCanvasStore.setState({ projects: [cached] });
+        await initializeRemoteUserDataSession("latched-conflict-owner");
+        useCanvasStore.getState().renameProject(cached.id, "Edited locally");
+        await expect(saveRemoteUserDataNow()).resolves.toBeUndefined();
+        await expect(saveRemoteUserDataNow()).resolves.toBeUndefined();
+        expect(requests).toEqual([
+            "get /canvas-projects/latched-conflict",
+            "put /canvas-projects/latched-conflict",
+        ]);
+    } finally {
+        resetRemoteUserDataSync();
+        useCanvasStore.setState({ projects: previousProjects });
+        apiClient.defaults.adapter = previousAdapter;
+        if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
+        else Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+    }
+});
+
 test("a remote asset page rejects incomplete records instead of patching them into the store", async () => {
     const previousAdapter = apiClient.defaults.adapter;
     const previousAssets = useAssetStore.getState().assets;

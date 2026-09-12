@@ -1,5 +1,6 @@
 import { type ResponseFunctionTool } from "@/services/api/image";
 import { skillRuntime } from "@/services/skill-runtime";
+import { CREATIVE_AGENT_TOOLS } from "@/lib/creation/creative-agent-tools";
 
 const JSON_RECORD_SCHEMA = { type: "object", additionalProperties: true };
 const POSITION_SCHEMA = { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false };
@@ -73,6 +74,7 @@ function generationToolDefinition(name: string, description: string, mode?: "tex
 }
 
 export const CANVAS_ONLINE_AGENT_TOOLS: ResponseFunctionTool[] = [
+    ...CREATIVE_AGENT_TOOLS,
     ...skillRuntime.agentTools("onlineAgent"),
     toolDefinition("canvas_get_state", "读取当前网页画布的节点、连线、选区和视口。", {}),
     toolDefinition("canvas_get_context", "读取语义化画布上下文、真实节点 id、连接关系、资源就绪状态和状态哈希。", {}),

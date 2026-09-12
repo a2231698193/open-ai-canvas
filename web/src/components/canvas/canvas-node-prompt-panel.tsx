@@ -1,7 +1,7 @@
 import { Button, Image as AntImage, InputNumber, Modal, Popover } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -14,9 +14,8 @@ import { modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefa
 import { navigateToSettings } from "@/lib/settings-navigation";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
-import type { CameraControlOptions } from "@/lib/canvas/camera-prompt-library";
+import { CanvasCameraControlPopover } from "./canvas-camera-control-popover";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
-import { CanvasNodeCameraPanel } from "./canvas-node-camera-dialog";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
@@ -44,6 +43,8 @@ type CanvasNodePromptPanelProps = {
     mentionReferences?: CanvasResourceReference[];
     onRemoveReference?: (nodeId: string, reference: CanvasResourceReference) => void;
     onReorderReferences?: (nodeId: string, orderedNodeIds: string[]) => void;
+    onReplaceReference?: (nodeId: string, oldReference: CanvasResourceReference, sourceNodeId: string) => void;
+    onReplaceReferenceFiles?: (nodeId: string, oldReference: CanvasResourceReference, files: File[]) => void;
     onClose?: () => void;
     onNodeMouseDown?: (event: ReactPointerEvent, nodeId: string) => void;
     onImageSettingsOpenChange?: (open: boolean) => void;
@@ -62,7 +63,7 @@ const PROMPT_EDITOR_VERTICAL_PADDING = 12;
 const PROMPT_EDITOR_EXPANDED_VERTICAL_PADDING = 20;
 const PROMPT_EDITOR_MAX_LINES = 8;
 
-export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onRemoveReference, onReorderReferences, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional" }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onRemoveReference, onReorderReferences, onReplaceReference, onReplaceReferenceFiles, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional" }: CanvasNodePromptPanelProps) {
     const globalConfig = useEffectiveConfig();
     const themeName = useThemeStore((state) => state.theme);
     const theme = canvasThemes[themeName];
@@ -83,7 +84,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const [manualPromptHeight, setManualPromptHeight] = useState<number | null>(null);
     const [manualExpandedPromptHeight, setManualExpandedPromptHeight] = useState<number | null>(null);
     const [paramsExpanded, setParamsExpanded] = useState(false); // #98 决策2：B区参数区折叠状态（手风琴）
-    const [cameraPanelOpen, setCameraPanelOpen] = useState(false);
     const [promptOptimizerOpen, setPromptOptimizerOpen] = useState(false);
     const [autoLinkEnabled, setAutoLinkEnabled] = useState(true);
     const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences, { projectId });
@@ -105,6 +105,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             size: node.metadata?.size || globalConfig.size,
             quality: node.metadata?.quality || globalConfig.quality,
             count: String(node.metadata?.count || globalConfig.count),
+            transparentBackground: node.metadata?.transparentBackground || globalConfig.transparentBackground,
             videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds,
             vquality: node.metadata?.vquality || globalConfig.vquality,
             videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio,
@@ -181,7 +182,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
         setExpandedPromptContentHeight(estimatePromptContentHeight(normalizedSavedPrompt, true));
         setManualPromptHeight(null);
         setManualExpandedPromptHeight(null);
-        setCameraPanelOpen(false);
     }, [node.id]);
 
     useEffect(() => {
@@ -401,12 +401,11 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     ) : mode === "image" ? (
                         // 图片模式下，显示相机配置与镜头配置
                         <>
-                            <CameraToolsPopover
+                            <CanvasCameraControlPopover
                                 cameraControl={node.metadata?.cameraControl}
+                                onCameraControlChange={(options) => onConfigChange(node.id, { cameraControl: options })}
                                 theme={theme}
                                 compact={!expanded}
-                                open={cameraPanelOpen}
-                                onOpenChange={setCameraPanelOpen}
                             />
                             <CanvasImageSettingsPopover
                                 config={config}
@@ -442,11 +441,14 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             <>
                 <div className="canvas-node-composer-editor" style={{ height }}>
                     <ConnectedReferenceShelf
+                        targetNodeId={node.id}
                         references={resolvedMentionReferences}
                         theme={theme}
                         onInsert={insertPromptReference}
                         onRemove={(reference) => onRemoveReference?.(node.id, reference)}
                         onReorder={onReorderReferences ? (orderedNodeIds) => onReorderReferences(node.id, orderedNodeIds) : undefined}
+                        onReplaceReference={onReplaceReference ? (oldReference, sourceNodeId) => onReplaceReference(node.id, oldReference, sourceNodeId) : undefined}
+                        onReplaceReferenceFiles={onReplaceReferenceFiles ? (oldReference, files) => onReplaceReferenceFiles(node.id, oldReference, files) : undefined}
                     />
                     <CanvasResourceMentionTextarea
                         value={prompt}
@@ -454,6 +456,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         includeAssetLibrary
                         onChange={updatePrompt}
                         autoLinkEnabled={autoLinkEnabled}
+                        onReferenceFilesDrop={onReplaceReferenceFiles ? (reference, files) => onReplaceReferenceFiles(node.id, reference, files) : undefined}
                         onContentSizeChange={expanded ? setExpandedPromptContentHeight : setPromptContentHeight}
                         containerClassName="min-h-0 flex-1"
                         className={expanded
@@ -474,19 +477,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
         );
     };
 
-    const renderCameraPanel = () => (
-        <div className="canvas-node-composer-camera-panel">
-            <CanvasNodeCameraPanel
-                cameraControl={node.metadata?.cameraControl}
-                onClose={() => setCameraPanelOpen(false)}
-                onConfirm={(options) => {
-                    onConfigChange(node.id, { cameraControl: options });
-                    setCameraPanelOpen(false);
-                }}
-            />
-        </div>
-    );
-
     return (
         <CanvasPromptOptimizerDrawer
             open={promptOptimizerOpen}
@@ -502,7 +492,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             onApply={(nextPrompt) => updatePrompt(nextPrompt)}
         >
             <div
-                className={`canvas-node-composer${cameraPanelOpen ? " has-camera-panel" : ""}`}
+                className="canvas-node-composer"
                 style={composerSurfaceStyle}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -511,7 +501,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             {renderComposerHeader(false)}
 
             {renderPromptEditor(false)}
-            {cameraPanelOpen ? renderCameraPanel() : null}
 
             {/* B区 参数区（对应 #98 决策2：默认折叠，手风琴展开）*/}
             {hasVideoPromptTools ? (
@@ -558,7 +547,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                 <div className="relative flex min-h-0 flex-col gap-2.5 overflow-visible p-3" style={{ ...composerTokens, color: theme.node.text }}>
                     <div className="shrink-0 pr-8">{renderComposerHeader(true)}</div>
                     {renderPromptEditor(true)}
-                    {cameraPanelOpen ? renderCameraPanel() : null}
                     {hasVideoPromptTools ? (
                         <div className="canvas-node-composer-parameters shrink-0">
                             <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
@@ -570,29 +558,6 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
 
             </div>
         </CanvasPromptOptimizerDrawer>
-    );
-}
-
-function CameraToolsPopover({ cameraControl, theme, compact, open, onOpenChange }: { cameraControl?: CameraControlOptions; theme: CanvasTheme; compact: boolean; open: boolean; onOpenChange: (open: boolean) => void }) {
-    const cameraEnabled = cameraControl?.enabled === true;
-    const active = open || cameraEnabled;
-    return (
-        <button
-            type="button"
-            className={`canvas-node-composer-camera-tools-trigger inline-flex shrink-0 items-center gap-1 rounded-[var(--r-md)] border px-1.5 text-[var(--fs-tiny)] transition-colors focus:outline-none focus-visible:outline-none ${compact ? "is-compact h-7" : "h-8"}`}
-            style={{
-                background: active ? `${theme.node.activeStroke}14` : theme.node.fill,
-                borderColor: active ? theme.node.activeStroke : "transparent",
-                color: active ? theme.node.activeStroke : theme.node.text,
-            }}
-            aria-pressed={active}
-            aria-label="摄像机控制"
-            title={`摄像机控制${cameraEnabled ? " · 已启用" : ""}`}
-            onClick={() => onOpenChange(!open)}
-        >
-            <Camera className="size-4.5" />
-            {!compact ? <span>摄像机</span> : null}
-        </button>
     );
 }
 
@@ -643,7 +608,7 @@ function ReferenceToolsPopover({ canAutoMention, autoLinkEnabled, onAutoMention,
                 aria-label="打开智能引用"
                 title="智能引用"
             >
-                <SlidersHorizontal className="size-4.5" />
+                <SlidersHorizontal className="size-3.5" />
                 {!compact ? <span>引用</span> : null}
             </button>
         </Popover>
@@ -669,10 +634,29 @@ function referenceShelfHeading(references: CanvasResourceReference[]) {
     return `${label} · ${references.length}`;
 }
 
-function ConnectedReferenceShelf({ references, theme, onInsert, onRemove, onReorder }: { references: CanvasResourceReference[]; theme: CanvasTheme; onInsert: (reference: CanvasResourceReference) => void; onRemove?: (reference: CanvasResourceReference) => void; onReorder?: (orderedNodeIds: string[]) => void }) {
+function ConnectedReferenceShelf({
+    targetNodeId,
+    references,
+    theme,
+    onInsert,
+    onRemove,
+    onReorder,
+    onReplaceReference,
+    onReplaceReferenceFiles,
+}: {
+    targetNodeId?: string;
+    references: CanvasResourceReference[];
+    theme: CanvasTheme;
+    onInsert: (reference: CanvasResourceReference) => void;
+    onRemove?: (reference: CanvasResourceReference) => void;
+    onReorder?: (orderedNodeIds: string[]) => void;
+    onReplaceReference?: (oldReference: CanvasResourceReference, sourceNodeId: string) => void;
+    onReplaceReferenceFiles?: (oldReference: CanvasResourceReference, files: File[]) => void;
+}) {
     const activeReferences = references.filter((item) => item.active && item.kind !== "skill");
     const [imagePreview, setImagePreview] = useState<CanvasResourceReference | null>(null);
     const [draggedReferenceId, setDraggedReferenceId] = useState<string | null>(null);
+    const [dropTargetReferenceId, setDropTargetReferenceId] = useState<string | null>(null);
     if (!activeReferences.length) return null;
 
     const moveReference = (sourceId: string, targetId: string) => {
@@ -699,21 +683,72 @@ function ConnectedReferenceShelf({ references, theme, onInsert, onRemove, onReor
                 <div className="canvas-node-composer-references-track thin-scrollbar">
                     {activeReferences.map((reference, index) => {
                         const canPreview = Boolean(reference.previewUrl) && (reference.kind === "image" || reference.kind === "character" || reference.kind === "video");
+                        const isDropTarget = dropTargetReferenceId === reference.id;
                         return (
                             <span
                                 key={reference.id}
-                                className="canvas-node-reference-chip"
+                                className="canvas-node-reference-chip relative"
+                                data-reference-chip="true"
+                                data-reference-id={reference.id}
+                                data-reference-node-id={reference.nodeId}
+                                data-reference-label={reference.label}
+                                data-reference-title={reference.title || reference.label}
+                                data-target-node-id={targetNodeId}
                                 data-dragging={draggedReferenceId === reference.nodeId || undefined}
+                                data-drop-target={isDropTarget ? "true" : undefined}
+                                style={{
+                                    boxShadow: isDropTarget ? "0 0 0 2px #3b82f6, 0 0 16px rgba(59, 130, 246, 0.45)" : undefined,
+                                }}
                                 onDragOver={(event) => {
-                                    if (!onReorder || !draggedReferenceId) return;
-                                    event.preventDefault();
-                                    event.dataTransfer.dropEffect = "move";
+                                    if (draggedReferenceId) {
+                                        if (!onReorder) return;
+                                        event.preventDefault();
+                                        event.dataTransfer.dropEffect = "move";
+                                        return;
+                                    }
+                                    const hasImageNode = event.dataTransfer.types.includes("application/x-canvas-image-node-id");
+                                    const hasFiles = event.dataTransfer.types.includes("Files");
+                                    if (hasImageNode || hasFiles) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        event.dataTransfer.dropEffect = "copy";
+                                        if (dropTargetReferenceId !== reference.id) {
+                                            setDropTargetReferenceId(reference.id);
+                                        }
+                                    }
+                                }}
+                                onDragLeave={(event) => {
+                                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                                        if (dropTargetReferenceId === reference.id) {
+                                            setDropTargetReferenceId(null);
+                                        }
+                                    }
                                 }}
                                 onDrop={(event) => {
-                                    event.preventDefault();
-                                    const sourceId = draggedReferenceId || event.dataTransfer.getData("text/plain");
-                                    setDraggedReferenceId(null);
-                                    moveReference(sourceId, reference.nodeId);
+                                    if (dropTargetReferenceId === reference.id) {
+                                        setDropTargetReferenceId(null);
+                                    }
+                                    if (draggedReferenceId) {
+                                        event.preventDefault();
+                                        const sourceId = draggedReferenceId || event.dataTransfer.getData("text/plain");
+                                        setDraggedReferenceId(null);
+                                        moveReference(sourceId, reference.nodeId);
+                                        return;
+                                    }
+                                    const sourceNodeId = event.dataTransfer.getData("application/x-canvas-image-node-id");
+                                    if (sourceNodeId && sourceNodeId !== reference.nodeId && onReplaceReference) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onReplaceReference(reference, sourceNodeId);
+                                        return;
+                                    }
+                                    const files = Array.from(event.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+                                    if (files.length && onReplaceReferenceFiles) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onReplaceReferenceFiles(reference, files);
+                                        return;
+                                    }
                                 }}
                             >
                                 {onReorder ? (
@@ -917,6 +952,7 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
                   size: node.metadata?.size,
                   quality: node.metadata?.quality,
                   transparentBackground: node.metadata?.transparentBackground,
+                  videoWatermark: node.metadata?.watermark,
                   count: String(node.metadata?.count || globalConfig.canvasImageCount || globalConfig.count || defaultConfig.count),
               }
             : {
@@ -940,18 +976,18 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
     return {
         ...globalConfig,
         model,
-        quality: defaults.quality || globalConfig.quality || defaultConfig.quality,
+        quality: defaults.quality ?? globalConfig.quality ?? defaultConfig.quality,
         size: defaults.size ?? globalConfig.size ?? defaultConfig.size,
-        transparentBackground: defaults.transparentBackground || "false",
+        transparentBackground: defaults.transparentBackground ?? "false",
         videoSeconds: defaults.videoSeconds || normalizeVideoDuration(globalConfig.videoSeconds || defaultConfig.videoSeconds),
         vquality: defaults.vquality ?? normalizeVideoResolution(globalConfig.vquality || defaultConfig.vquality),
-        videoGenerateAudio: defaults.videoGenerateAudio || globalConfig.videoGenerateAudio || defaultConfig.videoGenerateAudio,
-        videoWatermark: defaults.videoWatermark || globalConfig.videoWatermark || defaultConfig.videoWatermark,
+        videoGenerateAudio: defaults.videoGenerateAudio ?? globalConfig.videoGenerateAudio ?? defaultConfig.videoGenerateAudio,
+        videoWatermark: defaults.videoWatermark ?? globalConfig.videoWatermark ?? defaultConfig.videoWatermark,
         audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice || defaultConfig.audioVoice,
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
-        count: defaults.count || String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
+        count: defaults.count ?? String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
     };
 }
 

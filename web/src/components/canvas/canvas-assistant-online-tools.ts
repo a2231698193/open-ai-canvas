@@ -1,8 +1,9 @@
 import { nanoid } from "nanoid";
-import { type ResponseInputMessage, type ResponseToolCall } from "@/services/api/image";
+import { type AiTextMessage, type ResponseInputMessage, type ResponseToolCall } from "@/services/api/image";
 import { runBackendToolGenerationTask } from "@/services/api/generation-task";
 import { resourceIdFromStorageKey } from "@/services/api/resources";
 import { normalizeModelOptionValue, resolveModelRequestConfig, selectableModelsByCapability, type AiConfig } from "@/stores/use-config-store";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { CanvasNodeType, type CanvasAssistantMessage, type CanvasAssistantReference, type CanvasAssistantSession, type CanvasNodeData } from "@/types/canvas";
 import { previewCanvasAgentOps, type CanvasAgentOp, type CanvasAgentOperationImpact, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
@@ -11,8 +12,34 @@ import { CANVAS_ONLINE_AGENT_TOOLS } from "@/lib/canvas/canvas-agent-tools";
 import { buildOrderedCanvasResourceReferences, canvasResourceMentionToken } from "@/lib/canvas/canvas-resource-references";
 import { buildCanvasWorkflowOps, looksLikeWorkflowRequest, type CanvasWorkflowInput } from "@/lib/canvas/canvas-agent-workflow";
 import type { Skill } from "@/services/api/skills";
+import { AGENT_CAPABILITY_GUIDANCE } from "@/services/agent-capabilities";
+import { budgetCanvasAgentHistory } from "@/lib/canvas/canvas-agent-context-budget";
+import { CREATIVE_AGENT_SYSTEM_PROMPT } from "@/lib/creation/creative-agent-tools";
+import { creativeScenarioPrompt, type CreativeBrief, type CreativeScenarioId } from "@/lib/creation/creative-agent-contract";
+import type { CreativeDynamicPlan } from "@/lib/creation/creative-plan";
+import type { CreativeReference } from "@/lib/creation/creative-agent-state";
 
 export type OnlineToolResult = { ok: true; message: string; data?: unknown; waitForUser?: boolean } | { ok: false; message: string };
+
+export type CreativeOnlineContext = {
+    scene: CreativeScenarioId;
+    brief: CreativeBrief;
+    plan?: CreativeDynamicPlan;
+    previousProposal?: unknown;
+    rejectedProposal?: unknown;
+    previousQuestions?: unknown;
+    answers?: unknown;
+    executionResults: unknown[];
+    media?: unknown;
+    references: CreativeReference[];
+    sourceContext?: unknown[];
+};
+
+export type BuildToolAgentMessagesOptions = {
+    config?: AiConfig;
+    confirmTools?: boolean;
+    creative?: CreativeOnlineContext;
+};
 
 export function objectDetail(value: unknown) {
     return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -54,7 +81,7 @@ export function onlineToolToOps(name: string, input: Record<string, unknown>, sn
     if (name === "canvas_create_text_nodes") {
         const items = requireRecordArray(input.items, "items");
         const textBatch = items.map((item) => `${String(item.title || "")} ${String(item.text || "")}`).join(" ");
-        if (looksLikeWorkflowRequest(textBatch)) throw new Error("检测到流水线/工作流意图，请使用 canvas_create_workflow 创建真实类型节点和连线。" );
+        if (looksLikeWorkflowRequest(textBatch)) throw new Error("检测到流水线/工作流意图，请使用 canvas_create_workflow 创建真实类型节点和连线。");
         const x = numberOr(input.x, nextCanvasX(snapshot));
         const y = numberOr(input.y, 0);
         const gap = numberOr(input.gap, 40);
@@ -474,7 +501,7 @@ export function buildAssistantReferences(nodes: CanvasNodeData[], selectedNodeId
         .filter((item): item is CanvasAssistantReference => Boolean(item));
 }
 
-export async function buildToolAgentMessages(snapshot: CanvasAgentSnapshot, history: CanvasAssistantMessage[], userMessage: CanvasAssistantMessage, skills: Skill[] = []): Promise<ResponseInputMessage[]> {
+export async function buildToolAgentMessages(snapshot: CanvasAgentSnapshot, history: CanvasAssistantMessage[], userMessage: CanvasAssistantMessage, skills: Skill[] = [], options: BuildToolAgentMessagesOptions = {}): Promise<ResponseInputMessage[]> {
     const refs = userMessage.references || [];
     const imageRefs = refs.filter((item) => item.type === CanvasNodeType.Image);
     const unavailableImageRefs = imageRefs.filter((item) => !resourceIdFromStorageKey(item.storageKey));
@@ -487,22 +514,54 @@ export async function buildToolAgentMessages(snapshot: CanvasAgentSnapshot, hist
         .slice(0, 40)
         .map((skill) => `- ${skill.skillName}（${skill.skillId}，v${skill.version || "1"}，${skill.fileCount || 1} 文件）：${skill.description}`)
         .join("\n");
-    const systemContent = buildCanvasOnlineAgentSystemContent(skillCatalog);
-    return [
-        { role: "system", content: systemContent },
-        ...history
-            .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "system")
-            .slice(-8)
-            .map((message): ResponseInputMessage => ({ role: message.role as "system" | "user" | "assistant", content: message.text })),
-        {
-            role: "user",
-            content: [
-                ...refs.flatMap((item) => (item.text ? [{ type: "text" as const, text: `选中节点 ${item.title}：${item.text}` }] : [])),
-                { type: "text", text: `当前画布：${JSON.stringify(compactSnapshot(snapshot))}\n\n用户需求：${userMessage.text}` },
-                ...imageRefs.map((item) => ({ type: "image_url" as const, image_url: { url: item.storageKey! } })),
-            ],
-        },
-    ];
+    const creative = options.creative;
+    const executionGuidance =
+        options.confirmTools === false
+            ? "当前普通画布工具的逐次确认已关闭。用户请求范围内的操作可以直接调用，不要先征求重复授权；这不代表可以擅自扩大删除范围或跳过结构化方案、具体费用的批准。"
+            : "当前普通画布工具由程序展示执行确认。用户目标和操作范围明确时直接提交工具，程序会处理确认，不要在工具确认之前再用文字问一遍。";
+    const systemContent = [buildCanvasOnlineAgentSystemContent(skillCatalog), AGENT_CAPABILITY_GUIDANCE, executionGuidance, creative ? CREATIVE_AGENT_SYSTEM_PROMPT : "", creative ? creativeScenarioPrompt(creative.scene) : ""].filter(Boolean).join("\n\n");
+    const historyMessages: AiTextMessage[] = history
+        .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "system")
+        .map((message) => ({ role: message.role as "system" | "user" | "assistant", content: message.text }));
+    const creativeContextText = creative
+        ? `创作上下文：${JSON.stringify({
+              brief: creative.brief,
+              plan: creative.plan,
+              previousProposal: creative.previousProposal,
+              rejectedProposal: creative.rejectedProposal,
+              previousQuestions: creative.previousQuestions,
+              answers: creative.answers,
+              executionResults: creative.executionResults,
+              media: creative.media,
+              references: creative.references,
+              availableModels: options.config ? (["image", "video"] as const).flatMap((mode) => selectableModelsByCapability(options.config!, mode).map((model) => ({ mode, model, capability: modelCapabilityConfigFor(options.config!, model) }))) : [],
+          })}\n已返回的执行状态不代表已观察画面。保留成功产物，若用户仅要求分析结果则只提供分析和下一步建议。新增或修改方案仍须确认，媒体生成仍须费用确认。`
+        : "";
+    const currentMessage: AiTextMessage = {
+        role: "user",
+        content: [
+            ...refs.flatMap((item) => (item.text ? [{ type: "text" as const, text: `选中节点 ${item.title}：${item.text}` }] : [])),
+            ...(creative?.sourceContext?.length
+                ? [
+                      {
+                          type: "text" as const,
+                          text: `首页接续记录（任务事实和资料目录，不代表新的执行批准）：${JSON.stringify(creative.sourceContext)}。沿用前序用户需求与技能引用；进入画布本身不要求重做作品，不把首页文本当成已获批准的画布操作。先检查当前真实节点，资源目录不等于已观察图片。`,
+                      },
+                  ]
+                : []),
+            { type: "text", text: `当前画布：${JSON.stringify(compactSnapshot(snapshot))}\n${creativeContextText}\n用户需求：${userMessage.text}` },
+            ...(creative
+                ? [
+                      {
+                          type: "text" as const,
+                          text: `本次引用的图片（仅素材目录，尚未观察图片）：${JSON.stringify(refs.filter((item) => item.dataUrl || item.storageKey).map((item) => ({ id: item.id, title: item.title })))}。需要观察画面时调用 canvas_inspect_image；不能仅凭素材名称断言画面内容。`,
+                      },
+                  ]
+                : []),
+            ...imageRefs.map((item) => ({ type: "image_url" as const, image_url: { url: item.storageKey! } })),
+        ],
+    };
+    return budgetCanvasAgentHistory({ role: "system", content: systemContent }, historyMessages, currentMessage);
 }
 
 export function compactSnapshot(snapshot: CanvasAgentSnapshot) {

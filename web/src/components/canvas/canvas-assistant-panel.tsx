@@ -9,6 +9,7 @@ import { motion } from "motion/react";
 import { resolveModelRequestConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { nanoid } from "nanoid";
 import { type ResponseInputMessage, type ResponseToolCall } from "@/services/api/image";
+import { runBackendToolGenerationTask } from "@/services/api/generation-task";
 import { inspectAgentImage } from "@/services/agent-image-preview";
 import { listAgentCapabilities, readAgentPluginDocumentation, readAgentPluginNode } from "@/services/agent-capabilities";
 import { readAgentStoryboard } from "@/lib/canvas/canvas-agent-storyboard";
@@ -38,11 +39,14 @@ import { isWritableToolCall } from "@/lib/canvas/canvas-agent-protocol";
 import { listAddedSkills, type Skill } from "@/services/api/skills";
 import { buildSkillMentionReferences, skillRuntime } from "@/services/skill-runtime";
 import { handleCinematicContinuationFailure, canvasCinematicContinuationEntryAdapters, type CinematicContinuationFailureDisposition, type CinematicContinuationLiveSessionState } from "./canvas-cinematic-continuation";
-import { CanvasCreativeInteraction, canvasCreativeDetail } from "./canvas-creative-interaction";
-import { creativePlan } from "@/lib/creation/creative-agent-state";
+import { CanvasCreativeInteraction, canvasCreativeDetail, creativeInteractionSeed, creativeProposalFailure, type CanvasCreativeDetail } from "./canvas-creative-interaction";
+import { creativePlan, type CreativeReference } from "@/lib/creation/creative-agent-state";
 import { CreativePlanBar } from "@/components/creation/creative-agent-cards";
 import { AgentTextModelPicker, AssistantHistory, AssistantReferenceChip, MessageReferences, assistantImageReferenceLabel, assistantMessageToChatMessage, assistantReferencesToMentionReferences, promptAlreadyHasMention } from "./canvas-assistant-panel-views";
-import { backendAgentProviderConfig, buildAssistantReferences, buildToolAgentMessages, capabilityBatchTitle, cinematicSessionMessageId, compactSnapshot, createSession, describeCanvasSnapshot, explainNoop, nodeToReference, objectDetail, onlineToolToOps, parseToolArguments, previewOnlineToolCalls, requestOnlineAgentModel, requireOps, requireString, snapshotSignature, summarizeToolCalls, toolCallToResponseInput, toolCallsFromDetail, toolResultText, upsertAssistantMessage, type OnlineToolResult } from "./canvas-assistant-online-tools";
+import { backendAgentProviderConfig, buildAssistantReferences, buildToolAgentMessages, capabilityBatchTitle, cinematicSessionMessageId, compactSnapshot, createSession, describeCanvasSnapshot, explainNoop, nodeToReference, objectDetail, onlineToolToOps, parseToolArguments, previewOnlineToolCalls, requestOnlineAgentModel, requireOps, requireString, snapshotSignature, summarizeToolCalls, toolCallToResponseInput, toolCallsFromDetail, toolResultText, upsertAssistantMessage, type CreativeOnlineContext, type OnlineToolResult } from "./canvas-assistant-online-tools";
+import { CREATIVE_AGENT_TOOLS } from "@/lib/creation/creative-agent-tools";
+import { resourceIdFromStorageKey } from "@/services/api/resources";
+import { recoverCreativeResponse } from "@/services/creative-agent-recovery";
 
 export const CANVAS_AGENT_PANEL_MOTION_MS = 500;
 const PANEL_MOTION_SECONDS = CANVAS_AGENT_PANEL_MOTION_MS / 1000;
@@ -76,6 +80,94 @@ type CanvasAssistantPanelProps = {
     onCinematicEntryConsumed?: () => void;
     resizing?: boolean;
 };
+
+function buildCreativeOnlineContext(history: CanvasAssistantMessage[], snapshot: CanvasAgentSnapshot, config: AiConfig): CreativeOnlineContext {
+    const seed = creativeInteractionSeed(history);
+    const previous = history.findLast((message) => canvasCreativeDetail(message));
+    const previousState = previous ? canvasCreativeDetail(previous)!.state : undefined;
+    const previousDetail = previous ? canvasCreativeDetail(previous)! : undefined;
+    const validationError = previousDetail ? creativeProposalFailure(previousDetail, config) : undefined;
+    const rejectedProposal = validationError
+        ? {
+              error: validationError,
+              input: previousDetail!.input,
+              instruction: "此方案校验失败，未获得用户批准，未创建节点或生成媒体。修正错误并重新用 creative_respond 返回完整方案；不得省略 generationItems 来规避校验。",
+          }
+        : undefined;
+    const proposalMessage = history.findLast((message) => Boolean(canvasCreativeDetail(message)?.state.proposal));
+    const proposalDetail = proposalMessage ? canvasCreativeDetail(proposalMessage)! : undefined;
+    const proposal = proposalDetail?.state.proposal;
+    const previousProposal =
+        proposal && proposalDetail?.state.canvasApplied
+            ? {
+                  contextSummary: true,
+                  instruction: "已落地方案的结构摘要，未包含原方案正文和生成提示词。需要修改具体内容时先读取对应画布节点，不得用摘要覆盖正文。",
+                  id: proposal.id,
+                  version: proposal.version,
+                  title: proposal.title,
+                  summary: proposal.summary,
+                  deliverables: proposal.deliverables,
+                  generationItems: proposal.generationItems,
+                  nodes: proposal.workflow.nodes.map((node) => ({ ref: node.ref, kind: node.kind, title: node.title, referenceRefs: node.referenceRefs, referenceNodeIds: node.referenceNodeIds })),
+                  edges: proposal.workflow.edges,
+              }
+            : proposal;
+    const executionByRun = new Map(
+        history.flatMap((message) => {
+            const detail = canvasCreativeDetail(message);
+            return detail && (detail.state.canvasApplied || detail.state.media.some((item) => item.taskId || item.error))
+                ? [
+                      [
+                          detail.runId || message.id,
+                          {
+                              runId: detail.runId,
+                              status: detail.status,
+                              proposal: detail.state.proposal?.title,
+                              canvasApplied: detail.state.canvasApplied,
+                              approvedProposalVersion: detail.approvedProposalVersion,
+                              media: detail.state.media.map((item) => ({ ref: item.ref, nodeId: item.nodeId, taskId: item.taskId, status: item.status, error: item.error })),
+                          },
+                      ] as const,
+                  ]
+                : [];
+        }),
+    );
+    return {
+        scene: seed.scene,
+        brief: seed.brief,
+        plan: seed.dynamicPlan,
+        previousProposal,
+        rejectedProposal,
+        previousQuestions: previousState?.questions,
+        answers: previousState?.answers,
+        executionResults: [...executionByRun.values()],
+        media: previousState?.media,
+        references: creativeCanvasReferences(snapshot),
+        sourceContext: history.flatMap((message) => {
+            const detail = objectDetail(message.detail);
+            return detail.kind === "creation-handoff" ? [{ messageId: message.id, ...detail }] : [];
+        }),
+    };
+}
+
+function creativeCanvasReferences(snapshot: CanvasAgentSnapshot): CreativeReference[] {
+    return snapshot.nodes.flatMap((node): CreativeReference[] =>
+        node.type === "image" && node.metadata?.storageKey && resourceIdFromStorageKey(node.metadata.storageKey)
+            ? [
+                  {
+                      id: node.id,
+                      title: node.title || "画布图片",
+                      kind: "image",
+                      storageKey: node.metadata.storageKey,
+                      assetId: node.metadata.assetId,
+                      mimeType: node.metadata.mimeType,
+                      width: node.metadata.naturalWidth,
+                      height: node.metadata.naturalHeight,
+                  },
+              ]
+            : [],
+    );
+}
 
 export { handleCinematicContinuationFailure, runCanvasCinematicContinuationBoundary, canvasCinematicContinuationEntryAdapters } from "./canvas-cinematic-continuation";
 export type { CinematicContinuationFailureDisposition } from "./canvas-cinematic-continuation";
@@ -434,12 +526,18 @@ export function CanvasAssistantPanel({
         const requestConfig = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model };
         try {
             setIsRunning(true);
-            const messages = await buildToolAgentMessages(snapshotRef.current, history, userMessage, composerSkills);
+            const messages = await buildToolAgentMessages(snapshotRef.current, history, userMessage, composerSkills, {
+                config: effectiveConfig,
+                confirmTools,
+                creative: buildCreativeOnlineContext(history, snapshotRef.current, effectiveConfig),
+            });
             let streamed = "";
-            const result = await requestOnlineAgentModel({ ...requestConfig, systemPrompt: "" }, messages, "required", userMessage.text, (text) => {
+            const initial = await requestOnlineAgentModel({ ...requestConfig, systemPrompt: "" }, messages, "required", userMessage.text, (text) => {
                 streamed = text;
                 if (text.trim()) upsertMessage(sessionId, { id: assistantId, role: "assistant", text });
             });
+            const result = await repairCreativeReply(initial, messages, userMessage.text, history);
+            if (presentCreativeResponse(sessionId, assistantId, result)) return;
             if (result.toolCalls.length) {
                 const writableCalls = result.toolCalls.filter(isWritableToolCall);
                 if (confirmTools && writableCalls.length) {
@@ -469,6 +567,44 @@ export function CanvasAssistantPanel({
         }
     };
 
+    const presentCreativeResponse = (sessionId: string, assistantId: string, result: { content: string; toolCalls: ResponseToolCall[] }) => {
+        const call = result.toolCalls.find((item) => item.function.name === "creative_respond");
+        if (!call) return false;
+        const input = parseToolArguments(call.function.arguments);
+        const history = localSessionsRef.current.find((session) => session.id === sessionId)?.messages || [];
+        const state = creativeInteractionSeed(history.filter((message) => message.id !== assistantId));
+        state.references = creativeCanvasReferences(snapshotRef.current);
+        const detail: CanvasCreativeDetail = { kind: "creative-interaction", input, state };
+        upsertMessage(sessionId, {
+            id: assistantId,
+            role: "assistant",
+            text: typeof input.message === "string" ? input.message : result.content || "已整理当前需求。",
+            detail,
+        });
+        return true;
+    };
+
+    const repairCreativeReply = async (reply: { content: string; toolCalls: ResponseToolCall[] }, protocol: ResponseInputMessage[], latestInput: string, history: CanvasAssistantMessage[]) => {
+        const state = creativeInteractionSeed(history);
+        state.references = creativeCanvasReferences(snapshotRef.current);
+        const config = { ...effectiveConfig, model: effectiveConfig.textModel || effectiveConfig.model, systemPrompt: "" };
+        return recoverCreativeResponse(
+            reply,
+            protocol,
+            { config, state, latestInput },
+            (messages) =>
+                runBackendToolGenerationTask({
+                    prompt: "根据程序校验反馈修正创作交互",
+                    config,
+                    messages,
+                    tools: CREATIVE_AGENT_TOOLS,
+                    toolChoice: "required",
+                    signal: generationConsumerControllerRef.current.signal,
+                }),
+            () => undefined,
+        );
+    };
+
     const continueOnlineToolLoop = async (sessionId: string, assistantId: string, messages: ResponseInputMessage[], result: { content: string; toolCalls: ResponseToolCall[] }, step: number) => {
         const toolResults = await executeOnlineToolCalls(sessionId, result.toolCalls);
         appendMessage(sessionId, {
@@ -482,6 +618,11 @@ export function CanvasAssistantPanel({
     };
 
     const continueOnlineToolLoopAfterResults = async (sessionId: string, assistantId: string, messages: ResponseInputMessage[], toolCalls: ResponseToolCall[], toolResults: OnlineExecutedToolCall[], step: number) => {
+        const waiting = toolResults.find((item) => item.result.ok && item.result.waitForUser);
+        if (waiting) {
+            upsertMessage(sessionId, { id: assistantId, role: "assistant", text: waiting.result.message });
+            return;
+        }
         const nextMessages: ResponseInputMessage[] = [...messages, ...toolCalls.map(toolCallToResponseInput), ...toolResults.map((item) => ({ role: "tool" as const, tool_call_id: item.toolCallId, content: JSON.stringify(item.result) }))];
         if (step >= ONLINE_AGENT_MAX_STEPS) {
             upsertMessage(sessionId, { id: assistantId, role: "assistant", text: toolResults.map((item) => toolResultText(item.result)).join("\n") || "工具已执行。" });
@@ -493,25 +634,28 @@ export function CanvasAssistantPanel({
             streamed = text;
             if (text.trim()) upsertMessage(sessionId, { id: assistantId, role: "assistant", text });
         });
-        if (next.toolCalls.length) {
-            const writableCalls = next.toolCalls.filter(isWritableToolCall);
+        const history = localSessionsRef.current.find((session) => session.id === sessionId)?.messages || [];
+        const repaired = await repairCreativeReply(next, nextMessages, history.findLast((message) => message.role === "user")?.text || "", history);
+        if (presentCreativeResponse(sessionId, assistantId, repaired)) return;
+        if (repaired.toolCalls.length) {
+            const writableCalls = repaired.toolCalls.filter(isWritableToolCall);
             if (confirmTools && writableCalls.length) {
-                upsertMessage(sessionId, { id: assistantId, role: "assistant", text: next.content || streamed || "准备执行工具，等待确认。" });
+                upsertMessage(sessionId, { id: assistantId, role: "assistant", text: repaired.content || streamed || "准备执行工具，等待确认。" });
                 const toolMessageId = nanoid();
-                pendingToolContextRef.current.set(toolMessageId, { messages: nextMessages, toolCalls: next.toolCalls, assistantId, step: step + 1 });
+                pendingToolContextRef.current.set(toolMessageId, { messages: nextMessages, toolCalls: repaired.toolCalls, assistantId, step: step + 1 });
                 appendMessage(sessionId, {
                     id: toolMessageId,
                     role: "tool",
-                    title: `确认${capabilityBatchTitle(next.toolCalls)}`,
-                    text: summarizeToolCalls(next.toolCalls),
-                    detail: { status: "pending", step: step + 1, toolCalls: next.toolCalls, impact: previewOnlineToolCalls(next.toolCalls, snapshotRef.current, effectiveConfig) },
+                    title: `确认${capabilityBatchTitle(repaired.toolCalls)}`,
+                    text: summarizeToolCalls(repaired.toolCalls),
+                    detail: { status: "pending", step: step + 1, toolCalls: repaired.toolCalls, impact: previewOnlineToolCalls(repaired.toolCalls, snapshotRef.current, effectiveConfig) },
                 });
                 return;
             }
-            await continueOnlineToolLoop(sessionId, assistantId, nextMessages, next, step + 1);
+            await continueOnlineToolLoop(sessionId, assistantId, nextMessages, repaired, step + 1);
             return;
         }
-        upsertMessage(sessionId, { id: assistantId, role: "assistant", text: next.content || streamed || toolResults.map((item) => toolResultText(item.result)).join("\n") || "工具已执行。" });
+        upsertMessage(sessionId, { id: assistantId, role: "assistant", text: repaired.content || streamed || toolResults.map((item) => toolResultText(item.result)).join("\n") || "工具已执行。" });
     };
 
     const executeOps = async (ops: CanvasAgentOp[], context?: { conversationId?: string; messageId?: string; source?: "online" | "local" }) => {

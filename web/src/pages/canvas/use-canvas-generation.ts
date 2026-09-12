@@ -521,10 +521,14 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
             }).catch((error) => {
                 autoSavedTaskIdsRef.current.delete(saveKey);
                 if (error instanceof Error && error.name === "AbortError") return;
-                message.warning(error instanceof Error ? `生成结果已保留，但项目资产同步失败：${error.message}` : "生成结果已保留，但项目资产同步失败");
+                message.warning({
+                    key: `canvas-asset-sync:${projectId}`,
+                    content: error instanceof Error ? `生成结果已保留，但项目资产同步失败：${error.message}` : "生成结果已保留，但项目资产同步失败",
+                    duration: 4,
+                });
             });
         });
-    }, [domainProjectId, message, nodes, projectLoaded, saveGeneratedAsset]);
+    }, [domainProjectId, message, nodes, projectId, projectLoaded, saveGeneratedAsset]);
 
     return {
         applyGenerationTaskResult,
