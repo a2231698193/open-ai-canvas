@@ -14172,6 +14172,35 @@ html:not(.dark) .creation-history-drawer-root {
     .creation-empty-composer { width: 100%; }
 }
 
+.app-changelog-modal .ant-modal-header {
+    margin-bottom: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    background: transparent;
+    padding: var(--space-5) var(--space-6) var(--space-4);
+}
+.app-changelog-modal .ant-modal-title {
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+}
+.app-changelog-modal .ant-modal-close {
+    top: 18px;
+    inset-inline-end: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-full);
+    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+}
+.app-changelog-modal .ant-modal-close:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+}
+.app-changelog-modal .ant-modal-close:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
 /* 用户端浮层：更像创作工作室的工作面，不保留默认后台表单的硬边和密集分隔。 */
 .library-modal .ant-modal-container {
     padding: 0 !important;
