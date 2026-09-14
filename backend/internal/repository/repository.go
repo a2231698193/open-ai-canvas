@@ -44,8 +44,6 @@ type UserStorageUsage struct {
 	AssetBytes   int64 `json:"assetBytes"`
 	CanvasCount  int64 `json:"canvasCount"`
 	CanvasBytes  int64 `json:"canvasBytes"`
-	SessionCount int64 `json:"sessionCount"`
-	SessionBytes int64 `json:"sessionBytes"`
 	TaskCount    int64 `json:"taskCount"`
 	TaskBytes    int64 `json:"taskBytes"`
 	APICallCount int64 `json:"apiCallCount"`
@@ -108,9 +106,6 @@ func (r *Repository) UserStorageUsage(userID string) (UserStorageUsage, error) {
 			(SELECT COALESCE(SUM(length(CAST(COALESCE(payload_json, '') AS BLOB))), 0) FROM assets WHERE user_id = ?) AS asset_bytes,
 			(SELECT COUNT(*) FROM canvas_projects WHERE user_id = ?) AS canvas_count,
 			(SELECT COALESCE(SUM(length(CAST(COALESCE(payload_json, '') AS BLOB))), 0) FROM canvas_projects WHERE user_id = ?) AS canvas_bytes,
-			(SELECT COUNT(*) FROM sessions WHERE user_id = ?) AS session_count,
-			(SELECT COALESCE(SUM(length(CAST(COALESCE(prompt, '') AS BLOB)) + length(CAST(COALESCE(canvas_snapshot_json, '') AS BLOB)) + length(CAST(COALESCE(canvas_ops_json, '') AS BLOB))), 0) FROM sessions WHERE user_id = ?)
-			+ (SELECT COALESCE(SUM(length(CAST(COALESCE(content, '') AS BLOB)) + length(CAST(COALESCE(payload, '') AS BLOB))), 0) FROM messages WHERE user_id = ?) AS session_bytes,
 			(SELECT COUNT(*) FROM tasks WHERE user_id = ?) AS task_count,
 			(SELECT COALESCE(SUM(length(CAST(COALESCE(prompt, '') AS BLOB)) + length(CAST(COALESCE(input_json, '') AS BLOB)) + length(CAST(COALESCE(result_json, '') AS BLOB)) + length(CAST(COALESCE(text_draft, '') AS BLOB)) + length(CAST(COALESCE(error, '') AS BLOB))), 0) FROM tasks WHERE user_id = ?)
 			+ (SELECT COALESCE(SUM(length(CAST(COALESCE(message, '') AS BLOB)) + length(CAST(COALESCE(payload, '') AS BLOB))), 0) FROM task_logs WHERE user_id = ?)
@@ -123,7 +118,7 @@ func (r *Repository) UserStorageUsage(userID string) (UserStorageUsage, error) {
 		query = strings.ReplaceAll(query, "length(CAST(COALESCE(", "octet_length(COALESCE(")
 		query = strings.ReplaceAll(query, ", '') AS BLOB))", ", ''))")
 	}
-	err := r.db.Raw(query, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID).Scan(&usage).Error
+	err := r.db.Raw(query, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID, userID).Scan(&usage).Error
 	return usage, err
 }
 
@@ -157,7 +152,7 @@ func (r *Repository) CleanupDuplicateTaskPayloads() error {
 		if err := tx.Model(&model.TaskLog{}).Where("length(payload) > ?", 4000).Update("payload", "").Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.Result{}, "kind = ? AND session_id = ?", "generation_result", "").Error
+		return nil
 	})
 }
 
@@ -537,7 +532,7 @@ func (r *Repository) UpdateTaskProviderProgress(id string, progress int) error {
 	}).Error
 }
 
-func (r *Repository) SaveTaskCompletion(task *model.Task, expected model.TaskStatus, session *model.Session, message *model.Message, results []model.Result) error {
+func (r *Repository) SaveTaskCompletion(task *model.Task, expected model.TaskStatus, results []model.Result) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		updated := taskLeaseWriter(tx.Model(&model.Task{}), task.LeaseOwner).
 			Where("id = ? AND status = ?", task.ID, expected).
@@ -547,16 +542,6 @@ func (r *Repository) SaveTaskCompletion(task *model.Task, expected model.TaskSta
 		}
 		if updated.RowsAffected != 1 {
 			return ErrTaskStateConflict
-		}
-		if session != nil {
-			if err := tx.Save(session).Error; err != nil {
-				return err
-			}
-		}
-		if message != nil {
-			if err := tx.Create(message).Error; err != nil {
-				return err
-			}
 		}
 		for index := range results {
 			if err := tx.Create(&results[index]).Error; err != nil {
@@ -672,7 +657,7 @@ func (r *Repository) Tasks(userID string, limit int, projectID string, activeOnl
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	query := r.db.Select("id", "session_id", "project_id", "type", "status", "stage", "progress", "prompt", "operation", "provider", "model", "input_json", "result_json", "billing_order_id", "provider_request_id", "provider_cancel_status", "provider_cancel_error", "provider_cancel_attempts", "provider_cancel_requested_at", "provider_cancelled_at", "provider_cancel_next_check_at", "attempts", "started_at", "completed_at", "created_at", "updated_at").
+	query := r.db.Select("id", "project_id", "type", "status", "stage", "progress", "prompt", "operation", "provider", "model", "input_json", "result_json", "billing_order_id", "provider_request_id", "provider_cancel_status", "provider_cancel_error", "provider_cancel_attempts", "provider_cancel_requested_at", "provider_cancelled_at", "provider_cancel_next_check_at", "attempts", "started_at", "completed_at", "created_at", "updated_at").
 		Where("user_id = ?", userID)
 	if strings.TrimSpace(projectID) != "" {
 		query = query.Where("project_id = ?", strings.TrimSpace(projectID))
@@ -691,60 +676,6 @@ func (r *Repository) SuccessfulWorkflowTasksForProject(userID string, projectID 
 	err := r.db.Where("user_id = ? AND project_id = ? AND status = ?", userID, projectID, model.TaskStatusSucceeded).
 		Order("completed_at asc, created_at asc").Find(&tasks).Error
 	return tasks, err
-}
-
-func (r *Repository) Session(id string) (*model.Session, error) {
-	var session model.Session
-	if err := r.db.First(&session, "id = ?", id).Error; err != nil {
-		return nil, err
-	}
-	return &session, nil
-}
-
-func (r *Repository) SessionForUser(userID string, id string) (*model.Session, error) {
-	var session model.Session
-	if err := r.db.First(&session, "id = ? AND user_id = ?", id, userID).Error; err != nil {
-		return nil, err
-	}
-	return &session, nil
-}
-
-func (r *Repository) DeleteSessionDraft(userID string, id string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		var taskIDs []string
-		if err := tx.Model(&model.Task{}).Where("user_id = ? AND session_id = ?", userID, id).Pluck("id", &taskIDs).Error; err != nil {
-			return err
-		}
-		if len(taskIDs) > 0 {
-			if err := tx.Delete(&model.TaskTextDelta{}, "user_id = ? AND task_id IN ?", userID, taskIDs).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Delete(&model.Message{}, "user_id = ? AND session_id = ?", userID, id).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&model.Session{}, "id = ? AND user_id = ?", id, userID).Error
-	})
-}
-
-func (r *Repository) SessionMessages(userID string, sessionID string) ([]model.Message, error) {
-	var messages []model.Message
-	err := r.db.Order("created_at asc").Find(&messages, "user_id = ? AND session_id = ?", userID, sessionID).Error
-	return messages, err
-}
-
-func (r *Repository) SessionTasks(userID string, sessionID string) ([]model.Task, error) {
-	var tasks []model.Task
-	err := r.db.Select("id", "user_id", "session_id", "project_id", "type", "status", "prompt", "operation", "provider", "model", "attempts", "started_at", "completed_at", "created_at", "updated_at").
-		Order("created_at asc").
-		Find(&tasks, "user_id = ? AND session_id = ?", userID, sessionID).Error
-	return tasks, err
-}
-
-func (r *Repository) SessionResults(userID string, sessionID string) ([]model.Result, error) {
-	var results []model.Result
-	err := r.db.Order("created_at asc").Find(&results, "user_id = ? AND session_id = ?", userID, sessionID).Error
-	return results, err
 }
 
 func (r *Repository) TaskLogs(userID string, taskID string) ([]model.TaskLog, error) {
@@ -1024,8 +955,7 @@ func (r *Repository) UserStoredFileBytes(userID string) (int64, error) {
 					GROUP BY COALESCE(NULLIF(provider, ''), 'local'), endpoint, bucket, object_key
 				) AS physical_resources
 			), 0)
-			+ (SELECT COALESCE(SUM(size), 0) FROM session_files WHERE user_id = ?)
-	`, userID, model.ResourceStatusReady, userID).Scan(&total).Error
+	`, userID, model.ResourceStatusReady).Scan(&total).Error
 	return total, err
 }
 
@@ -1256,9 +1186,6 @@ func (r *Repository) DeleteCanvasProject(userID string, id string) error {
 		if err := tx.Model(&model.Task{}).Where("user_id = ? AND project_id = ?", userID, id).Update("project_id", "").Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.Session{}).Where("user_id = ? AND project_id = ?", userID, id).Update("project_id", "").Error; err != nil {
-			return err
-		}
 		return tx.Delete(&model.CanvasProject{}, "id = ? AND user_id = ?", id, userID).Error
 	})
 }
@@ -1386,9 +1313,6 @@ func (r *Repository) DeleteProject(userID string, id string, canvasUpdates []mod
 			return err
 		}
 		if err := tx.Model(&model.Task{}).Where("user_id = ? AND project_id = ?", userID, id).Update("project_id", "").Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&model.Session{}).Where("user_id = ? AND project_id = ?", userID, id).Update("project_id", "").Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.Project{}, "id = ? AND user_id = ?", id, userID).Error

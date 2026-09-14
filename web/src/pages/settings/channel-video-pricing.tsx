@@ -116,7 +116,7 @@ export function ChannelModelSettings({ channel, onChange }: { channel: ModelChan
                 onClose={() => setActiveModel(null)}
                 footer={
                     <div className="model-editor-footer">
-                        <span className="text-xs text-foreground/50">更改实时保存到本地渠道配置</span>
+                        <span className="text-xs text-foreground/50">更改实时保存到云端渠道配置</span>
                         <div className="model-editor-footer-actions">
                             <Button
                                 icon={<FlaskConical className="size-4" />}

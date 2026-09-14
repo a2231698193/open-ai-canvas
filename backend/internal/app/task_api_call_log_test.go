@@ -21,8 +21,6 @@ func TestEnsureFailedProviderAttemptLoggedFillsPreflightGapOnce(t *testing.T) {
 		&model.SystemSetting{},
 		&model.Asset{},
 		&model.CanvasProject{},
-		&model.Session{},
-		&model.Message{},
 		&model.Task{},
 		&model.TaskLog{},
 		&model.Result{},

@@ -61,11 +61,11 @@ func TestArchiveFromZipRejectsTraversalAndMultipleSkills(t *testing.T) {
 }
 
 func TestParseGitHubSkillURL(t *testing.T) {
-	spec, err := parseGitHubSkillURL("https://github.com/ddcat-ai/open-ai-canvas/tree/main/plugins/yingce", "", "")
+	spec, err := parseGitHubSkillURL("https://github.com/ddcat-ai/open-ai-canvas/tree/main/skills/canvas-context", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spec.Owner != "ddcat-ai" || spec.Repo != "open-ai-canvas" || spec.Ref != "main" || spec.Subdir != "plugins/yingce" {
+	if spec.Owner != "ddcat-ai" || spec.Repo != "open-ai-canvas" || spec.Ref != "main" || spec.Subdir != "skills/canvas-context" {
 		t.Fatalf("spec = %#v", spec)
 	}
 	if _, err := parseGitHubSkillURL("https://github.com/ddcat-ai/open-ai-canvas/blob/main/SKILL.md", "", ""); err == nil {

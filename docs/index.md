@@ -6,15 +6,6 @@
 
 - [影策品牌首页](design/story-creation-homepage.md)：六幕电影卷轴、公开入口、故事素材、工作台预览与响应式降级。
 
-- [创作 Agent 第一期版本基线](design/creative-agent-phase-one-checkpoint.mdx)：用户基本体验验收反馈、已实现范围、执行与资源边界核对、待验收项及代码恢复说明。
-
-- [通用创作 Agent 动态规划与画布协作需求设计](design/creative-agent-dynamic-planning.mdx)：基于原会话的专业角色、动态问答与计划、创意方案和执行批次分离、统一画布与费用授权、历史恢复及分期验收（待审阅，未实施）。
-
-- [通用创作 Agent 第一期体验与实现设计](design/creative-agent-phase-one.mdx)：复核两段录屏与六张截图，细化首页连续问答、可修改方案卡、确认后画布操作、按需步骤条、费用授权和真实单段短片交付，附[交互原型](design/creative-agent-phase-one-prototype.html)（第一期代码已接入，待联调验收）。
-- [智能创作会话与执行](content/docs/backend/creative-agent-runtime.mdx)：实际代码入口、API、审批与任务幂等、画布保存和恢复边界。
-
-- [通用创作 Agent 需求与设计](content/docs/overview/creative-agent-design.mdx)：复用现有在线助手、画布、Skills、插件与生成任务，涵盖动态问答、方案确认、按需计划、费用授权、已有节点辅助编辑、自定义业务节点、插件注册与执行绑定；包含分镜、拉片/抽帧、元素替换用例及分阶段验收；不接入 Harness、不建设服务端画布 MCP、不增加草稿节点（需求与设计评审稿，未实施）。
-
 - [插件平台与市场演进调研](design/plugin-platform-and-marketplace-research.md)：插件机制代码审计、对外回应、外部 SDK 与隔离运行时、独立插件验收、受控目录到公开市场的分阶段方案（调研建议，未实施）。
 
 - [站点及外观与皮肤主题设计合同](design/site-appearance-and-skins.mdx)：品牌一致性、登录页与邮件、SEO/备案、三层皮肤令牌、无闪屏启动顺序和验收边界。
@@ -26,8 +17,6 @@
 - [画布浮动控件设计沉淀](design/canvas-floating-controls.mdx)：顶部操作区、底部 Dock、小地图和右下角工作模式切换的浮动面板、定位与响应式约束。
 
 - [用户诊断包设计](design/user-diagnostic-bundle.mdx)：面向普通用户的一键日志导出、前后端链路关联、脱敏、权限与排障方案。
-
-- [肖像权可识别性排查画布插件实施规格](design/portrait-clearance-canvas-plugin.mdx)：TypeScript 重写、画布节点与全屏工作台、项目模型复用、本机 ONNX/百度识图/候选去重、任务合同、报告和验收方案。
 
 - [AI 审美批改画布插件方案](design/ai-art-critique-solution.md)：云端视觉分析、并行 Reviewer、问题定位、AI 修改提示词与前端 SVG 标注的职责边界和交互设计。
 

@@ -91,7 +91,6 @@ type ChannelRequest struct {
 	PublicAlias          *string          `json:"publicAlias"`
 	SortOrder            *int             `json:"sortOrder"`
 	BaseURL              string           `json:"baseUrl"`
-	AllowLocalChannel    *bool            `json:"allowLocalChannel"`
 	APIKey               string           `json:"apiKey"`
 	SecretKey            string           `json:"secretKey"`
 	ConcurrencyLimit     *int             `json:"concurrencyLimit"`
@@ -102,25 +101,24 @@ type ChannelRequest struct {
 }
 
 type PublicModelChannel struct {
-	ID                string                    `json:"id"`
-	UserID            string                    `json:"userId"`
-	Scope             model.ChannelScope        `json:"scope"`
-	Enabled           bool                      `json:"enabled"`
-	Name              string                    `json:"name"`
-	PublicAlias       string                    `json:"publicAlias,omitempty"`
-	SortOrder         int                       `json:"sortOrder"`
-	BaseURL           string                    `json:"baseUrl"`
-	AllowLocalChannel bool                      `json:"allowLocalChannel,omitempty"`
-	APIKey            string                    `json:"apiKey"`
-	APIFormat         string                    `json:"apiFormat"`
-	ConcurrencyLimit  int                       `json:"concurrencyLimit"`
-	Models            []string                  `json:"models"`
-	ModelCosts        []PublicChannelModelPrice `json:"modelCosts"`
-	Headers           []OutboundHeader          `json:"headers,omitempty"`
-	HasAPIKey         bool                      `json:"hasApiKey"`
-	HasSecretKey      bool                      `json:"hasSecretKey"`
-	CreatedAt         time.Time                 `json:"createdAt"`
-	UpdatedAt         time.Time                 `json:"updatedAt"`
+	ID               string                    `json:"id"`
+	UserID           string                    `json:"userId"`
+	Scope            model.ChannelScope        `json:"scope"`
+	Enabled          bool                      `json:"enabled"`
+	Name             string                    `json:"name"`
+	PublicAlias      string                    `json:"publicAlias,omitempty"`
+	SortOrder        int                       `json:"sortOrder"`
+	BaseURL          string                    `json:"baseUrl"`
+	APIKey           string                    `json:"apiKey"`
+	APIFormat        string                    `json:"apiFormat"`
+	ConcurrencyLimit int                       `json:"concurrencyLimit"`
+	Models           []string                  `json:"models"`
+	ModelCosts       []PublicChannelModelPrice `json:"modelCosts"`
+	Headers          []OutboundHeader          `json:"headers,omitempty"`
+	HasAPIKey        bool                      `json:"hasApiKey"`
+	HasSecretKey     bool                      `json:"hasSecretKey"`
+	CreatedAt        time.Time                 `json:"createdAt"`
+	UpdatedAt        time.Time                 `json:"updatedAt"`
 }
 
 type PublicChannelModelPrice struct {
@@ -770,21 +768,11 @@ func (s *Service) channelFromRequest(req ChannelRequest, channel model.ModelChan
 	if baseURL == "" {
 		return channel, BadAuthRequest("请填写 Base URL")
 	}
-	requestedAllowLocal := channel.AllowLocalChannel
-	if req.AllowLocalChannel != nil {
-		requestedAllowLocal = *req.AllowLocalChannel
-	}
-	if requestedAllowLocal && !s.DesktopLocalChannelsEnabled() {
-		return channel, BadAuthRequest("当前后端未启用本机渠道")
-	}
-	// 启用/停用或只修改价格、模型等本地配置时，不应要求上游域名当前可解析。
-	// 只有 Base URL 或本机渠道开关实际变化时才做出站地址校验。
+	// 启用/停用或只修改价格、模型等配置时，不应要求上游域名当前可解析。
+	// 只有 Base URL 实际变化时才做出站地址校验。
 	connectionChanged := strings.TrimRight(baseURL, "/") != strings.TrimRight(channel.BaseURL, "/")
-	if req.AllowLocalChannel != nil {
-		connectionChanged = connectionChanged || *req.AllowLocalChannel != channel.AllowLocalChannel
-	}
 	if connectionChanged {
-		if _, err := s.validateChannelOutboundURL(baseURL, requestedAllowLocal, false); err != nil {
+		if _, err := ValidateOutboundURL(baseURL); err != nil {
 			return channel, err
 		}
 	}
@@ -809,7 +797,6 @@ func (s *Service) channelFromRequest(req ChannelRequest, channel model.ModelChan
 		channel.SortOrder = *req.SortOrder
 	}
 	channel.BaseURL = strings.TrimRight(baseURL, "/")
-	channel.AllowLocalChannel = requestedAllowLocal
 	if req.APIKey != "" {
 		channel.APIKey = req.APIKey
 	}
@@ -848,10 +835,6 @@ func mergeChannelRequest(req ChannelRequest, channel model.ModelChannel) Channel
 	}
 	if req.Headers == nil {
 		req.Headers, _ = ParseOutboundHeadersJSON(channel.HeadersJSON)
-	}
-	if req.AllowLocalChannel == nil {
-		value := channel.AllowLocalChannel
-		req.AllowLocalChannel = &value
 	}
 	return req
 }
@@ -896,25 +879,24 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 		name, alias = channel.Name, channel.PublicAlias
 	}
 	return PublicModelChannel{
-		ID:                channel.ID,
-		UserID:            channel.UserID,
-		Scope:             channel.Scope,
-		Enabled:           channel.Enabled,
-		Name:              name,
-		PublicAlias:       alias,
-		SortOrder:         channel.SortOrder,
-		BaseURL:           baseURL,
-		AllowLocalChannel: admin && channel.AllowLocalChannel,
-		APIKey:            apiKey,
-		APIFormat:         channel.APIFormat,
-		ConcurrencyLimit:  channel.ConcurrencyLimit,
-		Models:            models,
-		ModelCosts:        modelCosts,
-		Headers:           headers,
-		HasAPIKey:         strings.TrimSpace(channel.APIKey) != "",
-		HasSecretKey:      strings.TrimSpace(channel.SecretKey) != "",
-		CreatedAt:         channel.CreatedAt,
-		UpdatedAt:         channel.UpdatedAt,
+		ID:               channel.ID,
+		UserID:           channel.UserID,
+		Scope:            channel.Scope,
+		Enabled:          channel.Enabled,
+		Name:             name,
+		PublicAlias:      alias,
+		SortOrder:        channel.SortOrder,
+		BaseURL:          baseURL,
+		APIKey:           apiKey,
+		APIFormat:        channel.APIFormat,
+		ConcurrencyLimit: channel.ConcurrencyLimit,
+		Models:           models,
+		ModelCosts:       modelCosts,
+		Headers:          headers,
+		HasAPIKey:        strings.TrimSpace(channel.APIKey) != "",
+		HasSecretKey:     strings.TrimSpace(channel.SecretKey) != "",
+		CreatedAt:        channel.CreatedAt,
+		UpdatedAt:        channel.UpdatedAt,
 	}
 }
 

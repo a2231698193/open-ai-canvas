@@ -250,6 +250,18 @@ func (r *Repository) CreateRouteAttempt(item *model.RouteAttempt) error {
 }
 func (r *Repository) SaveRouteAttempt(item *model.RouteAttempt) error { return r.db.Save(item).Error }
 
+func (r *Repository) MarkRouteAttemptDispatching(id string) error {
+	result := r.db.Model(&model.RouteAttempt{}).Where("id = ? AND dispatch_state = ?", id, "not_sent").
+		Updates(map[string]any{"status": "dispatching", "dispatch_state": "submission_unknown"})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrCreationConflict
+	}
+	return nil
+}
+
 func (r *Repository) LatestRouteAttempt(taskID string) (*model.RouteAttempt, error) {
 	var item model.RouteAttempt
 	if err := r.db.Where("task_id = ?", taskID).Order("route_run desc, attempt_number desc").First(&item).Error; err != nil {

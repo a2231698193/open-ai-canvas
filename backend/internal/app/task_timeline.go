@@ -89,7 +89,7 @@ func (w *taskWorkerCoordinator) processTimelineTranscription(task *model.Task, c
 	task.ResultJSON = string(payload)
 	completedAt := time.Now()
 	task.CompletedAt = &completedAt
-	if err := s.repo.SaveTaskCompletion(task, model.TaskStatusRunning, nil, nil, nil); err != nil {
+	if err := s.repo.SaveTaskCompletion(task, model.TaskStatusRunning, nil); err != nil {
 		// 冲突/租约已失效时不覆盖他人终态，交由上层判定。
 		return fmt.Errorf("写入转写完成态失败: %w", err)
 	}

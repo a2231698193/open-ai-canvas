@@ -343,15 +343,12 @@ func (s *Service) prepareCreationTask(userID string, req CreateTaskRequest) (*mo
 	if err := validateCreationJSON(req); err != nil {
 		return nil, nil, "", err
 	}
-	if req.Type != "canvas_text" && req.Type != "text" && req.Type != "agent_storyboard_rows" && req.Type != "canvas_image" && req.Type != "canvas_video" {
+	if req.Type != "canvas_text" && req.Type != "text" && req.Type != "canvas_image" && req.Type != "canvas_video" {
 		return nil, nil, "", BadAuthRequest("智能创作任务类型不受支持")
 	}
-	expectedMode := map[string]string{"text": "text", "canvas_text": "text", "agent_storyboard_rows": "text", "canvas_image": "image", "canvas_video": "video"}[req.Type]
+	expectedMode := map[string]string{"text": "text", "canvas_text": "text", "canvas_image": "image", "canvas_video": "video"}[req.Type]
 	if stringValue(req.Input["mode"]) != expectedMode || strings.TrimSpace(stringValue(req.Input["prompt"])) != strings.TrimSpace(req.Prompt) {
 		return nil, nil, "", BadAuthRequest("任务类型、模式和实际提示词必须一致")
-	}
-	if req.SessionID != "" {
-		return nil, nil, "", BadAuthRequest("智能创作不能写入旧会话")
 	}
 	if expectedMode != "text" && req.Input["agentRequests"] != nil {
 		return nil, nil, "", BadAuthRequest("媒体任务不允许携带独立模型协议请求")
@@ -429,9 +426,6 @@ func (s *Service) prepareCreationTask(userID string, req CreateTaskRequest) (*mo
 	if channelErr != nil {
 		return nil, nil, "", channelErr
 	}
-	if channel.AllowLocalChannel {
-		return nil, nil, "", BadAuthRequest("智能创作暂不支持本机受管渠道")
-	}
 	if expectedMode == "text" {
 		var typed canvasGenerationInput
 		if err = json.Unmarshal([]byte(task.InputJSON), &typed); err != nil {
@@ -478,7 +472,7 @@ func validateCreationSubmissionScope(run *model.CreationRun, version int64, req 
 	if run.Status == "paused" || run.Status == "cancelled" || run.Status == "completed" {
 		return creationConflict("请先恢复创作任务")
 	}
-	if req.Type == "canvas_text" || req.Type == "text" || req.Type == "agent_storyboard_rows" {
+	if req.Type == "canvas_text" || req.Type == "text" {
 		if req.ProjectID != "" && req.ProjectID != run.CanvasID {
 			return creationConflict("规划任务的画布关联不匹配")
 		}
@@ -723,17 +717,15 @@ func (s *Service) validateCreationStorage(repo *repository.Repository, userID st
 	if err != nil {
 		return err
 	}
-	count, bytes, err := repo.CreationStorageUsage(userID)
+	_, bytes, err := repo.CreationStorageUsage(userID)
 	if err != nil {
 		return err
 	}
-	usage.SessionCount += count
-	usage.SessionBytes += bytes
 	policy, err := s.RuntimePolicy()
 	if err != nil {
 		return err
 	}
-	return validateStructuredStorageQuotaWithPolicy(usage, "session", creating, delta, policy.Resource)
+	return validateStructuredStorageQuotaWithPolicy(usage, "canvas", creating, bytes+delta, policy.Resource)
 }
 func (s *Service) ApproveCreationSubmissions(userID, id string, req CreationRequest) (map[string]any, error) {
 	if len(req.SubmissionIDs) == 0 || len(req.SubmissionIDs) > 20 {

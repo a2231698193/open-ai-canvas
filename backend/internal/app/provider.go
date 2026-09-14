@@ -69,7 +69,6 @@ type providerConfig struct {
 	APIFormat             string                 `json:"apiFormat"`
 	InterfaceType         string                 `json:"interfaceType"`
 	BaseURL               string                 `json:"baseUrl"`
-	AllowLocalChannel     bool                   `json:"allowLocalChannel"`
 	APIKey                string                 `json:"apiKey"`
 	SecretKey             string                 `json:"secretKey"`
 	Headers               []OutboundHeader       `json:"headers"`
@@ -93,7 +92,6 @@ type providerConfig struct {
 	WebappID              string                 `json:"webappId"`
 	WorkflowJSON          map[string]interface{} `json:"workflowJson"`
 	WorkflowFields        []WorkflowField        `json:"workflowFields"`
-	BridgeID              string                 `json:"bridgeId"`
 	RunningHubUseWallet   bool                   `json:"runningHubUseWallet"`
 	RunningHubWalletKey   string                 `json:"runningHubWalletApiKey"`
 	RunningHubUploadKey   string                 `json:"runningHubUploadApiKey"`
@@ -157,12 +155,6 @@ func (e providerStatePendingError) Error() string {
 func (e providerStatePendingError) Unwrap() error { return e.Cause }
 
 type providerAnalyticsKey struct{}
-type providerOutboundPolicyKey struct{}
-
-type providerOutboundPolicyContext struct {
-	scheme string
-	host   string
-}
 
 type providerAnalyticsContext struct {
 	Service           *Service
@@ -346,10 +338,11 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 		return nil, err
 	}
 	input.Config = config
-	ctx = withProviderOutboundPolicy(ctx, input.Config)
 	var textPublisher *taskTextStreamPublisher
 	if input.Mode == "text" && strings.HasPrefix(taskType, "canvas_text") {
-		input.StreamText = input.TextOptions.Stream == nil || *input.TextOptions.Stream
+		requestedStream := input.TextOptions.Stream == nil || *input.TextOptions.Stream
+		supportsStream := input.Config.CapabilityConfig == nil || input.Config.CapabilityConfig.Text == nil || input.Config.CapabilityConfig.Text.Streaming == nil || *input.Config.CapabilityConfig.Text.Streaming
+		input.StreamText = requestedStream && supportsStream
 	}
 	if input.Mode == "text" && strings.HasPrefix(taskType, "canvas_text") && input.StreamText {
 		textPublisher = newTaskTextStreamPublisher(s, userID, taskExecutionID(ctx))
@@ -813,11 +806,6 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 		return providerConfig{}, err
 	}
 	config.Headers = headers
-	if isComfyBridgeInterface(config.InterfaceType) {
-		config.BaseURL = "bridge://local"
-		config.APIKey = ""
-		return config, nil
-	}
 	if isRunningHubInterface(config.InterfaceType) && strings.TrimSpace(config.BaseURL) == "" {
 		config.BaseURL = "https://www.runninghub.cn"
 	}
@@ -826,10 +814,9 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 		channelID = systemChannelIDFromBaseURL(config.BaseURL)
 	}
 	if channelID == "" {
-		if _, err := s.validateChannelOutboundURL(config.BaseURL, config.AllowLocalChannel, false); err != nil {
+		if _, err := ValidateOutboundURL(config.BaseURL); err != nil {
 			return providerConfig{}, err
 		}
-		config.AllowLocalChannel = s.effectiveAllowLocalChannel(config.AllowLocalChannel)
 		return config, nil
 	}
 	channel, err := s.SystemChannel(channelID)
@@ -856,7 +843,7 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 			modelKey = models[0]
 		}
 	}
-	if _, err := s.validateChannelOutboundURL(channel.BaseURL, channel.AllowLocalChannel, false); err != nil {
+	if _, err := ValidateOutboundURL(channel.BaseURL); err != nil {
 		return providerConfig{}, err
 	}
 	config.ChannelID = channel.ID
@@ -889,7 +876,6 @@ func (s *Service) resolveProviderConfig(config providerConfig) (providerConfig, 
 	config.InterfaceType = string(channelModel.Protocol)
 	config.APIFormat = channelAPIFormatForProtocol(channel.APIFormat, channelModel.Protocol)
 	config.BaseURL = channel.BaseURL
-	config.AllowLocalChannel = s.effectiveAllowLocalChannel(channel.AllowLocalChannel)
 	config.APIKey = channel.APIKey
 	config.SecretKey = channel.SecretKey
 	config.Headers, err = ParseOutboundHeadersJSON(channel.HeadersJSON)

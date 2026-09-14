@@ -28,7 +28,6 @@ const (
 
 type RuntimeResourcePolicy struct {
 	ResourceUploadMB        int64 `json:"resourceUploadMB"`
-	SessionUploadMB         int64 `json:"sessionUploadMB"`
 	GeneratedFileMB         int64 `json:"generatedFileMB"`
 	DailyUploadMB           int64 `json:"dailyUploadMB"`
 	StoredFileGB            int64 `json:"storedFileGB"`
@@ -36,7 +35,6 @@ type RuntimeResourcePolicy struct {
 	TaskDataGB              int64 `json:"taskDataGB"`
 	AssetCount              int64 `json:"assetCount"`
 	CanvasCount             int64 `json:"canvasCount"`
-	SessionCount            int64 `json:"sessionCount"`
 	TaskCount               int64 `json:"taskCount"`
 	APICallLogCount         int64 `json:"apiCallLogCount"`
 	RecycleBinRetentionDays int   `json:"recycleBinRetentionDays"`
@@ -56,10 +54,8 @@ type RuntimeTaskPolicy struct {
 
 type RuntimeRequestPolicy struct {
 	TaskCreatePerMinute        int   `json:"taskCreatePerMinute"`
-	SessionCreatePerMinute     int   `json:"sessionCreatePerMinute"`
 	ResourceUploadPerMinute    int   `json:"resourceUploadPerMinute"`
 	ResourceImportPerMinute    int   `json:"resourceImportPerMinute"`
-	SessionFilePerMinute       int   `json:"sessionFilePerMinute"`
 	AssetWritePerMinute        int   `json:"assetWritePerMinute"`
 	CanvasWritePerMinute       int   `json:"canvasWritePerMinute"`
 	RegisterPerHour            int   `json:"registerPerHour"`
@@ -95,7 +91,6 @@ type PublicRuntimePolicySetting struct {
 type PublicRuntimeLimits struct {
 	ActiveTaskLimit         int   `json:"activeTaskLimit"`
 	ResourceUploadMB        int64 `json:"resourceUploadMB"`
-	SessionUploadMB         int64 `json:"sessionUploadMB"`
 	RecycleBinRetentionDays int   `json:"recycleBinRetentionDays"`
 }
 
@@ -107,7 +102,6 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 	return RuntimePolicySetting{
 		Resource: RuntimeResourcePolicy{
 			ResourceUploadMB:        50,
-			SessionUploadMB:         32,
 			GeneratedFileMB:         64,
 			DailyUploadMB:           2048,
 			StoredFileGB:            20,
@@ -115,7 +109,6 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 			TaskDataGB:              1,
 			AssetCount:              2_000,
 			CanvasCount:             1_000,
-			SessionCount:            1_000,
 			TaskCount:               20_000,
 			APICallLogCount:         100_000,
 			RecycleBinRetentionDays: 30,
@@ -133,10 +126,8 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 		},
 		Request: RuntimeRequestPolicy{
 			TaskCreatePerMinute:        30,
-			SessionCreatePerMinute:     20,
 			ResourceUploadPerMinute:    30,
 			ResourceImportPerMinute:    30,
-			SessionFilePerMinute:       30,
 			AssetWritePerMinute:        120,
 			CanvasWritePerMinute:       120,
 			RegisterPerHour:            30,
@@ -160,10 +151,10 @@ func DefaultRuntimePolicy() RuntimePolicySetting {
 func selfUseRuntimePolicy() RuntimePolicySetting {
 	value := DefaultRuntimePolicy()
 	value.Resource = RuntimeResourcePolicy{
-		ResourceUploadMB: maxRuntimeUploadMB, SessionUploadMB: maxRuntimeUploadMB, GeneratedFileMB: maxRuntimeUploadMB,
+		ResourceUploadMB: maxRuntimeUploadMB, GeneratedFileMB: maxRuntimeUploadMB,
 		DailyUploadMB: maxRuntimeDataMB, StoredFileGB: maxRuntimeStorageGB, StructuredDataMB: maxRuntimeDataMB,
 		TaskDataGB: maxRuntimeStorageGB, AssetCount: maxRuntimeCount, CanvasCount: maxRuntimeCount,
-		SessionCount: maxRuntimeCount, TaskCount: maxRuntimeCount, APICallLogCount: maxRuntimeCount,
+		TaskCount: maxRuntimeCount, APICallLogCount: maxRuntimeCount,
 		RecycleBinRetentionDays: 0,
 	}
 	value.Task = RuntimeTaskPolicy{
@@ -173,9 +164,9 @@ func selfUseRuntimePolicy() RuntimePolicySetting {
 		StoryboardTimeoutMinutes: maxRuntimeTimeoutMinutes, DefaultTimeoutMinutes: maxRuntimeTimeoutMinutes,
 	}
 	value.Request = RuntimeRequestPolicy{
-		TaskCreatePerMinute: maxRuntimeRate, SessionCreatePerMinute: maxRuntimeRate,
+		TaskCreatePerMinute:     maxRuntimeRate,
 		ResourceUploadPerMinute: maxRuntimeRate, ResourceImportPerMinute: maxRuntimeRate,
-		SessionFilePerMinute: maxRuntimeRate, AssetWritePerMinute: maxRuntimeRate, CanvasWritePerMinute: maxRuntimeRate,
+		AssetWritePerMinute: maxRuntimeRate, CanvasWritePerMinute: maxRuntimeRate,
 		RegisterPerHour: maxRuntimeRate, EmailCodePerHour: maxRuntimeRate,
 		LoginIPPerTenMinutes: maxRuntimeRate, LoginAccountPerTenMinutes: maxRuntimeRate,
 		SystemRelayPerMinute: maxRuntimeRate, CustomRelayPerMinute: maxRuntimeRate,
@@ -212,7 +203,6 @@ func (s *Service) PublicRuntimeLimits() (*PublicRuntimeLimits, error) {
 	}
 	return &PublicRuntimeLimits{
 		ActiveTaskLimit: policy.Task.ActiveTaskLimit, ResourceUploadMB: policy.Resource.ResourceUploadMB,
-		SessionUploadMB:         policy.Resource.SessionUploadMB,
 		RecycleBinRetentionDays: policy.Resource.RecycleBinRetentionDays,
 	}, nil
 }
@@ -307,8 +297,8 @@ func (s *Service) readRuntimePolicy() (*model.SystemSetting, RuntimePolicySettin
 func validateRuntimePolicy(value RuntimePolicySetting) error {
 	resource := value.Resource
 	for label, item := range map[string]int64{
-		"普通资源单文件": resource.ResourceUploadMB, "Agent 会话附件": resource.SessionUploadMB,
-		"单个生成资源": resource.GeneratedFileMB,
+		"普通资源单文件": resource.ResourceUploadMB,
+		"单个生成资源":  resource.GeneratedFileMB,
 	} {
 		if item < 1 || item > maxRuntimeUploadMB {
 			return kernel.BadAuthRequest(fmt.Sprintf("%s必须是 1-%d MB 的整数", label, maxRuntimeUploadMB))
@@ -324,11 +314,11 @@ func validateRuntimePolicy(value RuntimePolicySetting) error {
 		return kernel.BadAuthRequest(fmt.Sprintf("结构化数据容量必须是 1-%d MB 的整数", maxRuntimeDataMB))
 	}
 	storedMB := resource.StoredFileGB * 1024
-	if resource.ResourceUploadMB > storedMB || resource.SessionUploadMB > storedMB || resource.GeneratedFileMB > storedMB {
+	if resource.ResourceUploadMB > storedMB || resource.GeneratedFileMB > storedMB {
 		return kernel.BadAuthRequest("单文件上限不能大于账号文件总容量")
 	}
 	for label, item := range map[string]int64{
-		"素材数量": resource.AssetCount, "画布数量": resource.CanvasCount, "Agent 会话数量": resource.SessionCount,
+		"素材数量": resource.AssetCount, "画布数量": resource.CanvasCount,
 		"任务历史数量": resource.TaskCount, "请求日志数量": resource.APICallLogCount,
 	} {
 		if item < 1 || item > maxRuntimeCount {
@@ -357,9 +347,9 @@ func validateRuntimePolicy(value RuntimePolicySetting) error {
 	}
 	request := value.Request
 	for label, item := range map[string]int{
-		"任务创建频控": request.TaskCreatePerMinute, "会话创建频控": request.SessionCreatePerMinute,
+		"任务创建频控": request.TaskCreatePerMinute,
 		"资源上传频控": request.ResourceUploadPerMinute, "资源导入频控": request.ResourceImportPerMinute,
-		"会话附件频控": request.SessionFilePerMinute, "素材写入频控": request.AssetWritePerMinute,
+		"素材写入频控": request.AssetWritePerMinute,
 		"画布写入频控": request.CanvasWritePerMinute, "注册频控": request.RegisterPerHour,
 		"验证码频控": request.EmailCodePerHour, "登录 IP 频控": request.LoginIPPerTenMinutes,
 		"登录账号频控": request.LoginAccountPerTenMinutes, "系统渠道频控": request.SystemRelayPerMinute,

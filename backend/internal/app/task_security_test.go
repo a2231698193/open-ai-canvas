@@ -34,7 +34,7 @@ func TestNormalizeTaskInputMakesTypedProviderConfigBillable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	order, err := svc.taskBillingOrder("user-1", &model.Task{ID: "task-1", Type: "agent_storyboard"}, input)
+	order, err := svc.taskBillingOrder("user-1", &model.Task{ID: "task-1", Type: "canvas_text"}, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,35 +73,5 @@ func TestTaskInputRejectsInlineMedia(t *testing.T) {
 	}
 	if !containsInlineMediaDataURL(input) {
 		t.Fatal("containsInlineMediaDataURL() = false")
-	}
-}
-
-func TestCreateSessionRemovesDraftWhenTaskCreationFails(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.Asset{}, &model.CanvasProject{}, &model.Session{}, &model.Message{}, &model.Task{}, &model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}); err != nil {
-		t.Fatal(err)
-	}
-	for range 5 {
-		if err := db.Create(&model.Task{ID: newID(), UserID: "user-1", Status: model.TaskStatusQueued, Prompt: "queued"}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
-	if _, err := svc.CreateSession("user-1", CreateSessionRequest{Prompt: "new session"}); err == nil {
-		t.Fatal("CreateSession() error = nil")
-	}
-	var sessionCount int64
-	var messageCount int64
-	if err := db.Model(&model.Session{}).Where("user_id = ?", "user-1").Count(&sessionCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&model.Message{}).Where("user_id = ?", "user-1").Count(&messageCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if sessionCount != 0 || messageCount != 0 {
-		t.Fatalf("draft counts = sessions:%d messages:%d", sessionCount, messageCount)
 	}
 }

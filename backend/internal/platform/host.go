@@ -14,7 +14,6 @@ const TaskWorkerConcurrency = 3
 type Host interface {
 	RequireAdmin(user *model.User) error
 	AppendAudit(actor *model.User, action, targetType, targetID, summary string, metadata any) error
-	DesktopLocalChannelsEnabled() bool
 	ChannelConcurrencyLimit(channelID string) (int, error)
 }
 
@@ -24,7 +23,6 @@ func (nopHost) RequireAdmin(*model.User) error { return nil }
 func (nopHost) AppendAudit(*model.User, string, string, string, string, any) error {
 	return nil
 }
-func (nopHost) DesktopLocalChannelsEnabled() bool { return false }
 func (nopHost) ChannelConcurrencyLimit(string) (int, error) {
 	return 0, nil
 }
@@ -60,11 +58,4 @@ func (s *Service) appendAdminAudit(actor *model.User, action, targetType, target
 		return nil
 	}
 	return s.host.AppendAudit(actor, action, targetType, targetID, summary, metadata)
-}
-
-func (s *Service) desktopLocalChannelsEnabled() bool {
-	if s == nil || s.host == nil {
-		return false
-	}
-	return s.host.DesktopLocalChannelsEnabled()
 }

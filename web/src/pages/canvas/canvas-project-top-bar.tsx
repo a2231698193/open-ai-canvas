@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Bot, Clapperboard, CloudDownload, Coins, CopyPlus, Focus, FolderKanban, Gauge, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
+import { Clapperboard, CloudDownload, Coins, CopyPlus, Focus, FolderKanban, Gauge, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown, Tooltip } from "antd";
 
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
@@ -31,10 +31,6 @@ type CanvasTopBarProps = {
     onUndo: () => void;
     onRedo: () => void;
     onShare: () => void;
-    agentOpen: boolean;
-    agentPanelWidth?: number;
-    compactAgentStatus?: { connected: boolean; enabled: boolean; activity: string };
-    onToggleAgent: () => void;
     shortcutRequestNonce: number;
     mediaPerformanceMode: CanvasMediaPerformanceMode;
     onMediaPerformanceModeChange: (mode: CanvasMediaPerformanceMode) => void;
@@ -62,10 +58,6 @@ export function CanvasTopBar({
     onUndo,
     onRedo,
     onShare,
-    agentOpen,
-    agentPanelWidth,
-    compactAgentStatus,
-    onToggleAgent,
     shortcutRequestNonce,
     mediaPerformanceMode,
     onMediaPerformanceModeChange,
@@ -101,7 +93,7 @@ export function CanvasTopBar({
 
     return (
         <>
-            <div className="canvas-topbar pointer-events-none absolute left-0 top-0 z-[var(--z-toolbar)] flex h-[var(--canvas-topbar-h)] items-center justify-between px-4 sm:px-5" style={{ right: agentOpen && agentPanelWidth ? `calc(${agentPanelWidth}px + var(--space-3))` : 0, transition: "right var(--motion-dur-base-calc) var(--motion-ease-out)" }}>
+            <div className="canvas-topbar pointer-events-none absolute inset-x-0 top-0 z-[var(--z-toolbar)] flex h-[var(--canvas-topbar-h)] items-center justify-between px-4 sm:px-5">
                 <div className="canvas-topbar-cluster canvas-topbar-project-cluster pointer-events-auto flex min-w-0 items-center gap-2" style={dockStyle}>
                     <CanvasTopBarTooltip label="打开画布菜单">
                         <Dropdown
@@ -160,7 +152,13 @@ export function CanvasTopBar({
                                     {title}
                                 </button>
                                 <CanvasTopBarTooltip label="重命名画布">
-                                    <button type="button" className="canvas-topbar-action grid size-7 shrink-0 place-items-center rounded-md opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2" style={{ color: theme.node.text }} onClick={onStartTitleEditing} aria-label="重命名画布">
+                                    <button
+                                        type="button"
+                                        className="canvas-topbar-action grid size-7 shrink-0 place-items-center rounded-md opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2"
+                                        style={{ color: theme.node.text }}
+                                        onClick={onStartTitleEditing}
+                                        aria-label="重命名画布"
+                                    >
                                         <Pencil className="size-3.5" />
                                     </button>
                                 </CanvasTopBarTooltip>
@@ -185,9 +183,16 @@ export function CanvasTopBar({
 
                 <div className="canvas-topbar-cluster pointer-events-auto flex items-center gap-1.5" style={dockStyle}>
                     <CanvasTopBarTooltip label="搜索画布节点">
-                        <Button type="text" className="canvas-topbar-action !hidden !h-10 !w-10 !min-w-10 !rounded-xl !p-0 lg:!inline-flex" style={{ color: theme.node.text }} icon={<Search className="size-4" />} onClick={onOpenSearch} aria-label="搜索画布节点" />
+                        <Button
+                            type="text"
+                            className="canvas-topbar-action !hidden !h-10 !w-10 !min-w-10 !rounded-xl !p-0 lg:!inline-flex"
+                            style={{ color: theme.node.text }}
+                            icon={<Search className="size-4" />}
+                            onClick={onOpenSearch}
+                            aria-label="搜索画布节点"
+                        />
                     </CanvasTopBarTooltip>
-                    {!agentOpen ? <CanvasTopBarTooltip label="导入第三方画布">
+                    <CanvasTopBarTooltip label="导入第三方画布">
                         <Dropdown
                             trigger={["click"]}
                             placement="bottomRight"
@@ -202,8 +207,8 @@ export function CanvasTopBar({
                                 <span className="hidden lg:inline">导入第三方画布</span>
                             </Button>
                         </Dropdown>
-                    </CanvasTopBarTooltip> : null}
-                    {!agentOpen ? <CanvasTopBarTooltip label="媒体性能模式">
+                    </CanvasTopBarTooltip>
+                    <CanvasTopBarTooltip label="媒体性能模式">
                         <Dropdown
                             trigger={["click"]}
                             menu={{
@@ -219,8 +224,7 @@ export function CanvasTopBar({
                         >
                             <Button type="text" className="canvas-topbar-action !hidden !h-10 !w-10 !min-w-10 !rounded-xl !p-0 lg:!inline-flex" style={{ color: theme.node.text }} icon={<Gauge className="size-4" />} aria-label="媒体性能模式" />
                         </Dropdown>
-                    </CanvasTopBarTooltip> : null}
-                    {compactAgentStatus ? <CompactAgentStatus status={compactAgentStatus} onClick={onToggleAgent} /> : null}
+                    </CanvasTopBarTooltip>
                     {user && creditsEnabled ? (
                         <CanvasTopBarTooltip label="查看积分明细">
                             <Link
@@ -235,14 +239,7 @@ export function CanvasTopBar({
                         </CanvasTopBarTooltip>
                     ) : null}
                     <CanvasTopBarTooltip label="进入专注模式（Shift + Ctrl/Cmd + F）">
-                        <Button
-                            type="text"
-                            className="canvas-topbar-action !h-10 !w-10 !min-w-10 !rounded-xl !p-0"
-                            style={{ color: theme.node.text }}
-                            icon={<Focus className="size-4" />}
-                            onClick={onEnterFocusMode}
-                            aria-label="进入专注模式"
-                        />
+                        <Button type="text" className="canvas-topbar-action !h-10 !w-10 !min-w-10 !rounded-xl !p-0" style={{ color: theme.node.text }} icon={<Focus className="size-4" />} onClick={onEnterFocusMode} aria-label="进入专注模式" />
                     </CanvasTopBarTooltip>
                     {shortDramaGuide ? (
                         <CanvasTopBarTooltip label={shortDramaGuide.collapsed ? "展开短剧流程" : "收起短剧流程"}>
@@ -262,17 +259,6 @@ export function CanvasTopBar({
                     <CanvasTopBarTooltip label="分享画布">
                         <Button type="text" className="canvas-topbar-action !h-10 !w-10 !min-w-10 !rounded-xl !p-0" style={{ color: theme.node.text }} icon={<Share2 className="size-4" />} onClick={onShare} aria-label="分享画布" />
                     </CanvasTopBarTooltip>
-                    <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
-                    <Button
-                        type="text"
-                        className="canvas-topbar-action !h-10 !rounded-xl !px-3 !font-medium"
-                        style={{ background: agentOpen ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
-                        icon={<Bot className="size-4" />}
-                        onClick={onToggleAgent}
-                        aria-pressed={agentOpen}
-                    >
-                        Agent
-                    </Button>
                 </div>
             </div>
             <CanvasShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
@@ -303,11 +289,4 @@ function MenuLabel({ text, shortcut }: { text: string; shortcut: string }) {
 function canvasTitleInputSize(value: string) {
     const visualLength = Array.from(value || "画布名称").reduce((length, character) => length + (character.codePointAt(0)! > 0xff ? 2 : 1), 0);
     return Math.min(30, Math.max(5, visualLength));
-}
-
-function CompactAgentStatus({ status, onClick }: { status: { connected: boolean; enabled: boolean; activity: string }; onClick: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const label = status.connected ? "已连接到本地 Codex" : status.enabled ? status.activity || "连接中" : "正在连接本地 Codex";
-    const dotColor = status.connected ? "#22c55e" : status.enabled ? "#f59e0b" : theme.node.muted;
-    return <CanvasTopBarTooltip label="打开本地 Codex 面板"><button type="button" className="canvas-topbar-action flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium" style={{ background: "transparent", color: theme.node.text }} onClick={onClick} aria-label="打开本地 Codex 面板"><span className="size-2 rounded-full" style={{ background: dotColor }} /><span className="max-w-[180px] truncate">{label}</span></button></CanvasTopBarTooltip>;
 }

@@ -47,7 +47,7 @@ func (e *taskRouteExecutor) execute(ctx context.Context, task *model.Task, attem
 			execution.err = dispatchErr
 			break
 		}
-		execution.result, execution.canvasOps, execution.err = e.port.processTask(ctx, *task)
+		execution.result, execution.canvasOps, execution.err = e.port.processTask(withProviderSubmissionKey(ctx, attempt), *task)
 		if stateErr := e.port.refreshTaskProviderState(task); stateErr != nil {
 			return taskRouteExecutionResult{}, stateErr
 		}

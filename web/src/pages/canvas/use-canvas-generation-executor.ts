@@ -1,3 +1,4 @@
+import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { App } from "antd";
 
@@ -101,6 +102,10 @@ export function useCanvasGenerationExecutor({
                 nodeId,
                 async () => {
                     const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
+                    if (isCanvasNodeGenerating(sourceNode)) {
+                        message.info("该节点的生成任务仍在进行中，请等待完成后再生成");
+                        return;
+                    }
                     if (sourceNode?.type === CanvasNodeType.Video && sourceNode.metadata?.videoEditOperation === "concat") {
                         message.info("合并成片节点不直接重新生成，请重新选择源视频合并");
                         return;
@@ -224,8 +229,8 @@ export function useCanvasGenerationExecutor({
                             generationConfig.taskWorkflowProvider && generationConfig.taskWorkflowProvider !== "model"
                                 ? {
                                       provider: generationConfig.taskWorkflowProvider,
-                                      workflowId: generationConfig.taskWorkflowProvider === "runninghub" ? generationConfig.runningHub.workflowId : generationConfig.comfyBridge.workflowId,
-                                      workflowKind: generationConfig.taskWorkflowProvider === "runninghub" ? generationConfig.runningHub.selectedKind : undefined,
+                                      workflowId: generationConfig.runningHub.workflowId,
+                                      workflowKind: generationConfig.runningHub.selectedKind,
                                       parameters: sourceNode?.metadata?.workflowParameters,
                                   }
                                 : undefined,
@@ -386,6 +391,7 @@ export function useCanvasGenerationExecutor({
         ],
     );
 }
+
 
 function generationModelRequirements(
     mode: CanvasNodeGenerationMode,

@@ -9,6 +9,8 @@ description: 从产品功能快速定位主要代码入口
 
 ## 前端页面
 
+云端 Agent：`web/src/components/canvas/canvas-cloud-agent-panel.tsx` 协调对话、Skills 和审批，`services/api/agent.ts` 适配运行快照与事件流；后端 `handler/agent.go` 负责 HTTP 合同，`app/cloud_agent.go` 负责权限、幂等、可信历史与画布摘要，`app/cloud_agent_runtime.go` 负责持久化模型循环，`app/cloud_agent_tools.go` 负责技能快照、画布工具和生成工具，`app/task_creation.go` 执行预算 admission，运行沿用任务 Worker。协议见 HTTP API 专题，未确认的真实登录态与上游联调见待测试清单。
+
 | 功能 | 页面入口 | 主要协作模块 |
 | --- | --- | --- |
 | 首页与导航 | `web/src/pages/home/`、`web/src/layouts/user-layout.tsx` | 未登录公开首页 `pages/home/public-landing.tsx`；已登录 `/` 仍进创作页；侧栏 `components/layout/`、`router.tsx` |
@@ -32,7 +34,7 @@ description: 从产品功能快速定位主要代码入口
 | 项目恢复、持久化和项目级动作 | `web/src/pages/canvas/use-canvas-project-lifecycle.ts` |
 | Patch 历史、生成任务和重试控制 | `web/src/pages/canvas/use-canvas-history.ts`、`use-canvas-generation.ts`、`use-canvas-generation-executor.ts`、`use-canvas-generation-retry.ts` |
 | 文本、图片、视频和音频生成执行 | `web/src/pages/canvas/canvas-*-generation-executor*.ts` |
-| Agent、助手面板、导演台和全局快捷键控制 | `web/src/pages/canvas/use-canvas-agent-operations.ts`、`use-canvas-assistant-visibility.ts`、`use-canvas-director.ts`、`use-canvas-keyboard.ts`；面板容器 `components/canvas/canvas-assistant-panel.tsx`，展示层 `canvas-assistant-panel-views.tsx`，在线工具 `canvas-assistant-online-tools.ts`，影视续写 `canvas-cinematic-continuation.ts` |
+| 云端 Agent、助手面板、导演台和全局快捷键控制 | `web/src/components/canvas/canvas-cloud-agent-panel.tsx`、`web/src/pages/canvas/use-canvas-assistant-visibility.ts`、`use-canvas-director.ts`、`use-canvas-keyboard.ts`；画布操作契约在 `web/src/lib/canvas/canvas-operation-contract.ts` |
 | 选择拖拽与连线控制 | `web/src/pages/canvas/use-canvas-selection-controller.ts`、`use-canvas-connection-controller.ts` |
 | 上传、素材插入、媒体工具和短剧编排 | `web/src/pages/canvas/use-canvas-upload.ts`、`use-canvas-timeline-asset-insert.ts`、`use-canvas-media-tools.ts`、`use-canvas-storyboard.ts`、`use-canvas-generation-batches.ts`、`use-canvas-short-drama.ts` |
 | 节点操作、节点编辑和视口导航 | `web/src/pages/canvas/use-canvas-node-operations.ts`、`use-canvas-node-editor.ts`、`use-canvas-viewport-controller.ts` |
@@ -50,8 +52,9 @@ description: 从产品功能快速定位主要代码入口
 | 布局和连线算法 | `web/src/lib/canvas/canvas-layout.ts`、`canvas-frame.ts` |
 | 任务结果回填 | `web/src/lib/canvas/canvas-generation-task-sync.ts` |
 | 本地持久化状态 | `web/src/stores/canvas/use-canvas-store.ts` |
-| Agent 会话状态 | `web/src/stores/canvas/use-canvas-agent-store.ts` |
-| 官方提示词目录与客户端起始稿 | `backend/internal/prompts/`、`web/src/lib/prompts/`、`web/src/lib/canvas/canvas-agent-protocol.ts` |
+| 云端 Agent 运行与事件 API | `web/src/services/api/agent.ts`、`web/src/components/canvas/canvas-cloud-agent-panel.tsx` |
+| Agent 画布上下文、操作与历史 | `web/src/lib/canvas/canvas-context-discovery.ts`、`canvas-operation-contract.ts`、`web/src/pages/canvas/use-canvas-operation-history.ts` |
+| 官方提示词目录与客户端起始稿 | `backend/internal/prompts/`、`web/src/lib/prompts/` |
 
 ## 前端 HTTP 与产品壳
 
@@ -112,8 +115,7 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 
 ## 其他入口
 
-- `canvas-agent/src/`：本地 Agent、MCP 工具和当前画布会话桥接。
-- `plugins/infinite-canvas/`：Codex App 插件清单与技能。
+- 旧版 `canvas-agent/` 和 Codex App/MCP 插件已删除；Agent 运行统一由后端云端控制面承载。
 - `docs/content/docs/`：产品、操作、开发和进度文档。
 - `docker-compose.local.yml`：本地前后端编排；`nginx.conf`：生产静态资源和 API 代理。
 

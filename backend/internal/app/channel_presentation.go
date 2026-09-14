@@ -8,7 +8,7 @@ import (
 )
 
 func (req ChannelRequest) presentationOnly() bool {
-	return (req.PublicAlias != nil || req.SortOrder != nil) && req.Name == "" && req.BaseURL == "" && req.AllowLocalChannel == nil && req.APIKey == "" && req.SecretKey == "" && req.ConcurrencyLimit == nil && req.UseGlobalConcurrency == nil && req.Models == nil && req.Headers == nil && req.Enabled == nil
+	return (req.PublicAlias != nil || req.SortOrder != nil) && req.Name == "" && req.BaseURL == "" && req.APIKey == "" && req.SecretKey == "" && req.ConcurrencyLimit == nil && req.UseGlobalConcurrency == nil && req.Models == nil && req.Headers == nil && req.Enabled == nil
 }
 
 func (s *Service) updateChannelPresentation(id string, req ChannelRequest) (*PublicModelChannel, error) {

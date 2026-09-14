@@ -16,7 +16,6 @@ var (
 	ComputePriceConfigured                     = app.ComputePriceConfigured
 	ComputeTierPriceConfigured                 = app.ComputeTierPriceConfigured
 	CustomRelayHTTPClient                      = app.CustomRelayHTTPClient
-	CustomRelayHTTPClientForChannel            = app.CustomRelayHTTPClientForChannel
 	DecodeCapabilitySpec                       = app.DecodeCapabilitySpec
 	DecodeModelCapabilityConfig                = app.DecodeModelCapabilityConfig
 	DecodeRelayOutboundHeaders                 = app.DecodeRelayOutboundHeaders
@@ -41,7 +40,6 @@ var (
 	New                                        = app.New
 	NewAppError                                = app.NewAppError
 	NewModelError                              = app.NewModelError
-	NewWithRuntimeCapabilities                 = app.NewWithRuntimeCapabilities
 	NormalizeCapabilitySpec                    = app.NormalizeCapabilitySpec
 	NormalizeModelCapabilityConfig             = app.NormalizeModelCapabilityConfig
 	NormalizeModelCapabilityConfigForModel     = app.NormalizeModelCapabilityConfigForModel
@@ -55,12 +53,10 @@ var (
 	QuotaExceeded                              = app.QuotaExceeded
 	RateLimited                                = app.RateLimited
 	ReasonForStatus                            = app.ReasonForStatus
-	RuntimeCapabilitiesForDeployment           = app.RuntimeCapabilitiesForDeployment
 	SanitizeAPICallPayload                     = app.SanitizeAPICallPayload
 	Unauthorized                               = app.Unauthorized
 	ValidateCapabilitySpec                     = app.ValidateCapabilitySpec
 	ValidateChannelModelPrice                  = app.ValidateChannelModelPrice
-	ValidateCustomRelayChannelURL              = app.ValidateCustomRelayChannelURL
 	ValidateCustomRelayURL                     = app.ValidateCustomRelayURL
 	ValidateLogicalModelPrice                  = app.ValidateLogicalModelPrice
 	ValidateOutboundHost                       = app.ValidateOutboundHost

@@ -323,7 +323,7 @@ export function ChannelModelEditor({
                                             </div>
                                         </section>
                                     ) : null}
-                                    {modelCapability === "image" || modelCapability === "video" ? (
+                                    {modelCapability === "text" || modelCapability === "image" || modelCapability === "video" ? (
                                         <section className="admin-model-editor-section admin-model-editor-section-stacked admin-model-editor-parameters">
                                             <SectionHeading title="协议参数" description="配置可发送参数、支持值与默认值；仅影响当前模型。" />
                                             <div className="admin-model-editor-section-content">

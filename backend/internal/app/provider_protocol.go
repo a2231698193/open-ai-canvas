@@ -71,7 +71,11 @@ func runProtocolAdapterTaskWithTiming(ctx context.Context, input canvasGeneratio
 	if taskID == "" {
 		// 幂等键只存在于宿主请求元数据中，声明式插件可以把它映射到 Header，
 		// 但不能把宿主控制字段泄漏到供应商 JSON body。恢复已有 taskID 时不会进入 create 分支。
-		request.Extra["idempotencyKey"] = uuid.NewString()
+		key, _ := ctx.Value(providerSubmissionKeyContext{}).(string)
+		if key == "" {
+			key = uuid.NewString()
+		}
+		request.Extra["idempotencyKey"] = key
 		spec, err := adapter.BuildCreate(ctx, protocol.RequestContext{BaseURL: input.Config.BaseURL, Request: request})
 		if err != nil {
 			return nil, err

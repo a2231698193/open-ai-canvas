@@ -38,10 +38,9 @@ type FeatureAvailability struct {
 
 type PublicFeatureAvailability struct {
 	FeatureAvailability
-	DesktopLocalChannelsEnabled bool      `json:"desktopLocalChannelsEnabled"`
-	Configured                  bool      `json:"configured"`
-	UpdatedBy                   string    `json:"updatedBy,omitempty"`
-	UpdatedAt                   time.Time `json:"updatedAt,omitempty"`
+	Configured bool      `json:"configured"`
+	UpdatedBy  string    `json:"updatedBy,omitempty"`
+	UpdatedAt  time.Time `json:"updatedAt,omitempty"`
 }
 
 func DefaultFeatureAvailability() FeatureAvailability {
@@ -63,7 +62,7 @@ func (s *Service) FeatureAvailability() (*PublicFeatureAvailability, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.withRuntimeCapabilities(publicFeatureAvailability(setting, value)), nil
+	return publicFeatureAvailability(setting, value), nil
 }
 
 func (s *Service) AdminFeatureAvailability(actor *model.User) (*PublicFeatureAvailability, error) {
@@ -95,7 +94,7 @@ func (s *Service) UpdateFeatureAvailability(actor *model.User, value FeatureAvai
 	if err := s.appendAdminAudit(actor, "feature_availability.update", "system_setting", featureAvailabilitySettingKey, "更新功能开放配置", map[string]any{"before": before, "after": value}); err != nil {
 		return nil, err
 	}
-	return s.withRuntimeCapabilities(publicFeatureAvailability(&setting, value)), nil
+	return publicFeatureAvailability(&setting, value), nil
 }
 
 func (s *Service) FeatureEnabled(feature string) (bool, error) {
@@ -169,13 +168,6 @@ func (s *Service) readFeatureAvailability() (*model.SystemSetting, FeatureAvaila
 		return nil, FeatureAvailability{}, errors.New("功能开放配置格式无效")
 	}
 	return setting, value, nil
-}
-
-func (s *Service) withRuntimeCapabilities(result *PublicFeatureAvailability) *PublicFeatureAvailability {
-	if result != nil {
-		result.DesktopLocalChannelsEnabled = s.desktopLocalChannelsEnabled()
-	}
-	return result
 }
 
 func publicFeatureAvailability(setting *model.SystemSetting, value FeatureAvailability) *PublicFeatureAvailability {

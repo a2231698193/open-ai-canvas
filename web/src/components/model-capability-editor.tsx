@@ -351,9 +351,22 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
 
 function TextCapabilityEditor({ value, onChange, protocol, disabled, section }: Pick<Props, "value" | "onChange" | "protocol" | "disabled" | "section">) {
     const profile = value?.text || defaultModelCapabilityConfig(protocol).text!;
-    const updateReferences = (patch: Partial<TextCapabilityConfig["references"]>) => {
-        onChange?.({ version: 1, text: { references: { ...profile.references, ...patch } } });
+    const update = (patch: Partial<TextCapabilityConfig>) => {
+        onChange?.({ version: 1, text: { ...profile, ...patch } });
     };
+    const updateReferences = (patch: Partial<TextCapabilityConfig["references"]>) => {
+        update({ references: { ...profile.references, ...patch } });
+    };
+
+    if (section === "protocol") {
+        return (
+            <div className="admin-capability-editor space-y-3 rounded-md bg-muted/20 p-3">
+                <CapabilityGroup title="输出方式" description="控制向上游文本模型请求的响应方式。">
+                    <ParameterField label="SSE 流式输出" description="启用后发送 stream=true，并实时推送文本增量；关闭时等待完整 JSON 响应。" supported={profile.streaming !== false} disabled={Boolean(disabled)} onChange={(streaming) => update({ streaming })} />
+                </CapabilityGroup>
+            </div>
+        );
+    }
 
     if (section === "references") {
         return (

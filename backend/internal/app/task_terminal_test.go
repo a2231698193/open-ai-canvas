@@ -49,14 +49,14 @@ func (r *taskTerminalRepositoryStub) UpdateTaskTerminalState(_ string, _ string,
 func TestTaskTerminalConflictDoesNotRefundOrFinalize(t *testing.T) {
 	repo := &taskTerminalRepositoryStub{terminalConflict: true}
 	billing, replay := &taskTerminalBillingStub{}, &taskTerminalReplayStub{}
-	sessions, logger := &taskTerminalSessionStub{}, &taskTerminalLoggerStub{}
-	c := newTaskTerminalCoordinatorForTest(repo, billing, replay, sessions, logger, &taskTerminalOutputStub{})
+	logger := &taskTerminalLoggerStub{}
+	c := newTaskTerminalCoordinatorForTest(repo, billing, replay, logger, &taskTerminalOutputStub{})
 	task := &model.Task{ID: "task", LeaseOwner: "stale", Status: model.TaskStatusRunning}
 	err := c.handleExecutionFailure(task, errors.New("upstream failed"), false, false)
 	if !errors.Is(err, repository.ErrTaskStateConflict) {
 		t.Fatalf("missing conflict: %v", err)
 	}
-	if len(billing.refund)+len(billing.uncertain)+billing.settleCalls+len(replay.statuses)+len(sessions.messages) != 0 {
+	if len(billing.refund)+len(billing.uncertain)+billing.settleCalls+len(replay.statuses) != 0 {
 		t.Fatal("stale worker performed terminal side effects")
 	}
 }
@@ -99,16 +99,6 @@ func (r *taskTerminalReplayStub) finalizeTaskTextReplay(_ string, status model.T
 	return nil
 }
 
-type taskTerminalSessionStub struct {
-	messages []string
-	err      error
-}
-
-func (s *taskTerminalSessionStub) markSessionFailed(_ model.Task, message string) error {
-	s.messages = append(s.messages, message)
-	return s.err
-}
-
 type taskTerminalLoggerStub struct {
 	messages []string
 }
@@ -128,12 +118,11 @@ func (o *taskTerminalOutputStub) RegisterTaskOutputFromTask(model.Task) error {
 	return o.err
 }
 
-func newTaskTerminalCoordinatorForTest(repo taskTerminalRepository, billing *taskTerminalBillingStub, replay *taskTerminalReplayStub, sessions *taskTerminalSessionStub, logger *taskTerminalLoggerStub, outputs *taskTerminalOutputStub) *taskTerminalCoordinator {
+func newTaskTerminalCoordinatorForTest(repo taskTerminalRepository, billing *taskTerminalBillingStub, replay *taskTerminalReplayStub, logger *taskTerminalLoggerStub, outputs *taskTerminalOutputStub) *taskTerminalCoordinator {
 	return &taskTerminalCoordinator{
 		repo:              repo,
 		billing:           billing,
 		replay:            replay,
-		sessions:          sessions,
 		logger:            logger,
 		outputs:           outputs,
 		userFacingMessage: func(err error) string { return "public: " + err.Error() },
@@ -141,13 +130,12 @@ func newTaskTerminalCoordinatorForTest(repo taskTerminalRepository, billing *tas
 }
 
 func TestTaskTerminalCoordinatorHandlesCancellation(t *testing.T) {
-	task := &model.Task{ID: "task-1", UserID: "user-1", BillingOrderID: "order-1", SessionID: "session-1"}
+	task := &model.Task{ID: "task-1", UserID: "user-1", BillingOrderID: "order-1"}
 	repo := &taskTerminalRepositoryStub{task: task}
 	billing := &taskTerminalBillingStub{}
 	replay := &taskTerminalReplayStub{}
-	sessions := &taskTerminalSessionStub{}
 	logger := &taskTerminalLoggerStub{}
-	coordinator := newTaskTerminalCoordinatorForTest(repo, billing, replay, sessions, logger, &taskTerminalOutputStub{})
+	coordinator := newTaskTerminalCoordinatorForTest(repo, billing, replay, logger, &taskTerminalOutputStub{})
 
 	if err := coordinator.handleExecutionFailure(task, context.Canceled, false, false); err != nil {
 		t.Fatalf("handleExecutionFailure() error = %v", err)
@@ -161,19 +149,18 @@ func TestTaskTerminalCoordinatorHandlesCancellation(t *testing.T) {
 	if len(replay.statuses) != 1 || replay.statuses[0] != model.TaskStatusCancelled {
 		t.Fatalf("unexpected replay statuses: %v", replay.statuses)
 	}
-	if len(sessions.messages) != 1 || len(logger.messages) != 1 || repo.terminalCalls != 1 {
-		t.Fatalf("expected cancellation side effects, replay=%v session=%v logs=%v terminalCalls=%d", replay.statuses, sessions.messages, logger.messages, repo.terminalCalls)
+	if len(logger.messages) != 1 || repo.terminalCalls != 1 {
+		t.Fatalf("expected cancellation side effects, replay=%v logs=%v terminalCalls=%d", replay.statuses, logger.messages, repo.terminalCalls)
 	}
 }
 
 func TestTaskTerminalCoordinatorRefundsFailureBeforeProviderRequest(t *testing.T) {
-	task := &model.Task{ID: "task-1", UserID: "user-1", BillingOrderID: "order-1", SessionID: "session-1"}
+	task := &model.Task{ID: "task-1", UserID: "user-1", BillingOrderID: "order-1"}
 	repo := &taskTerminalRepositoryStub{task: task}
 	billing := &taskTerminalBillingStub{}
 	replay := &taskTerminalReplayStub{}
-	sessions := &taskTerminalSessionStub{}
 	logger := &taskTerminalLoggerStub{}
-	coordinator := newTaskTerminalCoordinatorForTest(repo, billing, replay, sessions, logger, &taskTerminalOutputStub{})
+	coordinator := newTaskTerminalCoordinatorForTest(repo, billing, replay, logger, &taskTerminalOutputStub{})
 	failure := errors.New("provider unavailable")
 
 	if err := coordinator.handleExecutionFailure(task, failure, false, true); !errors.Is(err, failure) {
@@ -196,7 +183,6 @@ func TestTaskTerminalCoordinatorLogsUnrecordedProviderFailure(t *testing.T) {
 		&taskTerminalRepositoryStub{task: task},
 		&taskTerminalBillingStub{},
 		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{},
 		&taskTerminalLoggerStub{},
 		&taskTerminalOutputStub{},
 	)
@@ -224,7 +210,6 @@ func TestTaskTerminalCoordinatorReturnsTerminalStateWriteError(t *testing.T) {
 		repo,
 		&taskTerminalBillingStub{},
 		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{},
 		&taskTerminalLoggerStub{},
 		&taskTerminalOutputStub{},
 	)
@@ -243,7 +228,6 @@ func TestTaskTerminalCoordinatorReturnsBillingRefundError(t *testing.T) {
 		&taskTerminalRepositoryStub{task: task},
 		billing,
 		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{},
 		&taskTerminalLoggerStub{},
 		&taskTerminalOutputStub{},
 	)
@@ -251,24 +235,6 @@ func TestTaskTerminalCoordinatorReturnsBillingRefundError(t *testing.T) {
 	providerError := errors.New("provider unavailable")
 	if err := coordinator.handleExecutionFailure(task, providerError, false, true); !errors.Is(err, providerError) || !errors.Is(err, billingError) {
 		t.Fatalf("handleExecutionFailure() error = %v, want provider and billing errors", err)
-	}
-}
-
-func TestTaskTerminalCoordinatorReturnsSessionProjectionError(t *testing.T) {
-	task := &model.Task{ID: "task-1", UserID: "user-1", BillingOrderID: "order-1", SessionID: "session-1"}
-	sessionError := errors.New("session database unavailable")
-	coordinator := newTaskTerminalCoordinatorForTest(
-		&taskTerminalRepositoryStub{task: task},
-		&taskTerminalBillingStub{},
-		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{err: sessionError},
-		&taskTerminalLoggerStub{},
-		&taskTerminalOutputStub{},
-	)
-
-	providerError := errors.New("provider unavailable")
-	if err := coordinator.handleExecutionFailure(task, providerError, false, true); !errors.Is(err, providerError) || !errors.Is(err, sessionError) {
-		t.Fatalf("handleExecutionFailure() error = %v, want provider and session errors", err)
 	}
 }
 
@@ -281,7 +247,6 @@ func TestTaskTerminalCoordinatorReturnsOutputRegistrationErrorAfterSuccess(t *te
 		&taskTerminalRepositoryStub{task: task},
 		billing,
 		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{},
 		&taskTerminalLoggerStub{},
 		outputs,
 	)
@@ -302,7 +267,6 @@ func TestTaskTerminalCoordinatorReturnsTaskReadErrorAfterSuccess(t *testing.T) {
 		&taskTerminalRepositoryStub{taskError: taskError},
 		billing,
 		&taskTerminalReplayStub{},
-		&taskTerminalSessionStub{},
 		&taskTerminalLoggerStub{},
 		&taskTerminalOutputStub{},
 	)

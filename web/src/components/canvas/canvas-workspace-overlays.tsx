@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Clapperboard, Image as ImageIcon, List, Music2, Pencil, Video, WandSparkles, Workflow as WorkflowIcon } from "lucide-react";
+import { Clapperboard, Image as ImageIcon, List, Music2, Pencil, Video, Workflow as WorkflowIcon } from "lucide-react";
 
 import { useCanvasOverlayLayer } from "@/components/canvas/canvas-overlay-layer";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -152,7 +152,7 @@ function resolveNodePanelWidth(node: CanvasNodeData, viewport: ViewportTransform
     return clamp(Math.round(node.width * viewport.k * 1.5), 680, 920);
 }
 
-export function CanvasConnectionCreateMenu({ pending, viewport, viewportSize, containerRef, canCreateDrawing, getDisabledReason, onCreate, onClose }: { pending: PendingConnectionCreate; viewport: ViewportTransform; viewportSize: { width: number; height: number }; containerRef: RefObject<HTMLDivElement | null>; canCreateDrawing: boolean; getDisabledReason: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config | CanvasNodeType.MediaConversion, provider?: "runninghub" | "comfyui") => string; onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config | CanvasNodeType.MediaConversion, provider?: "runninghub" | "comfyui") => void; onClose: () => void }) {
+export function CanvasConnectionCreateMenu({ pending, viewport, viewportSize, containerRef, canCreateDrawing, getDisabledReason, onCreate, onClose }: { pending: PendingConnectionCreate; viewport: ViewportTransform; viewportSize: { width: number; height: number }; containerRef: RefObject<HTMLDivElement | null>; canCreateDrawing: boolean; getDisabledReason: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config, provider?: "runninghub") => string; onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config, provider?: "runninghub") => void; onClose: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const reducedMotion = useReducedMotion();
     const menuRef = useRef<HTMLDivElement>(null);
@@ -231,7 +231,6 @@ export function CanvasConnectionCreateMenu({ pending, viewport, viewportSize, co
                 {canCreateDrawing ? <ConnectionCreateOption expanded={activeOption === "绘图"} motionEnabled={!reducedMotion} icon={<Pencil className="size-4" />} title="绘图" description="以参考图片为底图，自由绘制和标注" disabledReason={getDisabledReason(CanvasNodeType.Drawing)} onClick={() => onCreate(CanvasNodeType.Drawing)} /> : null}
                 <ConnectionCreateOption expanded={activeOption === "视频生成"} motionEnabled={!reducedMotion} icon={<Video className="size-4" />} title="视频生成" description="结合提示词与参考素材，生成动态视频" disabledReason={getDisabledReason(CanvasNodeType.Video)} onClick={() => onCreate(CanvasNodeType.Video)} />
                 <ConnectionCreateOption expanded={activeOption === "音频参考"} motionEnabled={!reducedMotion} icon={<Music2 className="size-4" />} title="音频参考" description="连接文本或角色卡，创建音频生成节点" disabledReason={getDisabledReason(CanvasNodeType.Audio)} onClick={() => onCreate(CanvasNodeType.Audio)} />
-                <ConnectionCreateOption expanded={activeOption === "转换"} motionEnabled={!reducedMotion} icon={<WandSparkles className="size-4" />} title="转换" description="本地处理图片或视频" disabledReason={getDisabledReason(CanvasNodeType.MediaConversion)} onClick={() => onCreate(CanvasNodeType.MediaConversion)} />
             </div>
         </motion.div>
     );

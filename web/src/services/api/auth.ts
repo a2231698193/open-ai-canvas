@@ -47,7 +47,6 @@ export type AuthSessionPayload = {
 export type RuntimeLimits = {
     activeTaskLimit: number;
     resourceUploadMB: number;
-    sessionUploadMB: number;
     recycleBinRetentionDays?: number;
 };
 
@@ -128,8 +127,6 @@ export type AdminUserDetail = {
         assetBytes: number;
         canvasCount: number;
         canvasBytes: number;
-        sessionCount: number;
-        sessionBytes: number;
         taskCount: number;
         taskBytes: number;
         apiCallCount: number;
@@ -307,7 +304,6 @@ export type AdminArkPrivateAssetSetting = {
 
 export type RuntimeResourcePolicy = {
     resourceUploadMB: number;
-    sessionUploadMB: number;
     generatedFileMB: number;
     dailyUploadMB: number;
     storedFileGB: number;
@@ -315,7 +311,6 @@ export type RuntimeResourcePolicy = {
     taskDataGB: number;
     assetCount: number;
     canvasCount: number;
-    sessionCount: number;
     taskCount: number;
     apiCallLogCount: number;
     recycleBinRetentionDays?: number;
@@ -335,10 +330,8 @@ export type RuntimeTaskPolicy = {
 
 export type RuntimeRequestPolicy = {
     taskCreatePerMinute: number;
-    sessionCreatePerMinute: number;
     resourceUploadPerMinute: number;
     resourceImportPerMinute: number;
-    sessionFilePerMinute: number;
     assetWritePerMinute: number;
     canvasWritePerMinute: number;
     registerPerHour: number;

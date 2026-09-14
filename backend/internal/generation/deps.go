@@ -13,11 +13,6 @@ type MediaResolver interface {
 	HydrateGenerationMedia(userID string, input *Input, preferURL bool) error
 }
 
-// UpstreamPolicy 控制私网/本机上游放行。
-type UpstreamPolicy interface {
-	WithOutboundPolicy(ctx context.Context, allowLocal bool) context.Context
-}
-
 // TaskProgress 写入任务进度/日志。
 type TaskProgress interface {
 	SyncProviderTaskProgress(taskID string, responseBody []byte)
@@ -47,7 +42,6 @@ type MediaPersister interface {
 // Deps 是 Engine 的外部端口集合；禁止持有组合根或回环到 service。
 type Deps struct {
 	Media    MediaResolver
-	Upstream UpstreamPolicy
 	Progress TaskProgress
 	Billing  BillingHooks
 	Channel  ChannelLimiter

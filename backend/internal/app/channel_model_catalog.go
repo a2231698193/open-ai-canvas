@@ -12,11 +12,10 @@ import (
 )
 
 type ChannelModelsRequest struct {
-	BaseURL           string           `json:"baseUrl"`
-	AllowLocalChannel bool             `json:"allowLocalChannel"`
-	APIKey            string           `json:"apiKey"`
-	APIFormat         string           `json:"apiFormat"`
-	Headers           []OutboundHeader `json:"headers"`
+	BaseURL   string           `json:"baseUrl"`
+	APIKey    string           `json:"apiKey"`
+	APIFormat string           `json:"apiFormat"`
+	Headers   []OutboundHeader `json:"headers"`
 }
 
 type channelModelsPayload struct {
@@ -133,11 +132,10 @@ func (s *Service) FetchChannelModelCatalog(ctx context.Context, actor *model.Use
 		}
 		target = baseURL + "/models"
 	}
-	if _, err := s.validateChannelOutboundURL(target, input.AllowLocalChannel, false); err != nil {
+	if _, err := ValidateOutboundURL(target); err != nil {
 		return nil, err
 	}
-	requestContext := withProviderOutboundPolicy(ctx, providerConfig{BaseURL: baseURL, AllowLocalChannel: s.effectiveAllowLocalChannel(input.AllowLocalChannel)})
-	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, target, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, BadAuthRequest("模型服务地址无效")
 	}

@@ -302,6 +302,7 @@ func TestAutoDLPluginPackageLoadsAsOfficialRuntime(t *testing.T) {
 }
 
 func TestDeclarativeProtocolRuntimeExecutesCreatePollAndDownload(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	manifest := []byte(`{
 		"apiVersion":"yingce.plugin/v1",
 			"id":"test-declarative-video-runtime","version":"1.0.0","name":"Test Declarative Video","author":"Test","documentation":"# Test Declarative Video",
@@ -333,8 +334,8 @@ func TestDeclarativeProtocolRuntimeExecutesCreatePollAndDownload(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-video-runtime", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-video-runtime"}
+	ctx := context.Background()
 	ctx = withProtocolRegistry(ctx, center.registrySnapshot())
 	result, err := runDeclarativeProtocolTask(ctx, canvasGenerationInput{Mode: "video", Prompt: "a clip", Config: config})
 	if err != nil {
@@ -346,6 +347,7 @@ func TestDeclarativeProtocolRuntimeExecutesCreatePollAndDownload(t *testing.T) {
 }
 
 func TestDeclarativeProtocolRuntimeGeneratesPerCreateIdempotencyKey(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	manifest := []byte(`{
 		"apiVersion":"yingce.plugin/v1",
 		"id":"test-idempotency-key-runtime","version":"1.0.0","name":"Test Idempotency Key","author":"Test","documentation":"# Test Idempotency Key",
@@ -390,8 +392,8 @@ func TestDeclarativeProtocolRuntimeGeneratesPerCreateIdempotencyKey(t *testing.T
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-idempotency-key-runtime", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-idempotency-key-runtime"}
+	ctx := context.Background()
 	ctx = withProtocolRegistry(ctx, center.registrySnapshot())
 	for i := 0; i < 2; i++ {
 		result, err := runDeclarativeProtocolTask(ctx, canvasGenerationInput{Mode: "video", Prompt: "a clip", Config: config})
@@ -408,6 +410,7 @@ func TestDeclarativeProtocolRuntimeGeneratesPerCreateIdempotencyKey(t *testing.T
 }
 
 func TestDeclarativeNewAPIChannel2TaskNotExistRetry(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	adapter := newDeclarativeNewAPIChannel2TestAdapter(t)
 	createCalls := 0
 	pollCalls := 0
@@ -436,8 +439,8 @@ func TestDeclarativeNewAPIChannel2TaskNotExistRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "video-model", InterfaceType: "newapi-channel-2", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "video-model", InterfaceType: "newapi-channel-2"}
+	ctx := context.Background()
 	result, err := runProtocolAdapterTaskWithTiming(ctx, canvasGenerationInput{Mode: "video", Prompt: "a clip", Config: config}, adapter, protocolPollTiming{
 		InitialDelay:            time.Millisecond,
 		PollInterval:            time.Millisecond,
@@ -453,6 +456,7 @@ func TestDeclarativeNewAPIChannel2TaskNotExistRetry(t *testing.T) {
 }
 
 func TestDeclarativeNewAPIChannel2TaskNotExistExhaustion(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	adapter := newDeclarativeNewAPIChannel2TestAdapter(t)
 	createCalls := 0
 	pollCalls := 0
@@ -473,8 +477,8 @@ func TestDeclarativeNewAPIChannel2TaskNotExistExhaustion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "video-model", InterfaceType: "newapi-channel-2", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "video-model", InterfaceType: "newapi-channel-2"}
+	ctx := context.Background()
 	_, err := runProtocolAdapterTaskWithTiming(ctx, canvasGenerationInput{Mode: "video", Prompt: "a clip", Config: config}, adapter, protocolPollTiming{
 		InitialDelay:            time.Millisecond,
 		PollInterval:            time.Millisecond,
@@ -531,6 +535,7 @@ func newDeclarativeNewAPIChannel2TestAdapter(t *testing.T) protocol.Adapter {
 }
 
 func TestDeclarativeProtocolRecoveryQueriesExistingTaskWithoutCreating(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	manifest := []byte(`{
 		"apiVersion":"yingce.plugin/v2",
 		"id":"test-declarative-video-recovery","version":"1.0.0","name":"Test Declarative Video Recovery","author":"Test","documentation":"# Test Declarative Video Recovery",
@@ -566,8 +571,8 @@ func TestDeclarativeProtocolRecoveryQueriesExistingTaskWithoutCreating(t *testin
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-video-recovery", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-video-recovery"}
+	ctx := context.Background()
 	ctx = withProtocolRegistry(ctx, center.registrySnapshot())
 	adapter, ok := declarativeProtocolAdapterForContext(ctx, config.InterfaceType)
 	if !ok {
@@ -583,6 +588,7 @@ func TestDeclarativeProtocolRecoveryQueriesExistingTaskWithoutCreating(t *testin
 }
 
 func TestDeclarativeProtocolRuntimeMapsReferenceImageURL(t *testing.T) {
+	allowLoopbackProviderTest(t)
 	manifest := []byte(`{
 		"apiVersion":"yingce.plugin/v1",
 		"id":"test-declarative-reference-image-runtime","version":"1.0.0","name":"Test Declarative Reference Image","author":"Test","documentation":"# Test Declarative Reference Image",
@@ -610,8 +616,8 @@ func TestDeclarativeProtocolRuntimeMapsReferenceImageURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-reference-image-runtime", AllowLocalChannel: true}
-	ctx := withProviderOutboundPolicy(context.Background(), config)
+	config := providerConfig{BaseURL: server.URL + "/v1", APIKey: "key", Model: "test-model", APIFormat: "openai", InterfaceType: "test-declarative-reference-image-runtime"}
+	ctx := context.Background()
 	ctx = withProtocolRegistry(ctx, center.registrySnapshot())
 	_, err = runDeclarativeProtocolTask(ctx, canvasGenerationInput{
 		Mode: "video", Prompt: "a clip", Config: config,
@@ -623,6 +629,11 @@ func TestDeclarativeProtocolRuntimeMapsReferenceImageURL(t *testing.T) {
 	if createBody["prompt"] != "a clip" || createBody["ref_image_0"] != "https://cdn.example/reference.png" {
 		t.Fatalf("create body = %#v", createBody)
 	}
+}
+
+func allowLoopbackProviderTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 }
 
 func testPluginPackage(t *testing.T, manifest []byte) []byte {

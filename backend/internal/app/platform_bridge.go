@@ -50,13 +50,6 @@ func (h platformHost) AppendAudit(actor *model.User, action, targetType, targetI
 	return h.svc.appendAdminAudit(actor, action, targetType, targetID, summary, metadata)
 }
 
-func (h platformHost) DesktopLocalChannelsEnabled() bool {
-	if h.svc == nil {
-		return false
-	}
-	return h.svc.DesktopLocalChannelsEnabled()
-}
-
 func (h platformHost) ChannelConcurrencyLimit(channelID string) (int, error) {
 	if h.svc == nil {
 		return 0, nil
@@ -212,13 +205,6 @@ func defaultFeatureAvailability() FeatureAvailability {
 
 func publicFeatureAvailability(setting *model.SystemSetting, value FeatureAvailability) *PublicFeatureAvailability {
 	return platform.ProjectFeatureAvailability(setting, value)
-}
-
-func (s *Service) withRuntimeCapabilities(result *PublicFeatureAvailability) *PublicFeatureAvailability {
-	if result != nil {
-		result.DesktopLocalChannelsEnabled = s.DesktopLocalChannelsEnabled()
-	}
-	return result
 }
 
 func selfUseRuntimePolicy() RuntimePolicySetting { return platform.SelfUseRuntimePolicy() }

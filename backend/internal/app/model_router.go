@@ -93,7 +93,7 @@ func ModelRequestIntentFromTaskInput(input map[string]any, taskType string, oper
 	if config, ok := input["config"].(map[string]any); ok && !explicitOptions {
 		for key, value := range config {
 			switch key {
-			case "channelId", "apiFormat", "interfaceType", "baseUrl", "allowLocalChannel", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
+			case "channelId", "apiFormat", "interfaceType", "baseUrl", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
 				continue
 			default:
 				canonical := canonicalCapabilityOptionName(key)
@@ -962,7 +962,7 @@ func (s *Service) createRouteAttempt(task *model.Task, routed *RoutedModel, atte
 }
 
 func (s *Service) beginTaskRouteAttempt(task *model.Task) (*model.RouteAttempt, error) {
-	if task == nil || task.LogicalModelID == "" {
+	if task == nil {
 		return nil, nil
 	}
 	attempts, err := s.repo.RouteAttempts(task.ID, task.RouteRun)
@@ -1001,8 +1001,14 @@ func (s *Service) beginTaskRouteAttempt(task *model.Task) (*model.RouteAttempt, 
 			}
 			return nil, routeDispatchUncertainError{"上一次提交结果不明确，为避免重复扣费已停止自动重发"}
 		case "rejected_no_job":
+			if task.LogicalModelID == "" {
+				return nil, errors.New("上游已拒绝本次请求，请检查渠道配置后再试")
+			}
 			return s.switchTaskToNextRoute(task, attempts)
 		}
+	}
+	if task.LogicalModelID == "" {
+		return s.createDirectTaskAttempt(task)
 	}
 	routed, routeErr := s.routedModelForTaskSelection(task)
 	if routeErr != nil {
@@ -1015,10 +1021,12 @@ func (s *Service) markRouteAttemptDispatching(attempt *model.RouteAttempt) error
 	if attempt == nil || attempt.DispatchState != "not_sent" {
 		return nil
 	}
-	attempt.Status = "dispatching"
-	// 在网络调用前先进入不确定态；只有明确未创建上游任务时才允许后续自动换路由。
-	attempt.DispatchState = "submission_unknown"
-	return s.repo.SaveRouteAttempt(attempt)
+	// A stale worker must not dispatch the same selected attempt a second time.
+	if err := s.repo.MarkRouteAttemptDispatching(attempt.ID); err != nil {
+		return routeDispatchUncertainError{"提交状态未能独占确认，为避免重复扣费已停止自动重发"}
+	}
+	attempt.Status, attempt.DispatchState = "dispatching", "submission_unknown"
+	return nil
 }
 
 type routeDispatchUncertainError struct{ message string }
@@ -1213,7 +1221,7 @@ func (s *Service) switchTaskToNextRoute(task *model.Task, attempts []model.Route
 }
 
 func (s *Service) nextRouteAttemptAfterFailure(task *model.Task, attempt *model.RouteAttempt, taskErr error) (*model.RouteAttempt, error) {
-	if task == nil || attempt == nil || attempt.DispatchState != "rejected_no_job" {
+	if task == nil || task.LogicalModelID == "" || attempt == nil || attempt.DispatchState != "rejected_no_job" {
 		return nil, nil
 	}
 	if errors.Is(taskErr, context.Canceled) || errors.Is(taskErr, context.DeadlineExceeded) {

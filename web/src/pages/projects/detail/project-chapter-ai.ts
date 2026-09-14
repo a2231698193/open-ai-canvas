@@ -92,8 +92,8 @@ export async function generateChapterStoryboard(input: ChapterStoryboardGenerati
     });
     const task = await createGenerationTask({
         projectId: input.projectId,
-        type: "agent_storyboard_rows",
-        operation: "storyboard_rows",
+        type: "canvas_text",
+        operation: "storyboard",
         prompt: skillExecution.prompt,
         model,
         ...(logicalModelIDForConfig(config) ? { logicalModelId: logicalModelIDForConfig(config) } : {}),

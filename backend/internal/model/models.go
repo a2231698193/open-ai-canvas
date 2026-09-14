@@ -6,7 +6,6 @@ import (
 
 type TaskStatus string
 type ProviderCancelStatus string
-type SessionStatus string
 type UserRole string
 type UserStatus string
 type ChannelScope string
@@ -50,10 +49,6 @@ const (
 	// 完成后调用 /tasks/:id/text-replay-complete 归并为最终正文。
 	TaskStatusTextReplay TaskStatus = "text_replay"
 
-	SessionStatusActive    SessionStatus = "active"
-	SessionStatusCompleted SessionStatus = "completed"
-	SessionStatusFailed    SessionStatus = "failed"
-
 	UserRoleAdmin UserRole = "admin"
 	UserRoleUser  UserRole = "user"
 
@@ -88,9 +83,6 @@ const (
 	ChannelInterfaceRunningHubImage       ChannelInterfaceType = "runninghub-workflow-image"
 	ChannelInterfaceRunningHubVideo       ChannelInterfaceType = "runninghub-workflow-video"
 	ChannelInterfaceRunningHubAudio       ChannelInterfaceType = "runninghub-workflow-audio"
-	ChannelInterfaceComfyBridgeImage      ChannelInterfaceType = "comfyui-bridge-image"
-	ChannelInterfaceComfyBridgeVideo      ChannelInterfaceType = "comfyui-bridge-video"
-	ChannelInterfaceComfyBridgeAudio      ChannelInterfaceType = "comfyui-bridge-audio"
 
 	ApiCallStatusSucceeded ApiCallStatus = "succeeded"
 	ApiCallStatusFailed    ApiCallStatus = "failed"

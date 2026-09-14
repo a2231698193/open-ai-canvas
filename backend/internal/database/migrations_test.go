@@ -62,6 +62,22 @@ func TestMigrateSchemaV8AllowsReusingArchivedLogicalModelCode(t *testing.T) {
 	}
 }
 
+func TestMigrateSchemaV12AddsAgentTokenChargeLimit(t *testing.T) {
+	db, err := Open(Config{Driver: "sqlite", DSN: "file:migration-agent-token-charge-limit?mode=memory&cache=shared"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE billing_orders (id text PRIMARY KEY)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateSchemaV12(db); err != nil {
+		t.Fatal(err)
+	}
+	if !db.Migrator().HasColumn(&model.BillingOrder{}, "ChargeLimitMicrocredits") {
+		t.Fatal("migration v12 did not add Agent token charge limit")
+	}
+}
+
 func TestMigrateSchemaRejectsChecksumMismatch(t *testing.T) {
 	db, err := Open(Config{Driver: "sqlite", DSN: "file:migration-checksum?mode=memory&cache=shared"})
 	if err != nil {
@@ -255,5 +271,23 @@ func TestRequireSchemaVersionRejectsUninitializedDatabase(t *testing.T) {
 	}
 	if err := RequireSchemaVersion(db); err == nil || !strings.Contains(err.Error(), "请先执行 migrate-schema up") {
 		t.Fatalf("expected missing migration error, got %v", err)
+	}
+}
+
+func TestMigrateSchemaV13AddsCloudAgentCanvasMutation(t *testing.T) {
+	db, err := Open(Config{Driver: "sqlite", DSN: "file:migration-cloud-agent-canvas-mutation?mode=memory&cache=shared"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	if !db.Migrator().HasTable(&model.CloudAgentCanvasMutation{}) {
+		t.Fatal("migration v13 did not create cloud agent canvas mutation table")
+	}
+	for _, field := range []string{"RunID", "BeforeSnapshotHash", "AfterSnapshotHash", "BeforeJSON", "HasSubmittedTask", "Status"} {
+		if !db.Migrator().HasColumn(&model.CloudAgentCanvasMutation{}, field) {
+			t.Fatalf("migration v13 did not add %s", field)
+		}
 	}
 }

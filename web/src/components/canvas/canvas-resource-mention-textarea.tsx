@@ -36,6 +36,7 @@ type MentionTextPart =
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "value"> & {
     value: string;
     references: CanvasResourceReference[];
+    onSelectReference?: (reference: CanvasResourceReference) => CanvasResourceReference | undefined;
     onChange: (value: string) => void;
     onSubmit?: () => void;
     containerClassName?: string;
@@ -50,7 +51,7 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "val
 };
 
 export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function CanvasResourceMentionTextarea(
-    { value, references, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, mentionMenuWidth = 320, sendOnEnter = true, onContentSizeChange, includeAssetLibrary = false, activeDropReferenceId, onReferenceFilesDrop, autoLinkEnabled = false, ...props },
+    { value, references, onSelectReference, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, mentionMenuWidth = 320, sendOnEnter = true, onContentSizeChange, includeAssetLibrary = false, activeDropReferenceId, onReferenceFilesDrop, autoLinkEnabled = false, ...props },
     forwardedRef,
 ) {
     const rawTheme = useThemeStore((state) => state.theme);
@@ -74,13 +75,13 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const rawAssetReferences = useMemo(() => includeAssetLibrary ? buildAssetMentionReferences(assets) : [], [assets, includeAssetLibrary]);
     const assetReferences = useResolvedCanvasResourceReferences(rawAssetReferences);
     const activeCanvasReferences = useMemo(() => canvasReferences.filter((item) => item.active), [canvasReferences]);
-    const availableReferences = useMemo(() => [...activeCanvasReferences, ...assetReferences], [activeCanvasReferences, assetReferences]);
+    const availableReferences = useMemo(() => [...(onSelectReference ? canvasReferences : activeCanvasReferences), ...assetReferences], [onSelectReference, canvasReferences, activeCanvasReferences, assetReferences]);
     const candidates = useMemo(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
-        if (!query) return activeCanvasReferences;
+        if (!query) return onSelectReference ? canvasReferences : activeCanvasReferences;
         return availableReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.category || ""} ${item.text || ""}`.toLowerCase().includes(query));
-    }, [activeCanvasReferences, availableReferences, mention]);
+    }, [onSelectReference, canvasReferences, activeCanvasReferences, availableReferences, mention]);
     const activeReferences = useMemo(() => {
         if (!highlightLabels) return [];
         return [...activeCanvasReferences, ...assetReferences.filter((item) => value.includes(canvasResourceMentionToken(item)))];
@@ -231,7 +232,9 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
 
     const insertReference = (reference: CanvasResourceReference) => {
         if (!mention) return;
-        const insertText = `${canvasResourceMentionToken(reference)} `;
+        const selected = onSelectReference ? onSelectReference(reference) : reference;
+        if (!selected) return;
+        const insertText = `${canvasResourceMentionToken(selected)} `;
         const next = `${value.slice(0, mention.start)}${insertText}${value.slice(mention.end)}`;
         closeMention();
         updateValue(next, mention.start + insertText.length);
@@ -576,15 +579,20 @@ function createInlineMentionChip(reference: CanvasResourceReference, token: stri
     chip.contentEditable = "false";
     chip.dataset.mentionToken = token;
     chip.dataset.mentionReferenceId = reference.id;
-    chip.className = "canvas-resource-inline-mention";
+    chip.className = `canvas-resource-inline-mention ${reference.kind === "skill" ? "is-skill" : ""}`;
     chip.title = "双击放大预览";
+    if (reference.kind === "skill") chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference));
 
-    const at = document.createElement("span");
-    at.className = "canvas-resource-inline-at";
-    at.textContent = "@";
-    chip.appendChild(at);
+    const prefix = document.createElement("span");
+    prefix.className = reference.kind === "skill" ? "canvas-resource-inline-skill-icon" : "canvas-resource-inline-at";
+    // “/” is an input command, not part of the selected Skill name. Keep the
+    // command token in the serialized value, but render the chip as a normal
+    // icon + label so it remains readable after selection and submission.
+    prefix.textContent = reference.kind === "skill" ? "✦" : "@";
+    chip.appendChild(prefix);
 
-    chip.appendChild(createInlinePreview(reference));
+    // Skill chip 的前缀已经承担图标职责，不再追加 fallback preview，避免出现两个星标。
+    if (reference.kind !== "skill") chip.appendChild(createInlinePreview(reference));
 
     const label = document.createElement("span");
     label.className = "canvas-resource-inline-label";
@@ -592,6 +600,15 @@ function createInlineMentionChip(reference: CanvasResourceReference, token: stri
     chip.appendChild(label);
 
     return chip;
+}
+
+const SKILL_MENTION_COLORS = ["#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#84cc16", "#f97316", "#06b6d4"];
+
+function skillMentionColor(reference: CanvasResourceReference) {
+    const key = reference.skill?.skillId || reference.id;
+    let hash = 0;
+    for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+    return SKILL_MENTION_COLORS[Math.abs(hash) % SKILL_MENTION_COLORS.length];
 }
 
 function referencePreviewUrl(reference: CanvasResourceReference) {
@@ -772,7 +789,7 @@ function MentionMenu({ anchor, connectedReferences, assetReferences, filteredRef
                     <>
                         {connectedNodes.length ? (
                             <section className="canvas-resource-mention-section">
-                                <h4><span>已连接节点</span><small>{connectedNodes.length}</small></h4>
+                                <h4><span>画布节点</span><small>{connectedNodes.length}</small></h4>
                                 <MentionReferenceList references={connectedNodes} activeReferenceId={activeReferenceId} onSelect={selectReference} />
                             </section>
                         ) : null}

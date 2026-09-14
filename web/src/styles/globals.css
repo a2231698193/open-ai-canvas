@@ -8291,6 +8291,11 @@
     .canvas-connection-create-description { transition: none; }
 }
 
+/* 拖动跨过沙箱 iframe 时仍由父画布接收事件；结束后恢复正文滚动与交互。 */
+[data-canvas-node-dragging="true"] .node-element iframe {
+    pointer-events: none;
+}
+
 .canvas-node-shell {
         box-shadow: none;
         transition: transform 160ms ease-out;
@@ -9873,6 +9878,17 @@
         transform: translateY(var(--canvas-mention-chip-offset-y));
     }
 
+    .canvas-resource-inline-skill-icon {
+        display: inline-grid;
+        width: var(--canvas-mention-chip-preview-size);
+        min-width: var(--canvas-mention-chip-preview-size);
+        height: var(--canvas-mention-chip-preview-size);
+        place-items: center;
+        flex: 0 0 var(--canvas-mention-chip-preview-size);
+        font-size: 0.95em;
+        line-height: 1;
+    }
+
     .canvas-resource-inline-mention.is-replace-target {
         outline: var(--stroke-2) solid var(--control-focus-ring);
         outline-offset: var(--space-half);
@@ -9900,6 +9916,12 @@
 
     .canvas-resource-inline-at {
         opacity: 0.9;
+    }
+
+    .canvas-resource-inline-mention.is-skill {
+        border: 1px solid color-mix(in srgb, var(--canvas-skill-mention-color, var(--workspace-accent)) 68%, transparent);
+        background: transparent;
+        color: var(--canvas-skill-mention-color, var(--workspace-accent));
     }
 
     .canvas-resource-inline-preview {
@@ -15774,6 +15796,15 @@ html .assets-library-page .app-page-header .assets-header-action-buttons .ant-bt
     line-height: 1.7;
     overflow-wrap: anywhere;
 }
+.ai-message-markdown-streaming {
+    position: relative;
+}
+.ai-message-markdown-streaming::after {
+    content: ""; display: inline-block; width: 0.42em; height: 1.05em; margin-left: 0.18em; vertical-align: -0.12em;
+    background: currentColor; opacity: .55; animation: ai-message-caret 1s steps(1,end) infinite;
+}
+@keyframes ai-message-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ai-message-markdown-streaming::after { animation: none; opacity: .45; } }
 .ai-message-markdown > :first-child { margin-top: 0; }
 .ai-message-markdown > :last-child { margin-bottom: 0; }
 .ai-message-markdown-heading {

@@ -78,6 +78,8 @@ export function subscribeCanvasViewportPreview(container: HTMLDivElement, listen
  */
 export function applyCanvasNodeDragPreview(container: HTMLDivElement | null, preview: CanvasNodeDragPreview | null) {
     if (!container) return;
+    if (preview) container.dataset.canvasNodeDragging = "true";
+    else delete container.dataset.canvasNodeDragging;
 
     let state = nodeDragPreviewDomStates.get(container);
     if (!state) {

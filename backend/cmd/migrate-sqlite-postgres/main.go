@@ -287,13 +287,10 @@ func migrations() []tableMigration {
 		migrateTable[model.CreationRun]("creation_runs"),
 		migrateTable[model.CreationSubmission]("creation_submissions"),
 		migrateTable[model.Task]("tasks"),
+		migrateTable[model.CloudAgentExecution]("cloud_agent_executions"),
+		migrateTable[model.CloudAgentCanvasMutation]("cloud_agent_canvas_mutations"),
 		migrateTable[model.TaskTextDelta]("task_text_delta"),
-		migrateTable[model.Session]("sessions"),
-		migrateTable[model.Message]("messages"),
 		migrateTable[model.TaskLog]("task_logs"),
-		migrateTable[model.SessionFile]("session_files"),
 		migrateTable[model.Result]("results"),
-		migrateTable[model.ComfyBridge]("comfy_bridges"),
-		migrateTable[model.ComfyBridgeRequest]("comfy_bridge_requests"),
 	}
 }

@@ -328,7 +328,6 @@ export default function WorkflowProductionWorkbench(props: Props) {
             if (!productionStep) throw new Error("当前生成阶段不可用，请刷新页面后重试");
             if (productionStep.status === "failed") throw new Error("当前生成阶段失败，请刷新后重试");
             if (!routedModel) throw new Error(activeStage === "video" ? "请先配置视频模型" : "请先配置图片模型");
-            if (routedModel.startsWith("local:dreamina-cli")) throw new Error("本机即梦任务暂不能登记到分镜产物，请选择后端模型渠道");
             const compatibilityError = modelCompatibilityError(effectiveConfig, routedModel, modelRequirements);
             if (compatibilityError) throw new Error(`当前模型配置不可用：${compatibilityError}`);
             const saved = await saveProjectShot(projectId, {

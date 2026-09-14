@@ -40,6 +40,23 @@ func (w *taskWorkerCoordinator) start(ctx context.Context) {
 	s.startProviderCancellationReconciliation(ctx)
 	s.startBillingReviewAudit(ctx)
 	s.runWorkerLoop(func(ctx context.Context) {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			if !s.IsDraining() {
+				s.advanceCloudAgents()
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	})
+	s.runWorkerLoop(func(ctx context.Context) {
 		slots := make(chan struct{}, maxChannelConcurrencyLimit)
 		dispatch := func() {
 			if ctx.Err() != nil || s.IsDraining() {
@@ -274,8 +291,6 @@ func taskFailureMessage(err error) string {
 
 func taskExecutionTimeoutWithPolicy(taskType string, policy RuntimeTaskPolicy) time.Duration {
 	switch {
-	case taskType == "agent_storyboard" || taskType == "agent_storyboard_rows":
-		return time.Duration(policy.StoryboardTimeoutMinutes) * time.Minute
 	case strings.HasPrefix(taskType, "canvas_video") || strings.HasPrefix(taskType, "video_"):
 		return max(time.Duration(policy.VideoTimeoutMinutes)*time.Minute, 5*time.Minute)
 	case strings.HasPrefix(taskType, "canvas_image"):

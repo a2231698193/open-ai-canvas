@@ -1,7 +1,6 @@
 package app
 
-// RunningHub 与 ComfyUI Bridge 的协议适配集中在这里。两者都接受“工作流 + 字段覆盖”，
-// 但前者由云端 HTTP API 执行，后者由已注册的本地进程领取，因此不能复用普通模型的 URL 拼接逻辑。
+// RunningHub 的云端工作流协议适配集中在这里。
 
 import (
 	"bytes"
@@ -25,7 +24,7 @@ import (
 	"infinite-canvas/backend/internal/model"
 )
 
-// WorkflowField 是 RunningHub/ComfyUI 共用的字段描述。Value 与 FieldValue 兼容来源项目
+// WorkflowField 是云端工作流字段描述。Value 与 FieldValue 兼容来源项目
 // 的两种命名；Source 可取 referenceImage/referenceVideo/referenceAudio/mask。
 type WorkflowField struct {
 	ID             string        `json:"id"`
@@ -301,13 +300,8 @@ func isRunningHubInterface(value string) bool {
 	return ok && pluginID == WorkflowPluginRunningHub
 }
 
-func isComfyBridgeInterface(value string) bool {
-	pluginID, ok := workflowPluginIDForInterface(strings.ToLower(strings.TrimSpace(value)))
-	return ok && pluginID == WorkflowPluginComfyUI
-}
-
 func isWorkflowProviderInterface(value string) bool {
-	return isRunningHubInterface(value) || isComfyBridgeInterface(value)
+	return isRunningHubInterface(value)
 }
 
 func validateWorkflowProviderConfig(mode string, config providerConfig) error {
@@ -330,26 +324,17 @@ func validateWorkflowProviderConfig(mode string, config providerConfig) error {
 		}
 		return nil
 	}
-	if isComfyBridgeInterface(config.InterfaceType) {
-		if strings.TrimSpace(config.BridgeID) == "" {
-			return errors.New("本地 ComfyUI 缺少 Bridge ID，请先注册并连接 Bridge")
-		}
-		if len(config.WorkflowJSON) == 0 && strings.TrimSpace(config.WorkflowID) == "" {
-			return errors.New("本地 ComfyUI 缺少 API 格式工作流 JSON 或 workflowId")
-		}
-		return nil
-	}
 	return errors.New("未知工作流协议")
 }
 
 func workflowInterfaceSupportsMode(interfaceType string, mode string) bool {
 	switch mode {
 	case "image":
-		return interfaceType == string(model.ChannelInterfaceRunningHubImage) || interfaceType == string(model.ChannelInterfaceComfyBridgeImage)
+		return interfaceType == string(model.ChannelInterfaceRunningHubImage)
 	case "video":
-		return interfaceType == string(model.ChannelInterfaceRunningHubVideo) || interfaceType == string(model.ChannelInterfaceComfyBridgeVideo)
+		return interfaceType == string(model.ChannelInterfaceRunningHubVideo)
 	case "audio":
-		return interfaceType == string(model.ChannelInterfaceRunningHubAudio) || interfaceType == string(model.ChannelInterfaceComfyBridgeAudio)
+		return interfaceType == string(model.ChannelInterfaceRunningHubAudio)
 	default:
 		return false
 	}
@@ -359,68 +344,7 @@ func (s *Service) runWorkflowProviderTask(ctx context.Context, input canvasGener
 	if isRunningHubInterface(input.Config.InterfaceType) {
 		return s.runRunningHubWorkflow(ctx, input)
 	}
-	return s.runComfyBridgeWorkflow(ctx, input)
-}
-
-func (s *Service) runComfyBridgeWorkflow(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
-	metadata, _ := ctx.Value(providerAnalyticsKey{}).(providerAnalyticsContext)
-	if metadata.Service == nil {
-		metadata.Service = s
-	}
-	workflowID := strings.TrimSpace(input.Config.WorkflowID)
-	if workflowID == "" {
-		// Bridge-only 渠道可以把模型名直接当作本地 workflows 文件名。
-		workflowID = strings.TrimSpace(input.Config.Model)
-	}
-	workflowFields := workflowFieldsForMode(input.Config.WorkflowFields, input.Mode)
-	payload := map[string]any{
-		"mode":            input.Mode,
-		"prompt":          input.Prompt,
-		"model":           input.Config.Model,
-		"workflowId":      workflowID,
-		"workflowJson":    input.Config.WorkflowJSON,
-		"workflowFields":  workflowFields,
-		"referenceImages": input.ReferenceImages,
-		"referenceVideos": input.ReferenceVideos,
-		"referenceAudios": input.ReferenceAudios,
-		"mask":            input.Mask,
-		"params": map[string]any{
-			"size": input.Config.Size, "quality": input.Config.Quality, "count": input.Config.Count,
-			"transparentBackground": input.Config.TransparentBackground,
-			"videoSeconds":          input.Config.VideoSeconds, "vquality": input.Config.VQuality,
-			"videoGenerateAudio": input.Config.VideoGenerateAudio,
-			"videoWatermark":     input.Config.VideoWatermark,
-			"audioVoice":         input.Config.AudioVoice, "audioFormat": input.Config.AudioFormat,
-			"audioSpeed": input.Config.AudioSpeed, "audioInstructions": input.Config.AudioInstructions,
-			"systemPrompt": input.Config.SystemPrompt,
-		},
-		"metadata": input.Metadata,
-	}
-	request, err := s.enqueueComfyBridgeRequest(ctx, metadata.UserID, input.Config.BridgeID, metadata.TaskID, resumedProviderRequestID(ctx), payload)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.recordWorkflowProviderRequest(ctx, request.ID, "queued", nil); err != nil {
-		// 入队后 Bridge 可能已经领取，不能把状态写入失败误判成“上游未执行”并退款。
-		_ = s.log(metadata.UserID, metadata.TaskID, "error", "本地 ComfyUI Bridge 请求状态保存失败", err.Error())
-	}
-	completion, err := s.WaitComfyBridgeRequest(ctx, request.ID)
-	if err != nil {
-		// Wait 在取消/超时分支会清理队列；这里再次幂等清理，覆盖请求尚未进入等待的竞态。
-		s.CancelComfyBridgeRequest(request.ID)
-		return nil, err
-	}
-	_ = s.updateWorkflowProviderState(ctx, request.ID, strings.ToLower(completion.Status), nil)
-	if completion.Status != "succeeded" {
-		if strings.TrimSpace(completion.Error) == "" {
-			completion.Error = "本地 ComfyUI Bridge 执行失败"
-		}
-		return nil, errors.New(completion.Error)
-	}
-	if completion.Result == nil {
-		return nil, errors.New("本地 ComfyUI Bridge 未返回结果")
-	}
-	return completion.Result, nil
+	return nil, errors.New("未知工作流协议")
 }
 
 func (s *Service) updateWorkflowProviderState(ctx context.Context, requestID string, stage string, nextPollAt *time.Time) error {

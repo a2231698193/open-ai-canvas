@@ -44,9 +44,7 @@ func validateCreationOps(ops []CreationCanvasOp) error {
 				return BadAuthRequest("新增节点必须使用不重复的稳定 ID")
 			}
 			ids[op.ID] = true
-			switch op.NodeType {
-			case "image", "video", "text", "markdown", "frame", "script":
-			default:
+			if _, ok := cloudAgentNodeCapabilityForType(op.NodeType); !ok {
 				return BadAuthRequest("该节点类型不在本期创作范围")
 			}
 		case "update_node":
@@ -428,20 +426,16 @@ func validateCreationCanvasDiff(repo *repository.Repository, userID string, run 
 	return nil
 }
 func creationAddedNode(op CreationCanvasOp) map[string]any {
+	capability, known := cloudAgentNodeCapabilityForType(op.NodeType)
 	width, height, title := 340.0, 240.0, "Note"
+	if known {
+		width, height, title = capability.DefaultWidth, capability.DefaultHeight, capability.Label
+	}
 	metadata := map[string]any{"content": "", "status": "idle"}
 	switch op.NodeType {
-	case "image":
-		width, height, title = 720, 405, "图片"
-	case "video":
-		width, height, title = 720, 405, "视频"
-	case "markdown":
-		width, height, title = 420, 320, "Markdown"
 	case "frame":
-		width, height, title = 760, 520, "未命名背板"
-		metadata = map[string]any{"frame": map[string]any{"collapsed": false, "expandedWidth": float64(760), "expandedHeight": float64(520)}}
+		metadata = map[string]any{"frame": map[string]any{"collapsed": false, "expandedWidth": width, "expandedHeight": height}}
 	case "script":
-		width, height, title = 920, 360, "分镜脚本"
 		metadata = map[string]any{"status": "idle", "workflowKind": "script", "storyboard": map[string]any{"rows": []any{}, "visibleColumns": []any{"shotNumber", "durationSeconds", "videoMotionPrompt", "dialogue", "assets"}, "referenceNodeIds": []any{}}}
 	case "text":
 		metadata["fontSize"] = float64(14)
@@ -467,6 +461,7 @@ func creationAddedNode(op CreationCanvasOp) map[string]any {
 	}
 	return map[string]any{"id": op.ID, "type": op.NodeType, "title": title, "position": position, "width": width, "height": height, "metadata": mergeCreationMaps(metadata, op.Metadata)}
 }
+
 func validateCreationResultMetadata(repo *repository.Repository, userID, runID, nodeID string, before, after map[string]any) error {
 	taskID := stringValue(after["taskId"])
 	if taskID == "" {

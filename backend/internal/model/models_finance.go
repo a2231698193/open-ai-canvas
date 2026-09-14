@@ -40,19 +40,21 @@ type BillingOrder struct {
 	ChannelID      string `json:"channelId" gorm:"index;size:36"`
 	ChannelModelID string `json:"channelModelId" gorm:"index;size:36"`
 	// PriceTierID/Version 记录任务实际命中的规格档；金额字段仍是不可变结算快照。
-	PriceTierID                  string        `json:"priceTierId,omitempty" gorm:"index;size:36"`
-	PriceTierVersion             int64         `json:"priceTierVersion"`
-	PriceSelectorJSON            string        `json:"-" gorm:"type:text"`
-	Model                        string        `json:"model" gorm:"index;size:120"`
-	Capability                   string        `json:"capability" gorm:"index;size:32"`
-	Scene                        string        `json:"scene" gorm:"index;size:80"`
-	BillingMode                  string        `json:"billingMode" gorm:"size:32"`
-	PriceVersion                 int64         `json:"priceVersion"`
-	UnitPriceMicrocredits        int64         `json:"unitPriceMicrocredits"`
-	MultiplierBasisPoints        int64         `json:"multiplierBasisPoints"`
-	Quantity                     int64         `json:"quantity"`
-	AmountMicrocredits           int64         `json:"amountMicrocredits"`
-	ReservedAmountMicrocredits   int64         `json:"reservedAmountMicrocredits"`
+	PriceTierID                string `json:"priceTierId,omitempty" gorm:"index;size:36"`
+	PriceTierVersion           int64  `json:"priceTierVersion"`
+	PriceSelectorJSON          string `json:"-" gorm:"type:text"`
+	Model                      string `json:"model" gorm:"index;size:120"`
+	Capability                 string `json:"capability" gorm:"index;size:32"`
+	Scene                      string `json:"scene" gorm:"index;size:80"`
+	BillingMode                string `json:"billingMode" gorm:"size:32"`
+	PriceVersion               int64  `json:"priceVersion"`
+	UnitPriceMicrocredits      int64  `json:"unitPriceMicrocredits"`
+	MultiplierBasisPoints      int64  `json:"multiplierBasisPoints"`
+	Quantity                   int64  `json:"quantity"`
+	AmountMicrocredits         int64  `json:"amountMicrocredits"`
+	ReservedAmountMicrocredits int64  `json:"reservedAmountMicrocredits"`
+	// ChargeLimitMicrocredits 非零时限制最终用户扣费；Agent 的 Token 报价用它把预授权金额固化为本轮硬上限。
+	ChargeLimitMicrocredits      int64         `json:"chargeLimitMicrocredits,omitempty"`
 	ActualAmountMicrocredits     int64         `json:"actualAmountMicrocredits"`
 	RefundedAmountMicrocredits   int64         `json:"refundedAmountMicrocredits"`
 	InputTokenPriceMicrocredits  int64         `json:"inputTokenPriceMicrocredits"`

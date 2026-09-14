@@ -1,9 +1,7 @@
 import type { CanvasColorGrade } from "@/lib/canvas/canvas-color-grade";
-import type { MediaConversionNodeState } from "@/lib/media-conversion/contracts";
 import type { AssetCategory } from "@/lib/asset-category";
 import type { PortraitTextureSettings } from "@/lib/canvas/canvas-portrait-texture";
 import type { StyleExecutionPlan } from "@/lib/canvas/style-profile";
-import type { PortraitClearanceNodeState } from "@/lib/portrait-clearance/contracts";
 import type { ArtCritiqueNodeState } from "@/lib/art-critique/contracts";
 import type { CameraControlOptions } from "@/lib/canvas/camera-prompt-library";
 import type { SrtEntry, SubtitleHighlight, SubtitleStyle } from "@/types/timeline";
@@ -36,7 +34,6 @@ export enum CanvasNodeType {
     Compare = "compare",
     Chart = "chart",
     ColorGrade = "colorgrade",
-    MediaConversion = "media-conversion",
 }
 
 /** Runtime IDs contributed by plugins share the persisted node type field. */
@@ -226,10 +223,9 @@ export type CanvasNodeMetadata = {
     generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;
     model?: string;
-    workflowProvider?: "model" | "runninghub" | "comfyui";
+    workflowProvider?: "model" | "runninghub";
     runningHubWorkflowId?: string;
     runningHubWorkflowKind?: "workflow" | "app";
-    comfyBridgeWorkflowId?: string;
     /** 当前画布节点覆盖的工作流动态字段，键为 source:* 或 field:nodeId:fieldName。 */
     workflowParameters?: Record<string, unknown>;
     size?: string;
@@ -365,8 +361,6 @@ export type CanvasNodeMetadata = {
     chartKind?: "bar" | "line";
     /** 调色节点的参数；缺省视为未调色。 */
     colorGrade?: CanvasColorGrade;
-    /** 本地图片/视频转换节点的参数、来源指纹和结果状态。 */
-    mediaConversion?: MediaConversionNodeState;
     /** 用户手动拉伸过尺寸；图片按真实比例自动适配时避让它。 */
     manualSize?: boolean;
     storyboard?: StoryboardData;
@@ -426,8 +420,6 @@ export type CanvasNodeMetadata = {
         editMode?: "provider-mask" | "local-composite";
     };
     portraitTexture?: PortraitTextureSettings;
-    /** 肖像排查节点只保存可恢复的 UI 状态，不保存图片、embedding 或完整结果。 */
-    portraitClearance?: PortraitClearanceNodeState;
     /** AI 审美批改节点只保存当前报告和输入指纹，不保存图片二进制。 */
     artCritique?: ArtCritiqueNodeState;
     /** 摄像机控制选项，启用后生成时自动追加摄影机/镜头/焦距/光圈提示词。 */

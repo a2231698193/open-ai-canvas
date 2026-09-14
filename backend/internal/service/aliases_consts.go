@@ -24,9 +24,6 @@ const (
 	CodeTooManyRequests                = app.CodeTooManyRequests
 	CodeUnauthorized                   = app.CodeUnauthorized
 	CodeUnavailable                    = app.CodeUnavailable
-	ComfyBridgeRequestKindGenerate     = app.ComfyBridgeRequestKindGenerate
-	ComfyBridgeRequestKindWorkflowGet  = app.ComfyBridgeRequestKindWorkflowGet
-	ComfyBridgeRequestKindWorkflowList = app.ComfyBridgeRequestKindWorkflowList
 	CreditScale                        = app.CreditScale
 	CustomRelayHeadersHeader           = app.CustomRelayHeadersHeader
 	DefaultOutboundUserAgent           = app.DefaultOutboundUserAgent
@@ -46,8 +43,6 @@ const (
 	FeatureSystemPlugins               = app.FeatureSystemPlugins
 	FeatureTaskCenter                  = app.FeatureTaskCenter
 	FeatureTimelineTranscription       = app.FeatureTimelineTranscription
-	LocalChannelBaseURLHeader          = app.LocalChannelBaseURLHeader
-	LocalChannelRequestHeader          = app.LocalChannelRequestHeader
 	ModelCatalogSourceFrontend         = app.ModelCatalogSourceFrontend
 	ModelCatalogSourceSystem           = app.ModelCatalogSourceSystem
 	PaymentPluginAlipayPage            = app.PaymentPluginAlipayPage
@@ -84,6 +79,5 @@ const (
 	ReasonUnavailable                  = app.ReasonUnavailable
 	SessionCookieName                  = app.SessionCookieName
 	SkillPackageUploadMaxBytes         = app.SkillPackageUploadMaxBytes
-	WorkflowPluginComfyUI              = app.WorkflowPluginComfyUI
 	WorkflowPluginRunningHub           = app.WorkflowPluginRunningHub
 )

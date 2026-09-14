@@ -985,7 +985,6 @@ for (const [id, name, capability, createPath, pollPath, resultPath] of [
   ["fal-queue-video", "fal.ai Queue Video", "video", "/{{model}}", "/{{request.providerOptions.fal-queue-video.statusPath}}", "response.video"],
   ["replicate-prediction-image", "Replicate Predictions Image", "image", "/v1/predictions", "/v1/predictions/{{taskId}}", "response.output"],
   ["replicate-prediction-video", "Replicate Predictions Video", "video", "/v1/predictions", "/v1/predictions/{{taskId}}", "response.output"],
-  ["comfyui-workflow", "ComfyUI Workflow", "video", "/prompt", "/history/{{taskId}}", "response.output"],
   ["runninghub-workflow", "RunningHub Workflow", "video", "/task/openapi/create", "/task/openapi/status", "response.data"],
   ["pika-via-fal", "Pika via fal.ai", "video", "/{{model}}", "/{{request.providerOptions.pika-via-fal.statusPath}}", "response.video"]
 ]) {

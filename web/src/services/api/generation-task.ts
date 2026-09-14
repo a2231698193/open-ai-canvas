@@ -2,19 +2,16 @@ import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob } from "@/services/image-storage";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
 import { createGenerationTask, waitForGenerationTask, type GenerationTask, type CreateTaskInput } from "@/services/api/task-center";
-import { LOCAL_DREAMINA_WAIT_STOPPED_CODE, LocalDreaminaGenerationClientError, runLocalDreaminaGenerationTask, type LocalDreaminaGenerationInput, type LocalDreaminaGenerationTask } from "@/services/local-dreamina-generation";
-import { isLocalDreaminaBackgroundTask, localDreaminaTaskId, projectLocalDreaminaTask, stripLocalDreaminaTaskPrefix } from "@/services/local-dreamina-task-projection";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { grokImagePromptLimitError } from "@/lib/grok-image-prompt-limit";
 import { resolveGenerationWorkflowExecution, type GenerationWorkflowExecution } from "@/lib/generation-workflow-execution";
 import { isArkPlanBaseUrl } from "@/lib/seedance-video";
 import { resolveVideoOperation } from "@/lib/model-selection";
 import { logicalModelIDForConfig, modelOptionName, resolveModelChannel, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
-import { useLocalDreaminaModelStore } from "@/stores/use-local-dreamina-model-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { buildBackendToolRequests, type ResponseFunctionTool, type ResponseInputMessage, type ToolChoice, type ToolResponseResult } from "@/services/api/image";
-import { assertAgentExchangeBudget } from "@/lib/canvas/canvas-agent-context-budget";
+import { assertAgentExchangeBudget } from "@/lib/canvas/agent-context-budget";
 
 export { logicalModelIDForConfig };
 
@@ -46,8 +43,6 @@ type BackendGenerationTaskOptions = {
     onTextDelta?: (text: string) => void;
     streamText?: boolean;
     enableThinking?: boolean;
-    localIdempotencyKey?: string;
-    localResumeOnly?: boolean;
     clientOperationId?: string;
     retryOf?: string;
     retryContextsByBatchIndex?: Array<{ retryOf: string; attemptGroupId: string; clientOperationId: string }>;
@@ -57,19 +52,13 @@ type BackendGenerationTaskOptions = {
 export type GenerationTaskDependencies = {
     createTask: typeof createGenerationTask;
     waitTask: typeof waitForGenerationTask;
-    runLocal: (input: LocalDreaminaGenerationInput, signal?: AbortSignal, onTaskUpdate?: (task: LocalDreaminaGenerationTask) => void) => ReturnType<typeof runLocalDreaminaGenerationTask>;
     createId: () => string;
-    now: () => string;
-    ensureLocalDreaminaReady?: (signal?: AbortSignal) => Promise<unknown>;
 };
 
 const defaultDependencies: GenerationTaskDependencies = {
     createTask: createGenerationTask,
     waitTask: waitForGenerationTask,
-    runLocal: (input, signal, onTaskUpdate) => runLocalDreaminaGenerationTask(input, { onTaskUpdate }, signal),
     createId: () => crypto.randomUUID(),
-    now: () => new Date().toISOString(),
-    ensureLocalDreaminaReady: (signal) => useLocalDreaminaModelStore.getState().ensureReady(signal),
 };
 
 type PreparedGenerationReferences = {
@@ -97,8 +86,6 @@ export async function runBackendGenerationTask(
         onTextDelta,
         streamText,
         enableThinking,
-        localIdempotencyKey,
-        localResumeOnly,
         clientOperationId,
         retryOf,
         attemptGroupId,
@@ -107,14 +94,6 @@ export async function runBackendGenerationTask(
 ) {
     throwIfAborted(signal);
     assertClientPromptLimit(mode, prompt, config, metadata);
-    if (usesLocalDreamina(config)) {
-        await dependencies.ensureLocalDreaminaReady?.(signal);
-        throwIfAborted(signal);
-        return await runLocalDreaminaGeneration(
-            { projectId, mode, prompt, config, referenceImages, referenceVideos, referenceAudios, textHistory, mask, signal, metadata, onTaskUpdate, onTextDelta, streamText, enableThinking, localIdempotencyKey, localResumeOnly, clientOperationId, retryOf, attemptGroupId },
-            dependencies,
-        );
-    }
     assertBackendRuntimeConfigured(config, mode);
     const prepared = await prepareGenerationReferences({ config, referenceImages, referenceVideos, referenceAudios, mask });
     throwIfAborted(signal);
@@ -129,7 +108,6 @@ export async function submitBackendGenerationTask(
 ): Promise<GenerationTask> {
     throwIfAborted(options.signal);
     assertClientPromptLimit(options.mode, options.prompt, options.config, options.metadata);
-    if (usesLocalDreamina(options.config)) throw new Error("本机即梦任务暂不支持后台提交");
     assertBackendRuntimeConfigured(options.config, options.mode);
     const prepared = await prepareGenerationReferences(options);
     throwIfAborted(options.signal);
@@ -176,6 +154,7 @@ export function prepareBackendToolGenerationTask(options: BackendToolGenerationO
             prompt: options.prompt,
             config: backendProviderConfig(options.config, "text"),
             agentRequests: buildBackendToolRequests(options.messages, options.tools, options.toolChoice, options.config),
+            textOptions: { stream: modelCapabilityConfigFor(options.config, requestConfig.model).text?.streaming !== false },
             referenceImages: [...imageKeys].map((storageKey) => ({ storageKey })),
             metadata: options.metadata || { source: "canvas-online-agent" },
         },
@@ -203,27 +182,6 @@ export async function runBackendGenerationTaskBatch(options: BackendGenerationTa
     throwIfAborted(options.signal);
     assertClientPromptLimit(options.mode, options.prompt, options.config, options.metadata);
     if (options.retryContextsByBatchIndex && options.retryContextsByBatchIndex.length !== count) throw new Error("生成重试批次任务数量不匹配");
-    if (usesLocalDreamina(options.config)) {
-        await dependencies.ensureLocalDreaminaReady?.(options.signal);
-        throwIfAborted(options.signal);
-        return Promise.allSettled(
-            Array.from({ length: count }, (_, batchIndex) => {
-                const retryContext = options.retryContextsByBatchIndex?.[batchIndex];
-                return runLocalDreaminaGeneration(
-                    {
-                        ...options,
-                        config: { ...options.config, count: "1" },
-                        metadata: { ...options.metadata, batchIndex, batchCount: count },
-                        localIdempotencyKey: options.localIdempotencyKey ? `${options.localIdempotencyKey}:${batchIndex + 1}` : undefined,
-                        clientOperationId: retryContext?.clientOperationId ?? (options.clientOperationId ? `${options.clientOperationId}:${batchIndex + 1}` : undefined),
-                        retryOf: retryContext?.retryOf ?? options.retryOf,
-                        attemptGroupId: retryContext?.attemptGroupId ?? options.attemptGroupId,
-                    },
-                    dependencies,
-                );
-            }),
-        );
-    }
     const prepared = await prepareGenerationReferences(options);
     throwIfAborted(options.signal);
     return Promise.allSettled(
@@ -240,88 +198,6 @@ export async function runBackendGenerationTaskBatch(options: BackendGenerationTa
     );
 }
 
-async function runLocalDreaminaGeneration(options: BackendGenerationTaskOptions, dependencies: GenerationTaskDependencies): Promise<BackendGenerationResult> {
-    if (options.mode !== "image" && options.mode !== "video") throw new Error("即梦 CLI 仅支持图片或视频生成");
-    const runtimeId = stripLocalDreaminaTaskPrefix(options.localIdempotencyKey || options.clientOperationId || dependencies.createId());
-    const clientOperationId = options.clientOperationId ?? runtimeId;
-    const context = localTaskContext(options);
-    const timestamp = dependencies.now();
-    const task: GenerationTask = {
-        id: localDreaminaTaskId(runtimeId),
-        clientOperationId,
-        ...(options.projectId ? { projectId: options.projectId } : {}),
-        type: `canvas_${options.mode}`,
-        status: "running",
-        stage: "submitting",
-        prompt: options.prompt,
-        operation: generationOperation(options),
-        provider: "dreamina-cli",
-        model: options.config.model,
-        attempts: 1,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        startedAt: timestamp,
-        clientContext: generationClientContext(context),
-        ...(context.retryOf ? { retryOf: context.retryOf } : {}),
-        ...(context.attemptGroupId ? { attemptGroupId: context.attemptGroupId } : {}),
-    };
-    let latestPublicTask = task;
-    options.onTaskUpdate?.(task);
-    try {
-        const references = await localGenerationReferences([...(options.referenceImages ?? []), ...(options.mask ? [options.mask] : [])], options.referenceVideos ?? [], options.referenceAudios ?? []);
-        const resolution = options.mode === "video" ? options.config.vquality : options.config.quality;
-        const result = await dependencies.runLocal(
-            {
-                model: options.config.model as `local:dreamina-cli:${string}`,
-                mode: options.mode,
-                prompt: options.prompt,
-                settings: {
-                    aspect: options.config.size,
-                    resolution,
-                    ...(options.mode === "video" ? { duration: Number(options.config.videoSeconds) } : { count: Number(options.config.count) }),
-                },
-                references,
-                resumeOnly: options.localResumeOnly,
-                idempotencyKey: runtimeId,
-                clientOperationId,
-                context,
-            },
-            options.signal,
-            (runtimeTask) => {
-                latestPublicTask = projectLocalDreaminaTask(runtimeTask, task);
-                options.onTaskUpdate?.(latestPublicTask);
-            },
-        );
-        const completedAt = dependencies.now();
-        latestPublicTask = { ...latestPublicTask, status: "succeeded", progress: 100, stage: "local_cli_succeeded", resultJson: JSON.stringify(result), completedAt, updatedAt: completedAt };
-        options.onTaskUpdate?.(latestPublicTask);
-        return result;
-    } catch (error) {
-        const completedAt = dependencies.now();
-        const cancelled = isGenerationTaskCancelled(error, options.signal);
-        const localWaitStopped = error instanceof LocalDreaminaGenerationClientError && error.code === LOCAL_DREAMINA_WAIT_STOPPED_CODE;
-        const localErrorCode = error instanceof LocalDreaminaGenerationClientError ? error.code : undefined;
-        if (!(cancelled && isLocalDreaminaBackgroundTask(latestPublicTask))) {
-            options.onTaskUpdate?.({
-                ...latestPublicTask,
-                status: cancelled ? "cancelled" : "failed",
-                stage: cancelled ? "local_cli_cancelled" : "local_cli_failed",
-                completedAt,
-                updatedAt: completedAt,
-                ...(localWaitStopped
-                    ? { errorCode: error.code, error: error.message }
-                    : !cancelled
-                      ? {
-                            ...(localErrorCode ? { errorCode: localErrorCode } : {}),
-                            error: error instanceof Error ? error.message : "即梦本机生成失败",
-                        }
-                      : {}),
-            });
-        }
-        throw error;
-    }
-}
-
 function generationOperation(options: BackendGenerationTaskOptions) {
     if (options.mode !== "video") return options.mode;
     return resolveVideoOperation({
@@ -334,84 +210,7 @@ function generationOperation(options: BackendGenerationTaskOptions) {
 }
 
 export function isGenerationTaskCancelled(error: unknown, signal?: AbortSignal) {
-    if (error instanceof LocalDreaminaGenerationClientError && error.code === "dreamina_submission_unknown") return false;
-    return signal?.aborted === true || (error instanceof Error && error.name === "AbortError") || (error instanceof LocalDreaminaGenerationClientError && error.code === LOCAL_DREAMINA_WAIT_STOPPED_CODE);
-}
-
-async function localGenerationReferences(images: ReferenceImage[], videos: ReferenceVideo[], audios: ReferenceAudio[]): Promise<LocalDreaminaGenerationInput["references"]> {
-    const imageReferences = await Promise.all(
-        images.map(async (image) => {
-            const source = image.dataUrl || image.url;
-            if (!source && !image.storageKey) throw new LocalDreaminaGenerationClientError("dreamina_reference_invalid", "即梦图片参考素材不可用", 400);
-            const blob = image.storageKey ? await getImageBlob(image.storageKey) : await (await fetch(source!)).blob();
-            if (!blob || !["image/png", "image/jpeg", "image/webp"].includes(blob.type)) throw invalidLocalReference();
-            return {
-                kind: "image" as const,
-                mimeType: blob.type as "image/png" | "image/jpeg" | "image/webp",
-                bytes: new Uint8Array(await blob.arrayBuffer()),
-                metadata: compactReferenceMetadata({ name: image.name, width: image.width, height: image.height }),
-            };
-        }),
-    );
-    const mediaReferences = async (items: Array<ReferenceVideo | ReferenceAudio>, kind: "video" | "audio") =>
-        Promise.all(
-            items.map(async (media) => {
-                const source = media.url || "";
-                const blob = media.storageKey ? await getMediaBlob(media.storageKey) : source ? await (await fetch(source)).blob() : null;
-                const allowed = kind === "video" ? ["video/mp4", "video/quicktime", "video/webm"] : ["audio/mpeg", "audio/wav", "audio/mp4", "audio/aac", "audio/flac"];
-                if (!blob || !allowed.includes(blob.type)) throw invalidLocalReference();
-                return {
-                    kind,
-                    mimeType: blob.type,
-                    bytes: new Uint8Array(await blob.arrayBuffer()),
-                    metadata: compactReferenceMetadata({
-                        name: media.name,
-                        ...("width" in media ? { width: media.width, height: media.height } : {}),
-                        durationMs: media.durationMs,
-                    }),
-                };
-            }),
-        );
-    const references = [...imageReferences, ...(await mediaReferences(videos, "video")), ...(await mediaReferences(audios, "audio"))] as LocalDreaminaGenerationInput["references"];
-    if (references.reduce((total, reference) => total + reference.bytes.byteLength, 0) > 20 * 1024 * 1024) throw invalidLocalReference();
-    return references;
-}
-
-function invalidLocalReference() {
-    return new LocalDreaminaGenerationClientError("dreamina_reference_invalid", "即梦参考素材无效", 400);
-}
-
-function compactReferenceMetadata(metadata: Record<string, string | number | undefined>) {
-    return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
-}
-
-function localTaskContext(options: BackendGenerationTaskOptions): Extract<LocalDreaminaGenerationInput["context"], { scope: "scoped" }> {
-    const metadata = options.metadata ?? {};
-    return {
-        scope: "scoped",
-        ...(options.projectId ? { projectId: options.projectId } : {}),
-        ...(typeof metadata.nodeId === "string" ? { nodeId: metadata.nodeId } : {}),
-        ...(typeof metadata.conversationId === "string" ? { conversationId: metadata.conversationId } : {}),
-        ...(typeof metadata.messageId === "string" ? { messageId: metadata.messageId } : {}),
-        ...(typeof metadata.batchIndex === "number" ? { batchIndex: metadata.batchIndex } : {}),
-        ...(typeof metadata.batchCount === "number" ? { batchCount: metadata.batchCount } : {}),
-        ...(options.retryOf ? { retryOf: options.retryOf } : {}),
-        ...(options.attemptGroupId ? { attemptGroupId: options.attemptGroupId } : {}),
-    };
-}
-
-function generationClientContext(context: Extract<LocalDreaminaGenerationInput["context"], { scope: "scoped" }>) {
-    const { conversationId, messageId, nodeId, batchIndex, batchCount } = context;
-    if (!conversationId && !messageId && !nodeId && batchIndex === undefined && batchCount === undefined) return undefined;
-    return { ...(conversationId ? { conversationId } : {}), ...(messageId ? { messageId } : {}), ...(nodeId ? { nodeId } : {}), ...(batchIndex !== undefined ? { batchIndex } : {}), ...(batchCount !== undefined ? { batchCount } : {}) };
-}
-
-function isLocalDreaminaModel(model: string) {
-    return /^local:dreamina-cli:[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(model.trim());
-}
-
-function usesLocalDreamina(config: AiConfig) {
-    return (config.taskWorkflowProvider || "model") === "model" && isLocalDreaminaModel(config.model);
+    return signal?.aborted === true || (error instanceof Error && error.name === "AbortError");
 }
 
 function assertBackendRuntimeConfigured(config: AiConfig, mode: BackendGenerationMode) {
@@ -468,7 +267,6 @@ async function createBackendGenerationTask(options: BackendGenerationTaskOptions
 
 export async function prepareBackendGenerationTask(options: BackendGenerationTaskOptions): Promise<CreateTaskInput> {
     throwIfAborted(options.signal);
-    if (usesLocalDreamina(options.config)) throw new Error("智能创作的在线授权暂不支持本机即梦，请使用现有本机入口");
     assertClientPromptLimit(options.mode, options.prompt, options.config, options.metadata);
     assertBackendRuntimeConfigured(options.config, options.mode);
     const prepared = await prepareGenerationReferences(options);
@@ -614,7 +412,6 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
         apiFormat: requestConfig.apiFormat,
         interfaceType: requestConfig.interfaceType,
         baseUrl: requestConfig.baseUrl,
-        allowLocalChannel: requestConfig.allowLocalChannel === true,
         apiKey: requestConfig.apiKey,
         secretKey: requestConfig.secretKey,
         model: requestConfig.model,
@@ -626,13 +423,11 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
 
 function workflowProviderConfig(config: AiConfig, requestConfig: ReturnType<typeof resolveModelRequestConfig>, workflow: GenerationWorkflowExecution) {
     const runningHubActive = workflow.provider === "runninghub";
-    const comfyBridgeActive = workflow.provider === "comfyui-bridge";
     return {
         channelId: "",
         apiFormat: requestConfig.apiFormat,
         interfaceType: workflow.interfaceType,
-        baseUrl: comfyBridgeActive ? "bridge://local" : config.runningHub.baseUrl,
-        allowLocalChannel: false,
+        baseUrl: config.runningHub.baseUrl,
         apiKey: runningHubActive ? config.runningHub.apiKey : "",
         // 工作流是独立 Provider，不能继承普通模型渠道的密钥和自定义头。
         secretKey: "",
@@ -655,7 +450,6 @@ function workflowProviderConfig(config: AiConfig, requestConfig: ReturnType<type
         webappId: workflow.webappId,
         workflowJson: workflow.workflowJson,
         workflowFields: workflow.workflowFields,
-        bridgeId: workflow.bridgeId,
         runningHubUseWallet: false,
         runningHubWalletApiKey: "",
         runningHubUploadApiKey: runningHubActive ? config.runningHub.uploadApiKey || "" : "",

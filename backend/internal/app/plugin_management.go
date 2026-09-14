@@ -61,10 +61,6 @@ var officialApplicationPolicies = map[string]PluginManagementView{
 		Origin: PluginOriginOfficial, Kind: PluginKindApplication,
 		ActivationScope: PluginScopeUser, ConfigurationScope: PluginConfigurationUser,
 	},
-	WorkflowPluginComfyUI: {
-		Origin: PluginOriginOfficial, Kind: PluginKindApplication,
-		ActivationScope: PluginScopeUser, ConfigurationScope: PluginConfigurationUser,
-	},
 	PluginEagleAssetConnector: {
 		Origin: PluginOriginOfficial, Kind: PluginKindApplication,
 		ActivationScope: PluginScopeUser, ConfigurationScope: PluginConfigurationUser,
@@ -204,7 +200,7 @@ func (s *Service) pluginStateForUser(actor *model.User, pluginID string, items [
 		if !userConfigured {
 			if pluginID == PluginMediaConversion {
 				userEnabled = true
-			} else if hasRuntime && isLegacyWorkflowPlugin(pluginID) {
+			} else if hasRuntime && pluginID == WorkflowPluginRunningHub {
 				userEnabled = runtimePlugin.Status == "enabled"
 			}
 		}
@@ -226,10 +222,6 @@ func (s *Service) pluginStateForUser(actor *model.User, pluginID string, items [
 		state.BlockedReason = "系统插件由管理员统一管理"
 	}
 	return state, nil
-}
-
-func isLegacyWorkflowPlugin(pluginID string) bool {
-	return pluginID == WorkflowPluginRunningHub || pluginID == WorkflowPluginComfyUI
 }
 
 func (s *Service) SetUserPluginEnabled(actor *model.User, pluginID string, enabled bool) (PluginStateView, error) {

@@ -63,20 +63,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           leftover=0
-          for file in web/pnpm-lock.yaml web/package-lock.json web/yarn.lock canvas-agent/pnpm-lock.yaml canvas-agent/package-lock.json canvas-agent/yarn.lock; do
+          for file in web/pnpm-lock.yaml web/package-lock.json web/yarn.lock; do
             if [ -f "$file" ]; then
               echo "forbidden lockfile: $file"
               leftover=1
             fi
           done
           if [ "$leftover" -ne 0 ]; then
-            echo "web and canvas-agent install from bun.lock only"
+            echo "web installs from bun.lock only"
             exit 1
           fi
       - name: Install dependencies
-        run: bun install --frozen-lockfile
-      - name: Install Canvas Agent dependencies
-        working-directory: canvas-agent
         run: bun install --frozen-lockfile
       - name: Check formatting
         env:

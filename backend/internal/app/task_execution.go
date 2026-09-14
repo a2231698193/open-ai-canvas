@@ -23,15 +23,9 @@ func (s *Service) processTask(ctx context.Context, task model.Task) (map[string]
 	ctx = withTaskExecutionID(ctx, task.ID)
 	ctx = withProviderAnalytics(ctx, s, task)
 
-	if task.Type == "agent_storyboard_rows" {
-		return s.processStoryboardRowsTask(ctx, task)
-	}
 	if task.Type == "canvas_text" || task.Type == "canvas_image" || task.Type == "canvas_video" || task.Type == "canvas_audio" {
 		result, err := s.processCanvasGenerationTask(ctx, task.UserID, task.ProjectID, task.Type, task.Prompt, task.InputJSON)
 		return result, nil, err
-	}
-	if task.Type == "agent_storyboard" {
-		return s.processAgentStoryboardTask(ctx, task)
 	}
 	if strings.HasPrefix(task.Type, "video_") {
 		if !canRunProviderTask(task) {
@@ -61,19 +55,6 @@ func hasExecutableProviderVideoConfig(input map[string]any) bool {
 		return false
 	}
 	interfaceType := stringValue(config["interfaceType"])
-	if isComfyBridgeInterface(interfaceType) {
-		workflowJSON, hasWorkflowJSON := config["workflowJson"]
-		workflowReady := false
-		if hasWorkflowJSON {
-			switch value := workflowJSON.(type) {
-			case map[string]interface{}:
-				workflowReady = len(value) > 0
-			case string:
-				workflowReady = strings.TrimSpace(value) != ""
-			}
-		}
-		return stringValue(config["bridgeId"]) != "" && (stringValue(config["workflowId"]) != "" || workflowReady)
-	}
 	if isRunningHubInterface(interfaceType) {
 		if stringValue(config["workflowId"]) == "" && stringValue(config["webappId"]) == "" && stringValue(config["model"]) == "" {
 			return false

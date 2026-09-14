@@ -34,7 +34,7 @@ func TestTaskUsesUpstreamReportedProgress(t *testing.T) {
 			t.Fatalf("task type %q should use upstream progress", taskType)
 		}
 	}
-	for _, taskType := range []string{"canvas_text", "canvas_audio", "agent_storyboard"} {
+	for _, taskType := range []string{"canvas_text", "canvas_audio", "text_generation"} {
 		if taskUsesUpstreamReportedProgress(taskType) {
 			t.Fatalf("task type %q should keep internal progress", taskType)
 		}

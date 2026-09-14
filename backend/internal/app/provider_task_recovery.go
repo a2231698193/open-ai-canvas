@@ -136,7 +136,6 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	recoveryCtx, cancelRecovery := providerTaskRecoveryContext(ctx)
 	defer cancelRecovery()
 	queryCtx := withProviderAnalytics(recoveryCtx, s, *task)
-	queryCtx = withProviderOutboundPolicy(queryCtx, input.Config)
 	var result map[string]interface{}
 	var providerStatus string
 	result, providerStatus, err = queryProtocolAdapterVideoTask(queryCtx, input, adapter, providerRequestID)

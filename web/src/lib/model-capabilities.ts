@@ -9,6 +9,10 @@ export type ModelCapabilityConfig = {
 };
 
 export type TextCapabilityConfig = {
+    /** Whether the upstream text endpoint accepts SSE streaming responses. */
+    streaming?: boolean;
+    /** Whether the model exposes a user-selectable reasoning/thinking mode. */
+    thinking?: boolean;
     references: {
         promptMaxChars: number;
         maxImages: number;
@@ -104,6 +108,7 @@ function normalizeCapabilityStrings(values: string[]) {
 export function normalizeModelCapabilityConfig(config: ModelCapabilityConfig): ModelCapabilityConfig {
     return {
         ...config,
+        text: config.text ? { ...config.text, streaming: config.text.streaming !== false } : config.text,
         image: config.image
             ? {
                   ...config.image,
@@ -265,6 +270,7 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
 
 export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = ""): ModelCapabilityConfig {
     const text: TextCapabilityConfig = {
+        streaming: true,
         // 文本模型的视觉能力必须由管理员明确开启，不能根据模型名猜测。
         references: { promptMaxChars: 32000, maxImages: 0, maxImageBytes: 0, maxVideos: 0, maxVideoBytes: 0 },
     };

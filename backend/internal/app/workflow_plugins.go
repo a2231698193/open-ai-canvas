@@ -9,7 +9,6 @@ import (
 
 const (
 	WorkflowPluginRunningHub = "runninghub-workflow-provider"
-	WorkflowPluginComfyUI    = "comfyui-workflow-provider"
 )
 
 // bundledWorkflowPluginManifests keeps workflow capabilities in the same
@@ -19,7 +18,6 @@ const (
 func bundledWorkflowPluginManifests() []protocol.Manifest {
 	return []protocol.Manifest{
 		workflowPluginManifest(WorkflowPluginRunningHub, "RunningHub 工作流", "在画布中拉取并执行 RunningHub Workflow 与 App。"),
-		workflowPluginManifest(WorkflowPluginComfyUI, "ComfyUI Bridge 工作流", "通过本机或云端 Bridge 发现、映射并执行 ComfyUI API 工作流。"),
 	}
 }
 
@@ -58,16 +56,14 @@ func workflowPluginIDForInterface(value string) (string, bool) {
 	switch value {
 	case "runninghub-workflow-image", "runninghub-workflow-video", "runninghub-workflow-audio":
 		return WorkflowPluginRunningHub, true
-	case "comfyui-bridge-image", "comfyui-bridge-video", "comfyui-bridge-audio":
-		return WorkflowPluginComfyUI, true
 	default:
 		return "", false
 	}
 }
 
 func (s *Service) WorkflowPluginStatuses() map[string]string {
-	statuses := make(map[string]string, 2)
-	for _, pluginID := range []string{WorkflowPluginRunningHub, WorkflowPluginComfyUI} {
+	statuses := make(map[string]string, 1)
+	for _, pluginID := range []string{WorkflowPluginRunningHub} {
 		state, err := s.pluginStateForUser(nil, pluginID, s.Plugins())
 		if err == nil && state.PlatformAvailable {
 			statuses[pluginID] = "enabled"
@@ -79,9 +75,9 @@ func (s *Service) WorkflowPluginStatuses() map[string]string {
 }
 
 func (s *Service) WorkflowPluginStatusesForUser(userID string) (map[string]string, error) {
-	statuses := make(map[string]string, 2)
+	statuses := make(map[string]string, 1)
 	actor := &model.User{ID: strings.TrimSpace(userID)}
-	for _, pluginID := range []string{WorkflowPluginRunningHub, WorkflowPluginComfyUI} {
+	for _, pluginID := range []string{WorkflowPluginRunningHub} {
 		state, err := s.pluginStateForUser(actor, pluginID, s.Plugins())
 		if err != nil {
 			return nil, err
@@ -105,7 +101,7 @@ func (s *Service) RequireWorkflowPluginForInterface(interfaceType string) error 
 		if pluginID == WorkflowPluginRunningHub {
 			return Forbidden("RunningHub 工作流插件未启用")
 		}
-		return Forbidden("ComfyUI Bridge 工作流插件未启用")
+		return Forbidden("工作流插件未启用")
 	}
 	return nil
 }
@@ -119,7 +115,7 @@ func (s *Service) RequireWorkflowPluginForUser(userID string, interfaceType stri
 		if pluginID == WorkflowPluginRunningHub {
 			return Forbidden("RunningHub 工作流插件未启用")
 		}
-		return Forbidden("ComfyUI Bridge 工作流插件未启用")
+		return Forbidden("工作流插件未启用")
 	}
 	return nil
 }

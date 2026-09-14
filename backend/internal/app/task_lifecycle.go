@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"infinite-canvas/backend/internal/model"
@@ -40,6 +41,9 @@ func (w *taskLifecycleCoordinator) retryTask(userID string, id string) (*model.T
 	}
 	if task.CreationSubmissionID != nil {
 		return nil, creationConflict("智能创作重做需要新的报价批准，请回到创作会话继续")
+	}
+	if strings.HasPrefix(task.Operation, "cloud_agent") {
+		return nil, BadAuthRequest("Agent 重试需要新的幂等键和预算校验，请回到 Agent 对话重新发送")
 	}
 	if task.Status != model.TaskStatusFailed && task.Status != model.TaskStatusCancelled {
 		return nil, errors.New("only failed or cancelled tasks can be retried")
@@ -94,17 +98,6 @@ func (w *taskLifecycleCoordinator) retryTask(userID string, id string) (*model.T
 	if err != nil {
 		return nil, err
 	}
-	if task.SessionID != "" {
-		session, err := s.repo.SessionForUser(task.UserID, task.SessionID)
-		if err != nil {
-			return nil, fmt.Errorf("重试任务时读取会话失败：%w", err)
-		}
-		session.Status = model.SessionStatusActive
-		session.CanvasOpsJSON = ""
-		if err := s.repo.Save(session); err != nil {
-			return nil, fmt.Errorf("重试任务时重置会话失败：%w", err)
-		}
-	}
 	_ = s.log(userID, task.ID, "info", "任务已重新入队", "")
 	return taskForOutput(*task), nil
 }
@@ -150,9 +143,6 @@ func (w *taskLifecycleCoordinator) cancelTask(_ context.Context, userID string, 
 
 	// 这些收尾操作必须幂等；任何单项失败都记录日志，但不能让已经落库的
 	// cancelled 状态重新对用户表现为“取消失败”。
-	if err := s.markSessionFailed(*task, "会话任务已取消。"); err != nil {
-		_ = s.log(task.UserID, task.ID, "error", "取消任务后更新会话状态失败", err.Error())
-	}
 	if err := s.finalizeTaskTextReplay(task.ID, model.TaskStatusCancelled); err != nil {
 		_ = s.log(task.UserID, task.ID, "error", "取消任务后归并文本回放失败", err.Error())
 	}

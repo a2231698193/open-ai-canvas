@@ -45,29 +45,6 @@ func creationTextRequest() CreateTaskRequest {
 	return CreateTaskRequest{Type: "canvas_text", Prompt: "只输出测试", Model: "text-test", Input: map[string]any{"mode": "text", "prompt": "只输出测试", "config": map[string]any{"channelId": "channel", "model": "text-test"}}}
 }
 
-func TestCreationStoryboardRequiresApprovalAndCanvasScope(t *testing.T) {
-	s, _, id, guard := creationTestService(t)
-	req := creationTextRequest()
-	req.Type = "agent_storyboard_rows"
-	req.Operation = "storyboard_rows"
-	item, err := s.PrepareCreationSubmission("user", id, CreationRequest{CreationGuard: guard, ItemKey: "storyboard", Request: req})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.ExecuteCreationSubmission("user", id, CreationRequest{CreationGuard: guard, SubmissionID: item.ID}); err == nil {
-		t.Fatal("unapproved storyboard executed")
-	}
-	if _, err = s.ApproveCreationSubmissions("user", id, CreationRequest{CreationGuard: guard, SubmissionIDs: []string{item.ID}}); err != nil {
-		t.Fatal(err)
-	}
-	task, err := s.ExecuteCreationSubmission("user", id, CreationRequest{CreationGuard: guard, SubmissionID: item.ID})
-	if err != nil || task.Type != "agent_storyboard_rows" {
-		t.Fatalf("professional storyboard not submitted: task=%v error=%v", task, err)
-	}
-	if err = validateCreationSubmissionScope(&model.CreationRun{CanvasID: "canvas", Status: "running"}, 0, CreateTaskRequest{Type: "agent_storyboard_rows", ProjectID: "other"}); err == nil {
-		t.Fatal("cross-canvas storyboard accepted")
-	}
-}
 func prepareApprovedCreation(t *testing.T, s *Service, id string, guard CreationGuard) *CreationSubmissionOutput {
 	t.Helper()
 	item, err := s.PrepareCreationSubmission("user", id, CreationRequest{CreationGuard: guard, ItemKey: "text-1", Request: creationTextRequest()})

@@ -21,6 +21,9 @@ type ModelCapabilityConfig struct {
 }
 
 type TextCapabilityConfig struct {
+	// Streaming controls whether this model accepts upstream SSE text responses.
+	// A nil value is treated as true for backwards compatibility with older configs.
+	Streaming  *bool               `json:"streaming,omitempty"`
 	References TextReferenceConfig `json:"references"`
 }
 
@@ -208,7 +211,8 @@ func legacyImageSizeValues() []string {
 
 func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *ModelCapabilityConfig {
 	// 文本模型是否支持视觉输入不能从协议或模型名可靠推断，默认关闭，由管理员按真实上游能力开启。
-	text := &TextCapabilityConfig{References: TextReferenceConfig{PromptMaxChars: 32000}}
+	streaming := true
+	text := &TextCapabilityConfig{Streaming: &streaming, References: TextReferenceConfig{PromptMaxChars: 32000}}
 	video := &VideoCapabilityConfig{
 		References:        VideoReferenceConfig{PromptMaxChars: 1000, MinImages: 0, MaxImages: 9, MaxImageBytes: 30 * 1024 * 1024, MaxVideos: 0, MaxVideoBytes: 0, MaxVideoDuration: 0, MaxAudios: 0, MaxAudioBytes: 0, MaxAudioDuration: 0},
 		Duration:          VideoDurationConfig{Selection: "range", Min: 1, Max: 15, Step: 1, Default: 6},
@@ -324,7 +328,12 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		if input == nil || input.Text == nil {
 			return nil, BadAuthRequest("请配置文本模型能力参数")
 		}
-		value := &ModelCapabilityConfig{Version: 1, Text: input.Text}
+		text := *input.Text
+		if text.Streaming == nil {
+			streaming := true
+			text.Streaming = &streaming
+		}
+		value := &ModelCapabilityConfig{Version: 1, Text: &text}
 		if err := validateTextCapabilityConfig(value.Text); err != nil {
 			return nil, err
 		}

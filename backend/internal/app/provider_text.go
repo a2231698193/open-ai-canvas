@@ -57,17 +57,18 @@ func runAgentToolTask(ctx context.Context, input canvasGenerationInput) (map[str
 		body = claudeAgentBody(body)
 	}
 	body["model"] = input.Config.Model
-	result, err := postStreamingAgent(ctx, input.Config, path, body, protocol, input.OnTextDelta)
+	applyTextThinking(body, input, protocol)
+	result, err := postAgentRequest(ctx, input, path, body, protocol)
 	if protocol == "chat-completion" && isAgentToolChoiceCompatibilityError(err) {
 		if !isAutoAgentToolChoice(body["tool_choice"]) {
 			autoBody := cloneStringAnyMap(body)
 			autoBody["tool_choice"] = "auto"
-			result, err = postStreamingAgent(ctx, input.Config, path, autoBody, protocol, input.OnTextDelta)
+			result, err = postAgentRequest(ctx, input, path, autoBody, protocol)
 		}
 		if isAgentToolChoiceCompatibilityError(err) {
 			withoutToolChoice := cloneStringAnyMap(body)
 			delete(withoutToolChoice, "tool_choice")
-			result, err = postStreamingAgent(ctx, input.Config, path, withoutToolChoice, protocol, input.OnTextDelta)
+			result, err = postAgentRequest(ctx, input, path, withoutToolChoice, protocol)
 		}
 	}
 	if err != nil {
@@ -76,7 +77,22 @@ func runAgentToolTask(ctx context.Context, input canvasGenerationInput) (map[str
 	return result, nil
 }
 
+func postAgentRequest(ctx context.Context, input canvasGenerationInput, path string, body map[string]interface{}, protocol string) (map[string]interface{}, error) {
+	if input.StreamText {
+		return postStreamingAgent(ctx, input.Config, path, body, protocol, input.OnTextDelta)
+	}
+	delete(body, "stream")
+	var payload map[string]interface{}
+	if err := postJSON(ctx, input.Config, path, body, &payload); err != nil {
+		return nil, err
+	}
+	return parseAgentToolPayload(payload, protocol)
+}
+
 func runDeclarativeAgentTask(ctx context.Context, input canvasGenerationInput, adapter protocol.AgentAdapter) (map[string]interface{}, error) {
+	if input.TextOptions.Thinking {
+		return nil, errors.New("当前声明式 Agent 渠道尚不支持思考模式，请关闭思考模式或切换内置协议渠道")
+	}
 	if input.AgentRequests == nil {
 		return nil, errors.New("画布 Agent 工具请求缺少协议参数")
 	}

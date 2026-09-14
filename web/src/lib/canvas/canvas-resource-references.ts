@@ -310,6 +310,36 @@ export function buildCanvasResourceReferences(nodes: CanvasNodeData[], connectio
     return globalReferences.map((reference) => activeByNodeId.get(reference.nodeId) || reference);
 }
 
+/** Agent 的 @ 菜单覆盖整个画布，而不是只覆盖可作为生成输入的资源节点。 */
+export function buildCanvasAgentMentionReferences(nodes: CanvasNodeData[]): CanvasResourceReference[] {
+    return nodes.map((node, index) => {
+        const kind = resourceKind(node) || "text";
+        const fallbackTitle = `节点 ${index + 1}`;
+        return {
+            id: node.id,
+            nodeId: node.id,
+            kind,
+            label: node.title?.trim() || fallbackTitle,
+            title: node.title?.trim() || fallbackTitle,
+            previewUrl: node.metadata?.workflowKind === "character"
+                ? node.metadata.characterCoverUrl
+                : node.type === CanvasNodeType.Drawing
+                  ? node.metadata?.drawingPreviewUrl
+                  : node.type === CanvasNodeType.Video
+                    ? canvasNodeVideoPreviewUrl(node)
+                    : node.metadata?.previewContent || node.metadata?.content,
+            storageKey: node.metadata?.storageKey,
+            previewStorageKey: node.type === CanvasNodeType.Video ? node.metadata?.videoPreview?.storageKey : undefined,
+            drawingId: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingId : undefined,
+            drawingRevision: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingRevision : undefined,
+            text: node.metadata?.content || node.metadata?.composerContent || node.metadata?.prompt || node.title,
+            active: true,
+            sourceType: node.type,
+            mentionToken: canvasNodeMentionToken(node.id),
+        };
+    });
+}
+
 function uniqueCanvasNodes(nodes: CanvasNodeData[]) {
     const seen = new Set<string>();
     return nodes.filter((node) => {

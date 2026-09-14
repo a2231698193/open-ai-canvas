@@ -475,6 +475,63 @@ func TestClaudeAgentBodyMapsOpenAIStyleTools(t *testing.T) {
 	}
 }
 
+func TestCanonicalAgentBodiesPreserveAssistantToolCalls(t *testing.T) {
+	request := canonicalAgentRequest{
+		Messages: []map[string]any{
+			{"role": "user", "content": "读取画布"},
+			{"role": "assistant", "content": "我先查看当前内容。", "tool_calls": []cloudAgentCall{{
+				ID: "call-5",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{Name: "canvas_get_state", Arguments: `{}`},
+			}}},
+			{"role": "tool", "tool_call_id": "call-5", "content": `{"nodes":[]}`},
+		},
+	}
+
+	chat := canonicalAgentChatBody(&request, false)
+	chatMessages, _ := chat["messages"].([]interface{})
+	assistant, _ := chatMessages[1].(map[string]interface{})
+	if assistant["content"] != "我先查看当前内容。" || len(canonicalAgentToolCalls(assistant["tool_calls"])) != 1 {
+		t.Fatalf("chat assistant message lost text or tool call: %#v", assistant)
+	}
+	// Assert the actual JSON shape, not a helper that could repair missing fields.
+	raw, err := json.Marshal(chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]interface{}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	wireAssistant := wire["messages"].([]interface{})[1].(map[string]interface{})
+	wireCall := wireAssistant["tool_calls"].([]interface{})[0].(map[string]interface{})
+	if wireCall["type"] != "function" || wireCall["id"] != "call-5" {
+		t.Fatalf("chat tool call missing wire fields: %#v", wireCall)
+	}
+	function := wireCall["function"].(map[string]interface{})
+	if function["name"] != "canvas_get_state" || function["arguments"] != "{}" {
+		t.Fatalf("chat tool call changed function: %#v", function)
+	}
+	claude := claudeAgentBody(canonicalAgentChatBody(&request, true))
+	claudeAssistant := claude["messages"].([]interface{})[1].(map[string]interface{})
+	blocks, ok := claudeAssistant["content"].([]interface{})
+	if !ok || len(blocks) != 1 || blocks[0].(map[string]interface{})["type"] != "tool_use" {
+		t.Fatalf("claude assistant lost tool use: %#v", claudeAssistant)
+	}
+
+	responses := canonicalAgentResponsesBody(&request)
+	responseInput, _ := responses["input"].([]interface{})
+	if len(responseInput) != 4 {
+		t.Fatalf("responses input = %#v", responseInput)
+	}
+	functionCall, _ := responseInput[2].(map[string]interface{})
+	if functionCall["type"] != "function_call" || functionCall["name"] != "canvas_get_state" {
+		t.Fatalf("responses function call = %#v", functionCall)
+	}
+}
+
 func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
 	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
 	var choices []interface{}
@@ -484,6 +541,9 @@ func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		choice, exists := body["tool_choice"]
+		if body["reasoning_effort"] != "medium" {
+			t.Errorf("thinking was not forwarded: %#v", body["reasoning_effort"])
+		}
 		if exists {
 			choices = append(choices, choice)
 		} else {
@@ -501,6 +561,7 @@ func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
 	config := providerConfig{BaseURL: server.URL, APIKey: "key", Model: "thinking-model"}
 	result, err := runAgentToolTask(context.Background(), canvasGenerationInput{
 		Config:        config,
+		TextOptions:   canvasTextOptions{Thinking: true},
 		AgentRequests: &agentToolRequests{ChatCompletion: map[string]interface{}{"messages": []interface{}{}, "tool_choice": "required"}},
 	})
 	if err != nil {

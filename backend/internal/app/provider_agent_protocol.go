@@ -129,6 +129,15 @@ func canonicalAgentChatBody(source *canonicalAgentRequest, claude bool) map[stri
 			continue
 		}
 		converted := map[string]interface{}{"role": message["role"], "content": canonicalAgentContent(message["content"], format)}
+		if calls := canonicalAgentToolCalls(message["tool_calls"]); len(calls) > 0 {
+			// Runtime calls are protocol-neutral; materialize the wire discriminator here.
+			wireCalls := make([]interface{}, 0, len(calls))
+			for _, call := range calls {
+				call["type"] = "function"
+				wireCalls = append(wireCalls, call)
+			}
+			converted["tool_calls"] = wireCalls
+		}
 		if claude && stringField(message, "role") == "system" {
 			converted["content"] = canonicalAgentText(message["content"])
 		}
@@ -161,6 +170,10 @@ func canonicalAgentResponsesBody(source *canonicalAgentRequest) map[string]inter
 			messages = append(messages, map[string]interface{}{"type": "function_call_output", "call_id": message["tool_call_id"], "output": message["content"]})
 		default:
 			messages = append(messages, map[string]interface{}{"role": message["role"], "content": canonicalAgentContent(message["content"], "responses")})
+			for _, call := range canonicalAgentToolCalls(message["tool_calls"]) {
+				function, _ := call["function"].(map[string]interface{})
+				messages = append(messages, map[string]interface{}{"type": "function_call", "call_id": call["id"], "name": function["name"], "arguments": function["arguments"]})
+			}
 		}
 	}
 	tools := make([]interface{}, 0, len(source.Tools))
@@ -361,6 +374,18 @@ func canonicalAgentJSONValue(value interface{}) interface{} {
 		}
 	}
 	return value
+}
+
+func canonicalAgentToolCalls(value interface{}) []map[string]interface{} {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var calls []map[string]interface{}
+	if json.Unmarshal(raw, &calls) != nil {
+		return nil
+	}
+	return calls
 }
 
 func canonicalAgentJSONObject(value interface{}) map[string]interface{} {

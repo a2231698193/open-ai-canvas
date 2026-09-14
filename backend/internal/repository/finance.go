@@ -713,6 +713,10 @@ func (r *Repository) SettleBillingOrder(id string, providerRequestID string) err
 			if err != nil {
 				return err
 			}
+			chargeCapped := order.ChargeLimitMicrocredits > 0 && actual > order.ChargeLimitMicrocredits
+			if chargeCapped {
+				actual = order.ChargeLimitMicrocredits
+			}
 			observedActual = actual
 			observedActualAvailable = true
 			refund := max(reserved-actual, int64(0))
@@ -746,7 +750,9 @@ func (r *Repository) SettleBillingOrder(id string, providerRequestID string) err
 				return err
 			}
 			consumeNote := ""
-			if supplement > 0 {
+			if chargeCapped {
+				consumeNote = "Token 实际用量超过 Agent 报价，已按本轮硬上限结算"
+			} else if supplement > 0 {
 				consumeNote = "Token 实际用量超过预授权，已补扣差额"
 			}
 			if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerConsume,

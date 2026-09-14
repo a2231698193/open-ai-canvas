@@ -27,9 +27,9 @@ func TestRunClaudeTextTaskUsesMessagesAndAPIKeyHeader(t *testing.T) {
 
 	config := providerConfig{
 		BaseURL: server.URL + "/v1", APIKey: "claude-key", Model: "claude-test", APIFormat: "claude", InterfaceType: string(model.ChannelInterfaceClaudeAPI),
-		AllowLocalChannel: true,
 	}
-	result, err := runTextTask(withProviderOutboundPolicy(context.Background(), config), canvasGenerationInput{Mode: "text", Prompt: "hello", Config: config})
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
+	result, err := runTextTask(context.Background(), canvasGenerationInput{Mode: "text", Prompt: "hello", Config: config})
 	if err != nil {
 		t.Fatal(err)
 	}

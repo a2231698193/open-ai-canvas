@@ -1,6 +1,7 @@
 package database
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 10
+const CurrentSchemaVersion int64 = 14
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -57,6 +58,59 @@ var schemaMigrations = []migration{
 	{version: 8, name: "logical_model_active_code", checksum: logicalModelActiveCodeChecksum, apply: migrateSchemaV8},
 	{version: 9, name: "channel_presentation", checksum: "sha256:channel-presentation-v9-20260908", apply: migrateChannelPresentation},
 	{version: 10, name: "creation_runtime", checksum: creationRuntimeChecksum, apply: migrateSchemaV10},
+	{version: 11, name: "cloud_agent_runtime", checksum: "sha256:cloud-agent-runtime-v11-20260912", apply: func(tx *gorm.DB) error { return tx.AutoMigrate(&model.CloudAgentExecution{}) }},
+	{version: 12, name: "agent_token_charge_limit", checksum: "sha256:agent-token-charge-limit-v12-20260913", apply: migrateSchemaV12},
+	{version: 13, name: "cloud_agent_canvas_mutation", checksum: "sha256:cloud-agent-canvas-mutation-v13-20260913", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.CloudAgentCanvasMutation{})
+	}},
+	{version: 14, name: "cloud_agent_recovery_control", checksum: "sha256:cloud-agent-recovery-control-v14", apply: migrateSchemaV14},
+}
+
+func migrateSchemaV14(tx *gorm.DB) error {
+	if err := tx.AutoMigrate(&model.CloudAgentExecution{}); err != nil {
+		return err
+	}
+	// Keep cancellation recoverable for executions admitted before this schema.
+	// Bound memory while retaining the migration transaction's all-or-nothing semantics.
+	after := ""
+	for {
+		var runs []model.CloudAgentExecution
+		if err := tx.Where("id > ? AND status <> ?", after, "completed").Order("id ASC").Limit(100).Find(&runs).Error; err != nil {
+			return err
+		}
+		if len(runs) == 0 {
+			return nil
+		}
+		for _, run := range runs {
+			var state struct {
+				Request struct {
+					CanvasID string `json:"canvasId"`
+				} `json:"request"`
+				ActiveTaskID string `json:"activeTaskId"`
+				MediaTaskID  string `json:"mediaTaskId"`
+			}
+			// The root task ID is always a safe cancellation anchor. If an old
+			// transcript is damaged, retain a durable warning and cancel that
+			// root task during recovery instead of blocking the whole deployment.
+			updates := map[string]any{"active_task_id": run.ID}
+			if err := json.Unmarshal([]byte(run.StateJSON), &state); err != nil {
+				updates["failure_message"] = "旧 Agent 运行记录损坏，已保留根任务并进入安全收尾；请核对任务中心"
+			} else {
+				updates["canvas_id"] = state.Request.CanvasID
+				if state.ActiveTaskID != "" {
+					updates["active_task_id"] = state.ActiveTaskID
+				}
+				updates["media_task_id"] = state.MediaTaskID
+			}
+			if run.Status == "cancelled" || run.Status == "failed" {
+				updates["cleanup_pending"] = true
+			}
+			if err := tx.Model(&model.CloudAgentExecution{}).Where("id = ?", run.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			after = run.ID
+		}
+	}
 }
 
 func migrateChannelPresentation(tx *gorm.DB) error {
@@ -219,6 +273,20 @@ func migrateSchemaV8(tx *gorm.DB) error {
 func migrateSchemaV10(tx *gorm.DB) error {
 	if err := tx.AutoMigrate(&model.CreationRun{}, &model.CreationSubmission{}, &model.Task{}); err != nil {
 		return fmt.Errorf("创建创作运行时结构：%w", err)
+	}
+	return nil
+}
+
+// migrateSchemaV12 为 Agent 的 Token 计费增加最终扣费上限；旧账单保持 0，继续沿用既有按 usage 结算语义。
+func migrateSchemaV12(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable(&model.BillingOrder{}) {
+		return nil
+	}
+	if tx.Migrator().HasColumn(&model.BillingOrder{}, "ChargeLimitMicrocredits") {
+		return nil
+	}
+	if err := tx.Migrator().AddColumn(&model.BillingOrder{}, "ChargeLimitMicrocredits"); err != nil {
+		return fmt.Errorf("增加 Agent Token 扣费上限列：%w", err)
 	}
 	return nil
 }

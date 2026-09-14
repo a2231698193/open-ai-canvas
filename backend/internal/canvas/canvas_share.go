@@ -57,7 +57,7 @@ var publicCanvasMetadataKeys = map[string]bool{
 
 var publicCanvasForbiddenKeys = map[string]bool{
 	"apiKey": true, "storageKey": true, "taskId": true, "taskStatus": true, "taskProgress": true,
-	"taskStage": true, "taskCreatedAt": true, "taskUpdatedAt": true, "sessionId": true,
+	"taskStage": true, "taskCreatedAt": true, "taskUpdatedAt": true,
 	"errorDetails": true, "references": true,
 }
 

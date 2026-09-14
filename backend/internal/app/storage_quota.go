@@ -29,12 +29,12 @@ func (s *Service) AccountFileStorageUsage(userID string) (*AccountFileStorageUsa
 }
 
 func structuredBytes(usage repository.UserStorageUsage) int64 {
-	return usage.AssetBytes + usage.CanvasBytes + usage.SessionBytes
+	return usage.AssetBytes + usage.CanvasBytes
 }
 
 func validateStructuredStorageQuotaWithPolicy(usage repository.UserStorageUsage, kind string, creating bool, deltaBytes int64, policy RuntimeResourcePolicy) error {
 	if structuredBytes(usage)+deltaBytes > megabytes(policy.StructuredDataMB) {
-		return QuotaExceeded(fmt.Sprintf("账号画布、素材和会话数据已达到 %dMB 上限，请先删除不需要的内容", policy.StructuredDataMB))
+		return QuotaExceeded(fmt.Sprintf("账号画布和素材数据已达到 %dMB 上限，请先删除不需要的内容", policy.StructuredDataMB))
 	}
 	if !creating {
 		return nil
@@ -47,10 +47,6 @@ func validateStructuredStorageQuotaWithPolicy(usage repository.UserStorageUsage,
 	case "canvas":
 		if usage.CanvasCount >= policy.CanvasCount {
 			return QuotaExceeded(fmt.Sprintf("账号画布数量已达到 %d 个上限", policy.CanvasCount))
-		}
-	case "session":
-		if usage.SessionCount >= policy.SessionCount {
-			return QuotaExceeded(fmt.Sprintf("账号 Agent 会话数量已达到 %d 个上限", policy.SessionCount))
 		}
 	}
 	return nil
@@ -115,7 +111,7 @@ func createTaskWithStorageQuotaRepository(repo *repository.Repository, task *mod
 	return repo.CreateTaskWithActiveLimit(task, policy.Task.ActiveTaskLimit)
 }
 
-// 任务完成会同时扩张任务历史和 Agent 会话数据，必须在同一临界区核算并原子写入。
+// 任务完成会同时扩张任务历史和画布操作数据，必须在同一临界区核算并原子写入。
 func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJSON []byte, opsJSON []byte, hasCanvasOps bool) error {
 	policy, err := s.RuntimePolicy()
 	if err != nil {
@@ -131,29 +127,10 @@ func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJ
 	publicInputJSON := publicTaskInputJSON(task.InputJSON)
 	taskDelta := int64(len(resultJSON) + len(publicInputJSON) - len(task.ResultJSON) - len(task.InputJSON))
 
-	var session *model.Session
-	var message *model.Message
 	results := make([]model.Result, 0, 2)
 	structuredDelta := int64(0)
-	if task.SessionID != "" {
-		session, err = s.repo.SessionForUser(task.UserID, task.SessionID)
-		if err != nil {
-			return err
-		}
-		if hasCanvasOps {
-			structuredDelta += int64(len(opsJSON) - len(session.CanvasOpsJSON))
-			session.CanvasOpsJSON = string(opsJSON)
-		}
-		session.Status = model.SessionStatusCompleted
-		message = &model.Message{
-			ID: newID(), UserID: task.UserID, SessionID: task.SessionID, Role: "assistant",
-			Content: "已生成影视级工作流分镜和画布回写操作。", Payload: string(resultJSON),
-		}
-		structuredDelta += int64(len(message.Content) + len(message.Payload))
-		results = append(results, model.Result{ID: newID(), UserID: task.UserID, TaskID: task.ID, SessionID: task.SessionID, Kind: "generation_result", Payload: string(resultJSON)})
-	}
 	if hasCanvasOps {
-		results = append(results, model.Result{ID: newID(), UserID: task.UserID, TaskID: task.ID, SessionID: task.SessionID, Kind: "canvas_ops", Payload: string(opsJSON)})
+		results = append(results, model.Result{ID: newID(), UserID: task.UserID, TaskID: task.ID, Kind: "canvas_ops", Payload: string(opsJSON)})
 	}
 	for index := range results {
 		taskDelta += int64(len(results[index].URL) + len(results[index].Payload))
@@ -161,7 +138,7 @@ func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJ
 	if err := validateTaskDataGrowthQuotaWithPolicy(usage, taskDelta, policy.Resource); err != nil {
 		return err
 	}
-	if err := validateStructuredStorageQuotaWithPolicy(usage, "session", false, structuredDelta, policy.Resource); err != nil {
+	if err := validateStructuredStorageQuotaWithPolicy(usage, "canvas", false, structuredDelta, policy.Resource); err != nil {
 		return err
 	}
 
@@ -173,7 +150,7 @@ func (s *Service) saveTaskCompletionWithinStorageQuota(task *model.Task, resultJ
 	completed.ResultJSON = string(resultJSON)
 	completed.InputJSON = publicInputJSON
 	completed.CompletedAt = ptr(time.Now())
-	if err := s.repo.SaveTaskCompletion(&completed, expectedStatus, session, message, results); err != nil {
+	if err := s.repo.SaveTaskCompletion(&completed, expectedStatus, results); err != nil {
 		return err
 	}
 	*task = completed

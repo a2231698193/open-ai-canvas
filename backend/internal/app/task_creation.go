@@ -10,12 +10,22 @@ import (
 	"infinite-canvas/backend/internal/repository"
 )
 
+// Internal admission constraints are not JSON fields. Callers cannot select a
+// task ID or bypass the quoted-charge ceiling through the public tasks API.
+type taskAdmission struct {
+	ID        string
+	MaxCharge int64
+}
+
 // CreateTask 收敛任务进入系统前的 admission 流程：输入标准化、逻辑模型路由、
 // 能力/额度校验和持久化。执行阶段由 worker 与 provider 相关模块负责。
 // CreateTask 校验并创建一条生成任务。
 // 这是常规模型生成任务的写入口：客户端只提交创作意图，模型、渠道、协议和计价信息必须由服务端目录重新解析，
 // 以保证“可展示的模型”与“实际执行及扣费的模型”来自同一份有效配置。
 func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task, error) {
+	if req.admission == nil && (strings.HasPrefix(req.Operation, "cloud_agent") || req.Input["cloudAgent"] != nil) {
+		return nil, BadAuthRequest("Agent 任务必须通过 Agent 接口创建")
+	}
 	if s.IsDraining() {
 		return nil, &AppError{Status: 503, Code: 503, Message: "服务正在维护，暂不接受新的生成任务", Retryable: true}
 	}
@@ -86,7 +96,10 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 	if activeTasks >= int64(policy.Task.ActiveTaskLimit) {
 		return nil, BadAuthRequest(fmt.Sprintf("同时排队或运行的任务最多 %d 个，请等待已有任务完成", policy.Task.ActiveTaskLimit))
 	}
-	task := model.Task{ID: newID(), UserID: userID, TraceID: req.TraceID, RequestID: req.RequestID, SessionID: req.SessionID, ProjectID: req.ProjectID, Type: taskType, Status: model.TaskStatusQueued, Stage: "等待队列调度", Progress: 5, Prompt: prompt, Operation: req.Operation, Provider: req.Provider, Model: req.Model}
+	task := model.Task{ID: newID(), UserID: userID, TraceID: req.TraceID, RequestID: req.RequestID, ProjectID: req.ProjectID, Type: taskType, Status: model.TaskStatusQueued, Stage: "等待队列调度", Progress: 5, Prompt: prompt, Operation: req.Operation, Provider: req.Provider, Model: req.Model}
+	if req.admission != nil {
+		task.ID = req.admission.ID
+	}
 	if routed != nil {
 		task.LogicalModelID = routed.LogicalModel.ID
 		task.LogicalModelRevisionID = routed.Revision.ID
@@ -102,6 +115,21 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 	billingOrder, err := s.taskBillingOrder(userID, &task, normalizedInput)
 	if err != nil {
 		return nil, err
+	}
+	if req.admission != nil && billingOrder != nil {
+		if billingOrder.AmountMicrocredits > req.admission.MaxCharge {
+			return nil, BadAuthRequest("模型调用报价超过本轮 Agent 积分上限，尚未创建任务或扣费")
+		}
+		switch billingOrder.BillingMode {
+		case "fixed_request", "per_second":
+			// 金额已经由服务端价格目录和请求规格确定。
+		case "token":
+			// 普通 Token 任务可在 usage 超过预估时补扣；Agent 必须把服务端报价固化为
+			// 最终扣费上限，使所有已准入任务的报价之和就是可验证的硬预算。
+			billingOrder.ChargeLimitMicrocredits = billingOrder.AmountMicrocredits
+		default:
+			return nil, BadAuthRequest("Agent 暂不支持当前模型计费方式")
+		}
 	}
 	if req.creationPrepare != nil {
 		encoded, encodeErr := json.Marshal(normalizedInput)
@@ -178,7 +206,7 @@ func applyRoutedProviderSelection(input map[string]any, routed *RoutedModel) map
 	nextConfig := make(map[string]any, len(config)+2)
 	for key, value := range config {
 		switch key {
-		case "channelId", "channelModelKey", "priceTierId", "providerModelKey", "apiFormat", "interfaceType", "baseUrl", "allowLocalChannel", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
+		case "channelId", "channelModelKey", "priceTierId", "providerModelKey", "apiFormat", "interfaceType", "baseUrl", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
 			continue
 		default:
 			nextConfig[key] = value
@@ -255,7 +283,7 @@ func (s *Service) createTextReplayTask(userID string, req CreateTaskRequest, nor
 		return nil, err
 	}
 	task := model.Task{
-		ID: newID(), UserID: userID, TraceID: req.TraceID, RequestID: req.RequestID, SessionID: req.SessionID, ProjectID: req.ProjectID,
+		ID: newID(), UserID: userID, TraceID: req.TraceID, RequestID: req.RequestID, ProjectID: req.ProjectID,
 		Type: taskType, Status: model.TaskStatusTextReplay, Stage: "文本持久化（前端自管）", Progress: 5,
 		Prompt: prompt, Operation: req.Operation, Provider: req.Provider, Model: strings.TrimSpace(req.Model),
 	}
@@ -279,7 +307,7 @@ func (s *Service) createTextReplayTask(userID string, req CreateTaskRequest, nor
 // 其他任务类型必须是已实现的执行分支，避免未知类型落入假成功工作流。
 func validateTaskType(taskType string) error {
 	switch taskType {
-	case "text", "agent_storyboard", "agent_storyboard_rows", "canvas_text", "canvas_image", "canvas_video", "canvas_audio":
+	case "text", "canvas_text", "canvas_image", "canvas_video", "canvas_audio":
 		return nil
 	}
 	if strings.HasPrefix(taskType, "video_") && strings.TrimPrefix(taskType, "video_") != "" {
@@ -336,7 +364,7 @@ func (s *Service) resolveSystemChannelModelSelection(input map[string]any, taskT
 	nextConfig := make(map[string]any, len(config)+6)
 	for key, value := range config {
 		switch key {
-		case "channelId", "channelModelKey", "priceTierId", "providerModelKey", "apiFormat", "interfaceType", "baseUrl", "allowLocalChannel", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
+		case "channelId", "channelModelKey", "priceTierId", "providerModelKey", "apiFormat", "interfaceType", "baseUrl", "apiKey", "secretKey", "headers", "model", "capabilityConfig":
 			continue
 		default:
 			nextConfig[key] = value
@@ -408,7 +436,8 @@ func (s *Service) resolveSystemChannelModelSelection(input map[string]any, taskT
 func applyChannelCapabilityDefaults(config map[string]any, capability string, profile *ModelCapabilityConfig) {
 	setDefault := func(key string, value any) {
 		if existing, exists := config[key]; !exists || existing == nil || strings.TrimSpace(fmt.Sprint(existing)) == "" {
-			config[key] = value
+			// providerConfig uses string-valued controls, including booleans and counts.
+			config[key] = fmt.Sprint(value)
 		}
 	}
 	switch normalizeCapability(capability) {

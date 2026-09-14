@@ -19,7 +19,6 @@ func TestTaskInputUsesWorkflowProvider(t *testing.T) {
 		want  bool
 	}{
 		{name: "runninghub workflow", input: map[string]any{"config": map[string]any{"interfaceType": "runninghub-workflow-video"}}, want: true},
-		{name: "comfy bridge", input: map[string]any{"config": map[string]any{"interfaceType": "comfyui-bridge-image"}}, want: true},
 		{name: "case insensitive", input: map[string]any{"config": map[string]any{"interfaceType": "RunningHub-Workflow-Audio"}}, want: true},
 		{name: "ordinary model", input: map[string]any{"config": map[string]any{"interfaceType": "openai-image", "channelId": "system-1", "model": "image-model"}}, want: false},
 		{name: "missing config", input: map[string]any{}, want: false},
@@ -187,8 +186,16 @@ func TestResolveSystemChannelModelSelectionAppliesServerDefaults(t *testing.T) {
 		t.Fatalf("resolveSystemChannelModelSelection() error = %v", err)
 	}
 	config := resolved["config"].(map[string]any)
-	if config["size"] != "1:1" || config["quality"] != "2k" || config["count"] != 1 || config["transparentBackground"] != false {
+	if config["size"] != "1:1" || config["quality"] != "2k" || config["count"] != "1" || config["transparentBackground"] != "false" {
 		t.Fatalf("server defaults were not applied: %#v", config)
+	}
+	encoded, err := json.Marshal(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var executable canvasGenerationInput
+	if err := json.Unmarshal(encoded, &executable); err != nil {
+		t.Fatalf("server defaults cannot be decoded by provider: %v", err)
 	}
 	if config["priceTierId"] != "tier-default" || config["providerModelKey"] != "provider-image-default" {
 		t.Fatalf("server price selection was not persisted: %#v", config)

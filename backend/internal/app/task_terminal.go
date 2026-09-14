@@ -12,13 +12,12 @@ import (
 
 // taskTerminalCoordinator 收敛任务进入终态后的业务策略。
 //
-// 任务执行本身仍由 Service 编排，但“失败如何记账、取消如何投影到会话、
-// 成功后如何收尾”必须保持一致，不能散落在 provider/worker 分支中。
+// 任务执行本身仍由 Service 编排，但失败、取消和成功收尾必须保持一致，
+// 不能散落在 provider/worker 分支中。
 type taskTerminalCoordinator struct {
 	repo              taskTerminalRepository
 	billing           taskBillingLifecycle
 	replay            taskReplayLifecycle
-	sessions          taskSessionLifecycle
 	logger            taskLifecycleLogger
 	outputs           taskOutputLifecycle
 	userFacingMessage func(error) string
@@ -41,10 +40,6 @@ type taskReplayLifecycle interface {
 	finalizeTaskTextReplay(taskID string, status model.TaskStatus) error
 }
 
-type taskSessionLifecycle interface {
-	markSessionFailed(task model.Task, message string) error
-}
-
 type taskLifecycleLogger interface {
 	log(userID string, taskID string, level string, message string, payload string) error
 }
@@ -58,7 +53,6 @@ func newTaskTerminalCoordinator(s *Service) *taskTerminalCoordinator {
 		repo:              s.repo,
 		billing:           s.taskBilling(),
 		replay:            s,
-		sessions:          s,
 		logger:            s,
 		outputs:           s,
 		userFacingMessage: s.UserFacingErrorMessage,
@@ -99,7 +93,7 @@ func (c *taskTerminalCoordinator) markPreparationFailure(task *model.Task, stage
 func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err error, providerSucceeded bool, channelSlotFailedBeforeRequest bool) error {
 	if errors.Is(err, context.Canceled) {
 		// 用户取消会先把数据库任务置为 cancelled，再停止 worker context。
-		// 此时不再重复退款/核对，只补齐 worker 侧的会话、回放和日志收尾。
+		// 此时不再重复退款/核对，只补齐 worker 侧的回放和日志收尾。
 		if latest, latestErr := c.repo.Task(task.ID); latestErr == nil && latest.Status == model.TaskStatusCancelled {
 			return c.handleAlreadyCancelled(*latest)
 		}
@@ -115,15 +109,11 @@ func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err e
 		} else {
 			billingErr = c.billing.MarkBillingUncertain(task.BillingOrderID, "任务取消时上游费用状态不明确")
 		}
-		sessionErr := c.sessions.markSessionFailed(*task, "会话任务已取消。")
 		c.finalizeReplay(task, model.TaskStatusCancelled, "文本回放草稿归并失败")
 		_ = c.logger.log(task.UserID, task.ID, "warn", "任务已取消", "")
 		var resultErr error
 		if billingErr != nil {
 			resultErr = errors.Join(resultErr, fmt.Errorf("任务取消后的计费收尾失败：%w", billingErr))
-		}
-		if sessionErr != nil {
-			resultErr = errors.Join(resultErr, fmt.Errorf("任务取消后的会话状态更新失败：%w", sessionErr))
 		}
 		return resultErr
 	}
@@ -142,39 +132,27 @@ func (c *taskTerminalCoordinator) handleExecutionFailure(task *model.Task, err e
 	} else {
 		billingErr = c.billing.RefundBilling(task.BillingOrderID, task.Error)
 	}
-	sessionErr := c.sessions.markSessionFailed(*task, task.Error)
 	_ = c.logger.log(task.UserID, task.ID, "error", "任务处理失败", task.Error)
 	resultErr := err
 	if billingErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("任务计费收尾失败：%w", billingErr))
-	}
-	if sessionErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("任务失败后的会话状态更新失败：%w", sessionErr))
 	}
 	return resultErr
 }
 
 func (c *taskTerminalCoordinator) handleAlreadyCancelled(task model.Task) error {
 	c.finalizeReplay(&task, model.TaskStatusCancelled, "文本回放草稿归并失败")
-	sessionErr := c.sessions.markSessionFailed(task, "会话任务已取消。")
 	_ = c.logger.log(task.UserID, task.ID, "warn", "任务已取消，worker 已停止执行", "")
-	if sessionErr != nil {
-		return fmt.Errorf("任务取消后的会话状态更新失败：%w", sessionErr)
-	}
 	return nil
 }
 
 func (c *taskTerminalCoordinator) handleCancelledResult(task model.Task) error {
 	c.finalizeReplay(&task, model.TaskStatusCancelled, "文本回放草稿归并失败")
 	billingErr := c.billing.MarkBillingUncertain(task.BillingOrderID, "上游已返回结果，但任务被取消")
-	sessionErr := c.sessions.markSessionFailed(task, "会话任务已取消。")
 	_ = c.logger.log(task.UserID, task.ID, "warn", "任务已取消，丢弃生成结果", "")
 	var resultErr error
 	if billingErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("丢弃已生成结果后的计费收尾失败：%w", billingErr))
-	}
-	if sessionErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("丢弃已生成结果后的会话状态更新失败：%w", sessionErr))
 	}
 	return resultErr
 }
@@ -200,14 +178,10 @@ func (c *taskTerminalCoordinator) handleResultPersistenceFailure(task *model.Tas
 	}
 	c.finalizeReplay(task, model.TaskStatusFailed, "文本回放草稿归并失败")
 	billingErr := c.billing.MarkBillingUncertain(task.BillingOrderID, "上游已成功但任务结果未保存："+task.Error)
-	sessionErr := c.sessions.markSessionFailed(*task, task.Error)
 	_ = c.logger.log(task.UserID, task.ID, "error", "任务结果保存失败", task.Error)
 	resultErr := saveErr
 	if billingErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("任务结果保存失败后的计费收尾失败：%w", billingErr))
-	}
-	if sessionErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("任务结果保存失败后的会话状态更新失败：%w", sessionErr))
 	}
 	return false, resultErr
 }

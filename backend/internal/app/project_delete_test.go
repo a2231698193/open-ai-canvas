@@ -29,7 +29,6 @@ func newProjectDeleteTestService(t *testing.T) (*Service, *gorm.DB) {
 		&model.ProjectAssetCandidate{},
 		&model.Asset{},
 		&model.Task{},
-		&model.Session{},
 		&model.Shot{},
 		&model.ShotRevision{},
 		&model.ShotArtifact{},
@@ -51,8 +50,6 @@ func TestDeleteProjectUnlinksCanvasAndKeepsIndependentRecords(t *testing.T) {
 	asset := model.Asset{ID: "asset-1", UserID: "user-1", Title: "角色", Status: model.AssetVersionStatusConfirmed}
 	task := model.Task{ID: "task-1", UserID: "user-1", ProjectID: project.ID, Status: model.TaskStatusSucceeded, Prompt: "已完成"}
 	canvasTask := model.Task{ID: "task-2", UserID: "user-1", ProjectID: canvas.ID, Status: model.TaskStatusSucceeded, Prompt: "画布任务"}
-	session := model.Session{ID: "session-1", UserID: "user-1", ProjectID: project.ID, Status: model.SessionStatusCompleted}
-	canvasSession := model.Session{ID: "session-2", UserID: "user-1", ProjectID: canvas.ID, Status: model.SessionStatusCompleted}
 	seed := []any{
 		&project,
 		&canvas,
@@ -69,8 +66,6 @@ func TestDeleteProjectUnlinksCanvasAndKeepsIndependentRecords(t *testing.T) {
 		&task,
 		&canvasTask,
 		&model.ProductionTaskLink{ID: "production-link-1", TaskID: task.ID, ProjectID: project.ID, UnitID: "unit-1", ShotID: "shot-1"},
-		&session,
-		&canvasSession,
 	}
 	for _, item := range seed {
 		if err := db.Create(item).Error; err != nil {
@@ -143,29 +138,14 @@ func TestDeleteProjectUnlinksCanvasAndKeepsIndependentRecords(t *testing.T) {
 	if storedCanvasTask.ProjectID != canvas.ID {
 		t.Fatalf("independent canvas task project id = %q, want %q", storedCanvasTask.ProjectID, canvas.ID)
 	}
-	var storedSession model.Session
-	if err := db.First(&storedSession, "id = ?", session.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if storedSession.ProjectID != "" {
-		t.Fatalf("direct project session id = %q, want empty", storedSession.ProjectID)
-	}
-	var storedCanvasSession model.Session
-	if err := db.First(&storedCanvasSession, "id = ?", canvasSession.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if storedCanvasSession.ProjectID != canvas.ID {
-		t.Fatalf("independent canvas session project id = %q, want %q", storedCanvasSession.ProjectID, canvas.ID)
-	}
 }
 
-func TestDeleteUserCanvasProjectDetachesTaskAndSessionScope(t *testing.T) {
+func TestDeleteUserCanvasProjectDetachesTaskScope(t *testing.T) {
 	service, db := newProjectDeleteTestService(t)
 	canvas := model.CanvasProject{ID: "canvas-delete-1", UserID: "user-1", Title: "待删除画布", PayloadJSON: `{"id":"canvas-delete-1"}`}
 	task := model.Task{ID: "task-canvas-delete-1", UserID: "user-1", ProjectID: canvas.ID, Status: model.TaskStatusSucceeded, Prompt: "已完成"}
-	session := model.Session{ID: "session-canvas-delete-1", UserID: "user-1", ProjectID: canvas.ID, Status: model.SessionStatusCompleted}
 	canvasLink := model.CanvasUnitLink{ID: "canvas-link-delete-1", ProjectID: "project-1", CanvasID: canvas.ID, UnitID: "unit-1", Role: "primary"}
-	for _, item := range []any{&canvas, &model.CanvasShare{ID: "share-canvas-delete-1", UserID: "user-1", ProjectID: canvas.ID}, &canvasLink, &task, &session} {
+	for _, item := range []any{&canvas, &model.CanvasShare{ID: "share-canvas-delete-1", UserID: "user-1", ProjectID: canvas.ID}, &canvasLink, &task} {
 		if err := db.Create(item).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -184,13 +164,6 @@ func TestDeleteUserCanvasProjectDetachesTaskAndSessionScope(t *testing.T) {
 	}
 	if storedTask.ProjectID != "" {
 		t.Fatalf("task project id = %q, want empty", storedTask.ProjectID)
-	}
-	var storedSession model.Session
-	if err := db.First(&storedSession, "id = ?", session.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if storedSession.ProjectID != "" {
-		t.Fatalf("session project id = %q, want empty", storedSession.ProjectID)
 	}
 	var shareCount int64
 	if err := db.Model(&model.CanvasShare{}).Where("project_id = ?", canvas.ID).Count(&shareCount).Error; err != nil {

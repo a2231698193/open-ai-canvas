@@ -13,7 +13,6 @@ import (
 // 渠道模型、供应线路和受保护输入泄露到普通用户接口。
 type TaskSummary struct {
 	ID                        string                     `json:"id"`
-	SessionID                 string                     `json:"sessionId,omitempty"`
 	ProjectID                 string                     `json:"projectId,omitempty"`
 	Type                      string                     `json:"type"`
 	Status                    model.TaskStatus           `json:"status"`
@@ -104,7 +103,6 @@ func taskSummaryForOutput(task model.Task) TaskSummary {
 	previewURL, previewKind, previewPosterURL := taskMediaPreviewWithPoster(task.ResultJSON, task.Type)
 	return TaskSummary{
 		ID:                        task.ID,
-		SessionID:                 task.SessionID,
 		ProjectID:                 task.ProjectID,
 		Type:                      task.Type,
 		Status:                    task.Status,

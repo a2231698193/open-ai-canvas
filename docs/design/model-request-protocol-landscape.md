@@ -443,7 +443,6 @@ if model name contains minimax/h3
 | `agnes-video-v20` | frame-based V2.0 profile |
 | `replicate-prediction` | prediction lifecycle + model schema |
 | `fal-queue` | queue lifecycle + endpoint schema |
-| `comfyui-workflow` | workflow graph/upload/history/view |
 
 一个安装包可以贡献多个 provider profile，但运行时必须能区分每个 profile 的 endpoint、transport、能力和模型约束。
 

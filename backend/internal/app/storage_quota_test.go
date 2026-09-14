@@ -50,14 +50,12 @@ func TestUserStorageUsageCountsPersistedPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.Asset{}, &model.CanvasProject{}, &model.Session{}, &model.Message{}, &model.Task{}, &model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}, &model.TaskTextDelta{}); err != nil {
+	if err := db.AutoMigrate(&model.SystemSetting{}, &model.Asset{}, &model.CanvasProject{}, &model.Task{}, &model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}, &model.TaskTextDelta{}); err != nil {
 		t.Fatal(err)
 	}
 	items := []any{
 		&model.Asset{ID: "asset-1", UserID: "user-1", PayloadJSON: "abcd"},
 		&model.CanvasProject{ID: "canvas-1", UserID: "user-1", PayloadJSON: "xy"},
-		&model.Session{ID: "session-1", UserID: "user-1", Prompt: "p", CanvasSnapshotJSON: "{}"},
-		&model.Message{ID: "message-1", UserID: "user-1", SessionID: "session-1", Content: "hi", Payload: "z"},
 		&model.Task{ID: "task-1", UserID: "user-1", Prompt: "p", InputJSON: "{}", ResultJSON: "{}"},
 		&model.TaskLog{ID: "log-1", UserID: "user-1", TaskID: "task-1", Message: "m", Payload: "p"},
 		&model.Result{ID: "result-1", UserID: "user-1", TaskID: "task-1", URL: "u", Payload: "r"},
@@ -72,7 +70,7 @@ func TestUserStorageUsageCountsPersistedPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.AssetCount != 1 || usage.AssetBytes != 4 || usage.CanvasCount != 1 || usage.CanvasBytes != 2 || usage.SessionCount != 1 || usage.SessionBytes != 6 || usage.TaskCount != 1 || usage.TaskBytes != 14 || usage.APICallCount != 1 {
+	if usage.AssetCount != 1 || usage.AssetBytes != 4 || usage.CanvasCount != 1 || usage.CanvasBytes != 2 || usage.TaskCount != 1 || usage.TaskBytes != 14 || usage.APICallCount != 1 {
 		t.Fatalf("UserStorageUsage() = %#v", usage)
 	}
 }
@@ -82,14 +80,10 @@ func TestSaveTaskCompletionPersistsRelatedRowsTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.Asset{}, &model.CanvasProject{}, &model.Session{}, &model.Message{}, &model.Task{}, &model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}, &model.TaskTextDelta{}); err != nil {
+	if err := db.AutoMigrate(&model.SystemSetting{}, &model.Asset{}, &model.CanvasProject{}, &model.Task{}, &model.TaskLog{}, &model.Result{}, &model.ApiCallLog{}, &model.TaskTextDelta{}); err != nil {
 		t.Fatal(err)
 	}
-	session := model.Session{ID: "session-1", UserID: "user-1", Status: model.SessionStatusActive}
-	task := model.Task{ID: "task-1", UserID: "user-1", SessionID: session.ID, Status: model.TaskStatusRunning, InputJSON: `{"mode":"text"}`}
-	if err := db.Create(&session).Error; err != nil {
-		t.Fatal(err)
-	}
+	task := model.Task{ID: "task-1", UserID: "user-1", Status: model.TaskStatusRunning, InputJSON: `{"mode":"text"}`}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -97,15 +91,11 @@ func TestSaveTaskCompletionPersistsRelatedRowsTogether(t *testing.T) {
 	if err := svc.saveTaskCompletionWithinStorageQuota(&task, []byte(`{"ok":true}`), []byte(`[{"op":"add"}]`), true); err != nil {
 		t.Fatal(err)
 	}
-	var messageCount int64
 	var resultCount int64
-	if err := db.Model(&model.Message{}).Count(&messageCount).Error; err != nil {
-		t.Fatal(err)
-	}
 	if err := db.Model(&model.Result{}).Count(&resultCount).Error; err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != model.TaskStatusSucceeded || messageCount != 1 || resultCount != 2 {
-		t.Fatalf("completion = status:%s messages:%d results:%d", task.Status, messageCount, resultCount)
+	if task.Status != model.TaskStatusSucceeded || resultCount != 1 {
+		t.Fatalf("completion = status:%s results:%d", task.Status, resultCount)
 	}
 }

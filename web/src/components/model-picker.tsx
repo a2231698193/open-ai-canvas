@@ -130,7 +130,7 @@ export function ModelPicker({
     }, [open]);
 
     const setPickerOpen = (nextOpen: boolean) => {
-        if (nextOpen && !options.length && config.channelMode === "local") onMissingConfig?.();
+        if (nextOpen && !options.length) onMissingConfig?.();
         if (nextOpen) window.dispatchEvent(new CustomEvent("model-picker-open", { detail: pickerId }));
         setOpen(nextOpen);
     };

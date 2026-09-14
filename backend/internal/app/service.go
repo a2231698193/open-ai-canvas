@@ -22,77 +22,61 @@ import (
 )
 
 type Service struct {
-	repo                       *repository.Repository
-	dataDir                    string
-	runtimeCapabilities        RuntimeCapabilities
-	cancelMu                   sync.Mutex
-	registrationMu             sync.Mutex
-	emailCodeMu                sync.Mutex
-	redeemBatchMu              sync.Mutex
-	storageMu                  sync.Mutex
-	storageTestMu              sync.Mutex
-	workerRuntimeMu            sync.Mutex
-	activeStorageTests         map[string]bool
-	characterTaskMu            sync.Mutex
-	activeCancels              map[string]context.CancelFunc
-	pendingStorage             map[string]int64
-	coordinator                *platform.Coordinator
-	platform                   *platform.Service
-	taskBillingCoordinator     *taskBillingCoordinator
-	taskTerminalCoordinator    *taskTerminalCoordinator
-	taskRouteExecutor          *taskRouteExecutor
-	taskWorkerCoordinator      *taskWorkerCoordinator
-	taskLifecycleCoordinator   *taskLifecycleCoordinator
-	sessionCreationCoordinator *sessionCreationCoordinator
-	sessionUploadCoordinator   *sessionUploadCoordinator
-	runtimeErr                 error
-	pluginRuntime              *pluginRuntime
-	pluginRuntimeErr           error
-	paymentRegistry            *payment.Registry
-	workerID                   string
-	routeCatalogMu             sync.RWMutex
-	routeCatalogRefreshMu      sync.Mutex
-	routeCatalog               *routeCatalogSnapshot
-	routeCatalogTTL            time.Duration
-	routeCatalogMaxStale       time.Duration
-	routeCatalogVersion        int64
-	routeHealthMu              sync.Mutex
-	routeHealthBlocked         map[string]time.Time
-	workers                    *platform.Worker
-	updateManager              UpdateManager
-	readCachesOnce             sync.Once
-	concurrencyReadCache       *platform.BoundedReadCache[string, platform.RuntimeTaskPolicy]
-	textReplayReadCache        *platform.BoundedReadCache[textReplayCacheKey, *TextReplayResult]
-	routeVersionReadCache      *platform.BoundedReadCache[string, int64]
-	routeCatalogRetryAt        time.Time
-	routeCatalogRefreshError   error
-	skills                     *skills.Service
-	prompts                    *prompts.Service
-	auth                       *auth.Service
-	canvas                     *canvas.Service
+	repo                     *repository.Repository
+	dataDir                  string
+	cancelMu                 sync.Mutex
+	registrationMu           sync.Mutex
+	emailCodeMu              sync.Mutex
+	redeemBatchMu            sync.Mutex
+	storageMu                sync.Mutex
+	storageTestMu            sync.Mutex
+	workerRuntimeMu          sync.Mutex
+	agentSchedulerMu         sync.Mutex
+	agentSchedulerCursor     string
+	activeStorageTests       map[string]bool
+	characterTaskMu          sync.Mutex
+	activeCancels            map[string]context.CancelFunc
+	pendingStorage           map[string]int64
+	coordinator              *platform.Coordinator
+	platform                 *platform.Service
+	taskBillingCoordinator   *taskBillingCoordinator
+	taskTerminalCoordinator  *taskTerminalCoordinator
+	taskRouteExecutor        *taskRouteExecutor
+	taskWorkerCoordinator    *taskWorkerCoordinator
+	taskLifecycleCoordinator *taskLifecycleCoordinator
+	runtimeErr               error
+	pluginRuntime            *pluginRuntime
+	pluginRuntimeErr         error
+	paymentRegistry          *payment.Registry
+	workerID                 string
+	routeCatalogMu           sync.RWMutex
+	routeCatalogRefreshMu    sync.Mutex
+	routeCatalog             *routeCatalogSnapshot
+	routeCatalogTTL          time.Duration
+	routeCatalogMaxStale     time.Duration
+	routeCatalogVersion      int64
+	routeHealthMu            sync.Mutex
+	routeHealthBlocked       map[string]time.Time
+	workers                  *platform.Worker
+	updateManager            UpdateManager
+	readCachesOnce           sync.Once
+	concurrencyReadCache     *platform.BoundedReadCache[string, platform.RuntimeTaskPolicy]
+	textReplayReadCache      *platform.BoundedReadCache[textReplayCacheKey, *TextReplayResult]
+	routeVersionReadCache    *platform.BoundedReadCache[string, int64]
+	routeCatalogRetryAt      time.Time
+	routeCatalogRefreshError error
+	skills                   *skills.Service
+	prompts                  *prompts.Service
+	auth                     *auth.Service
+	canvas                   *canvas.Service
 }
 
 const taskWorkerConcurrency = 3
 const taskLogPayloadLimit = 4000
 
-type CreateSessionRequest struct {
-	ProjectID      string                    `json:"projectId"`
-	Prompt         string                    `json:"prompt"`
-	CanvasSnapshot map[string]any            `json:"canvasSnapshot"`
-	References     []string                  `json:"references"`
-	Requirements   string                    `json:"requirements"`
-	CanvasAssets   []storyboardAsset         `json:"canvasAssets"`
-	ProjectStyle   storyboardProjectStyle    `json:"projectStyle"`
-	Characters     []storyboardCharacterCard `json:"characters"`
-	Config         providerConfig            `json:"config"`
-	LogicalModelID string                    `json:"logicalModelId"`
-	TraceID        string                    `json:"-"`
-	RequestID      string                    `json:"-"`
-}
-
 type CreateTaskRequest struct {
 	creationPrepare *creationTaskPreparation
-	SessionID       string         `json:"sessionId"`
+	admission       *taskAdmission
 	ProjectID       string         `json:"projectId"`
 	Type            string         `json:"type"`
 	Operation       string         `json:"operation"`
@@ -105,13 +89,6 @@ type CreateTaskRequest struct {
 	RequestID       string         `json:"-"`
 }
 
-type SessionDetail struct {
-	Session  model.Session   `json:"session"`
-	Messages []model.Message `json:"messages"`
-	Tasks    []TaskSummary   `json:"tasks"`
-	Results  []model.Result  `json:"results"`
-}
-
 type TaskListOptions struct {
 	Limit      int
 	ProjectID  string
@@ -119,10 +96,10 @@ type TaskListOptions struct {
 }
 
 func New(repo *repository.Repository, dataDir string) *Service {
-	return NewWithRuntimeCapabilities(repo, dataDir, RuntimeCapabilities{})
+	return newService(repo, dataDir)
 }
 
-func NewWithRuntimeCapabilities(repo *repository.Repository, dataDir string, capabilities RuntimeCapabilities) *Service {
+func newService(repo *repository.Repository, dataDir string) *Service {
 	coordinator, err := platform.NewCoordinator(repo.Dialect())
 	pluginRuntime, pluginRuntimeErr := newPluginRuntime(dataDir)
 	paymentRegistry, _ := payment.NewRegistry()
@@ -131,14 +108,12 @@ func NewWithRuntimeCapabilities(repo *repository.Repository, dataDir string, cap
 			paymentRegistry = dynamic
 		}
 	}
-	service := &Service{repo: repo, dataDir: dataDir, runtimeCapabilities: capabilities, activeStorageTests: make(map[string]bool), activeCancels: make(map[string]context.CancelFunc), coordinator: coordinator, runtimeErr: err, pluginRuntime: pluginRuntime, pluginRuntimeErr: pluginRuntimeErr, paymentRegistry: paymentRegistry, workerID: newID(), routeCatalogTTL: 30 * time.Second, routeCatalogMaxStale: 5 * time.Minute, routeHealthBlocked: make(map[string]time.Time)}
+	service := &Service{repo: repo, dataDir: dataDir, activeStorageTests: make(map[string]bool), activeCancels: make(map[string]context.CancelFunc), coordinator: coordinator, runtimeErr: err, pluginRuntime: pluginRuntime, pluginRuntimeErr: pluginRuntimeErr, paymentRegistry: paymentRegistry, workerID: newID(), routeCatalogTTL: 30 * time.Second, routeCatalogMaxStale: 5 * time.Minute, routeHealthBlocked: make(map[string]time.Time)}
 	service.taskBillingCoordinator = newTaskBillingCoordinator(service.repo)
 	service.taskTerminalCoordinator = newTaskTerminalCoordinator(service)
 	service.taskRouteExecutor = newTaskRouteExecutor(service)
 	service.taskWorkerCoordinator = newTaskWorkerCoordinator(service)
 	service.taskLifecycleCoordinator = newTaskLifecycleCoordinator(service)
-	service.sessionCreationCoordinator = newSessionCreationCoordinator(service)
-	service.sessionUploadCoordinator = newSessionUploadCoordinator(service)
 	service.skills = skills.New(service.repo, service.dataDir, service.runWorkerLoop)
 	service.prompts = prompts.New(service.repo, promptAdminGate{svc: service})
 	service.auth = auth.New(service.repo, authHost{svc: service}, nil)
@@ -192,35 +167,10 @@ func (s *Service) runWorkerTask(fn func()) bool {
 	return s.backgroundWorkers().GoTask(fn)
 }
 
-func (s *Service) CreateSession(userID string, req CreateSessionRequest) (*SessionDetail, error) {
-	return s.sessionCreation().create(userID, req)
-}
-
 func channelModelNames(channel model.ModelChannel) []string {
 	models := []string{}
 	_ = json.Unmarshal([]byte(channel.ModelsJSON), &models)
 	return uniqueNonEmpty(models)
-}
-
-func (s *Service) SessionDetail(userID string, id string) (*SessionDetail, error) {
-	session, err := s.repo.SessionForUser(userID, id)
-	if err != nil {
-		return nil, err
-	}
-	messages, err := s.repo.SessionMessages(userID, id)
-	if err != nil {
-		return nil, err
-	}
-	tasks, err := s.repo.SessionTasks(userID, id)
-	if err != nil {
-		return nil, err
-	}
-	taskSummaries := taskSummariesForOutput(tasks)
-	results, err := s.repo.SessionResults(userID, id)
-	if err != nil {
-		return nil, err
-	}
-	return &SessionDetail{Session: *session, Messages: messages, Tasks: taskSummaries, Results: results}, nil
 }
 
 func (s *Service) Tasks(userID string, limit int) ([]TaskSummary, error) {
@@ -381,20 +331,6 @@ func (s *Service) cancelActiveTask(id string) {
 	}
 }
 
-func (s *Service) markSessionFailed(task model.Task, message string) error {
-	if task.SessionID == "" {
-		return nil
-	}
-	session, err := s.repo.SessionForUser(task.UserID, task.SessionID)
-	if err != nil {
-		return err
-	}
-	session.Status = model.SessionStatusFailed
-	if err := s.repo.Save(session); err != nil {
-		return err
-	}
-	return s.repo.Create(&model.Message{ID: newID(), UserID: task.UserID, SessionID: task.SessionID, Role: "assistant", Content: defaultString(message, "会话任务失败。")})
-}
 func nodeOp(id string, nodeType string, title string, x int, y int, workflowKind string, content string) map[string]any {
 	return nodeOpWithMetadata(id, nodeType, title, x, y, map[string]any{"content": content, "workflowKind": workflowKind, "status": "idle"})
 }

@@ -84,14 +84,11 @@ func TestAccountFileStorageUsageUsesStoredFilePolicy(t *testing.T) {
 	if err := svc.repo.Create(&model.Resource{ID: "resource-pending", UserID: "user-1", Status: model.ResourceStatusPending, Provider: "local", ObjectKey: "pending.png", Size: 11 << 20}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.repo.Create(&model.SessionFile{ID: "session-file-1", UserID: "user-1", SessionID: "session-1", Size: 2 << 20}); err != nil {
-		t.Fatal(err)
-	}
 	usage, err := svc.AccountFileStorageUsage("user-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.UsedBytes != 5<<20 || usage.TotalBytes != gigabytes(defaultRuntimePolicy().Resource.StoredFileGB) {
+	if usage.UsedBytes != 3<<20 || usage.TotalBytes != gigabytes(defaultRuntimePolicy().Resource.StoredFileGB) {
 		t.Fatalf("AccountFileStorageUsage() = %#v", usage)
 	}
 }

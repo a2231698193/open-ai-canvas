@@ -16,13 +16,10 @@ export function canvasConnectionError(config: AiConfig, nodes: CanvasNodeData[],
     if (acceptedInputKinds.length) {
         const source = nodes.find((node) => node.id === candidate.fromNodeId);
         const sourceKind = source ? getNodeInputKind(source.type) : undefined;
-        const isMediaConversion = target.type === CanvasNodeType.MediaConversion;
-        const hasAcceptedSource = isMediaConversion
-            ? source?.type === CanvasNodeType.Image || source?.type === CanvasNodeType.Video
-            : Boolean(sourceKind && acceptedInputKinds.includes(sourceKind));
+        const hasAcceptedSource = Boolean(sourceKind && acceptedInputKinds.includes(sourceKind));
         if (!sourceKind || !hasAcceptedSource) {
             const labels = acceptedInputKinds.map(acceptedInputKindLabel).join("或");
-            return `${isMediaConversion ? "转换" : labels}节点只接受${labels}输入`;
+            return `${labels}节点只接受${labels}输入`;
         }
         const maxInputCount = getNodeMaxInputCount(target.type);
         if (maxInputCount) {
@@ -31,7 +28,7 @@ export function canvasConnectionError(config: AiConfig, nodes: CanvasNodeData[],
                     .filter((connection) => connection.toNodeId === target.id)
                     .map((connection) => connection.fromNodeId),
             ).size;
-            if (inputCount > maxInputCount) return `${isMediaConversion ? "转换" : "当前"}节点最多连接 ${maxInputCount} 个输入`;
+            if (inputCount > maxInputCount) return `当前节点最多连接 ${maxInputCount} 个输入`;
         }
     }
     const mode = getNodeGenerationMode(target);

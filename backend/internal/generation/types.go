@@ -62,7 +62,6 @@ type Config struct {
 	APIFormat             string                    `json:"apiFormat"`
 	InterfaceType         string                    `json:"interfaceType"`
 	BaseURL               string                    `json:"baseUrl"`
-	AllowLocalChannel     bool                      `json:"allowLocalChannel"`
 	APIKey                string                    `json:"apiKey"`
 	SecretKey             string                    `json:"secretKey"`
 	Headers               []outbound.OutboundHeader `json:"headers"`
@@ -86,7 +85,6 @@ type Config struct {
 	WebappID              string                    `json:"webappId"`
 	WorkflowJSON          map[string]interface{}    `json:"workflowJson"`
 	WorkflowFields        []WorkflowField           `json:"workflowFields"`
-	BridgeID              string                    `json:"bridgeId"`
 	RunningHubUseWallet   bool                      `json:"runningHubUseWallet"`
 	RunningHubWalletKey   string                    `json:"runningHubWalletApiKey"`
 	RunningHubUploadKey   string                    `json:"runningHubUploadApiKey"`
@@ -106,7 +104,7 @@ type Media struct {
 	DurationMs int64  `json:"durationMs"`
 }
 
-// WorkflowField 是 RunningHub/ComfyUI 共用的字段描述。完整工作流执行仍在 service。
+// WorkflowField 是云端工作流字段描述。完整工作流执行仍在 service。
 type WorkflowField struct {
 	ID                 string        `json:"id"`
 	NodeID             string        `json:"nodeId"`

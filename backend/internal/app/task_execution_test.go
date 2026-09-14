@@ -35,7 +35,7 @@ func TestCanRunProviderTaskRequiresVideoConfig(t *testing.T) {
 		},
 		{
 			name: "non video task",
-			task: model.Task{Type: "agent_storyboard", InputJSON: `{"mode":"video","config":{"model":"veo","channelId":"channel-1"}}`},
+			task: model.Task{Type: "text_generation", InputJSON: `{"mode":"video","config":{"model":"veo","channelId":"channel-1"}}`},
 			want: false,
 		},
 	}
@@ -71,7 +71,6 @@ func TestValidateTaskType(t *testing.T) {
 	}{
 		{name: "missing", taskType: "", wantErr: true},
 		{name: "canvas image", taskType: "canvas_image"},
-		{name: "storyboard rows", taskType: "agent_storyboard_rows"},
 		{name: "video operation", taskType: "video_image_to_video"},
 		{name: "unknown canvas type", taskType: "canvas_unknown", wantErr: true},
 		{name: "unknown type", taskType: "workflow_router", wantErr: true},
