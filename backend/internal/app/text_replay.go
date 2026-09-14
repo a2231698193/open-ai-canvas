@@ -100,7 +100,11 @@ func (s *Service) AppendTaskTextDelta(userID string, taskID string, content stri
 	if errors.Is(err, repository.ErrTextReplayClosed) {
 		return nil, BadAuthRequest("已结束任务不能继续写入文本增量")
 	}
-	return item, err
+	if err != nil {
+		return nil, err
+	}
+	s.notifyCloudAgentTextDraft(userID, taskID)
+	return item, nil
 }
 
 func (s *Service) TaskTextReplay(userID string, taskID string, after int64) (*TextReplayResult, error) {

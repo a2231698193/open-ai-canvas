@@ -309,6 +309,38 @@ func TestCloudAgentWorkerPersistsRealResponse(t *testing.T) {
 	}
 }
 
+func TestCloudAgentTextDraftAdvancesWithoutWaitingScheduler(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	if err := db.Create(&model.CanvasProject{ID: "agent-canvas", UserID: "user", PayloadJSON: `{"nodes":[]}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	run, err := s.CreateCloudAgentRun("user", agentTestRequest(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.Task{}).Where("id = ?", run.ID).Updates(map[string]any{"status": model.TaskStatusRunning, "text_draft": "你好"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	execution, err := s.repo.CloudAgentByActiveTask("user", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.advanceCloudAgent(execution); err != nil {
+		t.Fatal(err)
+	}
+	execution, err = s.repo.CloudAgent("user", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state cloudAgentRuntime
+	if err := json.Unmarshal([]byte(execution.StateJSON), &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Events) == 0 || state.Events[len(state.Events)-1].Type != "assistant_delta" || state.Events[len(state.Events)-1].Payload["text"] != "你好" {
+		t.Fatalf("expected assistant_delta, got %#v", state.Events)
+	}
+}
+
 func TestCloudAgentConcurrentIdempotencyReservesOnce(t *testing.T) {
 	s, db, _, _ := creationTestService(t)
 	if err := db.Create(&model.CanvasProject{ID: "agent-canvas", UserID: "user", PayloadJSON: `{"nodes":[]}`}).Error; err != nil {

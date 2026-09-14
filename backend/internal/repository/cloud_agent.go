@@ -16,6 +16,11 @@ func (r *Repository) CloudAgent(userID, id string) (*model.CloudAgentExecution, 
 	err := r.db.First(&run, "id = ? AND user_id = ?", id, userID).Error
 	return &run, err
 }
+func (r *Repository) CloudAgentByActiveTask(userID, taskID string) (*model.CloudAgentExecution, error) {
+	var run model.CloudAgentExecution
+	err := r.db.Where("user_id = ? AND active_task_id = ? AND status IN ?", userID, taskID, []string{"queued", "running"}).Order("updated_at DESC").First(&run).Error
+	return &run, err
+}
 func (r *Repository) CloudAgentRoots() ([]model.Task, error) {
 	var tasks []model.Task
 	err := r.db.Where("operation = ? AND id NOT IN (SELECT id FROM cloud_agent_executions)", "cloud_agent").Order("created_at").Limit(50).Find(&tasks).Error

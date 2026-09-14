@@ -281,6 +281,21 @@ func (s *Service) cloudAgentExecutionOutput(task *model.Task, initial cloudAgent
 }
 
 // Runs one bounded transition at a time; no model HTTP call or approval wait holds a DB lock.
+func (s *Service) notifyCloudAgentTextDraft(userID, taskID string) {
+	if s == nil || userID == "" || taskID == "" {
+		return
+	}
+	go func() {
+		run, err := s.repo.CloudAgentByActiveTask(userID, taskID)
+		if err != nil || run == nil {
+			return
+		}
+		if err := s.advanceCloudAgent(run); err != nil && !errors.Is(err, repository.ErrCreationConflict) {
+			log.Printf("agent text draft %s: %v", run.ID, err)
+		}
+	}()
+}
+
 func (s *Service) advanceCloudAgentByID(userID, id string) error {
 	// Do not decode the task input/runtime before checking for an existing
 	// execution. A damaged runtime must be terminally recoverable, not
