@@ -9,3 +9,16 @@ test("lk888-video MiniMax H3 uses vendor ratios and resolutions", () => {
         defaultResolution: "768P",
     });
 });
+
+test("lk888-seedance includes adaptive ratio", () => {
+    expect(defaultModelCapabilityConfig("lk888-seedance", "doubao-seedance-2-0-260128").video).toMatchObject({
+        defaultRatio: "adaptive",
+        ratios: ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
+        resolutions: ["480p", "720p", "1080p", "4k"],
+        defaultResolution: "720p",
+    });
+    expect(defaultModelCapabilityConfig("lk888-seedance-anmiao", "doubao-seedance-2-0-fast-260128").video).toMatchObject({
+        defaultRatio: "adaptive",
+        resolutions: ["480p", "720p"],
+    });
+});

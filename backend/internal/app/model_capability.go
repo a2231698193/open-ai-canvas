@@ -281,7 +281,26 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-video") {
 		applyLK888VideoCapability(video, modelName)
 	}
+	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-seedance") || strings.EqualFold(strings.TrimSpace(protocol), "lk888-seedance-anmiao") {
+		applyLK888SeedanceCapability(video, modelName)
+	}
 	return &ModelCapabilityConfig{Version: 1, Text: text, Image: DefaultImageCapabilityConfig(protocol, modelName), Video: video}
+}
+
+func applyLK888SeedanceCapability(video *VideoCapabilityConfig, modelName string) {
+	key := strings.ToLower(strings.TrimSpace(modelName))
+	video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+	video.References.MaxImages, video.References.MaxVideos, video.References.MaxAudios = 9, 3, 3
+	video.References.MaxVideoBytes, video.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
+	video.References.MaxVideoDuration, video.References.MaxAudioDuration = 15, 15
+	video.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 15, Step: 1, Default: 5}
+	video.Ratios = []string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+	video.DefaultRatio = "adaptive"
+	video.Resolutions = []string{"480p", "720p", "1080p", "4k"}
+	if strings.Contains(key, "fast") || strings.Contains(key, "mini") {
+		video.Resolutions = []string{"480p", "720p"}
+	}
+	video.DefaultResolution = "720p"
 }
 
 func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {

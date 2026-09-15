@@ -356,7 +356,25 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.operations.push("reference_to_video", "audio_to_video");
     }
     if (protocol === "lk888-video") applyLK888VideoCapability(video, model);
+    if (protocol === "lk888-seedance" || protocol === "lk888-seedance-anmiao") applyLK888SeedanceCapability(video, model);
     return { version: 1, text, image: defaultImageCapabilityConfig(protocol, model), video };
+}
+
+function applyLK888SeedanceCapability(video: VideoCapabilityConfig, model: string) {
+    const key = model.trim().toLowerCase();
+    video.references.maxImages = 9;
+    video.references.maxVideos = 3;
+    video.references.maxAudios = 3;
+    video.references.maxVideoBytes = 200 * 1024 * 1024;
+    video.references.maxAudioBytes = 15 * 1024 * 1024;
+    video.references.maxVideoDurationSeconds = 15;
+    video.references.maxAudioDurationSeconds = 15;
+    video.duration = { selection: "range", min: 4, max: 15, step: 1, default: 5 };
+    video.ratios = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
+    video.defaultRatio = "adaptive";
+    video.resolutions = key.includes("fast") || key.includes("mini") ? ["480p", "720p"] : ["480p", "720p", "1080p", "4k"];
+    video.defaultResolution = "720p";
+    video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
 }
 
 function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) {

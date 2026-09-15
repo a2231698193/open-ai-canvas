@@ -153,6 +153,17 @@ func TestLK888VideoCapabilitiesUseModelLimits(t *testing.T) {
 	}
 }
 
+func TestLK888SeedanceCapabilitiesIncludeAdaptiveRatio(t *testing.T) {
+	standard := DefaultModelCapabilityConfigForModel("lk888-seedance", "doubao-seedance-2-0-260128").Video
+	if standard.DefaultRatio != "adaptive" || fmt.Sprint(standard.Ratios) != fmt.Sprint([]string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}) || fmt.Sprint(standard.Resolutions) != fmt.Sprint([]string{"480p", "720p", "1080p", "4k"}) {
+		t.Fatalf("lk888 seedance capability = %#v", standard)
+	}
+	anmiao := DefaultModelCapabilityConfigForModel("lk888-seedance-anmiao", "doubao-seedance-2-0-fast-260128").Video
+	if anmiao.DefaultRatio != "adaptive" || fmt.Sprint(anmiao.Resolutions) != fmt.Sprint([]string{"480p", "720p"}) {
+		t.Fatalf("lk888 seedance anmiao capability = %#v", anmiao)
+	}
+}
+
 func TestDefaultMiniMaxVideoCapabilitySupportsReferenceGeneration(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel("minimax-video", "MiniMax-H3")
 	if profile == nil || profile.Video == nil {
