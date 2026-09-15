@@ -11,6 +11,7 @@ import { canvasNodeMentionToken, canvasResourceMentionToken, type CanvasResource
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { batchReferenceHandleY } from "@/lib/canvas/canvas-batch-table";
 import { scopedLocalStorage } from "@/lib/user-scope";
+import { storyboardRowsFromTextResult } from "@/lib/canvas/storyboard-task-contract";
 import type { GenerationTask } from "@/services/api/task-center";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
@@ -100,7 +101,10 @@ export function cinematicStoryboardColumns(columns?: StoryboardColumn[]): Storyb
 }
 
 export function storyboardRowsFromTask(task: GenerationTask) {
-    const result = JSON.parse(task.resultJson || "{}") as { title?: string; rows?: Array<Partial<StoryboardRow>> };
+    const rawResult = JSON.parse(task.resultJson || "{}") as { title?: string; rows?: Array<Partial<StoryboardRow>>; text?: string };
+    const result = Array.isArray(rawResult.rows) && rawResult.rows.length
+        ? rawResult
+        : storyboardRowsFromTextResult(rawResult.text || "", task.inputJson) || rawResult;
     if (!Array.isArray(result.rows) || !result.rows.length) throw new Error("分镜任务没有返回镜头行");
     return {
         title: result.title?.trim(),

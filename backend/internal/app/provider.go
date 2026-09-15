@@ -25,17 +25,21 @@ import (
 var sseFrameBoundaryPattern = regexp.MustCompile(`\r?\n\r?\n`)
 
 type canvasGenerationInput struct {
-	Mode             string                 `json:"mode"`
-	Prompt           string                 `json:"prompt"`
-	Config           providerConfig         `json:"config"`
-	ReferenceImages  []providerMedia        `json:"referenceImages"`
-	ReferenceVideos  []providerMedia        `json:"referenceVideos"`
-	ReferenceAudios  []providerMedia        `json:"referenceAudios"`
-	TextHistory      []providerTextMessage  `json:"textHistory"`
-	Mask             *providerMedia         `json:"mask"`
-	Metadata         map[string]interface{} `json:"metadata"`
-	AgentRequests    *agentToolRequests     `json:"agentRequests"`
-	TextOptions      canvasTextOptions      `json:"textOptions"`
+	Mode                   string                      `json:"mode"`
+	Prompt                 string                      `json:"prompt"`
+	Config                 providerConfig              `json:"config"`
+	ReferenceImages        []providerMedia             `json:"referenceImages"`
+	ReferenceVideos        []providerMedia             `json:"referenceVideos"`
+	ReferenceAudios        []providerMedia             `json:"referenceAudios"`
+	TextHistory            []providerTextMessage       `json:"textHistory"`
+	Mask                   *providerMedia              `json:"mask"`
+	Metadata               map[string]interface{}      `json:"metadata"`
+	AgentRequests          *agentToolRequests          `json:"agentRequests"`
+	TextOptions            canvasTextOptions           `json:"textOptions"`
+	StoryboardCharacters   []storyboardResultCharacter `json:"characters"`
+	StoryboardProjectStyle struct {
+		Prompt string `json:"prompt"`
+	} `json:"projectStyle"`
 	ImageCapability  *ImageCapabilityConfig `json:"-"`
 	StreamText       bool                   `json:"-"` // 分镜请求使用上游 SSE 保活；最终结构仍在流结束后统一校验。
 	MaxOutputTokens  int                    `json:"-"`
@@ -445,6 +449,9 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 		result, taskErr := runTextTask(ctx, input)
 		if taskErr == nil && promptTemplateOperation != "" {
 			taskErr = validatePromptTemplateResult(promptTemplateOperation, result)
+		}
+		if taskErr == nil && promptTemplateOperation == promptOperationStoryboardPlan {
+			return materializeStoryboardPlanResult(result, input)
 		}
 		return result, taskErr
 	case "video":

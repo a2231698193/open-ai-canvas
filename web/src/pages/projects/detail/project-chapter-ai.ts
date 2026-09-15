@@ -1,6 +1,7 @@
 import { runBackendCanvasGenerationTask } from "@/lib/canvas/canvas-project-generation";
 import { PromptTemplateOperation, promptTemplateTaskPlaceholder } from "@/lib/prompts";
 import { storyboardRowsFromTask } from "@/lib/canvas/canvas-project-domain";
+import { storyboardPlanTaskMetadata } from "@/lib/canvas/storyboard-task-contract";
 import { parseChapterAssetBreakdown, type ChapterAssetBreakdown } from "@/lib/canvas/chapter-asset-breakdown";
 import { parseCharacterBreakdown } from "@/lib/canvas/canvas-character-reference";
 import { backendProviderConfig, parseBackendGenerationResult } from "@/services/api/generation-task";
@@ -90,6 +91,7 @@ export async function generateChapterStoryboard(input: ChapterStoryboardGenerati
         skills: input.skills,
         selectedSkillIds: input.selectedSkillIds,
     });
+    const requirements = "输出可直接写入分镜制作并继续生成分镜图、动作预演和镜头视频的分镜表。";
     const task = await createGenerationTask({
         projectId: input.projectId,
         type: "canvas_text",
@@ -100,7 +102,7 @@ export async function generateChapterStoryboard(input: ChapterStoryboardGenerati
         input: {
             mode: "text",
             canvasAssets: input.assets,
-            requirements: "输出可直接写入分镜制作并继续生成分镜图、动作预演和镜头视频的分镜表。",
+            requirements,
             projectStyle: input.projectStyle,
             characters: input.characters,
             shotDurationSeconds: 0,
@@ -111,6 +113,15 @@ export async function generateChapterStoryboard(input: ChapterStoryboardGenerati
                 chapterId: input.chapterId,
                 source: "short-drama-chapter-storyboard",
                 ...skillExecution.metadata,
+                ...storyboardPlanTaskMetadata({
+                    brief: skillExecution.prompt,
+                    requirements,
+                    assets: input.assets,
+                    projectStyle: input.projectStyle,
+                    characters: input.characters,
+                    shotDurationSeconds: 0,
+                    shotCount: 0,
+                }),
             },
         },
     });

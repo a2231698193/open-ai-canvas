@@ -21,6 +21,7 @@ import {
 import { buildNodeMentionReferences } from "@/lib/canvas/canvas-resource-references";
 import { buildStoryboardAssetCatalog } from "@/lib/canvas/canvas-storyboard-assets";
 import { resolveStoryboardGenerationContext } from "@/lib/canvas/canvas-storyboard-context";
+import { storyboardPlanTaskMetadata } from "@/lib/canvas/storyboard-task-contract";
 import { reconcileStoryboardTargetConnections, storyboardComposerContent, storyboardRowReferenceNodeIds } from "@/lib/canvas/canvas-storyboard-materializer";
 import { generationErrorMessage } from "@/lib/generation-error";
 import { navigateToSettings } from "@/lib/settings-navigation";
@@ -165,6 +166,8 @@ export function useCanvasStoryboard({
                 prompt: expandedPrompt,
                 skills: addedSkills,
             });
+            const canvasAssets = buildStoryboardAssetCatalog(nodesRef.current);
+            const requirements = "输出可直接编辑并用于批量生成图片和视频的分镜表。";
             assertCurrent();
             setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, composerContent: prompt, status: NODE_STATUS_LOADING, taskStage: "正在创建任务", taskProgress: 0, errorDetails: undefined, ...skillExecution.metadata } } : node));
             assertCurrent();
@@ -178,14 +181,26 @@ export function useCanvasStoryboard({
                 input: {
                     mode: "text",
                     prompt: skillExecution.prompt,
-                    canvasAssets: buildStoryboardAssetCatalog(nodesRef.current),
-                    requirements: "输出可直接编辑并用于批量生成图片和视频的分镜表。",
+                    canvasAssets,
+                    requirements,
                     projectStyle: storyboardContext.projectStyle,
                     characters: storyboardContext.characters,
                     shotDurationSeconds,
                     shotCount: requestedShotCount,
                     config: backendProviderConfig(generationConfig, "text"),
-                    metadata: { nodeId, ...skillExecution.metadata },
+                    metadata: {
+                        nodeId,
+                        ...skillExecution.metadata,
+                        ...storyboardPlanTaskMetadata({
+                            brief: skillExecution.prompt,
+                            requirements,
+                            assets: canvasAssets,
+                            projectStyle: storyboardContext.projectStyle,
+                            characters: storyboardContext.characters,
+                            shotDurationSeconds,
+                            shotCount: requestedShotCount,
+                        }),
+                    },
                 },
             };
             const managed = Boolean(logicalModelIDForConfig(generationConfig) || resolveModelRequestConfig(generationConfig, generationConfig.model).channelId);

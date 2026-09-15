@@ -18,6 +18,7 @@ test("章节页直接生成到分镜制作，并通过共享选择器执行技�
 test("章节分镜任务在 input 顶层声明文本生成模式", async () => {
     const source = await Bun.file(new URL("../src/pages/projects/detail/project-chapter-ai.ts", import.meta.url)).text();
     expect(source).toContain('input: {\n            mode: "text",');
+    expect(source).toContain("storyboardPlanTaskMetadata({");
 });
 
 test("镜头画面使用已绑定资产的 @ 引用编辑器", async () => {
@@ -38,6 +39,7 @@ test("画布分镜生成统一经过 Skill Runtime", async () => {
     expect(source).toContain('profile: "shortDrama"');
     expect(source).toContain("skillRuntime.prepare");
     expect(source).toContain("...skillExecution.metadata");
+    expect(source).toContain("storyboardPlanTaskMetadata({");
     expect(source).not.toContain("getSkillFile");
     expect(source).not.toContain("getSkillBundle");
 });
