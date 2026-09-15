@@ -98,6 +98,7 @@ export async function generateChapterStoryboard(input: ChapterStoryboardGenerati
         model,
         ...(logicalModelIDForConfig(config) ? { logicalModelId: logicalModelIDForConfig(config) } : {}),
         input: {
+            mode: "text",
             canvasAssets: input.assets,
             requirements: "输出可直接写入分镜制作并继续生成分镜图、动作预演和镜头视频的分镜表。",
             projectStyle: input.projectStyle,

@@ -15,6 +15,11 @@ test("章节页直接生成到分镜制作，并通过共享选择器执行技�
     expect(source).toContain("generateChapterStoryboard");
 });
 
+test("章节分镜任务在 input 顶层声明文本生成模式", async () => {
+    const source = await Bun.file(new URL("../src/pages/projects/detail/project-chapter-ai.ts", import.meta.url)).text();
+    expect(source).toContain('input: {\n            mode: "text",');
+});
+
 test("镜头画面使用已绑定资产的 @ 引用编辑器", async () => {
     const source = await Bun.file(new URL("../src/pages/projects/detail/workflow-production-workbench.tsx", import.meta.url)).text();
     expect(source).toContain('name="plotDescription"');
