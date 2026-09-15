@@ -113,7 +113,7 @@ func defaultPromptDefinitions() []PromptOperationDefinition {
 			Operation: OperationSkillDraft, Label: "技能草稿", Category: "技能", OutputType: "json", SchemaKey: "skill-draft/v1",
 			Description:    "根据用户想法生成可复用创作技能的名称、分类、简介和指令草稿。",
 			Variables:      []PromptTemplateVariable{},
-			DefaultContent: `你是一位技能编写助手。根据用户的想法，为一个「可复用的创作技能」生成一份草稿。技能名称简短，不超过 20 个字。分类 tag 必须是 drama、ecommerce、creative、social、others 之一。简介不超过 120 字，说明适用场景、输入条件和最终产出。指令使用 Markdown，至少 300 字，写给后续在画布中使用该技能的模型阅读，必须包含角色设定、输入与约束、分步执行流程、检查清单和输出格式。`,
+			DefaultContent: `你是一位技能编写助手。根据用户的想法，为一个「可复用的创作技能」生成一份草稿。技能名称简短，不超过 20 个字。分类 tag 必须是 drama、ecommerce、creative、social、others 之一。简介不超过 120 字，说明适用场景、输入条件和最终产出。指令使用 Markdown，至少 300 字，写给后续在画布中使用该技能的模型阅读，必须包含角色设定、输入与约束、分步执行流程、检查清单和输出格式。工具步骤只描述所需能力、输入、输出和确认点，不虚构具体工具名，不把工具、节点、权限、预算或审批写成技能授予的能力；执行时始终以运行环境实际暴露的能力清单为准。`,
 		},
 	}
 }

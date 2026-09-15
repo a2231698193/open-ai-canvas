@@ -260,17 +260,24 @@ for (const [id, name, vendor, baseUrl] of [
 
 add({
   id: "openai-images", providerId: "openai-image", name: "OpenAI Images", vendor: "OpenAI", capability: "image",
-  baseUrl: "https://api.openai.com", auth: bearer, params: imageParams,
-  notes: "无参考图走 JSON generations；有参考图或蒙版走 multipart edits。quality 的 1k/2k/4k 映射为 OpenAI low/medium/high。",
+  baseUrl: "https://api.openai.com", auth: bearer, params: imageParams, requiresPublicMediaUrls: true,
+  notes: "无参考图走 JSON generations；有参考图或蒙版走 JSON edits，并按官方 images 数组传入多张 image_url。quality 的 1k/2k/4k 映射为 OpenAI low/medium/high。",
   create: {
     method: "POST",
     path: "/v1/images/generations",
     pathTemplate: conditional(gt(len(ref("request.images")), 0), "/v1/images/edits", "/v1/images/generations"),
     contentType: "application/json",
-    contentTypeTemplate: conditional(gt(len(ref("request.images")), 0), "multipart/form-data", "application/json"),
     body: {
       model: ref("request.model"),
       prompt: ref("request.prompt"),
+      images: omit(conditional(gt(len(ref("request.images")), 0), map(
+        filter(sorted(ref("request.images")), "media", ne(ref("media.role"), "mask")),
+        "media",
+        { image_url: ref("media.value") }
+      ))),
+      mask: omit(conditional(gt(len(filter(ref("request.images"), "media", eq(ref("media.role"), "mask"))), 0), {
+        image_url: first(map(filter(sorted(ref("request.images")), "media", eq(ref("media.role"), "mask")), "media", ref("media.value")))
+      })),
       n: omit(conditional(gt(ref("request.imageCount"), 0), ref("request.imageCount"), 1)),
       size: omit(conditional({ $in: [lower(trim(ref("request.aspectRatio"))), ["", "auto"]] }, null, ref("request.aspectRatio"))),
       quality: omit({
@@ -291,14 +298,10 @@ add({
       output_format: omit(coalesce(ref("request.providerOptions.openai-image.output_format"), "png")),
       output_compression: omit(ref("request.providerOptions.openai-image.output_compression")),
       moderation: omit(ref("request.providerOptions.openai-image.moderation")),
-      response_format: omit(coalesce(ref("request.providerOptions.openai-image.response_format"), "b64_json")),
+      response_format: omit(ref("request.providerOptions.openai-image.response_format")),
       style: omit(ref("request.providerOptions.openai-image.style")),
       user: omit(ref("request.providerOptions.openai-image.user"))
-    },
-    files: [
-      { name: "image", source: filter(ref("request.images"), "media", ne(ref("media.role"), "mask")), filename: "source.png" },
-      { name: "mask", source: filter(ref("request.images"), "media", eq(ref("media.role"), "mask")), filename: "mask.png" }
-    ]
+    }
   },
   response: {
     status: "succeeded",
@@ -916,6 +919,54 @@ add({
     status: coalesce(ref("response.output.task_status"), ref("response.status"), "pending"),
     images: coalesce(ref("response.output.results"), ref("response.output.image_url")),
     usage: ref("response.usage"), errorPaths: ["code"], messagePaths: ["message", "output.message"]
+  })
+});
+
+// Qwen-Image 3.0 / Wan 2.7 图像属于百炼多模态模型，必须走多模态端点：
+// 用 OpenAI 的 /v1/images/generations 或 /v1/images/edits 会被网关判为“模型与端点不匹配”，
+// 官方错误码把它表现为 url error；参考图只能放在 input.messages[].content[].image。
+// size 使用 DashScope 的 “宽*高”（星号），未登记的档位直接省略，由模型按提示词自动推荐分辨率。
+const dashscopeMultimodalImageSizes = [
+  ["1:1", "1024*1024"], ["3:4", "960*1280"], ["4:3", "1280*960"], ["2:3", "1024*1536"], ["3:2", "1536*1024"],
+  ["9:16", "864*1536"], ["16:9", "1536*864"],
+  ["1024x1024", "1024*1024"], ["1024x1536", "1024*1536"], ["1536x1024", "1536*1024"],
+  ["1024x1280", "1024*1280"], ["1280x1024", "1280*1024"], ["960x1280", "960*1280"], ["1280x960", "1280*960"]
+];
+
+add({
+  id: "dashscope-qwen-image", providerId: "dashscope-qwen-image", name: "DashScope Qwen / Wan Image", vendor: "Alibaba Cloud", capability: "image",
+  baseUrl: "https://dashscope.aliyuncs.com", auth: bearer, params: imageParams, requiresPublicMediaUrls: false,
+  notes: "百炼多模态图像端点（image-generation 异步任务）。文生图与图生图共用同一入口：不传 image 为文生图，传 1-3 张 image 为图生图。参考图通过 input.messages[].content[].image 传输（优先 Base64 data URL），不使用 OpenAI 的 /v1/images/edits multipart。size 采用“宽*高”，未登记的档位省略并由模型自动推荐；enable_thinking 固定为 false，因为官方要求非流式调用关闭思考模式。",
+  create: jsonCreate("/api/v1/services/aigc/image-generation/generation", {
+    model: ref("request.model"),
+    input: {
+      messages: [{
+        role: "user",
+        content: {
+          $concatArrays: [
+            map(sorted(ref("request.images")), "media", { image: coalesce(ref("media.dataUrl"), ref("media.url")) }),
+            [{ text: ref("request.prompt") }]
+          ]
+        }
+      }]
+    },
+    parameters: {
+      size: omit({ $switch: { cases: dashscopeMultimodalImageSizes.map(([ratio, size]) => ({ when: eq(ref("request.aspectRatio"), ratio), then: size })), default: null } }),
+      n: conditional(gt({ $toInt: ref("request.imageCount") }, 0), { $toInt: ref("request.imageCount") }, 1),
+      prompt_extend: true,
+      enable_thinking: false,
+      negative_prompt: omit(ref("request.providerOptions.dashscope-qwen-image.negative_prompt")),
+      seed: omit(ref("request.providerOptions.dashscope-qwen-image.seed")),
+      watermark: omit(ref("request.watermark"))
+    }
+  }, { headers: { "X-DashScope-Async": "enable" }, originPath: true }),
+  poll: { method: "GET", path: "/api/v1/tasks/{{taskId}}", originPath: true },
+  response: asyncResponse("image", {
+    taskId: coalesce(ref("response.output.task_id"), ref("response.task_id"), ref("taskId")),
+    status: coalesce(ref("response.output.task_status"), ref("response.status"), "pending"),
+    message: coalesce(ref("response.output.message"), ref("response.message")),
+    images: map(ref("response.output.choices.0.message.content"), "item", { url: omit(ref("item.image")) }),
+    errorPaths: ["code", "output.code"], messagePaths: ["message", "output.message"]
   })
 });
 

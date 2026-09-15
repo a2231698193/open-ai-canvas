@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { App, Button, Dropdown, Input, Modal, Tag, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { Camera, Check, ChevronDown, Ellipsis, Images, Plus, SlidersHorizontal, UserRound } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Ellipsis, Images, Plus, SlidersHorizontal, UserRound } from "lucide-react";
 
 import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import { ASSET_CATEGORY_OPTIONS } from "@/lib/asset-category";
@@ -9,12 +9,14 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { resolveNodeToolbarPlacement, resolveToolbarTools, type NodeToolbarGroup, type ToolContext, type ToolbarHandlers } from "@/lib/canvas/tool-registry";
 import { subscribeCanvasGraphicsViewportPreview } from "@/lib/canvas/canvas-live-viewport";
 import { canvasNodeAssetCategory } from "@/lib/canvas/canvas-node-asset";
+import type { ImageSplitParams } from "@/lib/canvas/canvas-image-data";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { generationErrorMessage } from "@/lib/generation-error";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ViewportTransform } from "@/types/canvas";
 import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
+import { CanvasGridSplitPicker } from "./canvas-grid-split-picker";
 
 type CanvasNodeToolbarProps = {
     node: CanvasNodeData | null;
@@ -36,7 +38,7 @@ type CanvasNodeToolbarProps = {
     onEmotion: (node: CanvasNodeData) => void;
     onPortraitTexture: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
-    onSplit: (node: CanvasNodeData) => void;
+    onSplit: (node: CanvasNodeData, params: ImageSplitParams) => void;
     onUpscale: (node: CanvasNodeData) => void;
     onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
@@ -219,14 +221,14 @@ export function CanvasNodeToolbar({
         }
         copyText(prompt, "提示词已复制");
     };
-    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onAnnotate, onMaskEdit, onEmotion, onPortraitTexture, onCrop, onSplit, onUpscale, onSuperResolve, onAngle, onLighting, onPanorama, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt });
+    const imageTools = buildImageToolbarTools(node, { onUpload, onToggleFreeResize, onAnnotate, onMaskEdit, onEmotion, onPortraitTexture, onCrop, onUpscale, onSuperResolve, onAngle, onLighting, onPanorama, onViewImage, onCopyPrompt: copyImagePrompt, onReversePrompt });
 
     // 构建 ToolContext——供注册表解析工具
     const nodeHoverHandlers = {
         onNodeInfo: onInfo, onNodeDelete: onDelete, onNodeRetry: onRetry, onNodeEditText: onEditText, onNodeDecreaseFont: onDecreaseFont, onNodeIncreaseFont: onIncreaseFont,
         onNodeToggleDialog: onToggleDialog, onNodeAnnotate: onAnnotate, onNodeGenerateImage: onGenerateImage, onNodeUpload: onUpload, onNodeDownload: onDownload,
         onNodeSaveAsset: onSaveAsset, onNodeMaskEdit: onMaskEdit, onNodeEmotion: onEmotion, onNodePortraitTexture: onPortraitTexture, onNodeCrop: onCrop,
-        onNodeSplit: onSplit, onNodeUpscale: onUpscale, onNodeSuperResolve: onSuperResolve, onNodeAngle: onAngle, onNodeViewImage: onViewImage,
+        onNodeSplit: (target) => onSplit(target, { rows: 2, columns: 2 }), onNodeUpscale: onUpscale, onNodeSuperResolve: onSuperResolve, onNodeAngle: onAngle, onNodeViewImage: onViewImage,
         onNodeExtractVideoFrames: onExtractVideoFrames, onNodeExtractAudioFromVideo: onExtractAudioFromVideo, onNodeTrimVideoSegments: onTrimVideoSegments, onNodeReversePrompt: onReversePrompt, onNodeToggleFreeResize: onToggleFreeResize,
         onNodeSubtitles: onSubtitles, onNodeTimeline: onTimeline, onNodeToggleLocked: onToggleLocked, onNodeCopyPrompt: copyImagePrompt,
     } as Partial<ToolbarHandlers> as ToolbarHandlers;
@@ -317,7 +319,7 @@ export function CanvasNodeToolbar({
                 {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} />)}
                 {portraitTools.length ? <NodeDockMenuButton menuId="portrait" label="人像调整" icon={<UserRound className="size-3.5" />} tools={portraitTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
                 {viewpointLightingTools.length ? <NodeDockMenuButton menuId="viewpoint-lighting" label="视角" icon={<Camera className="size-3.5" />} tools={viewpointLightingTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
-                {processTools.length ? <NodeDockMenuButton menuId="process" label={processMenuLabel} icon={isVideo ? <Images className="size-3.5" /> : <SlidersHorizontal className="size-3.5" />} tools={processTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
+                {processTools.length ? <NodeDockMenuButton menuId="process" label={processMenuLabel} icon={isVideo ? <Images className="size-3.5" /> : <SlidersHorizontal className="size-3.5" />} tools={processTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} split={hasImage && !simpleMode ? { node, onSplit } : undefined} /> : null}
                 {workspaceTools.length ? <span aria-hidden className="aceternity-dock-separator mx-1 h-5 w-px shrink-0" /> : null}
                 {workspaceTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} />)}
                 {utilityTools.length || moreTools.length ? <span aria-hidden className="aceternity-dock-separator mx-1 h-5 w-px shrink-0" /> : null}
@@ -353,14 +355,20 @@ function compareToolbarTools(left: ToolbarTool, right: ToolbarTool) {
     return left.order - right.order;
 }
 
-function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChange, placement = "top", iconOnly = false }: { menuId: string; label: string; icon: ReactNode; tools: ToolbarTool[]; openMenuId: string | null; onOpenChange: (menuId: string, open: boolean) => void; placement?: "top" | "topRight"; iconOnly?: boolean }) {
+function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChange, placement = "top", iconOnly = false, split }: { menuId: string; label: string; icon: ReactNode; tools: ToolbarTool[]; openMenuId: string | null; onOpenChange: (menuId: string, open: boolean) => void; placement?: "top" | "topRight"; iconOnly?: boolean; split?: { node: CanvasNodeData; onSplit: (node: CanvasNodeData, params: ImageSplitParams) => void } }) {
     const open = openMenuId === menuId;
     const triggerRef = useRef<HTMLButtonElement>(null);
+    const [splitPanelOpen, setSplitPanelOpen] = useState(false);
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            setSplitPanelOpen(false);
+            return;
+        }
         const frame = requestAnimationFrame(() => triggerRef.current?.focus());
         return () => cancelAnimationFrame(frame);
     }, [open]);
+    const keepSplitMenuOpenRef = useRef(false);
+    const splitEntry = split ? tools.find((tool) => tool.id === "split") : undefined;
     const sections = new Map<string, ToolbarTool[]>();
     for (const tool of tools) {
         const section = tool.danger ? "危险操作" : tool.section || "常用操作";
@@ -368,10 +376,88 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
     }
     const items: MenuProps["items"] = [...sections].sort(([left], [right]) => Number(left === "危险操作") - Number(right === "危险操作")).map(([section, entries]) => ({
         type: "group", key: section, label: section,
-        children: entries.map((tool) => ({ key: tool.id, icon: tool.icon, label: <div><span className="inline-flex items-center gap-2">{tool.label}{tool.active ? <Check className="size-3.5" /> : null}</span>{tool.description ? <div className="text-[var(--fs-tiny)] opacity-60">{tool.description}</div> : null}</div>, disabled: tool.disabled, danger: tool.danger, onClick: () => { onOpenChange(menuId, false); tool.onClick(); } })),
+        children: entries.map((tool) => {
+            const isSplit = Boolean(splitEntry && split && tool.id === "split");
+            return {
+                key: tool.id,
+                icon: tool.icon,
+                className: isSplit ? `canvas-grid-split-menu-item${splitPanelOpen ? " is-open" : ""}` : undefined,
+                label: (
+                    <div
+                        className={isSplit ? "canvas-grid-split-menu-label" : undefined}
+                        onMouseDown={isSplit ? () => { keepSplitMenuOpenRef.current = true; } : undefined}
+                    >
+                        <div>
+                            <span className="inline-flex items-center gap-2">{tool.label}{tool.active ? <Check className="size-3.5" /> : null}</span>
+                            {tool.description ? <div className="text-[var(--fs-tiny)] opacity-60">{tool.description}</div> : null}
+                        </div>
+                        {isSplit ? <ChevronRight className="canvas-grid-split-chevron" strokeWidth={2} /> : null}
+                    </div>
+                ),
+                disabled: tool.disabled,
+                danger: tool.danger,
+                onClick: (info) => {
+                    if (isSplit) {
+                        info.domEvent.preventDefault();
+                        info.domEvent.stopPropagation();
+                        keepSplitMenuOpenRef.current = true;
+                        setSplitPanelOpen((current) => !current);
+                        return;
+                    }
+                    onOpenChange(menuId, false);
+                    tool.onClick();
+                },
+            };
+        }),
     }));
     return (
-        <Dropdown open={open} trigger={["click"]} placement={placement} onOpenChange={(nextOpen) => onOpenChange(menuId, nextOpen)} menu={{ items }} autoFocus popupRender={(menu) => <div className="canvas-node-toolbar-menu" data-canvas-no-zoom data-canvas-wheel-scroll onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} onKeyDownCapture={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); triggerRef.current?.focus(); onOpenChange(menuId, false); } }} onKeyDown={(event) => event.stopPropagation()}>{menu}</div>}>
+        <Dropdown
+            open={open}
+            trigger={["click"]}
+            placement={placement}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen && (keepSplitMenuOpenRef.current || document.querySelector(".canvas-node-toolbar-menu-split:hover, .canvas-grid-split-picker:hover"))) {
+                    keepSplitMenuOpenRef.current = false;
+                    return;
+                }
+                onOpenChange(menuId, nextOpen);
+                if (!nextOpen) setSplitPanelOpen(false);
+            }}
+            menu={{ items }}
+            autoFocus
+            popupRender={(menu) => (
+                <div
+                    className={`canvas-node-toolbar-menu${splitEntry && split ? " canvas-node-toolbar-menu-split" : ""}`}
+                    data-canvas-no-zoom
+                    data-canvas-wheel-scroll
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onWheel={(event) => event.stopPropagation()}
+                    onKeyDownCapture={(event) => {
+                        if (event.key === "Escape") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            triggerRef.current?.focus();
+                            onOpenChange(menuId, false);
+                        }
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                >
+                    <div className="canvas-node-toolbar-menu-stack">
+                        {menu}
+                    </div>
+                    {splitPanelOpen && split ? (
+                        <CanvasGridSplitPicker
+                            onPick={(params) => {
+                                setSplitPanelOpen(false);
+                                onOpenChange(menuId, false);
+                                split.onSplit(split.node, params);
+                            }}
+                        />
+                    ) : null}
+                </div>
+            )}
+        >
             <button
                 ref={triggerRef}
                 type="button"

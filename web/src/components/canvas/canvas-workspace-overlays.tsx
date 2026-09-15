@@ -5,7 +5,7 @@ import { Clapperboard, Image as ImageIcon, List, Music2, Pencil, Video, Workflow
 import { useCanvasOverlayLayer } from "@/components/canvas/canvas-overlay-layer";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { aceternityMotion } from "@/lib/aceternity-motion";
-import { subscribeCanvasGraphicsViewportPreview, subscribeCanvasViewportPreview } from "@/lib/canvas/canvas-live-viewport";
+import { subscribeCanvasGraphicsViewportPreview, subscribeCanvasNodeDragPreview, subscribeCanvasViewportPreview } from "@/lib/canvas/canvas-live-viewport";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type ConnectionHandle, type Position, type ViewportTransform } from "@/types/canvas";
 
@@ -102,19 +102,16 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         const panel = panelRef.current;
         if (!container || !panel) return;
         let liveViewport = viewport;
+        let liveDragOffset = dragOffset;
         let viewportSize = { width: container.clientWidth, height: container.clientHeight };
         const update = (nextViewport: ViewportTransform) => {
             liveViewport = nextViewport;
             const nextWidth = resolveNodePanelWidth(node, nextViewport, panelWidth);
             panel.style.width = `${nextWidth}px`;
-            const position = getNodePanelPosition(
-                node,
-                nextViewport,
-                viewportSize,
-                nextWidth,
-                panelHeight,
-                dragOffset,
-            );
+            const nodeElement = container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`);
+            const position = nodeElement
+                ? getAttachedNodePanelPosition(nodeElement, container, nextWidth)
+                : getNodePanelPosition(node, nextViewport, viewportSize, nextWidth, panelHeight, liveDragOffset);
             panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
         };
         update(viewport);
@@ -124,9 +121,14 @@ export function CanvasNodePanelOverlay({ node, viewport, containerRef, panelWidt
         });
         resizeObserver.observe(container);
         const unsubscribeViewport = subscribeCanvasGraphicsViewportPreview(container, update);
+        const unsubscribeDrag = subscribeCanvasNodeDragPreview(container, (preview) => {
+            liveDragOffset = preview?.nodeIds.has(node.id) ? { x: preview.x, y: preview.y } : null;
+            update(liveViewport);
+        });
         return () => {
             resizeObserver.disconnect();
             unsubscribeViewport();
+            unsubscribeDrag();
         };
     }, [containerRef, dragOffset?.x, dragOffset?.y, isDragging, node.height, node.id, node.position.x, node.position.y, node.width, panelHeight, panelWidth, viewport]);
 
@@ -262,17 +264,25 @@ function getConnectionMenuPosition(position: Position, viewport: ViewportTransfo
     };
 }
 
-export function getNodePanelPosition(node: CanvasNodeData, viewport: ViewportTransform, viewportSize: { width: number; height: number }, panelWidth: number, _panelHeight: number, dragOffset?: Position | null) {
+function getAttachedNodePanelPosition(nodeElement: HTMLElement, container: HTMLElement, panelWidth: number) {
     const gap = 10;
-    const margin = 12;
+    const nodeRect = nodeElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    return {
+        left: nodeRect.left - containerRect.left + nodeRect.width / 2 - panelWidth / 2,
+        top: nodeRect.bottom - containerRect.top + gap,
+        placement: "below" as const,
+    };
+}
+
+export function getNodePanelPosition(node: CanvasNodeData, viewport: ViewportTransform, _viewportSize: { width: number; height: number }, panelWidth: number, _panelHeight: number, dragOffset?: Position | null) {
+    const gap = 10;
     const offsetX = dragOffset?.x || 0;
     const offsetY = dragOffset?.y || 0;
     const nodeCenterX = viewport.x + (node.position.x + offsetX + node.width / 2) * viewport.k;
     const nodeBottom = viewport.y + (node.position.y + offsetY + node.height) * viewport.k;
-    const maxLeft = Math.max(margin, viewportSize.width - panelWidth - margin);
-    const left = clamp(nodeCenterX - panelWidth / 2, margin, maxLeft);
     return {
-        left,
+        left: nodeCenterX - panelWidth / 2,
         top: nodeBottom + gap,
         placement: "below" as const,
     };

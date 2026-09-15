@@ -176,6 +176,11 @@ func requiredJSONNumberField(object map[string]json.RawMessage, key string) (flo
 	if !ok {
 		return 0, kernel.BadAuthRequest("素材缺少 " + key + " 字段")
 	}
+	// json.Unmarshal(null, &float64) succeeds without assigning a value.
+	// Reject null explicitly so the persisted JSON obeys the client contract.
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return 0, kernel.BadAuthRequest("素材字段 " + key + " 必须是数字")
+	}
 	var value float64
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return 0, kernel.BadAuthRequest("素材字段 " + key + " 必须是数字")

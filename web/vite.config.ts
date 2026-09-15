@@ -42,8 +42,10 @@ export default defineConfig({
             output: {
                 strictExecutionOrder: true,
                 codeSplitting: {
-                    includeDependenciesRecursively: true,
-                    minSize: 20 * 1024,
+                    // Keep route-level lazy imports isolated. Recursively merging dependencies
+                    // pulls unrelated pages into the initial modulepreload graph.
+                    includeDependenciesRecursively: false,
+                    minSize: 40 * 1024,
                     groups: [
                         {
                             name: "vendor-react",
@@ -63,14 +65,6 @@ export default defineConfig({
                             priority: 10,
                             entriesAware: true,
                             entriesAwareMergeThreshold: 80 * 1024,
-                        },
-                        {
-                            name: "app-shared",
-                            test: /[\\/]src[\\/]/,
-                            priority: 5,
-                            minShareCount: 2,
-                            entriesAware: true,
-                            entriesAwareMergeThreshold: 48 * 1024,
                         },
                     ],
                 },

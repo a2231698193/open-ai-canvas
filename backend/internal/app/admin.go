@@ -539,6 +539,93 @@ func (s *Service) CreateSystemChannel(actor *model.User, req ChannelRequest) (*P
 	return &public, nil
 }
 
+func (s *Service) DuplicateSystemChannel(actor *model.User, id string) (*PublicModelChannel, error) {
+	if err := s.RequireAdmin(actor); err != nil {
+		return nil, err
+	}
+	source, err := s.adminSystemChannel(id)
+	if err != nil {
+		return nil, err
+	}
+	sourceModels, err := s.repo.ChannelModels(source.ID, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(sourceModels) == 0 {
+		for _, name := range channelModelNames(*source) {
+			sourceModels = append(sourceModels, model.ChannelModel{ModelKey: name, ProviderModelKey: name, DisplayName: name, BillingMode: "fixed_request", Enabled: false, PriceVersion: 1})
+		}
+	}
+	channelID, err := s.repo.NextPrefixedID("CHANNEL")
+	if err != nil {
+		return nil, err
+	}
+	channel := *source
+	channel.ID = channelID
+	channel.UserID = actor.ID
+	channel.Scope = model.ChannelScopeSystem
+	channel.Name = duplicateChannelName(source.Name)
+	channel.CreatedAt = time.Time{}
+	channel.UpdatedAt = time.Time{}
+	channel.DeletedAt = gorm.DeletedAt{}
+	if err := s.encryptSystemChannelSecrets(&channel); err != nil {
+		return nil, err
+	}
+
+	channelModels := make([]model.ChannelModel, 0, len(sourceModels))
+	priceTiers := make([]model.ChannelModelPriceTier, 0)
+	for _, sourceModel := range sourceModels {
+		modelID, idErr := s.repo.NextPrefixedID("MODEL")
+		if idErr != nil {
+			return nil, idErr
+		}
+		channelModel := sourceModel
+		channelModel.ID = modelID
+		channelModel.ChannelID = channel.ID
+		channelModel.CreatedAt = time.Time{}
+		channelModel.UpdatedAt = time.Time{}
+		channelModel.DeletedAt = gorm.DeletedAt{}
+		channelModel.PriceTiers = nil
+		channelModels = append(channelModels, channelModel)
+		for _, sourceTier := range sourceModel.PriceTiers {
+			tierID, tierErr := s.repo.NextPrefixedID("PTIER")
+			if tierErr != nil {
+				return nil, tierErr
+			}
+			priceTier := sourceTier
+			priceTier.ID = tierID
+			priceTier.ChannelModelID = channelModel.ID
+			priceTier.Selector = nil
+			priceTier.CreatedAt = time.Time{}
+			priceTier.UpdatedAt = time.Time{}
+			priceTier.DeletedAt = gorm.DeletedAt{}
+			priceTiers = append(priceTiers, priceTier)
+		}
+	}
+	if err := s.repo.CreateDuplicatedSystemChannel(&channel, channelModels, priceTiers); err != nil {
+		return nil, err
+	}
+	s.invalidateRouteCatalog()
+	items, err := s.repo.ChannelModels(channel.ID, true)
+	if err != nil {
+		return nil, err
+	}
+	public := publicChannel(channel, true, items)
+	return &public, nil
+}
+
+func duplicateChannelName(name string) string {
+	const suffix = " - 副本"
+	base := []rune(strings.TrimSpace(name))
+	if len(base) == 0 {
+		base = []rune("系统渠道")
+	}
+	if len(base)+len([]rune(suffix)) > 80 {
+		base = base[:80-len([]rune(suffix))]
+	}
+	return string(base) + suffix
+}
+
 func (s *Service) UpdateSystemChannel(actor *model.User, id string, req ChannelRequest) (*PublicModelChannel, error) {
 	if err := s.RequireAdmin(actor); err != nil {
 		return nil, err
@@ -662,10 +749,18 @@ func (s *Service) LogAPICall(log model.ApiCallLog) error {
 		var nextPollAt *time.Time
 		if stage == "create" && log.Status == model.ApiCallStatusSucceeded && log.ProviderRequestID != "" {
 			stage = "accepted"
-			next := time.Now().Add(2 * time.Second)
+			delay := 2 * time.Second
+			if log.Capability == "video" {
+				delay = defaultVideoPollInterval
+			}
+			next := time.Now().Add(delay)
 			nextPollAt = &next
 		} else if stage == "poll" {
-			next := time.Now().Add(5 * time.Second)
+			delay := 5 * time.Second
+			if log.Capability == "video" {
+				delay = defaultVideoPollInterval
+			}
+			next := time.Now().Add(delay)
 			nextPollAt = &next
 		}
 		if err := s.repo.UpdateTaskProviderState(log.TaskID, log.ProviderRequestID, stage, nextPollAt); err != nil {

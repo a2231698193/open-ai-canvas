@@ -19,6 +19,7 @@ type cloudAgentMutationInput struct {
 	AfterSnapshotHash  string
 	BeforeJSON         string
 	HasSubmittedTask   bool
+	Preview            *cloudAgentApprovalPreview
 }
 
 func cloudAgentMutationRecorderForRun(runID string) cloudAgentMutationRecorder {

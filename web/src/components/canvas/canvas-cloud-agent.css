@@ -131,6 +131,18 @@
     outline: none;
 }
 
+.agent-composer-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+}
+
+.agent-composer-submit {
+    min-width: 0;
+    justify-self: end;
+}
+
 .agent-composer-send-hint {
     color: color-mix(in srgb, currentColor 52%, transparent);
     font-size: var(--fs-tiny);
@@ -138,7 +150,8 @@
     white-space: nowrap;
 }
 
-@container (max-width: 420px) {
+/* 面板宽度包含内边距；默认 448px 面板的输入区已不足以同时容纳控制区和快捷键提示。 */
+@container (max-width: 520px) {
     .agent-composer-send-hint {
         display: none;
     }
@@ -243,22 +256,135 @@
 }
 
 .canvas-agent-approval-items {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
+    display: grid;
+    gap: 8px;
+    max-height: min(360px, 42vh);
+    margin-top: 12px;
+    overflow-y: auto;
+    padding-right: 2px;
 }
 
-.canvas-agent-approval-items span {
-    max-width: 100%;
-    overflow: hidden;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--foreground) 7%, transparent);
-    padding: 4px 7px;
-    font-size: 11px;
+.canvas-agent-approval-item {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    padding: 9px 10px;
+}
+
+.canvas-agent-approval-item-main,
+.canvas-agent-approval-node-summary,
+.canvas-agent-approval-connection {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+}
+
+.canvas-agent-approval-operation {
+    flex: 0 0 auto;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
     line-height: 16px;
+}
+
+.canvas-agent-approval-operation-add_node { background: #dcfce7; color: #166534; }
+.canvas-agent-approval-operation-update_node { background: #dbeafe; color: #1d4ed8; }
+.canvas-agent-approval-operation-connect_nodes { background: #fef3c7; color: #92400e; }
+.canvas-agent-approval-operation-generate_media { background: #f3e8ff; color: #7e22ce; }
+
+.canvas-agent-approval-node,
+.canvas-agent-approval-node-button {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    color: var(--foreground);
+    font-size: 12px;
+    line-height: 18px;
+    text-align: left;
+}
+
+.canvas-agent-approval-node-button {
+    cursor: pointer;
+    padding: 2px 5px;
+}
+
+.canvas-agent-approval-node-button:hover {
+    background: color-mix(in srgb, var(--agent-approval-blue) 10%, transparent);
+    color: var(--agent-approval-blue);
+}
+
+.canvas-agent-approval-node-title,
+.canvas-agent-approval-result-title {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.canvas-agent-approval-node-type {
+    flex: 0 0 auto;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    padding: 1px 5px;
+    color: color-mix(in srgb, var(--foreground) 58%, transparent);
+    font-size: 10px;
+    line-height: 15px;
+}
+
+.canvas-agent-approval-arrow,
+.canvas-agent-approval-change-arrow {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--foreground) 48%, transparent);
+    font-size: 12px;
+}
+
+.canvas-agent-approval-result-title {
+    color: var(--agent-approval-blue);
+    font-size: 12px;
+}
+
+.canvas-agent-approval-field-list,
+.canvas-agent-approval-detail-list,
+.canvas-agent-approval-summary,
+.canvas-agent-approval-empty {
+    color: color-mix(in srgb, var(--foreground) 62%, transparent);
+    font-size: 11px;
+    line-height: 17px;
+}
+
+.canvas-agent-approval-field-list,
+.canvas-agent-approval-detail-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.canvas-agent-approval-field-list span,
+.canvas-agent-approval-detail-list span {
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    padding: 2px 5px;
+}
+
+.canvas-agent-approval-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.canvas-agent-approval-empty {
+    margin-top: 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, #f59e0b 10%, transparent);
+    padding: 8px 10px;
 }
 
 .canvas-agent-approval-reason-toggle {
@@ -356,82 +482,486 @@
     gap: 8px;
 }
 
-.canvas-agent-skill-popover .ant-popover-inner {
-    padding: 0;
+.canvas-agent-skill-library-modal .ant-modal-container {
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 18px;
+    border-radius: var(--r-2xl);
+    padding: 0;
+    background: transparent;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18), var(--elevation-hairline) !important;
 }
 
-.canvas-agent-skill-picker {
+.canvas-agent-skill-library-modal .ant-modal-body {
+    padding: 0;
+}
+
+.canvas-agent-skill-library-modal .ant-modal-close {
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-md);
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.canvas-agent-skill-library-modal .ant-modal-close:hover {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.canvas-agent-skill-library-shell {
+    position: relative;
+    display: grid;
+    height: min(780px, calc(100dvh - 36px));
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    border-radius: inherit;
+    background:
+        radial-gradient(circle at 0 0, color-mix(in srgb, var(--workspace-accent) 7%, transparent), transparent 34%),
+        var(--cn-spatial-elevated, var(--background));
+}
+
+.canvas-agent-skill-library-header {
     display: flex;
-    width: min(520px, calc(100vw - 24px));
-    max-height: calc(100vh - 24px);
-    flex-direction: column;
-    padding: 12px;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 64px 14px 20px;
 }
 
-.canvas-agent-skill-picker-tabs {
-    height: 48px;
-    margin-top: 10px;
+.canvas-agent-skill-library-header p {
+    margin-bottom: 0;
 }
 
-.canvas-agent-skill-picker-tabs button {
-    transition: background-color 140ms ease, color 140ms ease;
+.canvas-agent-skill-library-count {
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
+    border-radius: var(--r-lg);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    padding: 7px 10px;
+    font-size: var(--fs-label);
+    font-variant-numeric: tabular-nums;
 }
 
-.canvas-agent-skill-picker-search {
-    height: 44px;
-    margin-top: 10px;
+.canvas-agent-skill-library-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
+    align-items: center;
+    gap: 14px;
+    padding: 0 20px 12px;
 }
 
-.canvas-agent-skill-picker-list {
+.canvas-agent-skill-library-tabs {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+}
+
+.canvas-agent-skill-library-tab {
+    display: inline-flex;
+    min-height: 38px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    border-radius: var(--r-md);
+    padding: 0 12px;
+    color: color-mix(in srgb, var(--foreground) 56%, transparent);
+    font-size: var(--fs-caption);
+    font-weight: 560;
+    transition: background-color var(--motion-dur-fast) var(--motion-ease-out), color var(--motion-dur-fast) var(--motion-ease-out);
+}
+
+.canvas-agent-skill-library-tab span {
+    min-width: 20px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+    padding: 1px 6px;
+    font-size: var(--fs-tiny);
+    line-height: 18px;
+    text-align: center;
+}
+
+.canvas-agent-skill-library-tab:hover {
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    color: color-mix(in srgb, var(--foreground) 76%, transparent);
+}
+
+.canvas-agent-skill-library-tab.is-active {
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+.canvas-agent-skill-library-search {
+    height: 40px;
+    border-radius: var(--r-lg);
+}
+
+.canvas-agent-skill-library-categories {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    overflow-x: auto;
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    padding: 10px 20px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+}
+
+.canvas-agent-skill-library-categories::-webkit-scrollbar {
+    display: none;
+}
+
+.canvas-agent-skill-category {
+    min-height: 34px;
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
+    border-radius: var(--r-md);
+    padding: 0 13px;
+    color: color-mix(in srgb, var(--foreground) 58%, transparent);
+    font-size: var(--fs-caption);
+    transition: border-color var(--motion-dur-fast) var(--motion-ease-out), background-color var(--motion-dur-fast) var(--motion-ease-out), color var(--motion-dur-fast) var(--motion-ease-out);
+}
+
+.canvas-agent-skill-category:hover {
+    border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+    color: var(--foreground);
+}
+
+.canvas-agent-skill-category.is-active {
+    border-color: color-mix(in srgb, var(--workspace-accent) 34%, var(--border));
+    background: color-mix(in srgb, var(--workspace-accent) 11%, transparent);
+    color: var(--workspace-accent);
+}
+
+.canvas-agent-skill-library-list {
+    display: grid;
     min-height: 0;
-    max-height: min(360px, 44vh);
-    margin-top: 10px;
-    padding-right: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 12px;
+    overflow-y: auto;
+    padding: 16px 20px;
+    overscroll-behavior: contain;
 }
 
-.canvas-agent-skill-picker-row {
-    padding: 8px 10px;
-    transition: background-color 140ms ease, border-color 140ms ease;
+.canvas-agent-skill-library-state {
+    display: grid;
+    min-height: 260px;
+    grid-column: 1 / -1;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    padding: 28px;
+    font-size: var(--fs-caption);
+    text-align: center;
 }
 
-.canvas-agent-skill-picker-row:hover {
-    background: var(--library-surface-hover);
+.canvas-agent-skill-card {
+    display: grid;
+    min-width: 0;
+    min-height: 136px;
+    grid-template-columns: 164px minmax(0, 1fr) auto;
+    gap: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    padding: 11px;
+    transition: border-color var(--motion-dur-fast) var(--motion-ease-out), background-color var(--motion-dur-fast) var(--motion-ease-out), transform var(--motion-dur-fast) var(--motion-ease-out);
 }
 
-.canvas-agent-skill-picker-row.is-selected {
+.canvas-agent-skill-card:hover {
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent) !important;
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    transform: translateY(-1px);
+}
+
+.canvas-agent-skill-card.is-selected {
     background: color-mix(in srgb, var(--workspace-accent) 7%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 24%, transparent);
 }
 
-.canvas-agent-skill-picker-check {
-    width: 22px;
-    height: 22px;
+.canvas-agent-skill-card-cover {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    aspect-ratio: 16 / 10;
 }
 
-.canvas-agent-skill-picker-footer {
-    min-height: 36px;
-    margin-top: 8px;
-    padding-top: 8px;
+.canvas-agent-skill-card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--motion-dur-base) var(--motion-ease-out);
 }
 
-.canvas-agent-skill-picker-expand {
-    border-radius: 5px;
-    padding: 2px 4px;
+.canvas-agent-skill-card:hover .canvas-agent-skill-card-cover img {
+    transform: scale(1.025);
 }
 
-.canvas-agent-skill-picker-expand:hover {
-    background: color-mix(in srgb, var(--workspace-accent) 10%, transparent);
+.canvas-agent-skill-card-placeholder {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    color: color-mix(in srgb, var(--workspace-accent) 64%, var(--foreground));
+    background:
+        radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--workspace-accent) 28%, transparent), transparent 46%),
+        linear-gradient(145deg, color-mix(in srgb, var(--foreground) 8%, transparent), color-mix(in srgb, var(--foreground) 2%, transparent));
+}
+
+.canvas-agent-skill-card-category {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    max-width: calc(100% - 14px);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, white 18%, transparent);
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, black 62%, transparent);
+    padding: 2px 7px;
+    color: white;
+    font-size: var(--fs-tiny);
+    line-height: 19px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    backdrop-filter: blur(8px);
+}
+
+.canvas-agent-skill-card-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 4px 0 2px;
+}
+
+.canvas-agent-skill-card-title-row {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.canvas-agent-skill-card-title-row h3 {
+    min-width: 0;
+    overflow: hidden;
+    margin: 0;
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 22px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.canvas-agent-skill-card-version {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    font-size: var(--fs-tiny);
+}
+
+.canvas-agent-skill-card-body > p {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    margin: 7px 0 10px;
+    color: color-mix(in srgb, var(--foreground) 54%, transparent);
+    font-size: var(--fs-label);
+    line-height: 19px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.canvas-agent-skill-card-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    font-size: var(--fs-label);
+}
+
+.canvas-agent-skill-card-action {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 3px;
+}
+
+.canvas-agent-skill-card-action .ant-btn {
+    min-width: 76px;
+    border-radius: var(--r-md);
+}
+
+.canvas-agent-skill-card-action .ant-btn.is-selected {
+    border-color: color-mix(in srgb, var(--workspace-accent) 32%, var(--border));
+    background: color-mix(in srgb, var(--workspace-accent) 13%, transparent);
+    color: var(--workspace-accent);
+    box-shadow: none;
+}
+
+.canvas-agent-skill-library-footer {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-top: 1px solid;
+    padding: 8px 20px;
+    font-size: var(--fs-label);
+}
+
+.canvas-agent-skill-library-tab:focus-visible,
+.canvas-agent-skill-category:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+@media (max-width: 920px) {
+    .canvas-agent-skill-library-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 680px) {
+    .canvas-agent-skill-library-shell {
+        height: calc(100dvh - 24px);
+    }
+
+    .canvas-agent-skill-library-header {
+        align-items: flex-start;
+        gap: 10px;
+        padding: 16px 56px 12px 14px;
+    }
+
+    .canvas-agent-skill-library-header p {
+        display: none;
+    }
+
+    .canvas-agent-skill-library-count {
+        padding: 5px 8px;
+    }
+
+    .canvas-agent-skill-library-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        padding: 0 14px 10px;
+    }
+
+    .canvas-agent-skill-library-tabs {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .canvas-agent-skill-library-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .canvas-agent-skill-library-categories {
+        padding: 8px 14px;
+    }
+
+    .canvas-agent-skill-library-list {
+        gap: 10px;
+        padding: 12px 14px;
+    }
+
+    .canvas-agent-skill-library-footer {
+        min-height: 44px;
+        padding: 6px 14px;
+    }
+}
+
+@media (max-width: 560px) {
+    .canvas-agent-skill-library-header {
+        flex-wrap: wrap;
+    }
+
+    .canvas-agent-skill-library-count {
+        position: absolute;
+        top: 17px;
+        right: 56px;
+    }
+
+    .canvas-agent-skill-library-tab {
+        min-height: 34px;
+        padding: 0 9px;
+        font-size: var(--fs-label);
+    }
+
+    .canvas-agent-skill-card {
+        min-height: 122px;
+        grid-template-columns: 104px minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 8px 10px;
+        padding: 9px;
+    }
+
+    .canvas-agent-skill-card-cover {
+        grid-row: 1 / 3;
+        align-self: stretch;
+        aspect-ratio: auto;
+    }
+
+    .canvas-agent-skill-card-body {
+        padding: 1px 0 0;
+    }
+
+    .canvas-agent-skill-card-body > p {
+        margin: 4px 0 6px;
+        font-size: var(--fs-tiny);
+        line-height: 17px;
+    }
+
+    .canvas-agent-skill-card-meta {
+        font-size: var(--fs-tiny);
+    }
+
+    .canvas-agent-skill-card-action {
+        justify-content: flex-end;
+        padding: 0;
+    }
+
+    .canvas-agent-skill-card-action .ant-btn {
+        min-width: 72px;
+    }
+
+    .canvas-agent-skill-library-footer > span:last-child {
+        display: none;
+    }
 }
 
 @media (max-height: 560px) {
-    .canvas-agent-skill-picker {
-        max-height: calc(100vh - 16px);
+    .canvas-agent-skill-library-shell {
+        height: calc(100dvh - 16px);
     }
 
-    .canvas-agent-skill-picker-list {
-        max-height: min(280px, 38vh);
+    .canvas-agent-skill-library-header {
+        padding-top: 12px;
+        padding-bottom: 8px;
+    }
+
+    .canvas-agent-skill-library-categories {
+        padding-top: 7px;
+        padding-bottom: 7px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .canvas-agent-skill-card,
+    .canvas-agent-skill-card-cover img,
+    .canvas-agent-skill-category,
+    .canvas-agent-skill-library-tab {
+        transition: none;
+    }
+
+    .canvas-agent-skill-card:hover,
+    .canvas-agent-skill-card:hover .canvas-agent-skill-card-cover img {
+        transform: none;
     }
 }
 

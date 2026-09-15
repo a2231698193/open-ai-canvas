@@ -17,14 +17,14 @@ func skillFeedbackCall(id, path string) cloudAgentCall {
 }
 
 func TestCloudAgentSkillEmptyDirectoryAndRepeatedRead(t *testing.T) {
-	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{ID: "script", Name: "剧本撰写", Files: map[string]string{}}}}
+	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{ID: "script", Name: "剧本撰写", Instruction: "# 剧本撰写", Files: map[string]string{}}}}
 	call := skillFeedbackCall("script", "")
 	result, err := cloudAgentReadTool(nil, "user", &state, call)
 	if err != nil {
 		t.Fatal(err)
 	}
 	data := result.(map[string]any)
-	if len(data["files"].([]string)) != 0 || !strings.Contains(data["guidance"].(string), "正文继续") {
+	if data["entryPath"] != cloudAgentSkillEntryPath || strings.Join(data["files"].([]string), ",") != cloudAgentSkillEntryPath || !strings.Contains(data["guidance"].(string), "先读取 SKILL.md") {
 		t.Fatalf("missing empty-directory guidance: %+v", data)
 	}
 	cloudAgentToolResult("run", &state, call, result, nil)
@@ -41,6 +41,25 @@ func TestCloudAgentSkillEmptyDirectoryAndRepeatedRead(t *testing.T) {
 	}
 	if _, err := cloudAgentReadTool(nil, "user", &restored, call); err == nil || !strings.Contains(err.Error(), "不要重复读取") {
 		t.Fatalf("repeated request after reload was not rejected: %v", err)
+	}
+}
+
+func TestCloudAgentSkillEntryDocumentIsReadableFromSnapshot(t *testing.T) {
+	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{
+		ID: "script", Version: "v1", Instruction: "# 剧本撰写\n\n只是一份任务剧本。",
+		Files: map[string]string{cloudAgentSkillEntryPath: "stale duplicate", "references/format.md": "格式参考"},
+	}}}
+	paths := cloudAgentSkillPaths(state.Skills[0])
+	if strings.Join(paths, ",") != "SKILL.md,references/format.md" {
+		t.Fatalf("entry path was missing or duplicated: %v", paths)
+	}
+	result, err := cloudAgentReadTool(nil, "user", &state, skillFeedbackCall("script", cloudAgentSkillEntryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.(map[string]any)
+	if data["path"] != cloudAgentSkillEntryPath || data["content"] != state.Skills[0].Instruction {
+		t.Fatalf("skill entry did not come from immutable instruction snapshot: %+v", data)
 	}
 }
 

@@ -25,22 +25,23 @@ import (
 var sseFrameBoundaryPattern = regexp.MustCompile(`\r?\n\r?\n`)
 
 type canvasGenerationInput struct {
-	Mode            string                 `json:"mode"`
-	Prompt          string                 `json:"prompt"`
-	Config          providerConfig         `json:"config"`
-	ReferenceImages []providerMedia        `json:"referenceImages"`
-	ReferenceVideos []providerMedia        `json:"referenceVideos"`
-	ReferenceAudios []providerMedia        `json:"referenceAudios"`
-	TextHistory     []providerTextMessage  `json:"textHistory"`
-	Mask            *providerMedia         `json:"mask"`
-	Metadata        map[string]interface{} `json:"metadata"`
-	AgentRequests   *agentToolRequests     `json:"agentRequests"`
-	TextOptions     canvasTextOptions      `json:"textOptions"`
-	ImageCapability *ImageCapabilityConfig `json:"-"`
-	StreamText      bool                   `json:"-"` // 分镜请求使用上游 SSE 保活；最终结构仍在流结束后统一校验。
-	MaxOutputTokens int                    `json:"-"`
-	OnTextDelta     func(string)           `json:"-"`
-	VideoCapability *VideoCapabilityConfig `json:"-"`
+	Mode             string                 `json:"mode"`
+	Prompt           string                 `json:"prompt"`
+	Config           providerConfig         `json:"config"`
+	ReferenceImages  []providerMedia        `json:"referenceImages"`
+	ReferenceVideos  []providerMedia        `json:"referenceVideos"`
+	ReferenceAudios  []providerMedia        `json:"referenceAudios"`
+	TextHistory      []providerTextMessage  `json:"textHistory"`
+	Mask             *providerMedia         `json:"mask"`
+	Metadata         map[string]interface{} `json:"metadata"`
+	AgentRequests    *agentToolRequests     `json:"agentRequests"`
+	TextOptions      canvasTextOptions      `json:"textOptions"`
+	ImageCapability  *ImageCapabilityConfig `json:"-"`
+	StreamText       bool                   `json:"-"` // 分镜请求使用上游 SSE 保活；最终结构仍在流结束后统一校验。
+	MaxOutputTokens  int                    `json:"-"`
+	OnTextDelta      func(string)           `json:"-"`
+	OnReasoningDelta func(string)           `json:"-"`
+	VideoCapability  *VideoCapabilityConfig `json:"-"`
 }
 
 type canvasTextOptions struct {
@@ -98,7 +99,7 @@ type providerConfig struct {
 }
 
 const providerHTTPTimeout = 5 * time.Minute
-const videoPollTimeout = 30 * time.Minute
+const videoPollTimeout = time.Hour
 const maxProviderResponseBytes int64 = 64 << 20
 
 type providerMedia struct {
@@ -141,6 +142,19 @@ type providerHTTPError struct {
 	Status     string
 	Body       string
 	RetryAfter time.Duration
+}
+
+type providerResponseDecodeError struct {
+	Err error
+}
+
+func (e providerResponseDecodeError) Error() string { return e.Err.Error() }
+func (e providerResponseDecodeError) Unwrap() error { return e.Err }
+
+type providerCircuitOpenError struct{}
+
+func (providerCircuitOpenError) Error() string {
+	return "当前渠道连续失败，已暂时熔断，请稍后重试"
 }
 
 type providerStatePendingError struct {
@@ -346,6 +360,12 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 	}
 	if input.Mode == "text" && strings.HasPrefix(taskType, "canvas_text") && input.StreamText {
 		textPublisher = newTaskTextStreamPublisher(s, userID, taskExecutionID(ctx))
+		if input.AgentRequests != nil {
+			textPublisher = newCloudAgentStreamPublisher(s, userID, taskExecutionID(ctx), "assistant_delta")
+			reasoningPublisher := newCloudAgentStreamPublisher(s, userID, taskExecutionID(ctx), "reasoning_delta")
+			input.OnReasoningDelta = reasoningPublisher.Publish
+			defer reasoningPublisher.Close()
+		}
 		input.OnTextDelta = textPublisher.Publish
 		defer textPublisher.Close()
 	}

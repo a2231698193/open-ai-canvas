@@ -21,7 +21,82 @@ func RegisterAgentRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		ok(c, gin.H{"version": 2, "permissionModes": []string{"read_only", "request_approval", "auto"}, "contextScopes": []string{"canvas"}, "skills": true, "writeTools": true, "billing": "fixed_request", "maxHistoryPairs": 8, "maxSteps": 8, "tools": []string{"canvas_list_node_types", "canvas_get_state", "skill_read_file", "task_get", "model_list", "canvas_apply_ops", "generate_media"}})
+		capabilities := service.CloudAgentCapabilitySetInfo()
+		ok(c, gin.H{"version": 2, "permissionModes": []string{"read_only", "request_approval", "auto"}, "contextScopes": []string{"canvas"}, "skills": true, "writeTools": true, "billing": "fixed_request", "maxHistoryPairs": 8, "maxSteps": 8, "tools": service.CloudAgentSupportedToolNames(), "capabilitySetVersion": capabilities.Version, "capabilitySetHash": capabilities.Hash, "nodeTypes": capabilities.Nodes})
+	})
+	// Profiles are durable preference data, not an authorization surface. The
+	// service validates scope ownership and the compiler injects the effective
+	// layers only after the code-level policy has been fixed.
+	r.GET("/agent/profile", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		scope := strings.TrimSpace(c.Query("scope"))
+		projectID := strings.TrimSpace(c.Query("projectId"))
+		canvasID := strings.TrimSpace(c.Query("canvasId"))
+		if scope == "" {
+			switch {
+			case canvasID != "":
+				scope = "canvas"
+			case projectID != "":
+				scope = "project"
+			default:
+				scope = "user"
+			}
+		}
+		switch scope {
+		case "user":
+			if projectID != "" || canvasID != "" {
+				fail(c, http.StatusBadRequest, errors.New("用户偏好不能带项目或画布 ID"))
+				return
+			}
+		case "project":
+			if projectID == "" || canvasID != "" {
+				fail(c, http.StatusBadRequest, errors.New("项目偏好需要 projectId，且不能带 canvasId"))
+				return
+			}
+		case "canvas":
+			if canvasID == "" {
+				fail(c, http.StatusBadRequest, errors.New("画布偏好需要 canvasId"))
+				return
+			}
+		default:
+			fail(c, http.StatusBadRequest, errors.New("无效的 Agent 偏好作用域"))
+			return
+		}
+		view, err := svc.CloudAgentProfileForScope(user.ID, projectID, canvasID)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, view)
+	})
+	r.PATCH("/agent/profile", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+		var req service.AgentProfileRequest
+		decoder := json.NewDecoder(c.Request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			fail(c, http.StatusBadRequest, errors.New("请求必须只包含一个 JSON 对象"))
+			return
+		}
+		view, err := svc.UpdateCloudAgentProfile(user.ID, req)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, view)
 	})
 	create := func(c *gin.Context) {
 		user, err := currentUser(c, svc)

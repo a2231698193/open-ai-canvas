@@ -1,6 +1,24 @@
 package app
 
-import "infinite-canvas/backend/internal/repository"
+import (
+	"fmt"
+	"strings"
+
+	"infinite-canvas/backend/internal/canvas/capability"
+	"infinite-canvas/backend/internal/repository"
+)
+
+type cloudAgentStructuredProjector func(value any, offset int, precise bool) (any, error)
+
+var cloudAgentStructuredProjectors = map[string]cloudAgentStructuredProjector{
+	"storyboard": func(value any, offset int, precise bool) (any, error) {
+		storyboard, ok := value.(map[string]any)
+		if !ok {
+			return nil, nil
+		}
+		return cloudAgentStoryboardState(storyboard, offset, precise), nil
+	},
+}
 
 // Viewport autosaves must not invalidate approved content; node edits still do.
 func cloudAgentCanvasHash(doc map[string]any) string {
@@ -45,33 +63,56 @@ func cloudAgentCanvasState(repo *repository.Repository, userID string, doc map[s
 			}
 		}
 		meta, _ := node["metadata"].(map[string]any)
-		item := map[string]any{"id": id, "type": node["type"], "title": node["title"], "position": node["position"], "width": node["width"], "height": node["height"], "status": meta["status"]}
-		for _, key := range []string{"content", "prompt", "composerContent"} {
-			// Never put media URLs/data URLs in the model context; expose resource identity instead.
-			if key == "content" && (node["type"] == "image" || node["type"] == "video" || node["type"] == "audio") {
-				continue
+		item := map[string]any{"id": id, "type": stringValue(node["type"])}
+		if title, ok := node["title"].(string); ok {
+			item["title"] = truncateRunes(title, 300)
+		}
+		if position, ok := node["position"].(map[string]any); ok {
+			safePosition := map[string]any{}
+			for _, axis := range []string{"x", "y"} {
+				if value, ok := cloudAgentSafeNumber(position[axis]); ok {
+					safePosition[axis] = value
+				}
 			}
-			text := stringValue(meta[key])
-			item[key] = truncateRunes(text, limit)
-			if len([]rune(text)) > limit {
-				item[key+"Truncated"] = true
+			item["position"] = safePosition
+		}
+		for _, dimension := range []string{"width", "height"} {
+			if value, ok := cloudAgentSafeNumber(node[dimension]); ok {
+				item[dimension] = value
 			}
 		}
-		for _, key := range []string{"assetId", "assetTags", "referenceNodeIds"} {
-			if value, ok := meta[key]; ok {
-				item[key] = value
-			}
+		if status, ok := meta["status"].(string); ok {
+			item["status"] = truncateRunes(status, 40)
 		}
-		if storyboard, ok := meta["storyboard"].(map[string]any); ok {
-			item["storyboard"] = cloudAgentStoryboardState(storyboard, storyboardOffset, len(ids) > 0)
+		capability, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
+		if !known {
+			return nil, BadAuthRequest("画布包含当前 Agent 不支持的节点类型")
 		}
-		if node["type"] == "image" || node["type"] == "video" || node["type"] == "audio" {
-			ref, err := cloudAgentReference(repo, userID, node)
+		fields := capability.SummaryFields
+		if len(ids) > 0 {
+			fields = capability.DetailFields
+		}
+		projected, err := cloudAgentProjectNodeFields(node, meta, capability, fields, limit, len(ids) > 0, storyboardOffset)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range projected {
+			item[key] = value
+		}
+		if capability.Connection.CanReference {
+			ref, _, err := cloudAgentReference(repo, userID, node)
 			item["referenceReady"] = err == nil
 			if err != nil {
 				item["referenceIssue"] = err.Error()
 			} else {
-				item["asset"] = ref
+				// Provider references contain a storage key for task submission.
+				// The model only needs the verified public characteristics; never
+				// forward the provider payload or storage locator into the read tool.
+				item["asset"] = map[string]any{
+					"mimeType": ref["mimeType"], "bytes": ref["bytes"],
+					"width": ref["width"], "height": ref["height"],
+					"durationMs": ref["durationMs"], "inputKind": ref["inputKind"],
+				}
 			}
 		}
 		nodes = append(nodes, item)
@@ -91,6 +132,109 @@ func cloudAgentCanvasState(repo *repository.Repository, userID string, doc map[s
 		}
 	}
 	return map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "nextOffset": next, "hasMore": next > 0}, nil
+}
+
+func cloudAgentSafeNumber(value any) (any, bool) {
+	switch number := value.(type) {
+	case float64, float32, int, int64:
+		return number, true
+	default:
+		return nil, false
+	}
+}
+
+// cloudAgentProjectNodeFields is the single projection path for both the
+// initial run summary and canvas_get_state. Capability descriptors decide which
+// fields exist; this function decides how those fields are safely represented.
+// It deliberately never returns arbitrary metadata, URLs, storage keys or
+// media payloads.
+func cloudAgentProjectNodeFields(node, meta map[string]any, descriptor capability.Descriptor, fields []string, textLimit int, precise bool, structuredOffset int) (map[string]any, error) {
+	projected := map[string]any{}
+	for _, key := range fields {
+		if descriptor.ProjectionKind != "" && key == descriptor.ProjectionField {
+			projector, registered := cloudAgentStructuredProjectors[descriptor.ProjectionKind]
+			if !registered {
+				return nil, BadAuthRequest(fmt.Sprintf("节点 %s 的结构化读取能力未注册", descriptor.Label))
+			}
+			value, ok := cloudAgentProjectionValue(node, meta, descriptor.ProjectionField)
+			if !ok {
+				continue
+			}
+			structured, err := projector(value, structuredOffset, precise)
+			if err != nil {
+				return nil, BadAuthRequest(fmt.Sprintf("节点 %s 的结构化数据无法读取", descriptor.Label))
+			}
+			if structured != nil {
+				projected[key] = structured
+			}
+			continue
+		}
+		value, ok := node[key]
+		if !ok {
+			value, ok = meta[key]
+		}
+		if !ok || (key == "content" && descriptor.GenerationMode != "") {
+			continue
+		}
+		if safe, truncated := cloudAgentSafeProjection(value, textLimit); safe != nil {
+			projected[key] = safe
+			if truncated {
+				projected[key+"Truncated"] = true
+			}
+		}
+	}
+	return projected, nil
+}
+
+func cloudAgentProjectionValue(node, meta map[string]any, path string) (any, bool) {
+	parts := strings.Split(path, ".")
+	for _, root := range []map[string]any{node, meta} {
+		var current any = root
+		found := true
+		for _, part := range parts {
+			object, ok := current.(map[string]any)
+			if !ok {
+				found = false
+				break
+			}
+			current, ok = object[part]
+			if !ok {
+				found = false
+				break
+			}
+		}
+		if found {
+			return current, true
+		}
+	}
+	return nil, false
+}
+
+func cloudAgentSafeProjection(value any, textLimit int) (any, bool) {
+	switch typed := value.(type) {
+	case string:
+		text := truncateRunes(typed, textLimit)
+		return text, len([]rune(typed)) > textLimit
+	case float64, float32, int, int64, bool:
+		return typed, false
+	case []string:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, truncateRunes(item, min(textLimit, 200)))
+		}
+		return items, false
+	case []any:
+		items := make([]any, 0, min(len(typed), 32))
+		for _, item := range typed[:min(len(typed), 32)] {
+			safe, _ := cloudAgentSafeProjection(item, min(textLimit, 200))
+			if safe != nil {
+				items = append(items, safe)
+			}
+		}
+		return items, len(typed) > len(items)
+	default:
+		return nil, false
+	}
 }
 
 // Summaries locate a shot; a precise node read returns one full row at a time.

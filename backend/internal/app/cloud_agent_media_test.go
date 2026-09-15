@@ -269,7 +269,7 @@ func TestCloudAgentCanvasReadsFullPromptAssetsAndConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(result)
-	if strings.Contains(string(raw), "must-not-expose") || !strings.Contains(string(raw), `"referenceReady":true`) || !strings.Contains(string(raw), strings.Repeat("镜头完整指令", 500)) {
+	if strings.Contains(string(raw), "must-not-expose") || strings.Contains(string(raw), "storageKey") || strings.Contains(string(raw), "resource:ref-one") || !strings.Contains(string(raw), `"referenceReady":true`) || !strings.Contains(string(raw), strings.Repeat("镜头完整指令", 500)) {
 		t.Fatalf("incomplete/unsafe context: %.200s", raw)
 	}
 }
@@ -532,7 +532,71 @@ func TestCloudAgentCanvasCreatesTypedNodesAndEdges(t *testing.T) {
 	doc, _ := creationDocument(canvas.PayloadJSON)
 	nodes, _ := creationObjects(doc["nodes"])
 	meta := nodes["blank-video"]["metadata"].(map[string]any)
-	if meta["content"] != "" || meta["prompt"] != "生成提示词" || len(creationMaps(doc["connections"])) != 1 {
+	if meta["content"] != "" || meta["prompt"] != "生成提示词" || meta["composerContent"] != "生成提示词" || len(creationMaps(doc["connections"])) != 1 {
 		t.Fatal("typed nodes/edges missing")
+	}
+}
+
+func TestCloudAgentCanvasUpdatesExistingVideoDraftThroughCapabilityContract(t *testing.T) {
+	s, db, _ := agentMediaFixture(t)
+	policy, err := s.RuntimePolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	canvas, err := s.repo.CanvasProjectForUser("user", "agent-canvas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := creationMaps(doc["nodes"])
+	nodes = append(nodes, map[string]any{
+		"id": "video-1789310237935-mmh3-baby-fullmoon", "type": "video", "title": "旧视频草稿",
+		"position": map[string]any{"x": float64(200), "y": float64(80)}, "width": float64(720), "height": float64(405),
+		"metadata": map[string]any{
+			"content": "", "prompt": "原始已提交提示词", "composerContent": "原始草稿", "status": "error",
+			"referenceNodeIds": []any{"cat"}, "referenceIssue": "参考资产尚未准备完成",
+		},
+	})
+	doc["nodes"] = nodes
+	rawDocument, _ := json.Marshal(doc)
+	if err := db.Model(&model.CanvasProject{}).Where("id = ? AND user_id = ?", canvas.ID, "user").Update("payload_json", string(rawDocument)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	call := cloudAgentCall{ID: "update-video-draft"}
+	arguments, _ := json.Marshal(map[string]any{
+		"snapshotHash": cloudAgentCanvasHash(doc),
+		"ops": []map[string]any{{
+			"type": "update_node", "id": "video-1789310237935-mmh3-baby-fullmoon",
+			"patch": map[string]any{"title": "满月庆祝视频草稿（舒缓呼吸感）", "content": "下一版舒缓视频提示词"},
+		}},
+	})
+	call.Function.Arguments = string(arguments)
+	if _, err := applyCloudAgentCanvas(s.repo, "user", canvas.ID, call, policy); err != nil {
+		t.Fatal(err)
+	}
+
+	updatedCanvas, err := s.repo.CanvasProjectForUser("user", canvas.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedDocument, err := creationDocument(updatedCanvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedNodes, err := creationObjects(updatedDocument["nodes"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := updatedNodes["video-1789310237935-mmh3-baby-fullmoon"]
+	metadata := updated["metadata"].(map[string]any)
+	if updated["title"] != "满月庆祝视频草稿（舒缓呼吸感）" || metadata["composerContent"] != "下一版舒缓视频提示词" {
+		t.Fatalf("video draft was not updated: %#v", updated)
+	}
+	if metadata["prompt"] != "原始已提交提示词" || metadata["status"] != "error" || metadata["referenceIssue"] != "参考资产尚未准备完成" {
+		t.Fatalf("video task state or submission snapshot was overwritten: %#v", metadata)
 	}
 }

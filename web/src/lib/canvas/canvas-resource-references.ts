@@ -1,5 +1,6 @@
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { canvasNodeVideoPreviewUrl, canvasVideoAssetPreviewUrl } from "@/lib/canvas/canvas-media-preview";
+import { writeCanvasNodePrompt } from "@/lib/canvas/canvas-node-prompt";
 import { getNodeResourceKind } from "@/lib/canvas/node-registry";
 import { seedanceReferenceLabel } from "@/lib/seedance-video";
 import type { Skill } from "@/services/api/skills";
@@ -213,19 +214,6 @@ function canvasReferenceIdentityChanged(previousReferences: CanvasResourceRefere
     if (previousReferences.length !== nextReferences.length) return true;
     const nextLabelByNodeId = new Map(nextReferences.map((reference) => [reference.nodeId, reference.label]));
     return previousReferences.some((reference) => nextLabelByNodeId.get(reference.nodeId) !== reference.label);
-}
-
-export function writeCanvasNodePrompt(node: CanvasNodeData, prompt: string) {
-    const hasExistingContent = (node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim())) || (node.type === CanvasNodeType.Image && Boolean(node.metadata?.content));
-    const promptTemplateMetadata = node.metadata?.promptTemplateOperation
-        ? { promptTemplateOperation: undefined, promptTemplateVariables: undefined }
-        : {};
-    return {
-        ...node,
-        metadata: hasExistingContent
-            ? { ...node.metadata, ...promptTemplateMetadata, composerContent: prompt }
-            : { ...node.metadata, ...promptTemplateMetadata, prompt, composerContent: prompt },
-    };
 }
 
 function removeCanvasMentionToken(value: string, token: string) {

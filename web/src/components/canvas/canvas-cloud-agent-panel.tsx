@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { Button, Dropdown, Input, Popover } from "antd";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { Button, Dropdown, Input } from "antd";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, Bot, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, Plus, Search, Settings2, ShieldCheck, Trash2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, Settings2, ShieldCheck, Trash2, Sparkles, X } from "lucide-react";
 import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@/lib/canvas/agent-debug-export";
 import { markdownPlainText } from "@/lib/markdown-plain-text";
@@ -11,10 +11,10 @@ import { ModelPicker } from "@/components/model-picker";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
-import { agentErrorPresentation } from "@/lib/canvas/agent-error-presentation";
-import { cancelAgentRun, getAgentCapabilities, getAgentRun, createAgentRun, decideAgentApproval, sendAgentMessage, subscribeAgentEvents, type AgentEvent, type AgentPermissionMode, type AgentPersonality, type AgentRun } from "@/services/api/agent";
+import { agentErrorPresentation, agentSubmissionErrorTitle } from "@/lib/canvas/agent-error-presentation";
+import { cancelAgentRun, getAgentCapabilities, getAgentProfile, getAgentRun, createAgentRun, decideAgentApproval, sendAgentMessage, subscribeAgentEvents, updateAgentProfile, type AgentEvent, type AgentPermissionMode, type AgentProfileScope, type AgentProfileView, type AgentReasoningMode, type AgentRun } from "@/services/api/agent";
 import { agentApprovalPresentation } from "@/lib/canvas/agent-approval-presentation";
-import { addSkill, listAddedSkills, listSkills, type Skill } from "@/services/api/skills";
+import { addSkill, listAddedSkills, listSkills, type Skill, type SkillCategory } from "@/services/api/skills";
 import { clearCloudAgentPendingSubmission, cloudAgentConversationTitle, loadCloudAgentConversations, loadCloudAgentPendingSubmission, saveCloudAgentConversations, saveCloudAgentPendingSubmission, type CloudAgentConversation, type CloudAgentPendingSubmission } from "@/services/cloud-agent-conversations";
 import { logicalModelIDForConfig, modelOptionName, resolveModelRequestConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -22,15 +22,16 @@ import { applyAgentCanvasPatches, refreshCanvasAfterAgent, saveRemoteUserDataNow
 import { createAgentCanvasSync } from "@/services/agent-canvas-sync";
 import { buildSkillMentionReferences, resolveSkillMentions } from "@/services/skill-runtime";
 import { AgentChatComposer, AgentChatMessage, AgentWorkingMessage, type CloudAgentChatMessage } from "./canvas-cloud-agent-chat-ui";
+import { CanvasAgentSkillLibraryModal } from "./canvas-agent-skill-library-modal";
 import { CanvasCloudAgentSettings, agentPermissionLabel, agentPermissionMenuItems, agentPermissionVisual, type AgentContextKey } from "./canvas-cloud-agent-settings";
 import { useAgentPanelLayout } from "./use-agent-panel-layout";
 import "./canvas-cloud-agent.css";
 
-type CloudAgentPanelProps = { canvasId: string; nodeCount: number; references: CanvasResourceReference[]; open: boolean; onOpen: () => void; onCollapse: () => void; onFocusNode?: (nodeId: string) => void };
+type CloudAgentPanelProps = { canvasId: string; domainProjectId?: string; nodeCount: number; references: CanvasResourceReference[]; open: boolean; onOpen: () => void; onCollapse: () => void; onFocusNode?: (nodeId: string) => void };
 type ApprovalState = { approvalId: string; detail: Record<string, unknown>; reason: string };
 type AgentPanelView = "chat" | "history" | "settings";
 
-export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, onOpen, onCollapse, onFocusNode }: CloudAgentPanelProps) {
+export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, references, open, onOpen, onCollapse, onFocusNode }: CloudAgentPanelProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const config = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -41,8 +42,12 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
     const [connectionEpoch, setConnectionEpoch] = useState(0);
     const [messages, setMessages] = useState<CloudAgentChatMessage[]>([]);
     const [prompt, setPrompt] = useState("");
-    const [thinking, setThinking] = useState(false);
-    const [personality, setPersonality] = useState<AgentPersonality>("务实");
+    const [reasoningMode, setReasoningMode] = useState<AgentReasoningMode>("off");
+    const [profileView, setProfileView] = useState<AgentProfileView | null>(null);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [profileError, setProfileError] = useState<string>();
+    const profileRequestRef = useRef(0);
     const [skills, setSkills] = useState<Skill[]>([]);
     const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
     const [marketSkills, setMarketSkills] = useState<Skill[]>([]);
@@ -51,6 +56,8 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
     const [skillsLoading, setSkillsLoading] = useState(false);
     const [skillHasMore, setSkillHasMore] = useState(false);
     const [skillPage, setSkillPage] = useState(1);
+    const [skillCategories, setSkillCategories] = useState<SkillCategory[]>([]);
+    const [skillTag, setSkillTag] = useState("all");
     const [skillsOpen, setSkillsOpen] = useState(false);
     const [busy, setBusy] = useState(false);
     const [approvalSubmitting, setApprovalSubmitting] = useState(false);
@@ -88,8 +95,8 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
     currentScope.current = conversationScope;
     const running = Boolean(run?.cleanupPending) || run?.status === "running" || run?.status === "queued" || run?.status === "waiting_approval";
     const selectedModel = config.textModel || config.model || "";
-    const thinkingSupported = Boolean(modelCapabilityConfigFor(config, selectedModel).text?.thinking);
-    useEffect(() => { if (!thinkingSupported && thinking) setThinking(false); }, [thinkingSupported, thinking]);
+    const reasoningSupported = Boolean(modelCapabilityConfigFor(config, selectedModel).text?.thinking);
+    useEffect(() => { if (!reasoningSupported && reasoningMode !== "off") setReasoningMode("off"); }, [reasoningSupported, reasoningMode]);
     const installedSkills = useMemo(() => skills.filter((skill) => skill.isAdded), [skills]);
     const enabledSkills = useMemo(() => installedSkills.filter((skill) => selectedSkillIds.includes(skill.skillId)), [installedSkills, selectedSkillIds]);
     const status = run?.status || "idle";
@@ -99,6 +106,37 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
     useEffect(() => {
         if (!open || view !== "chat") setSkillsOpen(false);
     }, [open, view]);
+
+    const reloadProfile = useCallback(async () => {
+        const requestId = ++profileRequestRef.current;
+        setProfileLoading(true);
+        setProfileError(undefined);
+        setProfileView(null);
+        try {
+            const result = await getAgentProfile({ projectId: domainProjectId, canvasId });
+            if (profileRequestRef.current === requestId) setProfileView(result);
+        } catch (cause) {
+            if (profileRequestRef.current === requestId) setProfileError(cause instanceof Error ? cause.message : String(cause));
+        } finally {
+            if (profileRequestRef.current === requestId) setProfileLoading(false);
+        }
+    }, [canvasId, domainProjectId]);
+
+    useEffect(() => {
+        void reloadProfile();
+    }, [reloadProfile]);
+
+    const saveProfile = async (input: { scope: AgentProfileScope; projectId?: string; canvasId?: string; content: string; revision: number }) => {
+        setProfileSaving(true);
+        try {
+            const result = await updateAgentProfile(input);
+            setProfileView(result);
+            setProfileError(undefined);
+            return result;
+        } finally {
+            setProfileSaving(false);
+        }
+    };
 
     useEffect(() => {
         const timer = window.setTimeout(() => setDebouncedSkillSearch(skillSearch.trim()), 250);
@@ -128,12 +166,19 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
         if (view !== "settings" && !skillsOpen) return;
         let active = true;
         setSkillsLoading(true);
-        void listSkills({ scope: "public", search: debouncedSkillSearch || undefined, pageSize: 20, sort: "popular" })
+        void listSkills({
+            scope: "public",
+            search: debouncedSkillSearch || undefined,
+            tag: skillsOpen && skillTag !== "all" ? skillTag : undefined,
+            pageSize: 20,
+            sort: "popular",
+        })
             .then((result) => {
                 if (active) {
                     setMarketSkills(result.skills);
                     setSkillHasMore(result.hasMore);
                     setSkillPage(result.page);
+                    if (result.categories.length > 0) setSkillCategories(result.categories);
                 }
             })
             .catch(() => {
@@ -145,14 +190,21 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
         return () => {
             active = false;
         };
-    }, [view, skillsOpen, debouncedSkillSearch]);
+    }, [view, skillsOpen, debouncedSkillSearch, skillTag]);
 
     const loadMoreSkills = async () => {
         if (skillsLoading || skillPageRequestRef.current || !skillHasMore || skillSearch.trim() !== debouncedSkillSearch) return;
         skillPageRequestRef.current = true;
         setSkillsLoading(true);
         try {
-            const result = await listSkills({ scope: "public", search: debouncedSkillSearch || undefined, page: skillPage + 1, pageSize: 20, sort: "popular" });
+            const result = await listSkills({
+                scope: "public",
+                search: debouncedSkillSearch || undefined,
+                tag: skillsOpen && skillTag !== "all" ? skillTag : undefined,
+                page: skillPage + 1,
+                pageSize: 20,
+                sort: "popular",
+            });
             setMarketSkills((current) => [...current, ...result.skills.filter((skill) => !current.some((item) => item.skillId === skill.skillId))]);
             setSkillPage(result.page);
             setSkillHasMore(result.hasMore);
@@ -288,6 +340,8 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
             // Editing model settings or prompt must not silently create a new charge.
             if (pending?.request && pending.request.prompt !== value) throw new Error("上一条请求结果待确认，请先原样重试上一条消息，再发送新要求");
             if (!pending?.request) {
+                if (profileLoading) throw new Error("正在确认长期偏好快照，请稍后再发送");
+                if (!profileView || profileError) throw new Error("长期偏好快照尚未确认，请重新读取后再发送");
                 const capabilities = await getAgentCapabilities();
                 if (currentScope.current !== scope) return;
                 if (!capabilities.permissionModes.includes(permissionMode)) throw new Error("当前后端不支持所选 Agent 权限，请更新后端");
@@ -298,7 +352,7 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
                 const requestConfig = resolveModelRequestConfig(agentConfig, selectedModel);
                 const logicalModelId = logicalModelIDForConfig(agentConfig);
                 const input = {
-                    canvasId, prompt: value, thinking, personality,
+                    canvasId, prompt: value, reasoningMode: reasoningSupported ? reasoningMode : "off", profileRevision: profileView.revision,
                     model: modelOptionName(selectedModel) || undefined,
                     ...(logicalModelId ? { logicalModelId } : requestConfig.channelId ? { channelId: requestConfig.channelId, channelModelKey: modelOptionName(selectedModel) || undefined } : {}),
                     skillIds: [...new Set([...selectedSkillIds, ...resolveSkillMentions(value, installedSkills).map((skill) => skill.skillId)])],
@@ -351,7 +405,7 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
                     }
                 }
             }
-            setMessages((current) => appendAgentError(current, `submit-error-${activeConversationId}`, cause, accepted ? "运行已接收，但本地提交记录清理失败" : "请求未确认；重试将核对原请求，不重复创建"));
+            setMessages((current) => appendAgentError(current, `submit-error-${activeConversationId}`, cause, agentSubmissionErrorTitle(cause, accepted)));
         } finally {
             submissionRequestRef.current = false;
             if (currentScope.current === scope) setBusy(false);
@@ -423,7 +477,7 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
             const result = await addSkill(skill.skillId);
             setSkills((current) => [...current.filter((item) => item.skillId !== skill.skillId), result.skill]);
             setMarketSkills((current) => current.map((item) => (item.skillId === skill.skillId ? result.skill : item)));
-            setSelectedSkillIds((current) => (current.includes(skill.skillId) ? current : [...current, skill.skillId]));
+            setSelectedSkillIds((current) => (current.includes(skill.skillId) || current.length >= 8 ? current : [...current, skill.skillId]));
         } catch (cause) {
             setMessages((current) => appendAgentError(current, `skill-error-${Date.now()}`, cause, "添加 Skill 失败"));
         }
@@ -536,8 +590,16 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
                                         onBack={() => setView("chat")}
                                         onModelChange={setModel}
                                         onPermissionChange={setPermissionMode}
-                                        personality={personality}
-                                        onPersonalityChange={setPersonality}
+                                        reasoningMode={reasoningMode}
+                                        onReasoningModeChange={setReasoningMode}
+                                        profileView={profileView}
+                                        profileLoading={profileLoading}
+                                        profileSaving={profileSaving}
+                                        profileError={profileError}
+                                        projectId={domainProjectId}
+                                        canvasId={canvasId}
+                                        onReloadProfile={reloadProfile}
+                                        onSaveProfile={saveProfile}
                                         onContextToggle={(value) => setContextScope((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]))}
                                         onSkillSearch={setSkillSearch}
                                         onSkillToggle={(id) => setSelectedSkillIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
@@ -622,29 +684,17 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
                                         includeAssetLibrary={false}
                                         left={
                                             <ComposerControls
-                                                thinking={thinkingSupported && thinking}
-                                                onThinkingChange={(value) => { if (thinkingSupported) setThinking(value); }}
-                                                thinkingSupported={thinkingSupported}
+                                                reasoningMode={reasoningSupported ? reasoningMode : "off"}
+                                                reasoningSupported={reasoningSupported}
+                                                onReasoningModeChange={(value) => { if (reasoningSupported) setReasoningMode(value); }}
                                                 config={config}
                                                 selectedModel={selectedModel}
                                                 permissionMode={permissionMode}
                                                 theme={theme}
                                                 onModelChange={setModel}
                                                 onPermissionChange={setPermissionMode}
-                                                personality={personality}
-                                                onPersonalityChange={setPersonality}
                                                 skillsOpen={skillsOpen}
                                                 onSkillsOpenChange={setSkillsOpen}
-                                                installedSkills={installedSkills}
-                                                marketSkills={marketSkills}
-                                                selectedSkillIds={selectedSkillIds}
-                                                skillSearch={skillSearch}
-                                                skillsLoading={skillsLoading}
-                                                skillHasMore={skillHasMore}
-                                                onSkillSearch={setSkillSearch}
-                                                onSkillToggle={(id) => setSelectedSkillIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
-                                                onSkillInstall={installSkill}
-                                                onLoadMoreSkills={loadMoreSkills}
                                                 selectedSkillCount={selectedSkillIds.length}
                                             />
                                         }
@@ -655,6 +705,27 @@ export function CanvasCloudAgentPanel({ canvasId, nodeCount, references, open, o
                     </motion.aside>
                 ) : null}
             </AnimatePresence>
+            <CanvasAgentSkillLibraryModal
+                open={skillsOpen}
+                theme={theme}
+                installedSkills={installedSkills}
+                marketSkills={marketSkills}
+                selectedSkillIds={selectedSkillIds}
+                categories={skillCategories}
+                category={skillTag}
+                search={skillSearch}
+                loading={skillsLoading}
+                hasMore={skillHasMore}
+                onClose={() => setSkillsOpen(false)}
+                onCategoryChange={setSkillTag}
+                onSearch={setSkillSearch}
+                onToggle={(id) => setSelectedSkillIds((current) => {
+                    if (current.includes(id)) return current.filter((item) => item !== id);
+                    return current.length < 8 ? [...current, id] : current;
+                })}
+                onInstall={installSkill}
+                onLoadMore={loadMoreSkills}
+            />
         </>
     );
 }
@@ -810,7 +881,7 @@ function AgentConversation({
                 {messages.map((item) => (
                     <AgentChatMessage key={item.id} item={item} theme={theme} references={references} onFocusNode={onFocusNode} isStreaming={busy && !approval && item.streaming === true && item === messages.at(-1)} />
                 ))}
-                {approval ? <ApprovalCard key={approval.approvalId} approval={approval} theme={theme} submitting={approvalSubmitting} onReasonChange={onApprovalReasonChange} onApprove={onApprove} onReject={onReject} /> : null}
+                {approval ? <ApprovalCard key={approval.approvalId} approval={approval} theme={theme} submitting={approvalSubmitting} onFocusNode={onFocusNode} onReasonChange={onApprovalReasonChange} onApprove={onApprove} onReject={onReject} /> : null}
                 {busy && !approval ? (
                     <AgentWorkingMessage theme={theme} label="正在处理当前画布" />
                 ) : null}
@@ -832,11 +903,9 @@ function AgentEmptyState({ theme, nodeCount }: { theme: CanvasTheme; nodeCount: 
 }
 
 function ComposerControls({
-    thinking,
-    thinkingSupported,
-    personality,
-    onPersonalityChange,
-    onThinkingChange,
+    reasoningMode,
+    reasoningSupported,
+    onReasoningModeChange,
     config,
     selectedModel,
     permissionMode,
@@ -845,23 +914,11 @@ function ComposerControls({
     onPermissionChange,
     skillsOpen,
     onSkillsOpenChange,
-    installedSkills,
-    marketSkills,
-    selectedSkillIds,
-    skillSearch,
-    skillsLoading,
-    skillHasMore,
-    onSkillSearch,
-    onSkillToggle,
-    onSkillInstall,
-    onLoadMoreSkills,
     selectedSkillCount,
 }: {
-    thinking: boolean;
-    thinkingSupported: boolean;
-    personality: AgentPersonality;
-    onPersonalityChange: (value: AgentPersonality) => void;
-    onThinkingChange: (value: boolean) => void;
+    reasoningMode: AgentReasoningMode;
+    reasoningSupported: boolean;
+    onReasoningModeChange: (value: AgentReasoningMode) => void;
     config: ReturnType<typeof useEffectiveConfig>;
     selectedModel: string;
     permissionMode: AgentPermissionMode;
@@ -870,16 +927,6 @@ function ComposerControls({
     onPermissionChange: (mode: AgentPermissionMode) => void;
     skillsOpen: boolean;
     onSkillsOpenChange: (open: boolean) => void;
-    installedSkills: Skill[];
-    marketSkills: Skill[];
-    selectedSkillIds: string[];
-    skillSearch: string;
-    skillsLoading: boolean;
-    skillHasMore: boolean;
-    onSkillSearch: (value: string) => void;
-    onSkillToggle: (skillId: string) => void;
-    onSkillInstall: (skill: Skill) => Promise<void>;
-    onLoadMoreSkills: () => Promise<void>;
     selectedSkillCount: number;
 }) {
     const permissionVisual = agentPermissionVisual(permissionMode);
@@ -896,9 +943,11 @@ function ComposerControls({
                 showOptionPrices
                 placeholder="选择模型"
             />
-            {thinkingSupported ? <button type="button" aria-pressed={thinking} title="思考模式：由当前文本模型提供" onClick={() => onThinkingChange(!thinking)} className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25" style={{ color: thinking ? theme.accent.primary : theme.node.muted, background: thinking ? theme.node.fill : "transparent" }}>
-                <Sparkles className="size-3.5" />思考
-            </button> : null}
+            {reasoningSupported ? <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: reasoningMenuItems(reasoningMode, onReasoningModeChange) }}>
+                <button type="button" aria-label="选择 Agent 推理模式" title="推理模式：只用于规划和工具选择" className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25" style={{ color: reasoningMode === "off" ? theme.node.muted : theme.accent.primary, background: reasoningMode === "off" ? "transparent" : theme.node.fill }}>
+                    <Sparkles className="size-3.5" />{reasoningModeLabel(reasoningMode)}
+                </button>
+            </Dropdown> : null}
             <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: agentPermissionMenuItems(permissionMode, onPermissionChange) }}>
                 <button
                     type="button"
@@ -910,163 +959,37 @@ function ComposerControls({
                     <span className="max-w-20 truncate">{agentPermissionLabel(permissionMode)}</span>
                 </button>
             </Dropdown>
-            <Popover
-                trigger="click"
-                placement="topLeft"
-                arrow={false}
-                open={skillsOpen}
-                onOpenChange={onSkillsOpenChange}
-                classNames={{ root: "canvas-agent-skill-popover" }}
-                content={
-                    <AgentSkillPicker
-                        theme={theme}
-                        installedSkills={installedSkills}
-                        marketSkills={marketSkills}
-                        selectedSkillIds={selectedSkillIds}
-                        search={skillSearch}
-                        loading={skillsLoading}
-                        hasMore={skillHasMore}
-                        onSearch={onSkillSearch}
-                        onToggle={onSkillToggle}
-                        onInstall={onSkillInstall}
-                        onLoadMore={onLoadMoreSkills}
-                    />
-                }
-                >
-                    <button
-                        type="button"
-                        className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"
-                        style={{ color: selectedSkillCount ? theme.accent.primary : theme.node.muted }}
-                        aria-label={`选择 Skills${selectedSkillCount ? `，已选 ${selectedSkillCount} 个` : ""}`}
-                        aria-expanded={skillsOpen}
-                        title="选择 Skills"
-                    >
-                        <Sparkles className="size-3.5" />
-                        <span className="max-w-28 truncate">Skills技能包({selectedSkillCount})</span>
-                    </button>
-            </Popover>
+            <button
+                type="button"
+                className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"
+                style={{ color: selectedSkillCount ? theme.accent.primary : theme.node.muted, background: skillsOpen ? theme.node.fill : "transparent" }}
+                aria-label={`打开 Skills 技能库${selectedSkillCount ? `，已启用 ${selectedSkillCount} 个` : ""}`}
+                aria-expanded={skillsOpen}
+                aria-haspopup="dialog"
+                title="打开 Skills 技能库"
+                onClick={() => onSkillsOpenChange(true)}
+            >
+                <Sparkles className="size-3.5" />
+                <span className="max-w-28 truncate">Skills技能包({selectedSkillCount})</span>
+            </button>
         </div>
     );
 }
 
-function AgentSkillPicker({
-    theme,
-    installedSkills,
-    marketSkills,
-    selectedSkillIds,
-    search,
-    loading,
-    hasMore,
-    onSearch,
-    onToggle,
-    onInstall,
-    onLoadMore,
-}: {
-    theme: CanvasTheme;
-    installedSkills: Skill[];
-    marketSkills: Skill[];
-    selectedSkillIds: string[];
-    search: string;
-    loading: boolean;
-    hasMore: boolean;
-    onSearch: (value: string) => void;
-    onToggle: (skillId: string) => void;
-    onInstall: (skill: Skill) => Promise<void>;
-    onLoadMore: () => Promise<void>;
-}) {
-    const [tab, setTab] = useState<"installed" | "market">("installed");
-    const listRef = useRef<HTMLDivElement>(null);
-    const loadMoreRef = useRef<HTMLDivElement>(null);
-    const normalizedSearch = search.trim().toLocaleLowerCase();
-    const source = (tab === "installed" ? installedSkills : marketSkills).filter((skill) => `${skill.skillName} ${skill.description || ""}`.toLocaleLowerCase().includes(normalizedSearch));
-    const selectedCount = selectedSkillIds.length;
-    const allSelected = tab === "installed" && source.length > 0 && source.every((skill) => selectedSkillIds.includes(skill.skillId));
-    const toggleAll = () => {
-        let added = 0;
-        source.forEach((skill) => {
-            const selected = selectedSkillIds.includes(skill.skillId);
-            if (allSelected ? selected : !selected && added < Math.max(0, 8 - selectedCount)) {
-                onToggle(skill.skillId);
-                added += 1;
-            }
-        });
-    };
+const reasoningLabels: Record<AgentReasoningMode, string> = { off: "直达", auto: "自动推理", deep: "深入推理" };
 
-    useEffect(() => {
-        const target = loadMoreRef.current;
-        if (tab !== "market" || !target || !hasMore || loading || typeof IntersectionObserver === "undefined") return;
-        const observer = new IntersectionObserver((entries) => {
-            if (entries.some((entry) => entry.isIntersecting)) void onLoadMore();
-        }, { root: listRef.current, rootMargin: "120px 0px" });
-        observer.observe(target);
-        return () => observer.disconnect();
-    }, [hasMore, loading, onLoadMore, tab]);
+function reasoningModeLabel(mode: AgentReasoningMode) { return reasoningLabels[mode]; }
 
-    return (
-        <div className="canvas-agent-skill-picker" data-canvas-no-zoom data-canvas-wheel-scroll>
-            <div className="canvas-agent-skill-picker-header flex items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-2.5 text-base font-semibold"><Sparkles className="size-5" />选择 Skills</div>
-                    <div className="mt-1.5 text-xs" style={{ color: theme.node.muted }}>本轮启用 {selectedCount}/8 个，发送时固定版本</div>
-                </div>
-                <div className="min-w-14 text-right">
-                    {tab === "installed" && source.length > 0 ? <button type="button" className="rounded-lg px-2 py-1 text-xs font-medium" style={{ color: theme.accent.primary }} onClick={toggleAll}>{allSelected ? "取消全选" : "全选"}</button> : null}
-                </div>
-            </div>
-            <div className="canvas-agent-skill-picker-tabs flex gap-1.5 rounded-xl p-1.5" style={{ background: theme.node.fill }}>
-                <button type="button" className="flex-1 rounded-lg px-3 text-sm font-medium" style={{ background: tab === "installed" ? theme.toolbar.itemHover : "transparent", color: tab === "installed" ? theme.node.text : theme.node.muted }} onClick={() => setTab("installed")} aria-pressed={tab === "installed"}>已加入 <span className="ml-1 opacity-60">{installedSkills.length}</span></button>
-                <button type="button" className="flex-1 rounded-lg px-3 text-sm font-medium" style={{ background: tab === "market" ? theme.toolbar.itemHover : "transparent", color: tab === "market" ? theme.node.text : theme.node.muted }} onClick={() => setTab("market")} aria-pressed={tab === "market"}>发现 Skills</button>
-            </div>
-            <Input allowClear prefix={<Search className="size-4" style={{ color: theme.node.muted }} />} value={search} onChange={(event) => onSearch(event.target.value)} placeholder={tab === "market" ? "搜索技能市场" : "搜索已加入 Skills"} aria-label="搜索 Skills" className="canvas-agent-skill-picker-search !rounded-xl" />
-            <div ref={listRef} className="canvas-agent-skill-picker-list thin-scrollbar space-y-2 overflow-y-auto">
-                {loading && source.length === 0 ? <div className="grid h-full place-items-center text-xs" style={{ color: theme.node.muted }}><span className="inline-flex items-center gap-2"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />正在读取技能…</span></div> : null}
-                {source.map((skill) => <SkillPickerRow key={skill.skillId} skill={skill} theme={theme} selected={selectedSkillIds.includes(skill.skillId)} canSelect={selectedCount < 8 || selectedSkillIds.includes(skill.skillId)} onToggle={() => onToggle(skill.skillId)} onInstall={() => void onInstall(skill)} />)}
-                {!loading && source.length === 0 ? <div className="grid h-full place-items-center px-8 text-center text-xs leading-5" style={{ color: theme.node.muted }}>{tab === "market" ? "没有匹配的公开 Skill，换个关键词试试" : "还没有加入 Skill，可前往“发现 Skills”添加"}</div> : null}
-                {tab === "market" && hasMore ? <div ref={loadMoreRef} className="h-px" aria-hidden /> : null}
-            </div>
-            <div className="canvas-agent-skill-picker-footer flex items-center justify-between gap-3 border-t text-xs" style={{ borderColor: theme.node.stroke, color: theme.node.muted }}>
-                <span>{tab === "installed" ? `已选择 ${selectedCount} 个技能包` : `已加载 ${marketSkills.length} 个技能包`}</span>
-                {tab === "market" && hasMore ? <button type="button" className="rounded-lg px-3 py-1.5 font-medium" style={{ background: theme.node.fill, color: theme.node.text }} disabled={loading} onClick={() => void onLoadMore()}>{loading ? "加载中…" : "加载更多"}</button> : <span>{tab === "installed" ? "最多 8 个" : "已加载全部"}</span>}
-            </div>
-        </div>
-    );
+function reasoningMenuItems(mode: AgentReasoningMode, onChange: (value: AgentReasoningMode) => void) {
+    return (Object.keys(reasoningLabels) as AgentReasoningMode[]).map((value) => ({
+        key: value,
+        label: reasoningLabels[value],
+        icon: value === mode ? <Check className="size-3.5" /> : undefined,
+        onClick: () => onChange(value),
+    }));
 }
 
-function SkillPickerRow({ skill, theme, selected, canSelect, onToggle, onInstall }: { skill: Skill; theme: CanvasTheme; selected: boolean; canSelect: boolean; onToggle: () => void; onInstall: () => void }) {
-    const [expanded, setExpanded] = useState(false);
-    const description = skill.description || "暂无技能说明";
-    const hasMore = description.length > 112 || description.includes("\n");
-    return (
-        <div className={`canvas-agent-skill-picker-row flex min-w-0 items-start gap-3.5 rounded-xl border ${selected ? "is-selected" : ""}`} style={{ borderColor: selected ? theme.accent.primary : theme.node.stroke }} title={skill.description || skill.skillName}>
-            {skill.isAdded ? (
-                <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={selected}
-                    disabled={!selected && !canSelect}
-                    className="canvas-agent-skill-picker-check mt-0.5 grid shrink-0 place-items-center rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/30 disabled:cursor-not-allowed disabled:opacity-35"
-                    style={{ borderColor: selected ? theme.accent.primary : theme.node.stroke, background: selected ? theme.accent.primary : "transparent", color: selected ? theme.toolbar.panel : theme.node.muted }}
-                    onClick={onToggle}
-                    aria-label={`${selected ? "停用" : "启用"} ${skill.skillName}`}
-                >
-                    {selected ? <Check className="size-3.5" strokeWidth={3} /> : null}
-                </button>
-            ) : <span className="canvas-agent-skill-picker-check mt-0.5 grid shrink-0 place-items-center rounded-md" style={{ background: theme.node.fill, color: theme.node.muted }}><Sparkles className="size-3.5" /></span>}
-            <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-3"><span className="min-w-0 flex-1 break-words text-sm font-semibold [overflow-wrap:anywhere]">{skill.skillName}</span>{skill.version ? <span className="shrink-0 text-xs" style={{ color: theme.node.muted }}>v{skill.version}</span> : null}</div>
-                <div className={`mt-1 break-words text-xs leading-5 ${expanded ? "" : "line-clamp-2"}`} style={{ color: theme.node.muted }}>{description}</div>
-            </div>
-            {!skill.isAdded ? <Button size="small" type="text" className="!h-8 !shrink-0 !rounded-lg !px-2 !text-xs" icon={<Plus className="size-3.5" />} onClick={onInstall}>加入</Button> : null}
-            {hasMore ? (
-                <button type="button" className="canvas-agent-skill-picker-expand shrink-0 self-end text-[var(--fs-label)]" style={{ color: theme.accent.primary }} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-                    {expanded ? "收起" : "查看全部"}
-                </button>
-            ) : null}
-        </div>
-    );
-}
-
-function ApprovalCard({ approval, theme, submitting, onReasonChange, onApprove, onReject }: { approval: ApprovalState; theme: CanvasTheme; submitting: boolean; onReasonChange: (value: string) => void; onApprove: () => void; onReject: () => void }) {
+function ApprovalCard({ approval, theme, submitting, onFocusNode, onReasonChange, onApprove, onReject }: { approval: ApprovalState; theme: CanvasTheme; submitting: boolean; onFocusNode?: (nodeId: string) => void; onReasonChange: (value: string) => void; onApprove: () => void; onReject: () => void }) {
     const [showReason, setShowReason] = useState(Boolean(approval.reason));
     const action = agentApprovalPresentation(approval.detail);
     return (
@@ -1077,7 +1000,11 @@ function ApprovalCard({ approval, theme, submitting, onReasonChange, onApprove, 
                 <span className="canvas-agent-approval-badge">等待你的确认</span>
             </div>
             <p className="canvas-agent-approval-description" style={{ color: theme.node.muted }}>{action.description}</p>
-            {action.items.length ? <div className="canvas-agent-approval-items" aria-label="涉及节点">{action.items.map((item, index) => <span key={`${item}-${index}`} title={item}>{item}</span>)}</div> : null}
+            {action.items.length ? (
+                <div className="canvas-agent-approval-items" aria-label="涉及节点">
+                    {action.items.map((item, index) => <ApprovalPreviewItemView key={`${item.operation}-${item.nodeId || item.nodeTitle || index}-${index}`} item={item} theme={theme} onFocusNode={onFocusNode} />)}
+                </div>
+            ) : <div className="canvas-agent-approval-empty" style={{ color: theme.node.muted }}>无法确认具体目标，继续前请重新读取画布。</div>}
             <button type="button" className="canvas-agent-approval-reason-toggle" aria-expanded={showReason} onClick={() => setShowReason((value) => !value)} disabled={submitting}>
                 {showReason ? "收起拒绝理由" : "填写拒绝理由（可选）"}
             </button>
@@ -1090,6 +1017,37 @@ function ApprovalCard({ approval, theme, submitting, onReasonChange, onApprove, 
                 </button>
             </div>
         </section>
+    );
+}
+
+function ApprovalPreviewItemView({ item, theme, onFocusNode }: { item: ReturnType<typeof agentApprovalPresentation>["items"][number]; theme: CanvasTheme; onFocusNode?: (nodeId: string) => void }) {
+    const operationLabel = item.operation === "add_node" ? "新增" : item.operation === "update_node" ? "修改" : item.operation === "connect_nodes" ? "连线" : "生成";
+    const renderNode = (title: string | undefined, id: string | undefined, typeLabel: string | undefined, role: "source" | "target" | "node") => {
+        if (!title) return null;
+        const content = <><span className="canvas-agent-approval-node-title">{title}</span>{typeLabel ? <span className="canvas-agent-approval-node-type">{typeLabel}</span> : null}</>;
+        return id && onFocusNode ? <button type="button" className="canvas-agent-approval-node canvas-agent-approval-node-button" onClick={() => onFocusNode(id)} title="定位到画布节点">{content}</button> : <span className={`canvas-agent-approval-node canvas-agent-approval-node-${role}`}>{content}</span>;
+    };
+    return (
+        <article className="canvas-agent-approval-item">
+            <div className="canvas-agent-approval-item-main">
+                <span className={`canvas-agent-approval-operation canvas-agent-approval-operation-${item.operation}`}>{operationLabel}</span>
+                {item.operation === "connect_nodes" ? (
+                    <div className="canvas-agent-approval-connection">
+                        {renderNode(item.nodeTitle, item.nodeId, item.nodeTypeLabel, "source")}
+                        <span className="canvas-agent-approval-arrow" aria-hidden="true">→</span>
+                        {renderNode(item.targetNodeTitle, item.targetNodeId, undefined, "target")}
+                    </div>
+                ) : (
+                    <div className="canvas-agent-approval-node-summary">
+                        {renderNode(item.nodeTitle, item.nodeId, item.nodeTypeLabel, "node")}
+                        {item.resultTitle ? <><span className="canvas-agent-approval-change-arrow" aria-hidden="true">改为</span><span className="canvas-agent-approval-result-title">《{item.resultTitle}》</span></> : null}
+                    </div>
+                )}
+            </div>
+            {item.fields?.length ? <div className="canvas-agent-approval-field-list">修改：{item.fields.map((field) => <span key={field}>{field}</span>)}</div> : null}
+            {item.details?.length ? <div className="canvas-agent-approval-detail-list">{item.details.map((detail) => <span key={detail}>{detail}</span>)}</div> : null}
+            <div className="canvas-agent-approval-summary">{item.summary}</div>
+        </article>
     );
 }
 
@@ -1130,6 +1088,12 @@ function applyAgentEvent(event: AgentEvent, setMessages: Dispatch<SetStateAction
     }
     if (event.type === "assistant_delta") {
         setMessages((current) => upsertTextMessage(current, String(payload.messageId || "assistant"), text, true));
+        return;
+    }
+    if (event.type === "reasoning_delta" || event.type === "reasoning_message") {
+        const id = String(payload.messageId || `${event.runId}:reasoning`);
+        setMessages((current) => upsertTextMessage(current, id, text, event.type === "reasoning_delta")
+            .map((item) => item.id === id ? { ...item, reasoning: true } : item));
         return;
     }
     if (event.type === "assistant_message") {

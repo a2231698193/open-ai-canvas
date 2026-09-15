@@ -1,7 +1,7 @@
 import { App, Button, Form, Input, InputNumber, Modal, Select, Switch } from "antd";
 import type { FormInstance } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -9,7 +9,7 @@ import { ChannelHeadersEditor, validateChannelHeaders } from "@/components/chann
 import { PaginationBar } from "@/components/layout/workspace-page";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { refreshSystemChannels } from "@/lib/user-session";
-import { createAdminChannel, deleteAdminChannel, listAdminChannels, updateAdminChannel } from "@/services/api/auth";
+import { createAdminChannel, deleteAdminChannel, duplicateAdminChannel, listAdminChannels, updateAdminChannel } from "@/services/api/auth";
 import { type ChannelHeader, type ModelChannel } from "@/stores/use-config-store";
 import { useAdminContext } from "../admin-context";
 import { AdminPageFrame } from "../components/admin-shell";
@@ -58,6 +58,7 @@ export default function ChannelsPage() {
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editingChannel, setEditingChannel] = useState<ModelChannel | null>(null);
     const [saving, setSaving] = useState(false);
+    const [duplicatingChannelId, setDuplicatingChannelId] = useState<string | null>(null);
     const [managingChannel, setManagingChannel] = useState<ModelChannel | null>(null);
     const requestSequence = useRef(0);
     const [form] = Form.useForm<ChannelFormValues>();
@@ -171,6 +172,20 @@ export default function ChannelsPage() {
         }
     };
 
+    const duplicateChannel = async (channel: ModelChannel) => {
+        setDuplicatingChannelId(channel.id);
+        try {
+            await duplicateAdminChannel(channel.id);
+            await syncChannels();
+            await reload();
+            message.success("系统渠道已复制");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "复制系统渠道失败");
+        } finally {
+            setDuplicatingChannelId(null);
+        }
+    };
+
     const removeChannel = async (channel: ModelChannel) => {
         try {
             await deleteAdminChannel(channel.id);
@@ -207,6 +222,7 @@ export default function ChannelsPage() {
                     primary={{ label: "模型管理", onClick: () => setManagingChannel(channel) }}
                     actions={[
                         { key: "edit", label: "编辑", icon: <Pencil className="size-3.5" />, onClick: () => openDrawer(channel) },
+                        { key: "duplicate", label: "复制渠道", icon: <Copy className="size-3.5" />, disabled: Boolean(duplicatingChannelId), onClick: () => duplicateChannel(channel) },
                         {
                             key: "toggle",
                             label: channel.enabled !== false ? "停用渠道" : "启用渠道",

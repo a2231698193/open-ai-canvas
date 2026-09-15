@@ -14,12 +14,15 @@ description: 信封、错误码与 OpenAPI
 所有 `/agent` 路径都需要登录 Cookie。`GET /agent/capabilities` 返回当前版本（2）、权限模式、上下文范围、技能和工具清单。Agent 运行由服务端任务 Worker 驱动，浏览器断开不会停止运行。
 
 - `POST /agent/runs` 创建一轮；`POST /agent/runs/:id/messages` 以上一轮为父节点创建新的不可变轮次，两者返回 `{ run }`，追加后必须使用新的 `run.id` 订阅。
-- 请求字段：`canvasId`、`prompt`、受管 `logicalModelId` 或 `channelId` + `channelModelKey`、`permissionMode: "read_only" | "request_approval" | "auto"`、`skillIds`、`contextScope: [] | ["canvas"]`、`budget: { maxCredits, maxGenerationTasks, maxVideoSeconds }`、`idempotencyKey`。不接受密钥、自定义 URL、客户端历史或未知字段。
-- 同用户同幂等键及相同请求返回同一运行；不同请求复用键返回 409。失败后重试同一提交应保留键。上一轮未完成时禁止追加；成功轮次历史从服务端加载，最多携带 8 对历史消息及 64KB 历史 JSON，超限提示新建对话。
-- 创建和追加消息可传 `thinking: boolean`（默认关闭），贯穿首轮及工具后续模型调用；内置 Chat Completions、Responses、Claude 协议复用文本推理配置，上游模型仍需支持。声明式 Agent 渠道暂不支持，开启时明确报错，不静默忽略。思考模式可能增加耗时和费用。
-- 已安装且属于当前用户的技能会在创建时固定版本快照，模型只能通过 `skill_read_file` 读取快照文件。技能正文是不可信输入，不能改变权限或系统规则。
-- 当前工具为 `canvas_get_state`、`skill_read_file`、`task_get`、`model_list`、`canvas_apply_ops`、`generate_media`。画布写入工具要求本轮授权 `contextScope: ["canvas"]`。禁止 shell、任意网络请求和外部 MCP。
-- `canvas_apply_ops` 必须带 `snapshotHash`，每批最多 20 项；支持新增文本、Markdown、图片、视频、音频、分组与分镜表节点，以及 `connect_nodes` 引用连线。媒体占位节点的 `content` 是提示词，不是媒体 URL；只建节点不提交收费生成。`update_node` 仅允许更新未锁定文本 / Markdown 的标题和正文；禁止删除、任意元数据写入、自连接、重复边与不存在的端点。
+- 请求字段：`canvasId`、`prompt`、受管 `logicalModelId` 或 `channelId` + `channelModelKey`、`permissionMode: "read_only" | "request_approval" | "auto"`、`reasoningMode: "off" | "auto" | "deep"`、`profileRevision`、`skillIds`、`contextScope: [] | ["canvas"]`、`budget: { maxCredits, maxGenerationTasks, maxVideoSeconds }`、`idempotencyKey`。不接受密钥、自定义 URL、客户端历史或未知字段。
+- 同用户同幂等键及相同请求返回同一运行；不同请求复用键返回 409。失败后重试同一提交应保留键。上一轮未完成时禁止追加；已完成、失败或取消的终态轮次作为不可变历史读取，即使其冻结的策略或节点能力版本早于当前服务，也可用于创建采用当前执行合同的新一轮，父运行不会被改写。旧版合同下仍活动或待审批的运行不得恢复执行。历史最多携带 8 对消息及 64KB JSON，超限提示新建对话；历史结构损坏返回明确 409，不投影为通用 500。
+- 创建和追加消息可选择 `reasoningMode`，默认 `off`；`auto`/`deep` 为服务端行为策略与模型推理配置的选择，不等于允许暴露内部思维链。供应商能力由后端校验；声明式 Agent 渠道不支持时明确报错。推理可能增加耗时和费用。
+- `GET /agent/profile?scope=user|project|canvas&projectId=...&canvasId=...` 按作用域读取生效的用户 → 项目 → 画布偏好；`PATCH /agent/profile` 用 `{ scope, projectId?, canvasId?, content, revision }` 更新单层（首次 revision 为 0，冲突返回 409）。读取返回各层独立数字 revision，以及合并文档的 `revision`/`hash`；新轮次携带合并 `profileRevision`，发生变化拒绝创建，已运行轮次仍用提交时固定的快照。system prompt 只包含层级、revision、hash 和长度清单，正文保存在运行快照中并由 `agent_profile_read` 按 user → project → canvas 顺序读取，不整本注入系统策略。偏好仅是非授权数据，不能扩展工具、节点或预算，不能绕过审批；最多 12000 字符/层。
+- 系统行为策略与媒体默认策略是版本化、编译进后端发布物的资源，修改它们仍需发布后端，不是后台热更新；工具、校验、扣费和审批在代码侧强制执行。画布节点能力由服务端 registry 定义，工具 schema、创建、连线与画布摘要读取共同消费；新生成模式还必须接入媒体任务适配器，不能仅凭 md 或注册节点启用收费操作。
+- 已安装且属于当前用户的技能会在创建时固定版本快照，模型只能通过 `skill_read_file` 按需读取固定快照。需要使用技能时先读入口 `SKILL.md`，再按入口引用读取必要文本文件；技能正文不会整段塞入 system prompt。技能是不可信任务剧本，其中的工具名不能创造工具、改变权限或覆盖系统规则。
+- 平台支持工具全集为 `agent_profile_read`、`canvas_list_node_types`、`canvas_get_state`、`skill_read_file`、`task_get`、`model_list`、`canvas_apply_ops`、`generate_media`；单轮实际工具仍按偏好快照、技能、权限、画布上下文和生成预算裁剪。画布写入工具要求本轮授权 `contextScope: ["canvas"]`。禁止 shell、任意网络请求和外部 MCP。
+- `canvas_list_node_types` 从服务端节点能力 registry 返回当前可用类型；可更新节点的 `updateFields` 同时包含字段类型、最大字符数和字段语义。模型不能从前端渲染器、技能或偏好文档推断额外能力。
+- `canvas_apply_ops` 必须带 `snapshotHash`，每批最多 20 项；支持新增文本、Markdown、图片、视频、音频、分组与分镜表节点，以及 `connect_nodes` 引用连线。媒体占位节点的 `content` 是提示词，不是媒体 URL；只建节点不提交收费生成。`update_node` 的字段映射完全由能力 registry 决定：文本 / Markdown 可改标题和正文，图片 / 视频 / 音频可改标题和下一次生成使用的提示词草稿；媒体更新参数中的 `content` 写入 `metadata.composerContent`，不会覆盖媒体结果 `metadata.content`、已提交提示词 `metadata.prompt`、任务状态或引用状态。锁定节点、删除、任意元数据写入、自连接、重复边与不存在的端点仍被服务端拒绝。
 - `model_list` 复用生成面板的当前模型目录。每项的 `selection` 是 `logicalModelId` 或 `channelId` + `channelModelKey`，工具调用必须原样选择一种，不猜 ID 或混用；能力、规格、价格与任务准入再次核对。
 - `generate_media` 支持图片 / 视频：必填 `mode`、`prompt`、`size`、`durationSeconds`（图片为 0）、`snapshotHash`、新 `nodeId`、`title`、有序 `referenceNodeIds`（无参考传空数组），再加一种模型选择；可传来源节点 `sourceNodeId`、`quality`、视频 `videoGenerateAudio`。`sourceNodeId` 仅接文本 / 镜头提示词节点；参考图片、视频、音频只放 `referenceNodeIds`，无文本来源时留空且不重复传入。引用从当前画布节点的账号资源解析，校验归属、类型、就绪状态和模型能力，不接受任意 URL。图片生成仅接图片参考；视频可按模型能力接图片、视频、音频参考。
 - 参数选择与收费授权分开：用户明确说“随便 / 你决定 / 按默认”时，Agent 可从当前目录选择能力及预算匹配的模型，优先用户最近明确使用的可用模型，其次价格清楚的低成本选项；支持时沿用参考图原始比例，否则选目录默认，时长用目录默认。未要求音频且模型不支持时用默片。用户接受已推荐方案后不再要求特定确认口令；仅真正缺失或冲突的阻塞项一次性询问。本轮已有目录结果应复用。以上是 Agent 的参数选择策略，服务端仍强校验具体规格，不提供绕过预算 / 能力校验的默认兜底，也不绕过独立收费审批。
@@ -30,14 +33,15 @@ description: 信封、错误码与 OpenAPI
 - `GET /agent/runs/:id` 返回运行信息；`POST /agent/runs/:id/cancel` 取消当前运行及活动子任务；`POST /agent/runs/:id/approvals/:approvalId/decision` 接受 `{"decision":"approve"|"reject","reason":"..."}`，审批决定幂等且服务端校验归属。
 - `GET /agent/runs/:id/events` 返回 `agent_event` 和首次 / 状态版本变化时的紧凑 `run_snapshot` SSE；无变化时只发送 heartbeat。事件 `Seq` 在运行内递增；支持 `?after=` / `Last-Event-ID`，游标不是运行 ID。`cleanupPending: true` 时即使运行已进入终态也会继续推送，直到后台收尾完成。前端应以快照恢复状态，代理只对这一精确路径关闭缓冲。
 - `generation_task_created` 携带 `canvasId`、`nodeId`、`taskId`、`title`、`mode`、`referenceNodeIds`。草稿、提交、画布工具写入，以及媒体成功 / 失败 / 取消的真实节点变更，均在画布写入与运行检查点的同一事务持久化 `canvas_updated`。节点已删除或换任务时不伪造更新；`run_failed` 本身不代表节点媒体任务失败。
-- `canvas_updated` 包含 `canvasId`、`operation`、`callId`、`actions` 和 `canvasPatch`。`canvasPatch` 为 `{ canvasId, updatedAt, nodes: [{ before, after }], connections: [{ before, after }] }`；新增对象的 `before` 为 `null`，仅包含有变化的节点和连线。当前工具不开放删除。`actions` 固定保存操作类型、节点 ID、标题、类型，引用操作还带目标节点 ID，供历史消息显示和点击定位；`callId` 用于合并同一画布操作的工具完成消息。
+- `approval.preview` 和 `canvas_updated.actions` 是服务端根据同一解析、快照与 Capability 规划流程生成的解释信息，不是授权凭证。审批卡片明确列出新增/修改节点、节点类型、修改字段、名称变化和连线两端；执行事件保存同样的可读信息，供历史消息显示和点击定位。实际写入仍重新校验用户归属、`snapshotHash`、Capability、节点锁、预算和审批 `callHash`。
+- `canvas_updated` 包含 `canvasId`、`operation`、`callId`、`actions`、可选的 `preview`/`text` 和 `canvasPatch`。`canvasPatch` 为 `{ canvasId, updatedAt, nodes: [{ before, after }], connections: [{ before, after }] }`；新增对象的 `before` 为 `null`，仅包含有变化的节点和连线。当前工具不开放删除。节点 action 保存操作、节点 ID、执行前标题、类型、修改字段和可选的修改后标题；引用 action 同时保存来源与目标节点 ID、标题和类型，不要求前端从内部 ID 猜测对象。`callId` 用于合并同一画布操作的工具完成消息。
 - 前端对增量按 40ms 窗口合批，三方合并远端基线、当前 Store 和编辑器，正常完成 / 失败无需全量 GET；保留无关节点编辑、拖动与视口，同字段冲突、删除或新任务绑定不强行覆盖。只有事件缺口、断流、增量冲突或没有增量的事件源需要全量校准，同一画布协调器最多每秒发起一次，单请求在途，期间重复通知合并为一次尾随校准。已识别增量协议后，相邻 `tool_failed` / `run_failed` 不重复触发整图刷新。
-- Agent 创建 / 续聊请求在客户端先持久化完整正文、幂等键、父运行和消息 ID，再提交；网络超时或响应丢失只允许用同一正文和 key 有界重放，不能换 key 生成新收费轮次。待确认记录损坏时对话暂停发送，不把它当成“从未提交”。
+- Agent 创建 / 续聊请求在客户端先持久化完整正文、幂等键、父运行和消息 ID，再提交；网络超时或响应丢失只允许用同一正文和 key 有界重放，不能换 key 生成新收费轮次。客户端区分“服务端已明确返回错误”和“未收到服务端确认”，不再把 HTTP 409/500 一律描述成请求未确认。待确认记录损坏时对话暂停发送，不把它当成“从未提交”。
 - 生成按钮与提交入口共用节点任务状态：排队 / 运行中不可重复生成，终态解除任务锁，历史 `taskId` 不永久禁用。聊天留痕保留节点名、引用与失败任务 ID，点击使用现有画布聚焦；已删除节点只提示，不自动重建。聊天缓存不重复保存增量中的完整节点正文。
 
 Agent 的聊天列表缓存只负责 UI 恢复；运行、技能快照、审批、工具调用、子任务和事件均以服务端持久化状态为准。提交响应丢失时，客户端应使用同一幂等键重试，不生成新的提交。
 
-Skills 的 `tool_completed` / `tool_failed` 事件附带 `skillId`、`skillName`（已启用技能）和 `path`；空路径表示列目录，不表示已读取文件。目录结果中的 `files` 为本轮固定快照的可读路径，空数组时应使用已加载正文继续。同一运行内同技能同路径只允许请求一次（包括不存在的路径），重复请求返回工具失败和继续执行指引，状态随运行持久化。模型初始上下文包含技能 ID 和可读文件清单。
+Skills 的 `tool_completed` / `tool_failed` 事件附带 `skillId`、`skillName`（已启用技能）和 `path`；空路径表示列目录，不表示已读取文件。目录结果中的 `entryPath` 固定为 `SKILL.md`，`files` 为本轮固定快照的可读路径；Agent 先读取入口，再按入口引用读取必要文件。同一运行内同技能同路径只允许请求一次（包括不存在的路径），重复请求返回工具失败和继续执行指引，状态随运行持久化。模型初始上下文只包含技能版本、哈希、入口和可读文件清单，不包含技能正文。
 
 模型任务失败的 `run_failed` 事件保留 `taskId`，并提供安全分类 `reason`：`model_connection_reset`、`model_request_timeout`、`model_connection_refused` 或 `model_task_failed`。`text` 不透传原始上游错误，避免泄露地址和凭证；前端用事件类型而非摘要关键词判断工具成功 / 失败。失败不会触发自动付费重试。
 
@@ -48,6 +52,10 @@ Skills 的 `tool_completed` / `tool_failed` 事件附带 `skillId`、`skillName`
 每条管理员列表订单在原有字段之外包含 `user: { id, username, displayName, email }`，由当前页用户 ID 批量读取；用户不存在时返回 `user: null`，保留原 `userId` 与历史订单。此身份摘要仅用于管理员订单列表，不添加到普通用户支付接口或支付状态同步响应。
 
 后台支付订单列表展示用户身份，点击名称打开用户详情；订单详情提供完整订单号、渠道交易号、用户 ID 和各阶段时间。同步支付状态与关闭订单位于更多菜单，关闭订单仍需确认。
+
+## 管理员系统渠道
+
+`POST /api/admin/channels/:id/duplicate` 需要管理员权限，会复制指定系统渠道的连接配置、加密凭证、请求头、模型和价格档，生成新的渠道与模型 ID；复制渠道名称自动追加“ - 副本”。原渠道及其前台供应线路不受影响。
 
 ## 信封
 

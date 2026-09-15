@@ -30,6 +30,7 @@ export type CloudAgentChatMessage = {
     title?: string;
     text: string;
     streaming?: boolean;
+    reasoning?: boolean;
     meta?: string;
     detail?: unknown;
     attachments?: CloudAgentChatAttachment[];
@@ -91,6 +92,12 @@ export function AgentChatMessage({
     const isUser = item.role === "user";
     const isSystem = item.role === "system";
     const color = item.role === "error" ? "#ef4444" : theme.node.text;
+    if (item.reasoning) {
+        return <details className="min-w-0 text-xs" style={{ color: theme.node.muted }}>
+            <summary className="cursor-pointer py-1 focus-visible:outline-auto">{item.streaming ? "模型推理中" : "模型推理摘要"}</summary>
+            <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words py-2" data-canvas-wheel-scroll>{item.text}</div>
+        </details>;
+    }
     if (isSystem) {
         return (
             <div className="flex items-start gap-3 text-xs">
@@ -130,7 +137,7 @@ export function AgentChatMessage({
     return (
         <div className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
             {!isUser ? <AgentTimelineMarker theme={theme} tone="agent" /> : null}
-            <div className={`min-w-0 text-sm leading-6 ${isUser ? "max-w-[82%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-right" : "max-w-[calc(100%-36px)] flex-1 text-left"}`} style={{ color, ...(isUser ? { background: theme.node.fill } : {}) }}>
+            <div className={`min-w-0 text-sm leading-6 ${isUser ? "max-w-[82%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-right" : "max-w-[calc(100%-36px)] flex-1 text-left"}`} style={{ color, ...(isUser ? { background: "#edf6ff" } : {}) }}>
                 {item.role === "assistant" ? (
                     <AIMessageMarkdown className="text-left" isStreaming={isStreaming}>
                         {item.text}
@@ -273,13 +280,17 @@ export function AgentToolCard({ title, text, detail, theme, references = [], onF
     const toolName = agentToolName(title, detail);
     const summary = friendlyAgentToolSummary(toolName, text, detail);
     const actions = agentCanvasActions(toolName, detail, references);
+    const visibleActions = actions.slice(0, 8);
+    const readNodeCount = toolName === "canvas_get_state" && !state.isError ? readCanvasNodeCount(detail) : 0;
+    const hiddenReadNodeCount = Math.max(0, readNodeCount - visibleActions.length);
     const conciseError = text.length > 180 ? `${text.slice(0, 180)}…` : text;
     return (
         <div data-agent-tool-card className="agent-tool-row flex min-w-0 flex-1 items-start gap-2 text-left" style={{ color: theme.node.text }}>
             <span className="agent-tool-status shrink-0" style={{ color: state.color }} aria-hidden="true">{state.icon}</span>
             <div className="min-w-0 flex-1 break-words text-xs leading-5" style={{ color: state.isError ? state.color : theme.node.muted }}>
                 {actions.length ? <div className="flex flex-col items-start gap-0.5">
-                    {actions.map((action) => <button key={`${action.action}-${action.nodeId}`} type="button" data-agent-node-id={action.nodeId} disabled={!onFocusNode} onClick={() => onFocusNode?.(action.nodeId)} aria-label={`在画布中定位${action.title}`} className="max-w-full cursor-pointer break-words rounded text-left underline decoration-dotted underline-offset-4 focus-visible:outline focus-visible:outline-2 disabled:cursor-default disabled:no-underline">{agentCanvasActionLabel(action)}</button>)}
+                    {visibleActions.map((action) => <button key={`${action.action}-${action.nodeId}`} type="button" data-agent-node-id={action.nodeId} disabled={!onFocusNode} onClick={() => onFocusNode?.(action.nodeId)} aria-label={`在画布中定位${action.title}`} className="max-w-full cursor-pointer break-words rounded text-left underline decoration-dotted underline-offset-4 focus-visible:outline focus-visible:outline-2 disabled:cursor-default disabled:no-underline">{agentCanvasActionLabel(action)}</button>)}
+                    {hiddenReadNodeCount > 0 ? <span className="pt-0.5 opacity-70">已读取 {readNodeCount} 个节点，已折叠其余 {hiddenReadNodeCount} 个</span> : null}
                 </div> : summary}
                 {state.isError && actions.length ? <span className="block">{summary}</span> : null}
                 {state.isError && text && text !== summary ? <span className="mt-0.5 block whitespace-pre-wrap break-words" style={{ color: theme.node.muted }}>{conciseError}</span> : null}
@@ -570,8 +581,8 @@ export function AgentChatComposer({
                         </div>
                     ) : null}
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-1">
+                <div className="agent-composer-toolbar mt-2">
+                    <div className="agent-composer-controls flex min-w-0 items-center gap-1">
                         {onAddFiles ? (
                             <>
                                 <input
@@ -600,7 +611,7 @@ export function AgentChatComposer({
                         ) : null}
                         {left}
                     </div>
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="agent-composer-submit flex items-center gap-2">
                         <span className="agent-composer-send-hint">Enter 换行 · ⌘/Ctrl+Enter 发送</span>
                         <motion.button
                             type="button"
@@ -743,4 +754,10 @@ function agentToolName(title: string, detail?: unknown) {
 
 function objectField(value: unknown, key: string) {
     return value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+function readCanvasNodeCount(detail: unknown) {
+    const result = objectField(detail, "result");
+    const nodes = objectField(result, "nodes");
+    return Array.isArray(nodes) ? nodes.length : 0;
 }

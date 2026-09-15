@@ -22,6 +22,7 @@ tags:
   - name: tasks
   - name: assets
   - name: agent
+  - name: admin
 paths:
   /agent/capabilities:
     get:
@@ -29,7 +30,44 @@ paths:
       summary: 读取云端 Agent 能力
       responses:
         "200":
-          description: 信封 data 包含 version、permissionModes、contextScopes、skills、writeTools、billing、maxHistoryPairs
+          description: 信封 data 包含 version、permissionModes、contextScopes、skills、writeTools、billing、maxHistoryPairs、capabilitySetVersion、capabilitySetHash、nodeTypes、tools
+  /agent/profile:
+    get:
+      tags: [agent]
+      summary: 读取生效的用户、项目、画布 Agent 偏好层
+      parameters:
+        - in: query
+          name: scope
+          schema:
+            type: string
+            enum: [user, project, canvas]
+        - in: query
+          name: projectId
+          schema:
+            type: string
+        - in: query
+          name: canvasId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 信封 data 为合并 revision、hash 和按 user/project/canvas 顺序排列的 layers；每层含独立数字 revision
+        "403":
+          description: 项目或画布不属于当前用户
+    patch:
+      tags: [agent]
+      summary: 使用单层 revision CAS 更新 Agent 偏好
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProfileRequest"
+      responses:
+        "200":
+          description: 返回更新后的生效偏好视图
+        "409":
+          description: 偏好 revision 已变化，须重新读取后保存
   /agent/runs:
     post:
       tags: [agent]
@@ -185,6 +223,24 @@ paths:
             application/yaml:
               schema:
                 type: string
+  /admin/channels/{id}/duplicate:
+    post:
+      tags: [admin]
+      summary: 复制系统渠道
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
   /auth/session:
     get:
       tags: [auth]
@@ -314,6 +370,25 @@ components:
       in: cookie
       name: open_ai_canvas_session
   schemas:
+    AgentProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [scope, content, revision]
+      properties:
+        scope:
+          type: string
+          enum: [user, project, canvas]
+        projectId:
+          type: string
+        canvasId:
+          type: string
+        content:
+          type: string
+          description: 常驻偏好文档，最多 12000 个 Unicode 字符；不能授权节点、工具、预算或绕过审批
+        revision:
+          type: integer
+          minimum: 0
+          description: 待更新层的数字 revision；首次创建为 0
     CloudAgentRequest:
       type: object
       additionalProperties: false
@@ -336,6 +411,13 @@ components:
         permissionMode:
           type: string
           enum: [read_only, request_approval, auto]
+        reasoningMode:
+          type: string
+          enum: [off, auto, deep]
+          description: 本轮推理策略；供应商是否支持由后端校验
+        profileRevision:
+          type: string
+          description: GET /agent/profile 的生效合并 revision；变化时拒绝创建新轮次
         skillIds:
           type: array
           maxItems: 8

@@ -72,6 +72,7 @@ import { CanvasDirectorNodePanel } from "@/components/canvas/director/canvas-dir
 import { CanvasVersionCompareModal } from "@/components/canvas/canvas-version-compare-modal";
 import { useFocusMode } from "@/hooks/use-focus-mode";
 import { connectCanvasTextMention } from "@/lib/canvas/canvas-text-mention";
+import { writeCanvasNodePrompt } from "@/lib/canvas/canvas-node-prompt";
 import {
     applyCanvasConnectionPromptSync,
     buildCanvasAgentMentionReferences,
@@ -81,7 +82,6 @@ import {
     normalizeCanvasNodeMentionTokens,
     reorderCanvasResourceConnections,
     replaceCanvasReferenceMentions,
-    writeCanvasNodePrompt,
     type CanvasResourceReference,
 } from "@/lib/canvas/canvas-resource-references";
 import { CanvasConnectionCreateMenu, CanvasNodePanelOverlay, type PendingConnectionCreate } from "@/components/canvas/canvas-workspace-overlays";
@@ -823,10 +823,8 @@ function InfiniteCanvasPage() {
         setAnnotationNodeId,
         setCropNodeId,
         setMaskEditNodeId,
-        setSplitNodeId,
         setUpscaleNodeId,
         splitImageNode,
-        splitNodeId,
         openVideoFrameExtractor,
         openVideoSegmentExtractor,
         upscaleImageNode,
@@ -868,7 +866,6 @@ function InfiniteCanvasPage() {
             setCropNodeId(clearDeletedId);
             setMaskEditNodeId(clearDeletedId);
             setAnnotationNodeId(clearDeletedId);
-            setSplitNodeId(clearDeletedId);
             setUpscaleNodeId(clearDeletedId);
             setAngleNodeId(clearDeletedId);
             setLightingNodeId(clearDeletedId);
@@ -902,7 +899,6 @@ function InfiniteCanvasPage() {
             setLightingNodeId,
             setMaskEditNodeId,
             setSegmentDialogNodeId,
-            setSplitNodeId,
             setUpscaleNodeId,
             setRunningNodeId,
         ],
@@ -1337,7 +1333,6 @@ function InfiniteCanvasPage() {
         selectedNodeBounds,
         selectedVideoNodes,
         skillMentionReferences,
-        splitNode,
         superResolveNode,
         toolbarNode,
         upscaleNode,
@@ -1360,7 +1355,7 @@ function InfiniteCanvasPage() {
         cropNodeId,
         maskEditNodeId,
         annotationNodeId,
-        splitNodeId,
+        splitNodeId: null,
         upscaleNodeId,
         superResolveNodeId,
         angleNodeId,
@@ -2521,14 +2516,23 @@ function InfiniteCanvasPage() {
                                 ) : null}
                             </div>
 
-                            <CanvasCloudAgentPanel canvasId={projectId} nodeCount={nodes.length} references={agentMentionReferences} open={assistantOpen} onOpen={openAgent} onCollapse={closeAgent} onFocusNode={(nodeId) => {
+                            <CanvasCloudAgentPanel canvasId={projectId} domainProjectId={currentProject?.projectId} nodeCount={nodes.length} references={agentMentionReferences} open={assistantOpen} onOpen={openAgent} onCollapse={closeAgent} onFocusNode={(nodeId) => {
                                 if (!nodesRef.current.some((node) => node.id === nodeId)) { message.info("该节点已删除或尚未同步到画布"); return; }
                                 focusCanvasNode(nodeId);
                             }} />
                         </div>
 
                         {angleNode?.metadata?.content ? (
-                            <AppModal flush open centered title="多角度编辑器" footer={null} width={620} onCancel={() => setAngleNodeId(null)}>
+                            <CanvasNodePanelOverlay
+                                node={angleNode}
+                                viewport={viewport}
+                                containerRef={containerRef}
+                                panelWidth={640}
+                                panelHeight={540}
+                                allowOverflow
+                                dragOffset={dragPreview?.nodeIds.has(angleNode.id) ? { x: dragPreview.x, y: dragPreview.y } : null}
+                                isDragging={isNodeDragging && Boolean(dragPreview?.nodeIds.has(angleNode.id))}
+                            >
                                 <CanvasNodeAnglePanel
                                     dataUrl={angleNode.metadata.content}
                                     onClose={() => setAngleNodeId(null)}
@@ -2536,7 +2540,7 @@ function InfiniteCanvasPage() {
                                         void generateAngleNode(angleNode, params);
                                     }}
                                 />
-                            </AppModal>
+                            </CanvasNodePanelOverlay>
                         ) : null}
 
                         {lightingNode?.metadata?.content ? (
@@ -2644,7 +2648,7 @@ function InfiniteCanvasPage() {
                         ) : null}
 
                         <CanvasNodeToolbar
-                            node={isCanvasNodeMoving || nodeImageSettingsOpen || emotionNodeId ? null : toolbarNode}
+                            node={isCanvasNodeMoving || nodeImageSettingsOpen || emotionNodeId || angleNodeId ? null : toolbarNode}
                             workspaceMode={workspaceMode}
                             viewport={viewport}
                             containerRef={containerRef}
@@ -2667,7 +2671,7 @@ function InfiniteCanvasPage() {
                             }}
                             onPortraitTexture={openPortraitTextureEditor}
                             onCrop={(node) => setCropNodeId(node.id)}
-                            onSplit={(node) => setSplitNodeId(node.id)}
+                            onSplit={(node, params) => void splitImageNode(node, params)}
                             onUpscale={(node) => setUpscaleNodeId(node.id)}
                             onSuperResolve={(node) => setSuperResolveNodeId(node.id)}
                             onAngle={(node) => {
@@ -2981,17 +2985,14 @@ function InfiniteCanvasPage() {
                             cropNode={cropNode}
                             annotationNode={annotationNode}
                             maskEditNode={maskEditNode}
-                            splitNode={splitNode}
                             upscaleNode={upscaleNode}
                             onCloseCrop={() => setCropNodeId(null)}
                             onCloseAnnotation={() => setAnnotationNodeId(null)}
                             onCloseMaskEdit={() => setMaskEditNodeId(null)}
-                            onCloseSplit={() => setSplitNodeId(null)}
                             onCloseUpscale={() => setUpscaleNodeId(null)}
                             onCrop={(node, crop) => void cropImageNode(node, crop)}
                             onAnnotate={(node, dataUrl) => void saveAnnotatedImageNode(node, dataUrl)}
                             onMaskEdit={(node, payload) => void maskEditImageNode(node, payload)}
-                            onSplit={(node, params) => void splitImageNode(node, params)}
                             onUpscale={(node, params) => void upscaleImageNode(node, params)}
                             config={effectiveConfig}
                         />

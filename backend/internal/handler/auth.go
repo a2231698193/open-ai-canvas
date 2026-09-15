@@ -427,6 +427,19 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"channel": channel})
 	})
+	r.POST("/admin/channels/:id/duplicate", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		channel, err := svc.DuplicateSystemChannel(user, c.Param("id"))
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"channel": channel})
+	})
 	r.PATCH("/admin/channels/:id", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

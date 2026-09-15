@@ -31,6 +31,11 @@ func TestCloudAgentReliabilitySchedulerHeadOfLine500(t *testing.T) {
 	s, db, _, _ := creationTestService(t)
 	now := time.Now().Add(-time.Hour)
 	var tailID, tailUser string
+	profile := cloudAgentProfileSnapshot{Revision: agentProfileRevision(nil), Hash: agentProfileHash("")}
+	_, policy, err := compileCloudAgentPolicies(agentTestRequest(), nil, "", profile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 500; i++ {
 		user := fmt.Sprintf("audit-user-%03d", i)
 		req := agentTestRequest()
@@ -45,7 +50,7 @@ func TestCloudAgentReliabilitySchedulerHeadOfLine500(t *testing.T) {
 		if err := db.Create(&task).Error; err != nil {
 			t.Fatal(err)
 		}
-		state := cloudAgentRuntime{Request: req, ActiveTaskID: id, TaskIDs: []string{id}, Step: 1, Decisions: map[string]string{}, Events: []CloudAgentEvent{}}
+		state := cloudAgentRuntime{Request: req, Policy: policy, Profile: profile, ActiveTaskID: id, TaskIDs: []string{id}, Step: 1, Decisions: map[string]string{}, Events: []CloudAgentEvent{}}
 		run := model.CloudAgentExecution{ID: id, UserID: user, Status: "running", Revision: 1, CreatedAt: ts, UpdatedAt: ts}
 		if err := cloudAgentSave(&run, &state); err != nil {
 			t.Fatal(err)

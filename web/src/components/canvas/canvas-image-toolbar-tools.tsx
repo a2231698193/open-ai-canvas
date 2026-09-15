@@ -14,7 +14,6 @@ type ImageToolHandlers = {
     onEmotion: (node: CanvasNodeData) => void;
     onPortraitTexture: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
-    onSplit: (node: CanvasNodeData) => void;
     onUpscale: (node: CanvasNodeData) => void;
     onSuperResolve: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
@@ -131,8 +130,8 @@ const imageToolDefinitions: ImageToolDefinition[] = [
         description: "按行列拆成多个图片节点",
         icon: () => <Grid2x2 className="size-3.5" />,
         group: "process",
-        order: 30,
-        run: (node, handlers) => handlers.onSplit(node),
+        order: 45,
+        run: () => undefined,
     },
     {
         id: "upscale",

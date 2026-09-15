@@ -23,6 +23,7 @@ type taskTextStreamPublisher struct {
 	timer    *time.Timer
 	disabled bool
 	closed   bool
+	sink     func(string) error
 }
 
 func newTaskTextStreamPublisher(service *Service, userID string, taskID string) *taskTextStreamPublisher {
@@ -77,7 +78,13 @@ func (p *taskTextStreamPublisher) flushLocked() {
 	}
 	content := p.buffer.String()
 	p.buffer.Reset()
-	if _, err := p.service.AppendTaskTextDelta(p.userID, p.taskID, content); err != nil {
+	var err error
+	if p.sink != nil {
+		err = p.sink(content)
+	} else {
+		_, err = p.service.AppendTaskTextDelta(p.userID, p.taskID, content)
+	}
+	if err != nil {
 		p.disabled = true
 		_ = p.service.log(p.userID, p.taskID, "warn", "文本流持久化已降级", err.Error())
 	}

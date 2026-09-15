@@ -14,6 +14,7 @@ import type { PanoramaGenerateConfig } from "@/components/canvas/canvas-panorama
 import type { CanvasVideoFrameParams } from "@/components/canvas/canvas-video-frame-dialog";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
+import { isValidGridSplit, layoutGridSplitCells } from "@/lib/canvas/canvas-grid-split";
 import { audioMetadata, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-generation-task-sync";
 import { findAvailableGenerationGroupPosition, imageGenerationChildPosition, imageGenerationGroupSize } from "@/lib/canvas/canvas-generation-layout";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
@@ -113,7 +114,6 @@ export function useCanvasMediaTools({
     const [cropNodeId, setCropNodeId] = useState<string | null>(null);
     const [annotationNodeId, setAnnotationNodeId] = useState<string | null>(null);
     const [maskEditNodeId, setMaskEditNodeId] = useState<string | null>(null);
-    const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
     const [upscaleNodeId, setUpscaleNodeId] = useState<string | null>(null);
     const [angleNodeId, setAngleNodeId] = useState<string | null>(null);
     const [lightingNodeId, setLightingNodeId] = useState<string | null>(null);
@@ -615,25 +615,25 @@ export function useCanvasMediaTools({
     }, [connectionsRef, message, persistMediaNodes, setConnections, setNodes]);
 
     const splitImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageSplitParams) => {
-        if (!node.metadata?.content) return;
-        setSplitNodeId(null);
+        if (!node.metadata?.content || !isValidGridSplit(params)) return;
         const pieces = await splitDataUrl(node.metadata.content, params);
-        const gap = 16;
-        const cellWidth = node.width / params.columns;
-        const cellHeight = node.height / params.rows;
-        const startX = node.position.x + node.width + 96;
-        const childNodes = await Promise.all(pieces.map(async (piece) => {
+        const sizedPieces = await Promise.all(pieces.map(async (piece) => {
             const image = await uploadImage(piece.dataUrl);
-            return {
-                id: nanoid(),
-                type: CanvasNodeType.Image,
-                title: `${node.title || "图片"} · 宫格 ${piece.row + 1}-${piece.column + 1}`,
-                position: { x: startX + piece.column * (cellWidth + gap), y: node.position.y + piece.row * (cellHeight + gap) },
-                width: cellWidth,
-                height: cellHeight,
-                metadata: { ...imageMetadata(image), prompt: node.metadata?.prompt },
-            } satisfies CanvasNodeData;
+            return { piece, image, size: fitNodeSize(image.width, image.height) };
         }));
+        const positions = layoutGridSplitCells(
+            { x: node.position.x + node.width + 96, y: node.position.y },
+            sizedPieces.map(({ piece, size }) => ({ row: piece.row, column: piece.column, width: size.width, height: size.height })),
+        );
+        const childNodes = sizedPieces.map(({ piece, image, size }, index) => ({
+            id: nanoid(),
+            type: CanvasNodeType.Image,
+            title: `${node.title || "图片"} · 宫格 ${piece.row + 1}-${piece.column + 1}`,
+            position: positions[index] || { x: node.position.x + node.width + 96, y: node.position.y },
+            width: size.width,
+            height: size.height,
+            metadata: { ...imageMetadata(image), prompt: node.metadata?.prompt, manualSize: true },
+        } satisfies CanvasNodeData));
         setNodes((current) => [...current, ...childNodes]);
         setConnections((current) => [...current, ...childNodes.map((child) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: child.id }))]);
         setSelectedNodeIds(new Set(childNodes.map((child) => child.id)));
@@ -998,10 +998,8 @@ export function useCanvasMediaTools({
         setAnnotationNodeId,
         setCropNodeId,
         setMaskEditNodeId,
-        setSplitNodeId,
         setUpscaleNodeId,
         splitImageNode,
-        splitNodeId,
         openVideoFrameExtractor,
         openVideoSegmentExtractor,
         upscaleImageNode,

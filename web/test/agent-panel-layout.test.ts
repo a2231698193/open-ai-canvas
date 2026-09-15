@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { changeAgentPanelLayout, clampAgentPanelLayout, restoreAgentPanelLayout } from "@/lib/canvas/agent-panel-layout";
-import { agentErrorPresentation } from "@/lib/canvas/agent-error-presentation";
+import { agentErrorPresentation, agentSubmissionErrorTitle } from "@/lib/canvas/agent-error-presentation";
 import { ApiError } from "@/services/api/request";
 
 const viewport = { width: 1280, height: 800 };
@@ -63,5 +63,11 @@ describe("Agent error semantics", () => {
     });
     it("reports unimplemented endpoints without retry promises", () => {
         expect(agentErrorPresentation(new ApiError("Not implemented", { status: 501 })).title).toBe("当前 Agent 能力尚未开放");
+    });
+    it("distinguishes confirmed server failures from missing responses", () => {
+        expect(agentSubmissionErrorTitle(new ApiError("系统处理失败", { status: 500 }), false)).toBe("服务端已返回错误；重试将核对原请求，不重复创建");
+        expect(agentSubmissionErrorTitle(new ApiError("参数错误", { status: 400 }), false)).toBe("请求已被服务端拒绝");
+        expect(agentSubmissionErrorTitle(new TypeError("network failed"), false)).toBe("未收到服务端确认；重试将核对原请求，不重复创建");
+        expect(agentSubmissionErrorTitle(undefined, true)).toBe("运行已接收，但本地提交记录清理失败");
     });
 });

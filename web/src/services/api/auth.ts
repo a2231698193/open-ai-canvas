@@ -479,6 +479,10 @@ export function createAdminChannel(input: Partial<ModelChannel> & { useGlobalCon
     return http.post<{ channel: ModelChannel }>("/admin/channels", input);
 }
 
+export function duplicateAdminChannel(id: string) {
+    return http.post<{ channel: ModelChannel }>(`/admin/channels/${encodeURIComponent(id)}/duplicate`);
+}
+
 export function updateAdminChannel(id: string, input: Partial<ModelChannel> & { useGlobalConcurrency?: boolean }) {
     return http.patch<{ channel: ModelChannel }>(`/admin/channels/${encodeURIComponent(id)}`, input);
 }

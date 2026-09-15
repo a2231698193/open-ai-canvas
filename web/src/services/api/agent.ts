@@ -2,12 +2,54 @@ import { http, apiBaseURL } from "@/services/api/request";
 import { consumeTaskTextStream, createTaskTextStreamParser } from "@/services/api/task-text-stream";
 
 export type AgentPermissionMode = "read_only" | "auto" | "request_approval";
-export type AgentPersonality = "务实" | "简洁" | "详细" | "温和";
+export type AgentReasoningMode = "off" | "auto" | "deep";
+export type AgentProfileScope = "user" | "project" | "canvas";
+
+export type AgentProfileLayer = {
+    scope: AgentProfileScope;
+    projectId?: string;
+    canvasId?: string;
+    content: string;
+    revision: number;
+    hash: string;
+};
+
+export type AgentProfileView = {
+    revision: string;
+    hash: string;
+    layers: AgentProfileLayer[];
+};
+
+export type AgentApprovalPreviewOperation = "add_node" | "update_node" | "connect_nodes" | "generate_media";
+
+export type AgentApprovalPreviewItem = {
+    operation: AgentApprovalPreviewOperation;
+    nodeId?: string;
+    nodeTitle?: string;
+    resultTitle?: string;
+    nodeType?: string;
+    nodeTypeLabel?: string;
+    targetNodeId?: string;
+    targetNodeTitle?: string;
+    targetNodeType?: string;
+    fields?: string[];
+    details?: string[];
+    summary: string;
+};
+
+export type AgentApprovalPreview = {
+    kind: string;
+    title: string;
+    description: string;
+    items: AgentApprovalPreviewItem[];
+};
 
 export type AgentApproval = {
     modelName?: string;
     approvalId: string;
     call: { id: string; function: { name: string; arguments: string } };
+    callHash?: string;
+    preview?: AgentApprovalPreview;
     decision?: "approve" | "reject";
     reason?: string;
 };
@@ -54,8 +96,8 @@ export class AgentStreamError extends Error {
 }
 
 export type CreateAgentRunInput = {
-    thinking?: boolean;
-    personality?: AgentPersonality;
+    reasoningMode?: AgentReasoningMode;
+    profileRevision?: string;
     canvasId: string;
     prompt: string;
     model?: string;
@@ -97,7 +139,20 @@ export async function sendAgentMessage(runId: string, input: CreateAgentRunInput
 }
 
 export function getAgentCapabilities() {
-    return http.get<{ version: number; permissionModes: AgentPermissionMode[]; contextScopes: string[]; skills: boolean; writeTools: boolean }>("/agent/capabilities", { timeout: 15_000 });
+    return http.get<{ version: number; permissionModes: AgentPermissionMode[]; contextScopes: string[]; skills: boolean; writeTools: boolean; capabilitySetVersion?: string; capabilitySetHash?: string; nodeTypes?: string[] }>("/agent/capabilities", { timeout: 15_000 });
+}
+
+export function getAgentProfile(options: { projectId?: string; canvasId?: string; scope?: AgentProfileScope } = {}) {
+    const params = new URLSearchParams();
+    if (options.projectId) params.set("projectId", options.projectId);
+    if (options.canvasId) params.set("canvasId", options.canvasId);
+    if (options.scope) params.set("scope", options.scope);
+    const query = params.toString();
+    return http.get<AgentProfileView>(`/agent/profile${query ? `?${query}` : ""}`, { timeout: 15_000 });
+}
+
+export function updateAgentProfile(input: { scope: AgentProfileScope; projectId?: string; canvasId?: string; content: string; revision: number }) {
+    return http.patch<AgentProfileView>("/agent/profile", input, { timeout: 15_000 });
 }
 
 export function getAgentRun(runId: string, signal?: AbortSignal) {

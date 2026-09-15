@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/prompts"
 )
 
 func agentCanvasPatchForOperation(t *testing.T, state cloudAgentRuntime, operation string) map[string]any {
@@ -117,7 +118,7 @@ func TestCloudAgentMediaImageSourceHasActionableCorrection(t *testing.T) {
 		t.Fatalf("image source must point to the correct field: %v", err)
 	}
 	args.ReferenceNodeIDs = []string{"hero"}
-	if _, _, err := s.prepareCloudAgentMedia(run, &state, agentMediaCall(args)); err == nil || !strings.Contains(err.Error(), "sourceNodeId 仅接受文本") {
+	if _, _, err := s.prepareCloudAgentMedia(run, &state, agentMediaCall(args)); err == nil || !strings.Contains(err.Error(), "sourceNodeId 仅接受可作为文本输入") {
 		t.Fatalf("nonduplicate image source must also be rejected: %v", err)
 	}
 	args.SourceNodeID = ""
@@ -132,6 +133,7 @@ func TestCloudAgentCanvasOperationTraceSharesToolCallID(t *testing.T) {
 	call := cloudAgentCall{ID: "canvas-call"}
 	call.Function.Name = "canvas_apply_ops"
 	raw, _ := json.Marshal(map[string]any{"snapshotHash": args.SnapshotHash, "ops": []map[string]any{
+		{"type": "update_node", "id": "cat", "patch": map[string]any{"title": "叮当猫飞行参考", "content": "下一版参考图提示词"}},
 		{"type": "add_node", "id": "trace-video", "nodeType": "video", "title": "视频草稿"},
 		{"type": "connect_nodes", "id": "trace-reference", "fromNodeId": "cat", "toNodeId": "trace-video"},
 	}})
@@ -148,8 +150,33 @@ func TestCloudAgentCanvasOperationTraceSharesToolCallID(t *testing.T) {
 		t.Fatalf("canvas delta and tool result cannot be deduplicated: %+v / %+v", trace, last)
 	}
 	actions := creationMaps(trace["actions"])
-	if len(actions) != 2 || actions[0]["title"] != "视频草稿" || actions[1]["title"] != "叮当猫在飞" {
-		t.Fatalf("canvas operation trace lost titles: %+v", actions)
+	byActionAndNode := map[string]map[string]any{}
+	for _, action := range actions {
+		byActionAndNode[stringValue(action["action"])+":"+stringValue(action["nodeId"])] = action
+	}
+	updated := byActionAndNode["updated:cat"]
+	if updated == nil || updated["title"] != "叮当猫在飞" || updated["resultTitle"] != "叮当猫飞行参考" {
+		t.Fatalf("canvas operation trace lost updated node identity: %+v", actions)
+	}
+	fieldValues := []string{}
+	switch fields := updated["fields"].(type) {
+	case []string:
+		fieldValues = fields
+	case []any:
+		for _, field := range fields {
+			fieldValues = append(fieldValues, stringValue(field))
+		}
+	}
+	if len(fieldValues) != 2 || fieldValues[0] != "节点名称" || fieldValues[1] != "下一版提示词" {
+		t.Fatalf("canvas operation trace lost updated fields: %+v", updated)
+	}
+	created := byActionAndNode["created:trace-video"]
+	if created == nil || created["title"] != "视频草稿" || created["nodeType"] != "video" {
+		t.Fatalf("canvas operation trace lost created node identity: %+v", actions)
+	}
+	referenced := byActionAndNode["referenced:cat"]
+	if referenced == nil || referenced["title"] != "叮当猫飞行参考" || referenced["targetNodeId"] != "trace-video" || referenced["targetTitle"] != "视频草稿" || referenced["targetNodeType"] != "video" {
+		t.Fatalf("canvas operation trace lost reference endpoints: %+v", actions)
 	}
 }
 
@@ -184,8 +211,12 @@ func TestCloudAgentMissingCanvasStillCheckpointsMediaFailure(t *testing.T) {
 }
 
 func TestCloudAgentMediaPolicyAllowsDefaultsWithoutBypassingApproval(t *testing.T) {
+	_, media, err := prompts.LoadAgentPolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, text := range []string{"安全默认", "不要求四项逐个确认", "一次性询问", "界面独立审批", "失败不得自动重提"} {
-		if !strings.Contains(cloudAgentMediaPolicy, text) {
+		if !strings.Contains(media.Text, text) {
 			t.Fatalf("media policy lost %q", text)
 		}
 	}

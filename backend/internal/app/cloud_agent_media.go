@@ -11,8 +11,6 @@ import (
 	"infinite-canvas/backend/internal/repository"
 )
 
-const cloudAgentMediaPolicy = "媒体生成先区分参数选择与收费授权。用户明确指定的模型、画幅、时长、音频必须遵守；用户说‘随便’‘你决定’‘按默认’时允许安全默认，不要求四项逐个确认：从当前目录选择支持所需参考方式、参数且预算可覆盖的模型，优先用户最近明确使用且仍可用的模型，否则选择价格清楚的低成本可用项；画幅优先匹配参考图原始宽高比且必须在模型支持范围内，否则用目录默认；时长用目录默认，不编造；模型不支持音频且用户未要求声音时直接用默片。用户对上一条明确推荐方案说‘可以’‘开始吧’，即接受该方案的参数，不再要求回复特定确认口令。只有引用对象不明确、用户硬性要求与能力冲突、无有效默认值或预算不足时，一次性询问真正缺少的事项。选择后简短说明实际参数和默认来源，并立即创建草稿交给审批卡，不再添加文字确认轮次。generate_media 创建草稿及连线不等于收费授权；所有模式都必须等待界面独立审批，‘随便’‘开始’和默认参数都不能跳过审批。已提交的收费任务失败不得自动重提、换模型或盲重试。"
-
 // The Agent uses the same public catalog as the composer, never a second routing policy.
 func (s *Service) cloudAgentModelList() (any, error) {
 	catalog, err := s.ModelCatalog(nil)
@@ -20,15 +18,14 @@ func (s *Service) cloudAgentModelList() (any, error) {
 		return nil, err
 	}
 	items := []map[string]any{}
-	generationModes := cloudAgentGenerationModes()
 	for _, m := range catalog.Models {
-		if m.Available && generationModes[normalizeCapability(m.Capability)] {
+		if m.Available && cloudAgentGenerationModeSupported(normalizeCapability(m.Capability)) {
 			items = append(items, map[string]any{"name": m.Name, "capability": m.Capability, "selection": map[string]any{"logicalModelId": m.ID}, "priceLabel": m.PriceLabel, "priceTiers": m.PriceTiers, "options": m.CapabilitySpec, "profiles": m.CapabilityProfiles, "defaults": m.DefaultOptions})
 		}
 	}
 	for _, channel := range catalog.Channels {
 		for _, m := range channel.Models {
-			if m.Available && generationModes[normalizeCapability(m.Capability)] {
+			if m.Available && cloudAgentGenerationModeSupported(normalizeCapability(m.Capability)) {
 				items = append(items, map[string]any{"name": m.DisplayName, "capability": m.Capability, "selection": map[string]any{"channelId": channel.ID, "channelModelKey": m.ModelKey}, "priceLabel": m.PriceLabel, "priceTiers": m.PriceTiers, "options": m.CapabilityConfig})
 			}
 		}
@@ -59,6 +56,27 @@ type cloudAgentMediaPlan struct {
 	CallID string
 }
 
+type cloudAgentReferenceAdapter struct {
+	PayloadField string
+	MIMEMajor    string
+}
+
+// Provider payload fields are an adapter concern, not a canvas node-type
+// allow-list. A new reference kind must register both a canvas capability and
+// an upstream media adapter before it can cross this boundary.
+var cloudAgentReferenceAdapters = map[string]cloudAgentReferenceAdapter{
+	"image": {PayloadField: "referenceImages", MIMEMajor: "image"},
+	"video": {PayloadField: "referenceVideos", MIMEMajor: "video"},
+	"audio": {PayloadField: "referenceAudios", MIMEMajor: "audio"},
+}
+
+// This is the provider/task boundary, not a node allow-list. A canvas
+// descriptor alone cannot activate a billing or provider operation: that
+// operation must have an implemented adapter before it is exposed to Agent.
+var cloudAgentGenerationAdapters = map[string]struct{}{
+	"image": {}, "video": {}, "audio": {},
+}
+
 func (s *Service) cloudAgentMediaModelName(a cloudAgentMediaArgs) (string, error) {
 	if !cloudAgentGenerationModeSupported(a.Mode) {
 		return "", BadAuthRequest("生成模式当前不受 Agent 支持")
@@ -85,24 +103,36 @@ func (s *Service) cloudAgentMediaModelName(a cloudAgentMediaArgs) (string, error
 	return "", BadAuthRequest("模型目录已变化，请重新读取目录并询问用户选择模型")
 }
 
-func cloudAgentReference(repo *repository.Repository, userID string, node map[string]any) (map[string]any, error) {
-	kind := stringValue(node["type"])
-	if kind != "image" && kind != "video" && kind != "audio" {
-		return nil, BadAuthRequest("引用节点必须是图片、视频或音频")
+func cloudAgentReferenceDescriptor(node map[string]any) (cloudAgentNodeCapability, cloudAgentReferenceAdapter, error) {
+	descriptor, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
+	if !known || !descriptor.Connection.CanReference || descriptor.InputKind == "" {
+		return cloudAgentNodeCapability{}, cloudAgentReferenceAdapter{}, BadAuthRequest("该节点不能作为媒体参考资产")
+	}
+	adapter, supported := cloudAgentReferenceAdapters[descriptor.InputKind]
+	if !supported {
+		return cloudAgentNodeCapability{}, cloudAgentReferenceAdapter{}, BadAuthRequest("该节点的参考输入类型尚未接入媒体生成")
+	}
+	return descriptor, adapter, nil
+}
+
+func cloudAgentReference(repo *repository.Repository, userID string, node map[string]any) (map[string]any, string, error) {
+	descriptor, adapter, err := cloudAgentReferenceDescriptor(node)
+	if err != nil {
+		return nil, "", err
 	}
 	meta, _ := node["metadata"].(map[string]any)
 	key := stringValue(meta["storageKey"])
 	if !strings.HasPrefix(key, "resource:") {
-		return nil, BadAuthRequest("参考资产尚未保存到账号资源库，请先上传；不能用外部地址代替")
+		return nil, "", BadAuthRequest("参考资产尚未保存到账号资源库，请先上传；不能用外部地址代替")
 	}
 	resource, err := repo.ResourceForUser(userID, strings.TrimPrefix(key, "resource:"))
 	if err != nil {
-		return nil, BadAuthRequest("参考资产不存在或不属于当前用户")
+		return nil, "", BadAuthRequest("参考资产不存在或不属于当前用户")
 	}
-	if resource.Status != "ready" || !strings.HasPrefix(resource.MimeType, kind+"/") {
-		return nil, BadAuthRequest("参考资产尚未就绪或媒体类型不匹配")
+	if resource.Status != "ready" || !strings.HasPrefix(strings.ToLower(resource.MimeType), adapter.MIMEMajor+"/") {
+		return nil, "", BadAuthRequest("参考资产尚未就绪或媒体类型不匹配")
 	}
-	return map[string]any{"id": node["id"], "name": node["title"], "storageKey": key, "type": resource.MimeType, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs}, nil
+	return map[string]any{"id": node["id"], "name": node["title"], "storageKey": key, "type": resource.MimeType, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs, "inputKind": descriptor.InputKind}, adapter.PayloadField, nil
 }
 
 func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID string, args cloudAgentMediaArgs) (*model.CanvasProject, map[string]any, map[string]any, error) {
@@ -123,7 +153,11 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	}
 	existing := nodes[args.NodeID]
 	existingMeta, _ := existing["metadata"].(map[string]any)
-	ownedDraft := existing != nil && args.DraftRunID != "" && stringValue(existingMeta["agentDraftRunId"]) == args.DraftRunID && stringValue(existingMeta["taskId"]) == "" && stringValue(existing["type"]) == args.Mode
+	targetDescriptor, supported := cloudAgentNodeCapabilityForGenerationMode(args.Mode)
+	if !supported {
+		return nil, nil, nil, BadAuthRequest("生成模式当前不受 Agent 支持")
+	}
+	ownedDraft := existing != nil && args.DraftRunID != "" && stringValue(existingMeta["agentDraftRunId"]) == args.DraftRunID && stringValue(existingMeta["taskId"]) == "" && stringValue(existing["type"]) == targetDescriptor.Type
 	if err := validateCloudAgentID(args.NodeID, "生成节点 ID", 80); err != nil {
 		return nil, nil, nil, err
 	}
@@ -133,8 +167,11 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	if args.SourceNodeID != "" && nodes[args.SourceNodeID] == nil {
 		return nil, nil, nil, BadAuthRequest("来源镜头节点不在当前画布")
 	}
-	if source := nodes[args.SourceNodeID]; source != nil && stringValue(source["type"]) != "text" {
-		return nil, nil, nil, BadAuthRequest("sourceNodeId 仅接受文本/镜头提示词节点；图片、视频、音频请放入 referenceNodeIds，并将 sourceNodeId 留空，不要重复传入")
+	if source := nodes[args.SourceNodeID]; source != nil {
+		descriptor, known := cloudAgentNodeCapabilityForType(stringValue(source["type"]))
+		if !known || !descriptor.Connection.CanSource || descriptor.InputKind != "text" {
+			return nil, nil, nil, BadAuthRequest("sourceNodeId 仅接受可作为文本输入的节点；媒体资产请放入 referenceNodeIds，并将 sourceNodeId 留空，不要重复传入")
+		}
 	}
 	// Keep the media entry point subject to the same graph admission policy as
 	// canvas_apply_ops. The old implementation only checked that references
@@ -143,7 +180,7 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	prospectiveConnections := creationMaps(doc["connections"])
 	target := existing
 	if target == nil {
-		target = map[string]any{"id": args.NodeID, "type": args.Mode}
+		target = map[string]any{"id": args.NodeID, "type": targetDescriptor.Type}
 	}
 	prospectiveNodes := make([]map[string]any, 0, len(nodes)+1)
 	for _, node := range nodes {
@@ -181,21 +218,20 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 			return nil, nil, nil, BadAuthRequest("参考节点不存在或重复")
 		}
 		seen[id] = true
-		ref, e := cloudAgentReference(repo, userID, nodes[id])
+		ref, payloadField, e := cloudAgentReference(repo, userID, nodes[id])
 		if e != nil {
 			return nil, nil, nil, e
 		}
-		key := map[string]string{"image": "referenceImages", "video": "referenceVideos", "audio": "referenceAudios"}[stringValue(nodes[id]["type"])]
-		list, _ := refs[key].([]any)
-		refs[key] = append(list, ref)
+		list, _ := refs[payloadField].([]any)
+		refs[payloadField] = append(list, ref)
 	}
 	return canvas, doc, refs, nil
 }
 
 func validateCloudAgentMediaArgs(a cloudAgentMediaArgs, state *cloudAgentRuntime) error {
 	mode := strings.ToLower(strings.TrimSpace(a.Mode))
-	if mode != "image" && mode != "video" && mode != "audio" {
-		return BadAuthRequest("生成模式只能是 image、video 或 audio")
+	if !cloudAgentGenerationModeSupported(mode) {
+		return BadAuthRequest("生成模式当前不受 Agent 支持")
 	}
 	a.Mode = mode
 	if a.SnapshotHash == "" {
@@ -263,10 +299,10 @@ func validateCloudAgentMediaArgs(a cloudAgentMediaArgs, state *cloudAgentRuntime
 	if state == nil {
 		return BadAuthRequest("Agent 状态无效")
 	}
-	if state.Generations >= state.Request.Budget.MaxGenerationTasks {
+	if state.Request.Budget.MaxGenerationTasks > 0 && state.Generations >= state.Request.Budget.MaxGenerationTasks {
 		return BadAuthRequest("已达到本轮媒体生成次数上限")
 	}
-	if mode == "video" && state.VideoSeconds > state.Request.Budget.MaxVideoSeconds-a.Duration {
+	if mode == "video" && state.Request.Budget.MaxVideoSeconds > 0 && state.VideoSeconds > state.Request.Budget.MaxVideoSeconds-a.Duration {
 		return BadAuthRequest("已超过本轮视频时长预算")
 	}
 	return nil
@@ -288,6 +324,8 @@ func validateCloudAgentMediaReferences(mode string, refs map[string]any) error {
 	case "video":
 		// Video reference admission is completed against the selected model's
 		// capability contract by CreateTask. Do not guess a provider operation here.
+	default:
+		return BadAuthRequest("生成模式尚未实现媒体任务适配器")
 	}
 	return nil
 }
@@ -320,9 +358,10 @@ func cloudAgentMediaOperation(mode string, refs map[string]any) string {
 			return "image_to_image"
 		}
 	}
-	// Audio is currently text-to-audio only. Keep this explicit so a future
-	// provider-specific reference operation cannot be introduced accidentally.
-	return "text_to_" + mode
+	if mode == "image" || mode == "video" || mode == "audio" {
+		return "text_to_" + mode
+	}
+	return ""
 }
 
 func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *cloudAgentRuntime, call cloudAgentCall) (CreateTaskRequest, *cloudAgentMediaPlan, error) {
@@ -368,6 +407,9 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 		return CreateTaskRequest{}, nil, err
 	}
 	operation := cloudAgentMediaOperation(a.Mode, refs)
+	if operation == "" {
+		return CreateTaskRequest{}, nil, BadAuthRequest("生成模式尚未实现媒体任务适配器")
+	}
 	metadata := map[string]any{"nodeId": a.NodeID, "source": "cloud_agent"}
 	if a.Mode == "video" {
 		metadata["videoEditOperation"] = operation
@@ -461,7 +503,11 @@ func createCloudAgentMediaNode(repo *repository.Repository, userID, canvasID str
 	} else {
 		meta["channelId"], meta["channelModelKey"], meta["model"] = a.ChannelID, a.ChannelModelKey, a.ChannelModelKey
 	}
-	node := creationAddedNode(CreationCanvasOp{Type: "add_node", ID: a.NodeID, NodeType: a.Mode, Title: a.Title, X: &x, Y: &y, Metadata: meta})
+	descriptor, supported := cloudAgentNodeCapabilityForGenerationMode(a.Mode)
+	if !supported || !cloudAgentGenerationModeSupported(a.Mode) {
+		return BadAuthRequest("生成模式当前不受 Agent 支持")
+	}
+	node := creationAddedNode(CreationCanvasOp{Type: "add_node", ID: a.NodeID, NodeType: descriptor.Type, Title: a.Title, X: &x, Y: &y, Metadata: meta})
 	if a.Size == "9:16" {
 		node["width"], node["height"] = float64(360), float64(640)
 	}
@@ -504,6 +550,7 @@ func createCloudAgentMediaNode(repo *repository.Repository, userID, canvasID str
 		if task != nil {
 			operation = "generate_media_submit"
 		}
+		preview := cloudAgentMediaApprovalPreview(plan, "")
 		return recorder[0](repo, cloudAgentMutationInput{
 			RunID:              a.DraftRunID,
 			UserID:             userID,
@@ -514,6 +561,7 @@ func createCloudAgentMediaNode(repo *repository.Repository, userID, canvasID str
 			AfterSnapshotHash:  cloudAgentCanvasHash(doc),
 			BeforeJSON:         beforeJSON,
 			HasSubmittedTask:   task != nil,
+			Preview:            &preview,
 		})
 	}
 	return nil

@@ -4,6 +4,9 @@ import "infinite-canvas/backend/internal/app"
 
 type (
 	CloudAgentRequest                      = app.CloudAgentRequest
+	CloudAgentCapabilitySet                = app.CloudAgentCapabilitySet
+	AgentProfileRequest                    = app.AgentProfileRequest
+	AgentProfileView                       = app.AgentProfileView
 	APICallLogPage                         = app.APICallLogPage
 	APICallLogQuery                        = app.APICallLogQuery
 	AccountFileStorageUsage                = app.AccountFileStorageUsage
@@ -314,3 +317,11 @@ type (
 	WalletSummary                          = app.WalletSummary
 	WorkflowField                          = app.WorkflowField
 )
+
+func CloudAgentCapabilitySetInfo() CloudAgentCapabilitySet {
+	return app.CloudAgentCapabilitySetInfo()
+}
+
+func CloudAgentSupportedToolNames() []string {
+	return app.CloudAgentSupportedToolNames()
+}

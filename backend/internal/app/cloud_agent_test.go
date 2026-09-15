@@ -141,6 +141,114 @@ func TestCloudAgentLegacyRunSurvivesTaskInputCompaction(t *testing.T) {
 	}
 }
 
+func TestCloudAgentTerminalRunWithOlderCapabilityCanContinueOnCurrentContract(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	if err := db.Create(&model.CanvasProject{ID: "agent-canvas", UserID: "user", PayloadJSON: `{"nodes":[]}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	parentRequest := agentTestRequest()
+	parentRequest.IdempotencyKey = "older-capability-parent"
+	parent, err := s.CreateCloudAgentRun("user", parentRequest, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentExecution, err := s.repo.CloudAgent("user", parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentState, err := cloudAgentDecode(parentExecution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentState.Policy.CapabilitySetVersion = "canvas-capabilities/v1"
+	parentState.Policy.CapabilitySetHash = agentProfileHash("historical capability contract")
+	if err = cloudAgentSave(parentExecution, &parentState); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Model(&model.CloudAgentExecution{}).Where("id = ?", parent.ID).Updates(map[string]any{
+		"status": "completed", "state_json": parentExecution.StateJSON,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Model(&model.Task{}).Where("id = ?", parent.ID).Updates(map[string]any{
+		"status": model.TaskStatusSucceeded, "result_json": `{"text":"旧合同下的可信回复"}`,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	historicalStateJSON := parentExecution.StateJSON
+
+	childRequest := agentTestRequest()
+	childRequest.Prompt = "继续操作"
+	childRequest.IdempotencyKey = "current-capability-child"
+	child, err := s.CreateCloudAgentRun("user", childRequest, parent.ID)
+	if err != nil {
+		t.Fatalf("terminal historical run cannot continue: %v", err)
+	}
+	childExecution, err := s.repo.CloudAgent("user", child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childState, err := cloudAgentDecode(childExecution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = validateCloudAgentPolicySnapshot(childState.Policy); err != nil {
+		t.Fatalf("child did not use the current execution contract: %v", err)
+	}
+	if childState.Policy.CapabilitySetVersion != cloudAgentCapabilitySetVersion || childState.Policy.CapabilitySetHash != cloudAgentCapabilitySetHash() {
+		t.Fatalf("child capability contract is stale: %+v", childState.Policy)
+	}
+	if childState.ParentID != parent.ID || len(childState.TextHistory) != 2 || childState.TextHistory[1].Content != "旧合同下的可信回复" {
+		t.Fatalf("historical conversation context was not preserved: %+v", childState)
+	}
+	var storedParent model.CloudAgentExecution
+	if err = db.First(&storedParent, "id = ?", parent.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if storedParent.StateJSON != historicalStateJSON {
+		t.Fatal("continuation mutated the frozen parent runtime")
+	}
+}
+
+func TestCloudAgentActiveRunWithOlderCapabilityIsTerminatedWithoutResume(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	if err := db.Create(&model.CanvasProject{ID: "agent-canvas", UserID: "user", PayloadJSON: `{"nodes":[]}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	req := agentTestRequest()
+	req.IdempotencyKey = "older-active-contract"
+	run, err := s.CreateCloudAgentRun("user", req, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution, err := s.repo.CloudAgent("user", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := cloudAgentDecode(execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Policy.CapabilitySetVersion = "canvas-capabilities/v1"
+	state.Policy.CapabilitySetHash = agentProfileHash("historical capability contract")
+	if err = cloudAgentSave(execution, &state); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Model(&model.CloudAgentExecution{}).Where("id = ?", run.ID).Update("state_json", execution.StateJSON).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = s.advanceCloudAgentByID("user", run.ID); err != nil {
+		t.Fatal(err)
+	}
+	execution, err = s.repo.CloudAgent("user", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Status != "failed" || !strings.Contains(execution.FailureMessage, "旧版执行合同") {
+		t.Fatalf("stale active contract was resumed or failed opaquely: status=%s message=%q", execution.Status, execution.FailureMessage)
+	}
+}
+
 func TestCloudAgentValidation(t *testing.T) {
 	for _, mutate := range []func(*CloudAgentRequest){
 		func(r *CloudAgentRequest) { r.PermissionMode = "unrestricted" },
@@ -321,7 +429,7 @@ func TestCloudAgentTextDraftAdvancesWithoutWaitingScheduler(t *testing.T) {
 	if err := db.Model(&model.Task{}).Where("id = ?", run.ID).Updates(map[string]any{"status": model.TaskStatusRunning, "text_draft": "你好"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	execution, err := s.repo.CloudAgentByActiveTask("user", run.ID)
+	execution, err := s.repo.CloudAgentForActiveTask("user", run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +486,7 @@ func TestCloudAgentToolLoopPersistsApprovalAndAppliesCanvasWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := agentTestRequest()
-	req.Thinking = true
+	req.ReasoningMode = "deep"
 	req.PermissionMode = "request_approval"
 	root, err := s.CreateCloudAgentRun("user", req, "")
 	if err != nil {
@@ -495,5 +603,82 @@ func TestCloudAgentNodeTypesExposeExecutableAllowList(t *testing.T) {
 		if node["type"] == "panorama" {
 			t.Fatal("UI-only node must not be exposed")
 		}
+	}
+}
+
+func TestCloudAgentCanvasApprovalAdmissionFailureTerminatesRun(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	canvas := model.CanvasProject{ID: "agent-canvas", UserID: "user", Title: "test", PayloadJSON: `{"nodes":[]}`}
+	if err := db.Create(&canvas).Error; err != nil {
+		t.Fatal(err)
+	}
+	req := agentTestRequest()
+	req.PermissionMode = "request_approval"
+	root, err := s.CreateCloudAgentRun("user", req, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := json.Marshal(map[string]any{
+		"snapshotHash": cloudAgentCanvasHash(doc),
+		"ops":          []map[string]any{{"type": "unsupported_canvas_op", "id": "bad-op"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := json.Marshal(map[string]any{
+		"toolCalls": []map[string]any{{
+			"id": "write-1", "type": "function", "function": map[string]any{
+				"name": "canvas_apply_ops", "arguments": string(args),
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task model.Task
+	if err := db.First(&task, "id = ?", root.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.Task{}).Where("id = ?", root.ID).Updates(map[string]any{
+		"status": model.TaskStatusSucceeded, "result_json": string(result), "input_json": publicTaskInputJSON(task.InputJSON),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.advanceCloudAgentByID("user", root.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.advanceCloudAgentByID("user", root.ID); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := s.repo.CloudAgent("user", root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := cloudAgentDecode(failed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != "failed" || failed.FailureMessage != "不支持的画布写操作" {
+		t.Fatalf("admission failure did not terminate run: status=%q message=%q", failed.Status, failed.FailureMessage)
+	}
+	if len(state.Events) == 0 || state.Events[len(state.Events)-1].Type != "run_failed" || state.Events[len(state.Events)-1].Payload["reason"] != "tool_admission_failed" {
+		t.Fatalf("missing admission failure event: %+v", state.Events)
+	}
+	eventCount := len(state.Events)
+	if err := s.advanceCloudAgentByID("user", root.ID); err != nil {
+		t.Fatal(err)
+	}
+	failedAgain, err := s.repo.CloudAgent("user", root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateAgain, err := cloudAgentDecode(failedAgain)
+	if err != nil || len(stateAgain.Events) != eventCount {
+		t.Fatalf("terminal run was replayed: err=%v events=%d want=%d", err, len(stateAgain.Events), eventCount)
 	}
 }

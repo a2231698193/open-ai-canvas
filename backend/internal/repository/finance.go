@@ -84,6 +84,25 @@ func (r *Repository) ChannelModels(channelID string, includeDisabled bool) ([]mo
 	return items, r.attachChannelModelPriceTiers(pointers)
 }
 
+func (r *Repository) CreateDuplicatedSystemChannel(channel *model.ModelChannel, channelModels []model.ChannelModel, priceTiers []model.ChannelModelPriceTier) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(channel).Error; err != nil {
+			return err
+		}
+		if len(channelModels) > 0 {
+			if err := tx.Create(&channelModels).Error; err != nil {
+				return err
+			}
+		}
+		if len(priceTiers) > 0 {
+			if err := tx.Create(&priceTiers).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (r *Repository) ChannelModelByID(channelID string, id string) (*model.ChannelModel, error) {
 	var item model.ChannelModel
 	if err := r.db.First(&item, "id = ? AND channel_id = ?", id, channelID).Error; err != nil {

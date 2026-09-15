@@ -289,6 +289,7 @@ func migrations() []tableMigration {
 		migrateTable[model.Task]("tasks"),
 		migrateTable[model.CloudAgentExecution]("cloud_agent_executions"),
 		migrateTable[model.CloudAgentCanvasMutation]("cloud_agent_canvas_mutations"),
+		migrateTable[model.AgentProfile]("agent_profiles"),
 		migrateTable[model.TaskTextDelta]("task_text_delta"),
 		migrateTable[model.TaskLog]("task_logs"),
 		migrateTable[model.Result]("results"),
