@@ -270,8 +270,8 @@ func validateCloudAgentMediaArgs(a cloudAgentMediaArgs, state *cloudAgentRuntime
 	if (mode == "image" || mode == "video") && strings.TrimSpace(a.Size) == "" {
 		return BadAuthRequest("请填写模型支持的具体画幅；用户授权默认时沿用参考图比例或目录默认画幅，无需重复询问")
 	}
-	if a.Duration < 0 || a.Duration > 120 {
-		return BadAuthRequest("生成时长必须在 0 到 120 秒之间")
+	if a.Duration < 0 {
+		return BadAuthRequest("生成时长不能为负数")
 	}
 	switch mode {
 	case "video":

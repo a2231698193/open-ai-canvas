@@ -462,10 +462,13 @@ func cloudAgentCanvasSummary(canvas *model.CanvasProject) (string, error) {
 			break
 		}
 		descriptor, known := cloudAgentNodeCapabilityForType(node.Type)
-		if !known {
-			return "", BadAuthRequest("画布包含当前 Agent 不支持的节点类型")
-		}
 		item := map[string]any{"id": truncateRunes(node.ID, 100), "type": truncateRunes(node.Type, 40), "title": truncateRunes(node.Title, 300)}
+		if !known {
+			item["agentSupported"] = false
+			item["agentUnsupportedReason"] = "仅展示基础信息；当前 Agent 不支持操作此类型节点"
+			nodes = append(nodes, item)
+			continue
+		}
 		projected, err := cloudAgentProjectNodeFields(map[string]any{"title": node.Title}, node.Metadata, descriptor, descriptor.SummaryFields, 600, false, 0)
 		if err != nil {
 			return "", err

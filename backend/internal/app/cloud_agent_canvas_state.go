@@ -86,7 +86,12 @@ func cloudAgentCanvasState(repo *repository.Repository, userID string, doc map[s
 		}
 		capability, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
 		if !known {
-			return nil, BadAuthRequest("画布包含当前 Agent 不支持的节点类型")
+			// Read visibility is not permission to mutate or use a node as a media reference.
+			item["agentSupported"] = false
+			item["agentUnsupportedReason"] = "仅展示基础信息；当前 Agent 不支持操作此类型节点"
+			nodes = append(nodes, item)
+			included[id] = true
+			continue
 		}
 		fields := capability.SummaryFields
 		if len(ids) > 0 {

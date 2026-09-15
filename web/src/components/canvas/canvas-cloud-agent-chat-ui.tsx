@@ -137,7 +137,7 @@ export function AgentChatMessage({
     return (
         <div className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
             {!isUser ? <AgentTimelineMarker theme={theme} tone="agent" /> : null}
-            <div className={`min-w-0 text-sm leading-6 ${isUser ? "max-w-[82%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-right" : "max-w-[calc(100%-36px)] flex-1 text-left"}`} style={{ color, ...(isUser ? { background: "#edf6ff" } : {}) }}>
+            <div className={`min-w-0 text-sm leading-6 ${isUser ? "max-w-[82%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-right" : "max-w-[calc(100%-36px)] flex-1 text-left"}`} style={{ color, ...(isUser ? { background: theme.node.agentUserMessage } : {}) }}>
                 {item.role === "assistant" ? (
                     <AIMessageMarkdown className="text-left" isStreaming={isStreaming}>
                         {item.text}

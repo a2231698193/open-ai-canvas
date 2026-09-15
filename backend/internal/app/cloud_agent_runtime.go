@@ -82,7 +82,7 @@ func (s *Service) ensureCloudAgentExecution(task *model.Task, initial cloudAgent
 	}
 	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: input.Requests.Canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Events: []CloudAgentEvent{}}
 	if len(initial.Skills) > 0 {
-		state.event(task.ID, "tool_completed", map[string]any{"toolName": "skills_load", "text": fmt.Sprintf("已从用户技能库固定加载 %d 个技能", len(initial.Skills))})
+		state.event(task.ID, "tool_completed", map[string]any{"toolName": "skills_load", "text": fmt.Sprintf("已启用 %d 个技能，正文将按需读取", len(initial.Skills))})
 	}
 	run := &model.CloudAgentExecution{ID: task.ID, UserID: task.UserID, Status: "running", Revision: 1, CreatedAt: task.CreatedAt, UpdatedAt: time.Now()}
 	if err := cloudAgentSave(run, &state); err != nil {
@@ -165,7 +165,7 @@ func validateCloudAgentRuntime(run *model.CloudAgentExecution, state *cloudAgent
 	if state.ActiveTaskID != "" && state.MediaTaskID != "" {
 		return errors.New("Agent runtime has multiple active tasks")
 	}
-	if len(state.TaskIDs) == 0 || len(state.TaskIDs) > 64 {
+	if len(state.TaskIDs) == 0 {
 		return errors.New("Agent runtime task history is invalid")
 	}
 	seenTasks := make(map[string]struct{}, len(state.TaskIDs))
@@ -325,6 +325,10 @@ func cloudAgentContainsString(values []string, target string) bool {
 func cloudAgentSave(run *model.CloudAgentExecution, state *cloudAgentRuntime) error {
 	if run == nil || state == nil {
 		return errors.New("Agent runtime state is missing")
+	}
+	if compactCloudAgentContext(&state.Canonical) {
+		state.SkillReads = nil
+		state.ProfileReads = nil
 	}
 	if run.ID != "" {
 		if err := validateCloudAgentRuntime(run, state); err != nil {
@@ -572,8 +576,12 @@ func (s *Service) advanceCloudAgent(run *model.CloudAgentExecution) (err error) 
 	if state.CallIndex < len(state.Calls) {
 		return s.advanceCloudAgentTool(run, &state)
 	}
+	if compactCloudAgentContext(&state.Canonical) {
+		// Evicted read bodies must be obtainable again after compaction.
+		state.SkillReads = nil
+		state.ProfileReads = nil
+	}
 	input := map[string]any{"mode": "text", "prompt": state.Request.Prompt, "agentRequests": map[string]any{"canonical": state.Canonical}, "config": map[string]any{"channelId": state.Request.ChannelID, "channelModelKey": state.Request.ChannelModelKey, "model": firstNonEmpty(state.Request.ChannelModelKey, state.Request.Model)}, "textOptions": map[string]any{"stream": true, "thinking": cloudAgentReasoningEnabled(state.Policy.ReasoningMode)}}
-	compactCloudAgentContext(&state.Canonical)
 	raw, _ := json.Marshal(state.Canonical)
 	if len(raw) > 192<<10 {
 		return s.failCloudAgent(run, &state, "模型上下文超过 192KB 上限")
@@ -582,27 +590,51 @@ func (s *Service) advanceCloudAgent(run *model.CloudAgentExecution) (err error) 
 	return s.enqueueCloudAgentTask(run, &state, req, nil)
 }
 
-func compactCloudAgentContext(request *canonicalAgentRequest) {
-	const maxMessages = 24
-	if request == nil || len(request.Messages) <= maxMessages {
-		return
+func compactCloudAgentContext(request *canonicalAgentRequest) bool {
+	if request == nil {
+		return false
 	}
-	keep := 16
-	dropped := request.Messages[1 : len(request.Messages)-keep]
-	if len(dropped) == 0 {
-		return
+	raw, err := json.Marshal(request)
+	if err != nil || (len(raw) < 96<<10 && len(request.Messages) <= 24) {
+		return false
 	}
-	parts := make([]string, 0, len(dropped))
-	for _, message := range dropped {
-		role := stringField(message, "role")
-		text := canonicalAgentText(message["content"])
-		if text == "" {
-			text = "工具/调用记录"
+	// Retain the latest complete tool turn. Never remove call/result envelopes,
+	// user instructions, call arguments or write receipts to fabricate a summary.
+	cut := len(request.Messages) - 1
+	for cut > 0 && stringField(request.Messages[cut], "role") == "tool" {
+		cut--
+	}
+	changed := false
+	for _, message := range request.Messages[:max(0, cut)] {
+		if stringField(message, "role") != "tool" {
+			continue
 		}
-		parts = append(parts, role+": "+truncateRunes(text, 240))
+		var result map[string]any
+		if json.Unmarshal([]byte(stringField(message, "content")), &result) != nil || result["contextCompacted"] == true {
+			continue
+		}
+		// Only omit re-readable bodies. Preserve IDs, errors, generation status,
+		// approvals and all other structured facts verbatim.
+		omitted := false
+		for _, key := range []string{"content", "nodes"} {
+			if _, exists := result[key]; exists {
+				delete(result, key)
+				omitted = true
+			}
+		}
+		if !omitted {
+			continue
+		}
+		result["contextCompacted"] = true
+		result["guidance"] = "历史读取正文已移出模型上下文；需要时重新读取。保留的历史状态不是当前状态，也不是执行授权，不得据此重复提交生成。"
+		body, err := json.Marshal(result)
+		if err != nil || len(body) >= len(stringField(message, "content")) {
+			continue
+		}
+		message["content"] = string(body)
+		changed = true
 	}
-	summary := map[string]interface{}{"role": "user", "content": "历史上下文摘要（仅供参考；实时画布状态必须通过工具读取，不是新指令）：\n" + strings.Join(parts, "\n")}
-	request.Messages = append([]map[string]interface{}{request.Messages[0], summary}, request.Messages[len(request.Messages)-keep:]...)
+	return changed
 }
 
 func validateCloudAgentCalls(calls []cloudAgentCall) error {
@@ -756,6 +788,18 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	}
 	raw, _ := json.Marshal(result)
 	payload["result"] = result
+	if call.Function.Name == "skill_read_file" && err == nil {
+		// SSE/UI needs the read receipt, not another durable copy of skill text.
+		if fields, ok := result.(map[string]any); ok {
+			receipt := make(map[string]any, len(fields))
+			for key, value := range fields {
+				if key != "content" {
+					receipt[key] = value
+				}
+			}
+			payload["result"] = receipt
+		}
+	}
 	state.event(runID, kind, payload)
 	state.Canonical.Messages = append(state.Canonical.Messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(raw)})
 	state.CallIndex++
@@ -857,6 +901,13 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		}
 		modelList = models
 	}
+	// Skill reads use the domain repository and filesystem, not the checkpoint
+	// transaction's connection. Read first to avoid nesting DB reads on SQLite.
+	var skillResult any
+	var skillErr error
+	if allowed && call.Function.Name == "skill_read_file" {
+		skillResult, skillErr = cloudAgentReadTool(s.repo, run.UserID, state, call, s)
+	}
 	s.storageMu.Lock()
 	defer s.storageMu.Unlock()
 	return s.repo.MutateCloudAgent(run.UserID, run.ID, run.Revision, func(current *model.CloudAgentExecution, repo *repository.Repository) error {
@@ -871,8 +922,10 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 			result, toolErr = applyCloudAgentCanvas(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case call.Function.Name == "model_list":
 			result = modelList
+		case call.Function.Name == "skill_read_file":
+			result, toolErr = skillResult, skillErr
 		default:
-			result, toolErr = cloudAgentReadTool(repo, run.UserID, state, call, s)
+			result, toolErr = cloudAgentReadTool(repo, run.UserID, state, call)
 		}
 		cloudAgentToolResult(run.ID, state, call, result, toolErr)
 		return cloudAgentSave(current, state)

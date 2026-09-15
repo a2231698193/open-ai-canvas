@@ -67,8 +67,8 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
     const [permissionMode, setPermissionMode] = useState<AgentPermissionMode>("request_approval");
     const [contextScope, setContextScope] = useState<AgentContextKey[]>(["canvas"]);
     const [maxCredits, setMaxCredits] = useState("200");
-    const [maxGenerationTasks, setMaxGenerationTasks] = useState("8");
-    const [maxVideoSeconds, setMaxVideoSeconds] = useState("60");
+    const [maxGenerationTasks, setMaxGenerationTasks] = useState("0");
+    const [maxVideoSeconds, setMaxVideoSeconds] = useState("0");
     const [conversations, setConversations] = useState<CloudAgentConversation[]>([]);
     const [activeConversationId, setActiveConversationId] = useState(() => nanoid());
     const [historyHydrated, setHistoryHydrated] = useState(false);
@@ -477,7 +477,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
             const result = await addSkill(skill.skillId);
             setSkills((current) => [...current.filter((item) => item.skillId !== skill.skillId), result.skill]);
             setMarketSkills((current) => current.map((item) => (item.skillId === skill.skillId ? result.skill : item)));
-            setSelectedSkillIds((current) => (current.includes(skill.skillId) || current.length >= 8 ? current : [...current, skill.skillId]));
+            setSelectedSkillIds((current) => (current.includes(skill.skillId) ? current : [...current, skill.skillId]));
         } catch (cause) {
             setMessages((current) => appendAgentError(current, `skill-error-${Date.now()}`, cause, "添加 Skill 失败"));
         }
@@ -721,7 +721,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
                 onSearch={setSkillSearch}
                 onToggle={(id) => setSelectedSkillIds((current) => {
                     if (current.includes(id)) return current.filter((item) => item !== id);
-                    return current.length < 8 ? [...current, id] : current;
+                    return [...current, id];
                 })}
                 onInstall={installSkill}
                 onLoadMore={loadMoreSkills}

@@ -1,12 +1,57 @@
 package app
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	"infinite-canvas/backend/internal/canvas/capability"
+	"infinite-canvas/backend/internal/model"
 )
+
+func TestCloudAgentMixedCanvasReadsUnsupportedNodesWithoutGrantingCapabilities(t *testing.T) {
+	nodes := []map[string]any{{"id": "text", "type": "text", "metadata": map[string]any{"content": "readable"}}}
+	for _, kind := range []string{"ai-art-critique", "config", "drawing", "future-plugin"} {
+		nodes = append(nodes, map[string]any{"id": kind, "type": kind, "title": "插件节点", "position": map[string]any{"x": 10.0, "y": 20.0}, "metadata": map[string]any{"content": "PRIVATE_SENTINEL", "apiKey": "PRIVATE_SENTINEL"}})
+		if _, supported := cloudAgentNodeCapabilityForType(kind); supported {
+			t.Fatalf("unsupported type gained write capability: %s", kind)
+		}
+		if err := validateCreationOps([]CreationCanvasOp{{Type: "add_node", ID: "new", NodeType: kind}}); err == nil {
+			t.Fatalf("unsupported creation accepted: %s", kind)
+		}
+		if _, _, err := cloudAgentReferenceDescriptor(nodes[len(nodes)-1]); err == nil {
+			t.Fatalf("unsupported media reference accepted: %s", kind)
+		}
+		if err := validateCloudAgentConnection(nodes, kind, "text"); err == nil {
+			t.Fatalf("unsupported connection accepted: %s", kind)
+		}
+	}
+	doc := map[string]any{"nodes": nodes, "connections": []map[string]any{{"id": "edge", "fromNodeId": "drawing", "toNodeId": "text"}}}
+	raw, _ := json.Marshal(doc)
+	summary, err := cloudAgentCanvasSummary(&model.CanvasProject{PayloadJSON: string(raw)})
+	if err != nil || strings.Contains(summary, "PRIVATE_SENTINEL") || !strings.Contains(summary, `"agentSupported":false`) {
+		t.Fatalf("mixed summary failed or leaked metadata: %v", err)
+	}
+	for _, ids := range [][]string{nil, {"drawing", "config"}} {
+		view, err := cloudAgentCanvasState(nil, "user", doc, 0, ids, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := view.(map[string]any)
+		encoded, _ := json.Marshal(result)
+		if strings.Contains(string(encoded), "PRIVATE_SENTINEL") || result["snapshotHash"] != cloudAgentCanvasHash(doc) || len(result["connections"].([]any)) != 1 {
+			t.Fatal("unsafe projection or lost snapshot/connection")
+		}
+		want := len(nodes)
+		if ids != nil {
+			want = len(ids)
+		}
+		if len(result["nodes"].([]any)) != want {
+			t.Fatal("nodes silently omitted")
+		}
+	}
+}
 
 func TestCloudAgentToolsFollowCanvasCapabilityRegistry(t *testing.T) {
 	req := agentTestRequest()

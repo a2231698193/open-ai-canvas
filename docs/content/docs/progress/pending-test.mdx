@@ -12,6 +12,33 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] `cd backend && go test ./internal/app -run 'TestSanitizeChannelModelAppliesCreditMultiplier|TestPublicCatalogPriceAppliesCreditMultiplier' -count=1`
 - [ ] 将默认倍率改为 2 后，创作页/画布发送按钮显示的积分数与实际预扣一致，后台渠道模型编辑页仍显示原配置单价。
 
+## 混合节点画布 Agent
+
+- 未注册 Agent 能力的节点（包括插件、配置、绘图节点）不再阻断整张画布的 Agent 摘要与分页读取；返回基础信息和 `agentSupported: false`，不读取任意 metadata，也不授予创建、修改或媒体引用能力。
+- 已补混合类型摘要、列表与指定节点读取、私有字段隔离、快照/连线保留和未支持类型创建拒绝测试。待真实账号验证混合画布能启动 Agent 并创建受支持的图片节点；不代表新增了插件节点编辑或全画布布局工具。
+
+## 画布 Agent 预算与按需技能
+
+- 已取消前后端最多 8 个技能、生成预算 8 / 120 秒和固定模型循环次数约束；生成数与视频累计秒数默认 0 表示不限，积分、权限、生成审批和供应商实际能力仍强校验。
+- 技能仅保存版本与路径，读取正文按 12000 字符分页；支持总正文超过 128KB 的多技能选择。读取版本变化或跨用户访问拒绝；运行事件只存技能回执。
+- 上下文瘦身只卸载可重新读取的历史正文，保留调用配对、生成回执、用户要求及最近完整工具轮次；不宣称语义摘要或无限上下文。原始字节安全边界仍保留。
+- 已补后端回归：10 个大技能、正文不预存、分页、跨用户拒绝、版本变更拒绝、0 预算可见生成工具、大于 120 秒和正预算约束、上下文配对与生成回执保留。
+- 待真实模型验收：多技能任务中按入口选择引用、跨多页读取和上下文卸载后重读、视频模型支持的长时任务及收费审批；浅蓝用户消息在明暗主题下的交互外观。
+
+## 问鼎 LK888 协议插件
+
+- 三个官方声明式协议：`lk888-image`（tt-image-2 / banana-pro / 即梦 5.0 Pro）、`lk888-video`（MiniMax H3 / 可灵 V3 / 万相 3.0 参考生）、`lk888-seedance`（方舟 `/api/v3/contents/generations/tasks`）。
+- 图片和媒体视频共用 `POST /v1/media/generate` + `GET /v1/media/status?task_id=`；Seedance 走方舟路径。一个问鼎渠道可挂多个模型，每个模型选对应协议。
+- [x] `cd backend && go test ./internal/protocol -run 'TestLK888|TestOfficialProtocolPackagesAreSelfContainedDeclarativePlugins' -count=1`
+- [ ] 系统渠道协议选 `问鼎 LK888 Image`、模型填 `tt-image-2` 后，画布文生图能提交并轮询出图。
+- [ ] 带参考图时上游 `params.images` 含公网 URL 或 data URL。
+- [ ] 选 16:9 + 2K 时上游 `params.size` 为 `2560x1440`，不能把 `16:9` 原样提交。
+- [ ] `banana-pro` 上游是 `aspectRatio` + `imageSize`；即梦是档位 `size`（`1K`/`2K`）+ `aspect_ratio`。
+- [ ] MiniMax 首尾帧走 `params.images` 且 `mode=shouweizhen`；参考生走 `image_url`/`video_url` 且 `mode=cankaosheng`。
+- [ ] 可灵 `duration` 为 `5/10/15` 字符串，`1080p` 映射 `mode=pro`。
+- [ ] 万相参考图走 `reference_urls`，时长 0 映射 `auto`。
+- [ ] Seedance 创建 `/api/v3/contents/generations/tasks`，完成态 `content.video_url`，role 原样映射。
+
 ## APIMart 图片协议插件
 
 - 新增官方声明式协议 `apimart-image`：`POST /v1/images/generations` 创建、`GET /v1/tasks/{task_id}` 查询。
