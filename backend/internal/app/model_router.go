@@ -124,6 +124,8 @@ func normalizeModelRequestOption(name string, value any) any {
 	switch strings.ToLower(strings.TrimSpace(resolution)) {
 	case "low", "480", "480p":
 		return "480p"
+	case "768", "768p":
+		return "768p"
 	case "720", "720p":
 		return "720p"
 	case "1080", "1080p":

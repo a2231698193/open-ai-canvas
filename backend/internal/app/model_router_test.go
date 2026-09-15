@@ -52,13 +52,39 @@ func TestAutoQualityIsOmittedFromCapabilityIntent(t *testing.T) {
 }
 
 func TestModelRequestIntentNormalizesVideoResolution(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  string
+	}{
+		{input: "480", want: "480p"},
+		{input: "768", want: "768p"},
+	} {
+		t.Run(test.input, func(t *testing.T) {
+			input := map[string]any{
+				"mode":   "video",
+				"config": map[string]any{"vquality": test.input, "videoSeconds": "6", "size": "16:9"},
+			}
+			intent := ModelRequestIntentFromTaskInput(input, "video_generate", "text_to_video")
+			if got := intent.Options["vquality"]; got != test.want {
+				t.Fatalf("vquality = %#v, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSKUSelectorMatchesLK888MiniMax768PriceTier(t *testing.T) {
 	input := map[string]any{
-		"mode":   "video",
-		"config": map[string]any{"vquality": "480", "videoSeconds": "6", "size": "16:9"},
+		"mode":              "video",
+		"capabilityOptions": map[string]any{"vquality": "768"},
+		"config":            map[string]any{"vquality": "768"},
 	}
 	intent := ModelRequestIntentFromTaskInput(input, "video_generate", "text_to_video")
-	if got := intent.Options["vquality"]; got != "480p" {
-		t.Fatalf("vquality = %#v, want 480p", got)
+	channelModel := model.ChannelModel{PriceTiers: []model.ChannelModelPriceTier{
+		{ID: "lk888-768", SelectorJSON: `{"vquality":"768p"}`, Enabled: true, PriceConfigured: true},
+	}}
+	matched := channelModelPriceTierForIntent(channelModel, intent)
+	if matched == nil || matched.ID != "lk888-768" {
+		t.Fatalf("matched tier = %#v, selector = %#v", matched, skuSelectorForIntent(intent))
 	}
 }
 
