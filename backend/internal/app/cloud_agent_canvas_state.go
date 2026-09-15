@@ -18,6 +18,13 @@ var cloudAgentStructuredProjectors = map[string]cloudAgentStructuredProjector{
 		}
 		return cloudAgentStoryboardState(storyboard, offset, precise), nil
 	},
+	"batch_table": func(value any, offset int, precise bool) (any, error) {
+		table, ok := value.(map[string]any)
+		if !ok {
+			return nil, nil
+		}
+		return cloudAgentBatchTableState(table, offset, precise), nil
+	},
 }
 
 // Viewport autosaves must not invalidate approved content; node edits still do.
@@ -311,4 +318,123 @@ func cloudAgentStoryboardState(storyboard map[string]any, offset int, precise bo
 		rows = append(rows, item)
 	}
 	return map[string]any{"rows": rows, "totalRows": len(all), "nextOffset": next, "hasMore": next > 0}
+}
+
+// Batch-table projection exposes only the fields rendered by the component.
+// Result URLs, task IDs, storage keys and arbitrary metadata remain private.
+func cloudAgentBatchTableState(table map[string]any, offset int, precise bool) map[string]any {
+	operation := stringValue(table["operation"])
+	if operation != "creative" {
+		operation = "try_on"
+	}
+	concurrency := 10
+	if value, ok := cloudAgentInteger(table["concurrency"]); ok && (value == 1 || value == 5 || value == 10) {
+		concurrency = value
+	}
+	columns := []any{}
+	for index, column := range creationMaps(table["referenceColumns"])[:min(len(creationMaps(table["referenceColumns"])), 6)] {
+		id, label := truncateRunes(stringValue(column["id"]), 120), truncateRunes(stringValue(column["label"]), 120)
+		if id != "" && label != "" {
+			columns = append(columns, map[string]any{"id": id, "label": label, "mentionToken": fmt.Sprintf("@参考图%d", index+1)})
+		}
+	}
+	if len(columns) == 0 {
+		columns = defaultCloudAgentBatchReferenceColumns()
+	}
+
+	all := creationMaps(table["rows"])
+	count, textLimit := 20, 240
+	if precise {
+		count, textLimit = 20, 16000
+	}
+	rows := []any{}
+	next := 0
+	ready, enabled, missingPrompt, missingReferences, outputLinked := 0, 0, 0, 0, 0
+	for _, row := range all {
+		rowEnabled, _ := row["enabled"].(bool)
+		prompt := strings.TrimSpace(stringValue(row["prompt"]))
+		inputs := cloudAgentBatchInputIDs(row["inputNodeIds"], len(columns))
+		if rowEnabled {
+			enabled++
+			if prompt == "" {
+				missingPrompt++
+			}
+			minimumInputs := 1
+			if operation == "try_on" {
+				minimumInputs = 2
+			}
+			if len(inputs) < minimumInputs {
+				missingReferences++
+			}
+			if prompt != "" && len(inputs) >= minimumInputs {
+				ready++
+			}
+		}
+		if stringValue(row["outputNodeId"]) != "" {
+			outputLinked++
+		}
+	}
+	for index, row := range all {
+		if index < offset {
+			continue
+		}
+		if len(rows) == count {
+			next = index
+			break
+		}
+		item := map[string]any{
+			"id":           truncateRunes(stringValue(row["id"]), 120),
+			"enabled":      row["enabled"] == true,
+			"inputNodeIds": cloudAgentBatchInputIDs(row["inputNodeIds"], len(columns)),
+		}
+		prompt := stringValue(row["prompt"])
+		item["prompt"] = truncateRunes(prompt, textLimit)
+		if len([]rune(prompt)) > textLimit {
+			item["promptTruncated"] = true
+		}
+		if outputNodeID := truncateRunes(stringValue(row["outputNodeId"]), 120); outputNodeID != "" {
+			item["outputNodeId"] = outputNodeID
+		}
+		rows = append(rows, item)
+	}
+	return map[string]any{
+		"operation": operation, "concurrency": concurrency, "referenceColumns": columns,
+		"rows": rows, "totalRows": len(all), "nextOffset": next, "hasMore": next > 0,
+		"generationPreview": map[string]any{
+			"enabledRows": enabled, "readyRows": ready, "missingPromptRows": missingPrompt,
+			"missingReferenceRows": missingReferences, "outputLinkedRows": outputLinked,
+		},
+	}
+}
+
+func cloudAgentBatchInputIDs(value any, limit int) []any {
+	if limit <= 0 || limit > 6 {
+		limit = 6
+	}
+	items, _ := value.([]any)
+	out := make([]any, 0, min(len(items), limit))
+	seen := map[string]bool{}
+	for _, item := range items {
+		id := truncateRunes(stringValue(item), 120)
+		if id == "" || seen[id] || len(out) == limit {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+func cloudAgentInteger(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int64:
+		return int(number), int64(int(number)) == number
+	case float64:
+		integer := int(number)
+		return integer, float64(integer) == number
+	default:
+		return 0, false
+	}
 }

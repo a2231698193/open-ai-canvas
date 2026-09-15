@@ -16,10 +16,14 @@ export function canvasConnectionError(config: AiConfig, nodes: CanvasNodeData[],
     if (acceptedInputKinds.length) {
         const source = nodes.find((node) => node.id === candidate.fromNodeId);
         const sourceKind = source ? getNodeInputKind(source.type) : undefined;
-        const hasAcceptedSource = Boolean(sourceKind && acceptedInputKinds.includes(sourceKind));
+        const isMediaConversion = target.type === CanvasNodeType.MediaConversion;
+        const hasAcceptedSource = isMediaConversion
+            ? source?.type === CanvasNodeType.Image || source?.type === CanvasNodeType.Video
+            : Boolean(sourceKind && acceptedInputKinds.includes(sourceKind));
         if (!sourceKind || !hasAcceptedSource) {
             const labels = acceptedInputKinds.map(acceptedInputKindLabel).join("或");
-            return `${labels}节点只接受${labels}输入`;
+            const targetLabel = isMediaConversion ? "转换" : target.type === CanvasNodeType.BatchTable ? "批量创作表" : labels;
+            return `${targetLabel}节点只接受${labels}输入`;
         }
         const maxInputCount = getNodeMaxInputCount(target.type);
         if (maxInputCount) {
@@ -28,7 +32,7 @@ export function canvasConnectionError(config: AiConfig, nodes: CanvasNodeData[],
                     .filter((connection) => connection.toNodeId === target.id)
                     .map((connection) => connection.fromNodeId),
             ).size;
-            if (inputCount > maxInputCount) return `当前节点最多连接 ${maxInputCount} 个输入`;
+            if (inputCount > maxInputCount) return `${isMediaConversion ? "转换" : "当前"}节点最多连接 ${maxInputCount} 个输入`;
         }
     }
     const mode = getNodeGenerationMode(target);
@@ -50,10 +54,11 @@ export function canvasConnectionError(config: AiConfig, nodes: CanvasNodeData[],
     return "";
 }
 
-function acceptedInputKindLabel(kind: "image" | "video" | "audio" | "text") {
+function acceptedInputKindLabel(kind: "image" | "video" | "audio" | "text" | "table_data") {
     if (kind === "image") return "图片";
     if (kind === "video") return "视频";
     if (kind === "audio") return "音频";
+    if (kind === "table_data") return "多维表格";
     return "文本";
 }
 
@@ -69,7 +74,7 @@ export function connectionInputSummary(targetNodeId: string, nodes: CanvasNodeDa
         if (!inputKind) return;
         // 角色卡是跨类型覆盖：落在可计数类型上时改记为角色。
         if (source.metadata?.workflowKind === "character") input.characterCount += 1;
-        else input[`${inputKind}Count`] += 1;
+        else if (inputKind !== "table_data") input[`${inputKind}Count`] += 1;
     });
     return input;
 }

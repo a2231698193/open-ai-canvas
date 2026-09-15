@@ -232,6 +232,19 @@ export function buildImageGenerationMetadata(type: CanvasImageGenerationType, co
 }
 
 export function nodeReferenceImage(node: CanvasNodeData): ReferenceImage | null {
+    if (node.type === CanvasNodeType.MediaConversion) {
+        // 转换结果只在成功物化后作为生成参考；运行中、跳过和失败状态都不能透传旧结果。
+        const conversion = node.metadata?.mediaConversion;
+        const storageKey = conversion?.resultStorageKey || node.metadata?.storageKey;
+        if (conversion?.status !== "completed" || !storageKey) return null;
+        return {
+            id: node.id,
+            name: node.title || `conversion-${node.id}.png`,
+            type: node.metadata?.mimeType || "image/png",
+            dataUrl: node.metadata?.content || "",
+            storageKey,
+        };
+    }
     if (node.type !== CanvasNodeType.Image || (!node.metadata?.content && !node.metadata?.storageKey)) return null;
     return {
         id: node.id,

@@ -143,7 +143,7 @@ func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error 
 }
 
 func (d Descriptor) ValidateConnection(fromKind string) error {
-	if !d.Connection.CanTarget || d.GenerationMode == "" {
+	if !d.Connection.CanTarget {
 		return fmt.Errorf("%s 节点不能接收参考输入", d.Label)
 	}
 	if !d.AllowsInput(fromKind) {
