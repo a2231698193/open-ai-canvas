@@ -138,6 +138,21 @@ func TestAPIMartVideoCapabilitiesUseModelLimits(t *testing.T) {
 	}
 }
 
+func TestLK888VideoCapabilitiesUseModelLimits(t *testing.T) {
+	miniMax := DefaultModelCapabilityConfigForModel("lk888-video", "minimax-h3").Video
+	if miniMax.DefaultRatio != "adaptive" || fmt.Sprint(miniMax.Resolutions) != fmt.Sprint([]string{"768P", "1080P", "2K", "4K"}) || miniMax.DefaultResolution != "768P" || miniMax.Duration.Min != 4 || miniMax.References.MaxVideos != 3 {
+		t.Fatalf("lk888 MiniMax-H3 capability = %#v", miniMax)
+	}
+	kling := DefaultModelCapabilityConfigForModel("lk888-video", "kling-v3-video").Video
+	if fmt.Sprint(kling.Ratios) != fmt.Sprint([]string{"16:9", "9:16", "1:1"}) || kling.References.MaxImages != 2 || fmt.Sprint(kling.Duration.Values) != fmt.Sprint([]int{5, 10, 15}) {
+		t.Fatalf("lk888 Kling capability = %#v", kling)
+	}
+	wan := DefaultModelCapabilityConfigForModel("lk888-video", "wan3.0-video-cankaosheng").Video
+	if wan.DefaultRatio != "adaptive" || fmt.Sprint(wan.Resolutions) != fmt.Sprint([]string{"480P", "720P", "1080P"}) || wan.Duration.Max != 30 || !wan.GenerateAudio.Supported {
+		t.Fatalf("lk888 Wan capability = %#v", wan)
+	}
+}
+
 func TestDefaultMiniMaxVideoCapabilitySupportsReferenceGeneration(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel("minimax-video", "MiniMax-H3")
 	if profile == nil || profile.Video == nil {

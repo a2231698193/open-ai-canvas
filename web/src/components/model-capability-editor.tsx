@@ -9,7 +9,7 @@ import { defaultImageCapabilityConfig, defaultModelCapabilityConfig, normalizeMo
 import type { ModelProtocol } from "@/lib/model-protocols";
 import { VIDEO_RESOLUTION_CAPABILITY_OPTIONS } from "@/lib/video-generation-options";
 
-const ratioOptions = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
+const ratioOptions = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const operationOptions = [
     { label: "文生视频", value: "text_to_video" },
     { label: "图生视频", value: "image_to_video" },

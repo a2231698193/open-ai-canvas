@@ -355,7 +355,52 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.defaultResolution = "720P";
         video.operations.push("reference_to_video", "audio_to_video");
     }
+    if (protocol === "lk888-video") applyLK888VideoCapability(video, model);
     return { version: 1, text, image: defaultImageCapabilityConfig(protocol, model), video };
+}
+
+function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) {
+    switch (model.trim().toLowerCase()) {
+        case "minimax-h3":
+            video.references.maxImages = 9;
+            video.references.maxImageBytes = 30 * 1024 * 1024;
+            video.references.maxVideos = 3;
+            video.references.maxVideoBytes = 50 * 1024 * 1024;
+            video.references.maxVideoDurationSeconds = 15;
+            video.references.maxAudios = 3;
+            video.references.maxAudioBytes = 15 * 1024 * 1024;
+            video.references.maxAudioDurationSeconds = 15;
+            video.duration = { selection: "range", min: 4, max: 15, step: 1, default: 5 };
+            video.ratios = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
+            video.defaultRatio = "adaptive";
+            video.resolutions = ["768P", "1080P", "2K", "4K"];
+            video.defaultResolution = "768P";
+            video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+            break;
+        case "kling-v3-video":
+            video.references.maxImages = 2;
+            video.references.maxVideos = 0;
+            video.references.maxAudios = 0;
+            video.duration = { selection: "enum", values: [5, 10, 15], default: 5 };
+            video.ratios = ["16:9", "9:16", "1:1"];
+            video.defaultRatio = "16:9";
+            video.resolutions = ["720p", "1080p"];
+            video.defaultResolution = "720p";
+            video.operations = ["text_to_video", "image_to_video"];
+            break;
+        case "wan3.0-video-cankaosheng":
+            video.references.maxImages = 10;
+            video.references.maxVideos = 0;
+            video.references.maxAudios = 0;
+            video.duration = { selection: "range", min: 2, max: 30, step: 1, default: 5 };
+            video.ratios = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4"];
+            video.defaultRatio = "adaptive";
+            video.resolutions = ["480P", "720P", "1080P"];
+            video.defaultResolution = "720P";
+            video.generateAudio = { supported: true, default: false };
+            video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+            break;
+    }
 }
 
 export function pluginWorkflowCapabilityConfig(protocol: ModelProtocol, workflow: ModelProtocolWorkflow): ModelCapabilityConfig | undefined {

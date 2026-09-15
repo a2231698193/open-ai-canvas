@@ -278,7 +278,51 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 	case model.ChannelInterfaceAgnesVideo:
 		video = applyModelSpecificVideoCapability(video, protocol, modelName)
 	}
+	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-video") {
+		applyLK888VideoCapability(video, modelName)
+	}
 	return &ModelCapabilityConfig{Version: 1, Text: text, Image: DefaultImageCapabilityConfig(protocol, modelName), Video: video}
+}
+
+func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "minimax-h3":
+		video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		video.References.MaxImages = 9
+		video.References.MaxImageBytes = 30 * 1024 * 1024
+		video.References.MaxVideos = 3
+		video.References.MaxVideoBytes = 50 * 1024 * 1024
+		video.References.MaxVideoDuration = 15
+		video.References.MaxAudios = 3
+		video.References.MaxAudioBytes = 15 * 1024 * 1024
+		video.References.MaxAudioDuration = 15
+		video.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 15, Step: 1, Default: 5}
+		video.Ratios = []string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+		video.DefaultRatio = "adaptive"
+		video.Resolutions = []string{"768P", "1080P", "2K", "4K"}
+		video.DefaultResolution = "768P"
+	case "kling-v3-video":
+		video.Operations = []string{"text_to_video", "image_to_video"}
+		video.References.MaxImages = 2
+		video.References.MaxVideos = 0
+		video.References.MaxAudios = 0
+		video.Duration = VideoDurationConfig{Selection: "enum", Values: []int{5, 10, 15}, Default: 5}
+		video.Ratios = []string{"16:9", "9:16", "1:1"}
+		video.DefaultRatio = "16:9"
+		video.Resolutions = []string{"720p", "1080p"}
+		video.DefaultResolution = "720p"
+	case "wan3.0-video-cankaosheng":
+		video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		video.References.MaxImages = 10
+		video.References.MaxVideos = 0
+		video.References.MaxAudios = 0
+		video.Duration = VideoDurationConfig{Selection: "range", Min: 2, Max: 30, Step: 1, Default: 5}
+		video.Ratios = []string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4"}
+		video.DefaultRatio = "adaptive"
+		video.Resolutions = []string{"480P", "720P", "1080P"}
+		video.DefaultResolution = "720P"
+		video.GenerateAudio = VideoBooleanConfig{Supported: true, Default: false}
+	}
 }
 
 func DecodeModelCapabilityConfig(raw string) (*ModelCapabilityConfig, error) {

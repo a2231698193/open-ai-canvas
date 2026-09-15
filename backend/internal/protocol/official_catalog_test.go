@@ -954,6 +954,14 @@ func TestLK888VideoProfile(t *testing.T) {
 		t.Fatalf("minimax keyframes must not send image_url: %#v", params)
 	}
 
+	alias, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "minimax-h3", Prompt: "湖面", Duration: 5, Resolution: "1440p"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifestTestBody(t, alias)["params"].(map[string]any)["resolution"] != "2K" {
+		t.Fatalf("1440p must map to MiniMax 2K: %#v", manifestTestBody(t, alias))
+	}
+
 	reference, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
 		Model: "minimax-h3", Prompt: "参考", Duration: 8, Resolution: "2k",
 		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "reference_image"}},
@@ -1041,6 +1049,40 @@ func TestLK888SeedanceProfile(t *testing.T) {
 	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "99936297"}, []byte(`{"id":"99936297","status":"succeeded","content":{"video_url":"https://cdn.example/out.mp4"}}`))
 	if err != nil || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 || result.Result.Videos[0].URL != "https://cdn.example/out.mp4" {
 		t.Fatalf("seedance success = %#v, err = %v", result, err)
+	}
+}
+
+func TestLK888SeedanceAnmiaoProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-seedance-anmiao.yingce-plugin", "lk888-seedance-anmiao")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "doubao-seedance-2-0-fast-260128", Prompt: "雨夜街头", Duration: 5, AspectRatio: "9:16", Resolution: "720p",
+		Images: []MediaReference{
+			{URL: "https://cdn.example/person.jpg", Role: "reference_image", Order: 1},
+			{URL: "https://cdn.example/jacket.jpg", Role: "reference_image", Order: 2},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	content, _ := body["content"].([]any)
+	if create.Path != "/api/v3/anmiao/contents/generations/tasks" || body["model"] != "doubao-seedance-2-0-fast-260128" || body["ratio"] != "9:16" || body["resolution"] != "720p" || body["duration"] != float64(5) || len(content) != 3 {
+		t.Fatalf("seedance anmiao create = %#v, body = %#v", create, body)
+	}
+	missing, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "doubao-seedance-2-0-260128", Prompt: "女孩转身"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifestTestBody(t, missing)["duration"] != float64(5) {
+		t.Fatalf("anmiao must send integer duration, got %#v", manifestTestBody(t, missing))
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "99936297"})
+	if err != nil || poll.Path != "/api/v3/anmiao/contents/generations/tasks/99936297" {
+		t.Fatalf("seedance anmiao poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "99936297"}, []byte(`{"id":"99936297","status":"succeeded","content":{"video_url":"https://cdn.example/out.mp4"},"usage":{"completion_tokens":0,"total_tokens":0,"output_seconds":5}}`))
+	if err != nil || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 {
+		t.Fatalf("seedance anmiao success = %#v, err = %v", result, err)
 	}
 }
 

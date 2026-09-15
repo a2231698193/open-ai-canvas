@@ -936,7 +936,9 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                 }
                               },
                               [
-                                "4k"
+                                "4k",
+                                "2160",
+                                "2160p"
                               ]
                             ]
                           },
@@ -953,7 +955,9 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                 }
                               },
                               [
-                                "2k"
+                                "2k",
+                                "1440",
+                                "1440p"
                               ]
                             ]
                           },

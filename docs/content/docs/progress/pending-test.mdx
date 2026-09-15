@@ -27,8 +27,8 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 ## 问鼎 LK888 协议插件
 
-- 三个官方声明式协议：`lk888-image`（tt-image-2 / banana-pro / 即梦 5.0 Pro）、`lk888-video`（MiniMax H3 / 可灵 V3 / 万相 3.0 参考生）、`lk888-seedance`（方舟 `/api/v3/contents/generations/tasks`）。
-- 图片和媒体视频共用 `POST /v1/media/generate` + `GET /v1/media/status?task_id=`；Seedance 走方舟路径。一个问鼎渠道可挂多个模型，每个模型选对应协议。
+- 四个官方声明式协议：`lk888-image`、`lk888-video`、`lk888-seedance`（token，`/api/v3/contents/generations/tasks`）、`lk888-seedance-anmiao`（按秒，`/api/v3/anmiao/contents/generations/tasks`）。
+- 图片和媒体视频共用 `POST /v1/media/generate` + `GET /v1/media/status?task_id=`。一个问鼎渠道可挂多个模型，每个模型选对应协议。
 - [x] `cd backend && go test ./internal/protocol -run 'TestLK888|TestOfficialProtocolPackagesAreSelfContainedDeclarativePlugins' -count=1`
 - [ ] 系统渠道协议选 `问鼎 LK888 Image`、模型填 `tt-image-2` 后，画布文生图能提交并轮询出图。
 - [ ] 带参考图时上游 `params.images` 含公网 URL 或 data URL。
@@ -37,7 +37,8 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] MiniMax 首尾帧走 `params.images` 且 `mode=shouweizhen`；参考生走 `image_url`/`video_url` 且 `mode=cankaosheng`。
 - [ ] 可灵 `duration` 为 `5/10/15` 字符串，`1080p` 映射 `mode=pro`。
 - [ ] 万相参考图走 `reference_urls`，时长 0 映射 `auto`。
-- [ ] Seedance 创建 `/api/v3/contents/generations/tasks`，完成态 `content.video_url`，role 原样映射。
+- [ ] Seedance token 版创建 `/api/v3/contents/generations/tasks`，完成态 `content.video_url`，role 原样映射。
+- [ ] Seedance 按秒版协议选 `问鼎 LK888 Seedance 按秒`，路径含 `/api/v3/anmiao/`，`duration` 为 4～15 整数；后台价格档用按秒。
 
 ## APIMart 图片协议插件
 
