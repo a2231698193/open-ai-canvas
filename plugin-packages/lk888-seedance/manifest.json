@@ -1,0 +1,323 @@
+{
+  "apiVersion": "yingce.plugin/v2",
+  "id": "lk888-seedance",
+  "name": "问鼎 LK888 Seedance",
+  "version": "1.0.0",
+  "author": "问鼎数据 / 影策",
+  "description": "问鼎站火山方舟 Seedance 协议：POST/GET /api/v3/contents/generations/tasks。",
+  "permissions": [
+    "generation.run",
+    "media.read"
+  ],
+  "configuration": {
+    "fields": [
+      {
+        "name": "apiKey",
+        "type": "secret",
+        "label": "API Key",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "providers": [
+      {
+        "id": "lk888-seedance",
+        "label": "问鼎 LK888 Seedance",
+        "capabilities": [
+          "video"
+        ],
+        "scopes": [
+          "admin.system-channel",
+          "user.custom-channel",
+          "canvas",
+          "creation",
+          "agent"
+        ],
+        "baseUrl": "https://api.lk888.ai",
+        "requiresPublicMediaUrls": true,
+        "auth": {
+          "type": "bearer",
+          "field": "apiKey"
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "type": "string",
+            "required": true,
+            "mapping": "model",
+            "description": "方舟 model：doubao-seedance-2-0-260128 / doubao-seedance-2-0-fast-260128 / doubao-seedance-2-0-mini-260615。"
+          },
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "content[type=text].text",
+            "description": "视频提示词。"
+          },
+          {
+            "name": "images",
+            "type": "media[]",
+            "required": false,
+            "mapping": "content[type=image_url]",
+            "description": "first_frame、last_frame、reference_image 等 role 原样映射。"
+          },
+          {
+            "name": "videos",
+            "type": "media[]",
+            "required": false,
+            "mapping": "content[type=video_url]",
+            "description": "reference_video。"
+          },
+          {
+            "name": "audios",
+            "type": "media[]",
+            "required": false,
+            "mapping": "content[type=audio_url]",
+            "description": "reference_audio。"
+          },
+          {
+            "name": "aspectRatio",
+            "type": "string",
+            "required": false,
+            "mapping": "ratio",
+            "description": "输出画幅，默认 adaptive。"
+          },
+          {
+            "name": "resolution",
+            "type": "string",
+            "required": false,
+            "mapping": "resolution",
+            "description": "480p / 720p / 1080p / 4k。fast/mini 仅 480p/720p。"
+          },
+          {
+            "name": "duration",
+            "type": "integer",
+            "required": false,
+            "mapping": "duration",
+            "description": "整数秒，缺省 5。"
+          }
+        ],
+        "create": {
+          "method": "POST",
+          "path": "/api/v3/contents/generations/tasks",
+          "contentType": "application/json",
+          "body": {
+            "model": {
+              "$ref": "request.model"
+            },
+            "content": {
+              "$concatArrays": [
+                [
+                  {
+                    "type": "text",
+                    "text": {
+                      "$ref": "request.prompt"
+                    }
+                  }
+                ],
+                {
+                  "$map": {
+                    "from": {
+                      "$sortByOrder": {
+                        "$ref": "request.images"
+                      }
+                    },
+                    "as": "media",
+                    "in": {
+                      "type": "image_url",
+                      "image_url": {
+                        "url": {
+                          "$ref": "media.value"
+                        }
+                      },
+                      "role": {
+                        "$coalesce": [
+                          {
+                            "$ref": "media.role"
+                          },
+                          "reference_image"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "$map": {
+                    "from": {
+                      "$sortByOrder": {
+                        "$ref": "request.videos"
+                      }
+                    },
+                    "as": "media",
+                    "in": {
+                      "type": "video_url",
+                      "video_url": {
+                        "url": {
+                          "$ref": "media.value"
+                        }
+                      },
+                      "role": {
+                        "$coalesce": [
+                          {
+                            "$ref": "media.role"
+                          },
+                          "reference_video"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "$map": {
+                    "from": {
+                      "$sortByOrder": {
+                        "$ref": "request.audios"
+                      }
+                    },
+                    "as": "media",
+                    "in": {
+                      "type": "audio_url",
+                      "audio_url": {
+                        "url": {
+                          "$ref": "media.value"
+                        }
+                      },
+                      "role": {
+                        "$coalesce": [
+                          {
+                            "$ref": "media.role"
+                          },
+                          "reference_audio"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "ratio": {
+              "$omitEmpty": {
+                "$if": {
+                  "condition": {
+                    "$in": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.aspectRatio"
+                          }
+                        }
+                      },
+                      [
+                        "",
+                        "auto"
+                      ]
+                    ]
+                  },
+                  "then": "adaptive",
+                  "else": {
+                    "$if": {
+                      "condition": {
+                        "$eq": [
+                          {
+                            "$len": {
+                              "$split": [
+                                {
+                                  "$ref": "request.aspectRatio"
+                                },
+                                "x"
+                              ]
+                            }
+                          },
+                          2
+                        ]
+                      },
+                      "then": "adaptive",
+                      "else": {
+                        "$ref": "request.aspectRatio"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "resolution": {
+              "$coalesce": [
+                {
+                  "$ref": "request.resolution"
+                },
+                "720p"
+              ]
+            },
+            "duration": {
+              "$if": {
+                "condition": {
+                  "$gt": [
+                    {
+                      "$ref": "request.duration"
+                    },
+                    0
+                  ]
+                },
+                "then": {
+                  "$ref": "request.duration"
+                },
+                "else": 5
+              }
+            }
+          }
+        },
+        "poll": {
+          "method": "GET",
+          "path": "/api/v3/contents/generations/tasks/{{taskId}}"
+        },
+        "response": {
+          "taskId": {
+            "$coalesce": [
+              {
+                "$ref": "response.id"
+              },
+              {
+                "$ref": "response.task_id"
+              },
+              {
+                "$ref": "taskId"
+              }
+            ]
+          },
+          "status": {
+            "$coalesce": [
+              {
+                "$ref": "response.status"
+              },
+              "pending"
+            ]
+          },
+          "message": {
+            "$coalesce": [
+              {
+                "$ref": "response.error.message"
+              },
+              {
+                "$ref": "response.error"
+              }
+            ]
+          },
+          "videos": {
+            "$omitEmpty": {
+              "$ref": "response.content.video_url"
+            }
+          },
+          "usage": {
+            "$ref": "response.usage"
+          },
+          "errorPaths": [
+            "error.code"
+          ],
+          "resultEphemeral": true
+        }
+      }
+    ]
+  },
+  "documentation": "# 问鼎 LK888 Seedance\n\n该目录是独立官方协议插件源码。后端从生成的 `lk888-seedance.yingce-plugin` 包加载，不依赖系统内置 `host:` 适配器。\n\n问鼎站的火山方舟路径：`POST/GET /api/v3/contents/generations/tasks`。插件按显式 role 映射 `content[]`，不按下标推断首尾帧。\n\n完整接口见 [docs/interface.md](docs/interface.md)。\n\n---\n\n# 问鼎 LK888 Seedance 接口字段\n\n## 协议身份\n\n- 插件 ID：`lk888-seedance`。\n- Provider ID：`lk888-seedance`。\n- 能力：`video`。\n- 默认 Base URL：`https://api.lk888.ai`。\n- 鉴权驱动：`bearer`。\n- 创建：`POST /api/v3/contents/generations/tasks`。\n- 查询：`GET /api/v3/contents/generations/tasks/{taskId}`。\n\n## 配置字段\n\n| 字段 | 类型 | 必填 | 含义 |\n| --- | --- | --- | --- |\n| `apiKey` | secret | 是 | API Key |\n\n## 统一字段映射\n\n| 统一字段 | 类型 | 必填 | 上游映射 | 说明 |\n| --- | --- | --- | --- | --- |\n| `model` | string | 是 | `model` | `doubao-seedance-2-0-260128` / `doubao-seedance-2-0-fast-260128` / `doubao-seedance-2-0-mini-260615`。文档标题里的 `seedance-2.0-guanfang` 不是创建用 model。 |\n| `prompt` | string | 是 | `content[type=text].text` | 视频提示词。 |\n| `images` | media[] | 否 | `content[type=image_url]` | role 原样映射，不按下标推断首尾帧。 |\n| `videos` | media[] | 否 | `content[type=video_url]` | `reference_video`。 |\n| `audios` | media[] | 否 | `content[type=audio_url]` | `reference_audio`。 |\n| `aspectRatio` | string | 否 | `ratio` | 空/`auto`/像素写法映射 `adaptive`。 |\n| `resolution` | string | 否 | `resolution` | 默认 `720p`。fast/mini 仅 480p/720p。 |\n| `duration` | integer | 否 | `duration` | 缺省 5 秒。 |\n\n## 上游请求模板逐字段清单\n\n| 上游位置 | 值或转换表达式 |\n| --- | --- |\n| `create.method` | `\"POST\"` |\n| `create.path` | `\"/api/v3/contents/generations/tasks\"` |\n| `create.contentType` | `\"application/json\"` |\n| `create.body.model` | `request.model` |\n| `create.body.content` | text + image_url/video_url/audio_url，role 来自 `media.role` |\n| `create.body.ratio` | `request.aspectRatio`，缺省 `adaptive` |\n| `create.body.resolution` | `request.resolution`，缺省 `720p` |\n| `create.body.duration` | `request.duration`，缺省 5 |\n| `poll.method` | `\"GET\"` |\n| `poll.path` | `\"/api/v3/contents/generations/tasks/{{taskId}}\"` |\n\n动态模型或工作流允许使用文档声明的完整 `parameters/input/extra_body` 对象；该对象是协议本身的开放 schema，不会被宿主裁剪。\n\n## 响应映射逐字段清单\n\n| 映射位置 | 上游路径或转换表达式 |\n| --- | --- |\n| `response.taskId` | `response.id` / `response.task_id` |\n| `response.status` | `response.status`（`queued` / `running` / `succeeded` / `failed`） |\n| `response.message` | `response.error.message` |\n| `response.videos` | `response.content.video_url` |\n| `response.usage` | `response.usage` |\n| `response.resultEphemeral` | `true` |\n\n## 响应与错误\n\n创建成功返回 `{\"id\":\"...\"}`。完成态 `status=succeeded`，视频在 `content.video_url`。宿主识别 `succeeded`。临时 URL 由宿主立即下载。\n\n## 兼容边界\n\n路径是方舟 `/api/v3`，不是问鼎 `/v1/media/generate`。`generate_audio` / `watermark` / `seed` 问鼎收下但不生效，本插件不传。素材必须是公网 URL。\n\n<!-- YINGCE_MANIFEST_CONTRACT_START -->\n## Manifest 完整接口定义\n\n以下 JSON 与插件包内实际 `manifest.json` 逐字段一致，覆盖插件身份、权限、配置、鉴权、参数、校验、创建、Agent、查询、取消、结果下载、响应和 Agent 响应映射。`documentation` 字段的值就是当前完整文档；为避免文档在自身内部无限递归，JSON 中仅用等义占位文本表示正文。\n\n```json\n{\n  \"apiVersion\": \"yingce.plugin/v2\",\n  \"id\": \"lk888-seedance\",\n  \"name\": \"问鼎 LK888 Seedance\",\n  \"version\": \"1.0.0\",\n  \"author\": \"问鼎数据 / 影策\",\n  \"description\": \"问鼎站火山方舟 Seedance 协议：POST/GET /api/v3/contents/generations/tasks。\",\n  \"permissions\": [\n    \"generation.run\",\n    \"media.read\"\n  ],\n  \"configuration\": {\n    \"fields\": [\n      {\n        \"name\": \"apiKey\",\n        \"type\": \"secret\",\n        \"label\": \"API Key\",\n        \"required\": true\n      }\n    ]\n  },\n  \"contributes\": {\n    \"providers\": [\n      {\n        \"id\": \"lk888-seedance\",\n        \"label\": \"问鼎 LK888 Seedance\",\n        \"capabilities\": [\n          \"video\"\n        ],\n        \"scopes\": [\n          \"admin.system-channel\",\n          \"user.custom-channel\",\n          \"canvas\",\n          \"creation\",\n          \"agent\"\n        ],\n        \"baseUrl\": \"https://api.lk888.ai\",\n        \"requiresPublicMediaUrls\": true,\n        \"auth\": {\n          \"type\": \"bearer\",\n          \"field\": \"apiKey\"\n        },\n        \"parameters\": [\n          {\n            \"name\": \"model\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"model\",\n            \"description\": \"方舟 model：doubao-seedance-2-0-260128 / doubao-seedance-2-0-fast-260128 / doubao-seedance-2-0-mini-260615。\"\n          },\n          {\n            \"name\": \"prompt\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"content[type=text].text\",\n            \"description\": \"视频提示词。\"\n          },\n          {\n            \"name\": \"images\",\n            \"type\": \"media[]\",\n            \"required\": false,\n            \"mapping\": \"content[type=image_url]\",\n            \"description\": \"first_frame、last_frame、reference_image 等 role 原样映射。\"\n          },\n          {\n            \"name\": \"videos\",\n            \"type\": \"media[]\",\n            \"required\": false,\n            \"mapping\": \"content[type=video_url]\",\n            \"description\": \"reference_video。\"\n          },\n          {\n            \"name\": \"audios\",\n            \"type\": \"media[]\",\n            \"required\": false,\n            \"mapping\": \"content[type=audio_url]\",\n            \"description\": \"reference_audio。\"\n          },\n          {\n            \"name\": \"aspectRatio\",\n            \"type\": \"string\",\n            \"required\": false,\n            \"mapping\": \"ratio\",\n            \"description\": \"输出画幅，默认 adaptive。\"\n          },\n          {\n            \"name\": \"resolution\",\n            \"type\": \"string\",\n            \"required\": false,\n            \"mapping\": \"resolution\",\n            \"description\": \"480p / 720p / 1080p / 4k。fast/mini 仅 480p/720p。\"\n          },\n          {\n            \"name\": \"duration\",\n            \"type\": \"integer\",\n            \"required\": false,\n            \"mapping\": \"duration\",\n            \"description\": \"整数秒，缺省 5。\"\n          }\n        ],\n        \"create\": {\n          \"method\": \"POST\",\n          \"path\": \"/api/v3/contents/generations/tasks\",\n          \"contentType\": \"application/json\",\n          \"body\": {\n            \"model\": {\n              \"$ref\": \"request.model\"\n            },\n            \"content\": {\n              \"$concatArrays\": [\n                [\n                  {\n                    \"type\": \"text\",\n                    \"text\": {\n                      \"$ref\": \"request.prompt\"\n                    }\n                  }\n                ],\n                {\n                  \"$map\": {\n                    \"from\": {\n                      \"$sortByOrder\": {\n                        \"$ref\": \"request.images\"\n                      }\n                    },\n                    \"as\": \"media\",\n                    \"in\": {\n                      \"type\": \"image_url\",\n                      \"image_url\": {\n                        \"url\": {\n                          \"$ref\": \"media.value\"\n                        }\n                      },\n                      \"role\": {\n                        \"$coalesce\": [\n                          {\n                            \"$ref\": \"media.role\"\n                          },\n                          \"reference_image\"\n                        ]\n                      }\n                    }\n                  }\n                },\n                {\n                  \"$map\": {\n                    \"from\": {\n                      \"$sortByOrder\": {\n                        \"$ref\": \"request.videos\"\n                      }\n                    },\n                    \"as\": \"media\",\n                    \"in\": {\n                      \"type\": \"video_url\",\n                      \"video_url\": {\n                        \"url\": {\n                          \"$ref\": \"media.value\"\n                        }\n                      },\n                      \"role\": {\n                        \"$coalesce\": [\n                          {\n                            \"$ref\": \"media.role\"\n                          },\n                          \"reference_video\"\n                        ]\n                      }\n                    }\n                  }\n                },\n                {\n                  \"$map\": {\n                    \"from\": {\n                      \"$sortByOrder\": {\n                        \"$ref\": \"request.audios\"\n                      }\n                    },\n                    \"as\": \"media\",\n                    \"in\": {\n                      \"type\": \"audio_url\",\n                      \"audio_url\": {\n                        \"url\": {\n                          \"$ref\": \"media.value\"\n                        }\n                      },\n                      \"role\": {\n                        \"$coalesce\": [\n                          {\n                            \"$ref\": \"media.role\"\n                          },\n                          \"reference_audio\"\n                        ]\n                      }\n                    }\n                  }\n                }\n              ]\n            },\n            \"ratio\": {\n              \"$omitEmpty\": {\n                \"$if\": {\n                  \"condition\": {\n                    \"$in\": [\n                      {\n                        \"$lower\": {\n                          \"$trim\": {\n                            \"$ref\": \"request.aspectRatio\"\n                          }\n                        }\n                      },\n                      [\n                        \"\",\n                        \"auto\"\n                      ]\n                    ]\n                  },\n                  \"then\": \"adaptive\",\n                  \"else\": {\n                    \"$if\": {\n                      \"condition\": {\n                        \"$eq\": [\n                          {\n                            \"$len\": {\n                              \"$split\": [\n                                {\n                                  \"$ref\": \"request.aspectRatio\"\n                                },\n                                \"x\"\n                              ]\n                            }\n                          },\n                          2\n                        ]\n                      },\n                      \"then\": \"adaptive\",\n                      \"else\": {\n                        \"$ref\": \"request.aspectRatio\"\n                      }\n                    }\n                  }\n                }\n              }\n            },\n            \"resolution\": {\n              \"$coalesce\": [\n                {\n                  \"$ref\": \"request.resolution\"\n                },\n                \"720p\"\n              ]\n            },\n            \"duration\": {\n              \"$if\": {\n                \"condition\": {\n                  \"$gt\": [\n                    {\n                      \"$ref\": \"request.duration\"\n                    },\n                    0\n                  ]\n                },\n                \"then\": {\n                  \"$ref\": \"request.duration\"\n                },\n                \"else\": 5\n              }\n            }\n          }\n        },\n        \"poll\": {\n          \"method\": \"GET\",\n          \"path\": \"/api/v3/contents/generations/tasks/{{taskId}}\"\n        },\n        \"response\": {\n          \"taskId\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.id\"\n              },\n              {\n                \"$ref\": \"response.task_id\"\n              },\n              {\n                \"$ref\": \"taskId\"\n              }\n            ]\n          },\n          \"status\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.status\"\n              },\n              \"pending\"\n            ]\n          },\n          \"message\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.error.message\"\n              },\n              {\n                \"$ref\": \"response.error\"\n              }\n            ]\n          },\n          \"videos\": {\n            \"$omitEmpty\": {\n              \"$ref\": \"response.content.video_url\"\n            }\n          },\n          \"usage\": {\n            \"$ref\": \"response.usage\"\n          },\n          \"errorPaths\": [\n            \"error.code\"\n          ],\n          \"resultEphemeral\": true\n        }\n      }\n    ]\n  },\n  \"documentation\": \"<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>\"\n}\n```\n<!-- YINGCE_MANIFEST_CONTRACT_END -->\n"
+}

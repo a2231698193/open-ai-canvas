@@ -849,6 +849,201 @@ func TestOfficialOpenAIAudioUsesBinaryPayload(t *testing.T) {
 	}
 }
 
+func TestLK888ImageProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-image.yingce-plugin", "lk888-image")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "tt-image-2", Prompt: "a cat", AspectRatio: "16:9", Quality: "2k", ImageCount: 1,
+		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "edit_source"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	params, _ := body["params"].(map[string]any)
+	images, _ := params["images"].([]any)
+	if create.Method != "POST" || create.Path != "/v1/media/generate" || body["model"] != "tt-image-2" || body["prompt"] != "a cat" || params["size"] != "2560x1440" || params["n"] != float64(1) || len(images) != 1 || images[0] != "https://cdn.example/ref.png" {
+		t.Fatalf("lk888 image create = %#v, body = %#v", create, body)
+	}
+
+	auto, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "tt-image-2", Prompt: "still", AspectRatio: "auto"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	autoParams, _ := manifestTestBody(t, auto)["params"].(map[string]any)
+	if autoParams["size"] != "auto" {
+		t.Fatalf("auto size = %#v", autoParams)
+	}
+	if _, ok := autoParams["images"]; ok {
+		t.Fatalf("empty images must be omitted: %#v", autoParams)
+	}
+
+	pixels, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "tt-image-2", Prompt: "still", AspectRatio: "1920x1088"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pixelParams, _ := manifestTestBody(t, pixels)["params"].(map[string]any)
+	if pixelParams["size"] != "1920x1088" {
+		t.Fatalf("pixel size = %#v", pixelParams)
+	}
+
+	banana, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "banana-pro", Prompt: "poster", AspectRatio: "9:16", Quality: "2k",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bananaParams, _ := manifestTestBody(t, banana)["params"].(map[string]any)
+	if bananaParams["aspectRatio"] != "9:16" || bananaParams["imageSize"] != "2K" {
+		t.Fatalf("banana params = %#v", bananaParams)
+	}
+	if _, ok := bananaParams["size"]; ok {
+		t.Fatalf("banana must omit pixel size: %#v", bananaParams)
+	}
+
+	seedream, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "doubao-seedream-5-0-pro-260628", Prompt: "still", AspectRatio: "1:1", Quality: "2k",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedreamParams, _ := manifestTestBody(t, seedream)["params"].(map[string]any)
+	if seedreamParams["size"] != "2K" || seedreamParams["aspect_ratio"] != "1:1" {
+		t.Fatalf("seedream params = %#v", seedreamParams)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":123456},"msg":"任务创建成功"}`))
+	if err != nil || created.TaskID != "123456" || created.Status != StatusPending {
+		t.Fatalf("lk888 create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "123456"})
+	if err != nil || poll.Path != "/v1/media/status" || len(poll.Query["task_id"]) != 1 || poll.Query["task_id"][0] != "123456" {
+		t.Fatalf("lk888 poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"success","is_final":true,"result_url":"https://cdn.example/out.png","result_type":"image","error":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Images) != 1 || result.Result.Images[0].URL != "https://cdn.example/out.png" {
+		t.Fatalf("lk888 success response = %#v", result)
+	}
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"failed","is_final":true,"result_url":"","error":"上游拒绝"}`))
+	if err != nil || failed.Status != StatusFailed || failed.Message != "上游拒绝" {
+		t.Fatalf("lk888 failure response = %#v, err = %v", failed, err)
+	}
+}
+
+func TestLK888VideoProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-video.yingce-plugin", "lk888-video")
+	minimax, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "minimax-h3", Prompt: "湖面", Duration: 5, AspectRatio: "16:9", Resolution: "768p",
+		Images: []MediaReference{
+			{URL: "https://cdn.example/last.png", Role: "last_frame", Order: 2},
+			{URL: "https://cdn.example/first.png", Role: "first_frame", Order: 1},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, minimax)
+	params, _ := body["params"].(map[string]any)
+	images, _ := params["images"].([]any)
+	if minimax.Path != "/v1/media/generate" || body["model"] != "minimax-h3" || params["mode"] != "shouweizhen" || params["duration"] != "5" || params["resolution"] != "768P" || params["aspect_ratio"] != "16:9" || len(images) != 2 || images[0] != "https://cdn.example/first.png" {
+		t.Fatalf("minimax create = %#v, body = %#v", minimax, body)
+	}
+	if _, ok := params["image_url"]; ok {
+		t.Fatalf("minimax keyframes must not send image_url: %#v", params)
+	}
+
+	reference, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "minimax-h3", Prompt: "参考", Duration: 8, Resolution: "2k",
+		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "reference_image"}},
+		Videos: []MediaReference{{URL: "https://cdn.example/ref.mp4", Role: "reference_video"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refParams, _ := manifestTestBody(t, reference)["params"].(map[string]any)
+	imageURL, _ := refParams["image_url"].([]any)
+	videoURL, _ := refParams["video_url"].([]any)
+	if refParams["mode"] != "cankaosheng" || refParams["resolution"] != "2K" || len(imageURL) != 1 || imageURL[0] != "https://cdn.example/ref.png" || len(videoURL) != 1 {
+		t.Fatalf("minimax reference params = %#v", refParams)
+	}
+	if _, ok := refParams["images"]; ok {
+		t.Fatalf("minimax reference must not send keyframe images: %#v", refParams)
+	}
+
+	kling, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-v3-video", Prompt: "湖面", Duration: 12, AspectRatio: "16:9", Resolution: "1080p",
+		Images: []MediaReference{{URL: "https://cdn.example/first.png", Role: "first_frame"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	klingParams, _ := manifestTestBody(t, kling)["params"].(map[string]any)
+	if klingParams["duration"] != "10" || klingParams["mode"] != "pro" || klingParams["aspect_ratio"] != "16:9" {
+		t.Fatalf("kling params = %#v", klingParams)
+	}
+
+	wan, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "wan3.0-video-cankaosheng", Prompt: "宣传片", Duration: 0, AspectRatio: "16:9", Resolution: "720p", GenerateAudio: true,
+		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "reference_image"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wanParams, _ := manifestTestBody(t, wan)["params"].(map[string]any)
+	references, _ := wanParams["reference_urls"].([]any)
+	if wanParams["version"] != "standard" || wanParams["duration"] != "auto" || wanParams["resolution"] != "720P" || wanParams["ratio"] != "16:9" || wanParams["audio"] != true || len(references) != 1 {
+		t.Fatalf("wan params = %#v", wanParams)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":123456}}`))
+	if err != nil || created.TaskID != "123456" {
+		t.Fatalf("lk888 video create response = %#v, err = %v", created, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"success","result_url":"https://cdn.example/out.mp4","result_type":"video"}`))
+	if err != nil || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 || result.Result.Videos[0].URL != "https://cdn.example/out.mp4" {
+		t.Fatalf("lk888 video success = %#v, err = %v", result, err)
+	}
+}
+
+func TestLK888SeedanceProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-seedance.yingce-plugin", "lk888-seedance")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "doubao-seedance-2-0-260128", Prompt: "女孩转身", Duration: 5, AspectRatio: "adaptive", Resolution: "1080p",
+		Images: []MediaReference{
+			{URL: "https://cdn.example/last.jpg", Role: "last_frame", Order: 2},
+			{URL: "https://cdn.example/first.jpg", Role: "first_frame", Order: 1},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	content, _ := body["content"].([]any)
+	if create.Path != "/api/v3/contents/generations/tasks" || body["model"] != "doubao-seedance-2-0-260128" || body["ratio"] != "adaptive" || body["resolution"] != "1080p" || body["duration"] != float64(5) || len(content) != 3 {
+		t.Fatalf("seedance create = %#v, body = %#v", create, body)
+	}
+	first, _ := content[1].(map[string]any)
+	last, _ := content[2].(map[string]any)
+	if first["role"] != "first_frame" || last["role"] != "last_frame" {
+		t.Fatalf("seedance roles = %#v", content)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"id":"99936297"}`))
+	if err != nil || created.TaskID != "99936297" {
+		t.Fatalf("seedance create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "99936297"})
+	if err != nil || poll.Path != "/api/v3/contents/generations/tasks/99936297" {
+		t.Fatalf("seedance poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "99936297"}, []byte(`{"id":"99936297","status":"succeeded","content":{"video_url":"https://cdn.example/out.mp4"}}`))
+	if err != nil || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 || result.Result.Videos[0].URL != "https://cdn.example/out.mp4" {
+		t.Fatalf("seedance success = %#v, err = %v", result, err)
+	}
+}
+
 func TestOfficialOpenAIAudioSpeedDefaultsInvalidAndZeroValues(t *testing.T) {
 	adapter := officialPackageAdapter(t, "openai-audio.yingce-plugin", "openai-audio")
 	for _, test := range []struct {
