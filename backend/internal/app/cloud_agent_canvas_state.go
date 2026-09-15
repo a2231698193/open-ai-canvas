@@ -104,6 +104,15 @@ func cloudAgentCanvasState(repo *repository.Repository, userID string, doc map[s
 		for key, value := range projected {
 			item[key] = value
 		}
+		if draftRunID := stringValue(meta["agentDraftRunId"]); draftRunID != "" && stringValue(meta["taskId"]) == "" {
+			draft := map[string]any{"submitted": false, "requiresApproval": true, "ownerStatus": "unknown"}
+			owner, err := repo.CloudAgent(userID, draftRunID)
+			if err == nil && owner.CanvasID != "" {
+				draft["ownerStatus"] = owner.Status
+				draft["cleanupPending"] = owner.CleanupPending
+			}
+			item["generationDraft"] = draft
+		}
 		if capability.Connection.CanReference {
 			ref, _, err := cloudAgentReference(repo, userID, node)
 			item["referenceReady"] = err == nil

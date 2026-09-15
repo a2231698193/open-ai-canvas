@@ -12,8 +12,8 @@ import (
 )
 
 // The Agent uses the same public catalog as the composer, never a second routing policy.
-func (s *Service) cloudAgentModelList() (any, error) {
-	catalog, err := s.ModelCatalog(nil)
+func (s *Service) cloudAgentModelList(intent *ModelRequestIntent) (any, error) {
+	catalog, err := s.ModelCatalog(intent)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,57 @@ func (s *Service) cloudAgentModelList() (any, error) {
 			}
 		}
 	}
-	return map[string]any{"source": catalog.Source, "models": items}, nil
+	return map[string]any{"source": catalog.Source, "models": items, "intent": intent}, nil
+}
+
+// Resolve actual canvas resources before filtering the shared catalog. Counts
+// supplied by the model must not replace resource ownership/readiness checks.
+func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*ModelRequestIntent, error) {
+	var a struct {
+		Mode             string   `json:"mode"`
+		ReferenceNodeIDs []string `json:"referenceNodeIds"`
+	}
+	if err := decodeCloudAgentJSONObject(arguments, &a); err != nil {
+		return nil, BadAuthRequest("模型查询参数无效")
+	}
+	if a.Mode == "" && len(a.ReferenceNodeIDs) == 0 {
+		return nil, nil
+	}
+	if !cloudAgentGenerationModeSupported(a.Mode) || len(a.ReferenceNodeIDs) > 16 {
+		return nil, BadAuthRequest("请指定支持的生成模式，参考节点最多16个")
+	}
+	canvas, err := s.repo.CanvasProjectForUser(userID, canvasID)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := creationObjects(doc["nodes"])
+	if err != nil {
+		return nil, err
+	}
+	refs := map[string]any{}
+	seen := map[string]bool{}
+	for _, id := range a.ReferenceNodeIDs {
+		if id == "" || seen[id] || nodes[id] == nil {
+			return nil, BadAuthRequest("参考节点不存在或重复")
+		}
+		seen[id] = true
+		ref, field, err := cloudAgentReference(s.repo, userID, nodes[id])
+		if err != nil {
+			return nil, err
+		}
+		list, _ := refs[field].([]any)
+		refs[field] = append(list, ref)
+	}
+	if err := validateCloudAgentMediaReferences(a.Mode, refs); err != nil {
+		return nil, err
+	}
+	refs["mode"] = a.Mode
+	intent := ModelRequestIntentFromTaskInput(refs, "canvas_"+a.Mode, cloudAgentMediaOperation(a.Mode, refs))
+	return &intent, nil
 }
 
 type cloudAgentMediaArgs struct {
@@ -54,6 +104,25 @@ type cloudAgentMediaArgs struct {
 type cloudAgentMediaPlan struct {
 	Args   cloudAgentMediaArgs
 	CallID string
+}
+
+// A resumed draft's incoming edges must describe the new approved inputs,
+// rather than retaining references removed from the generation request.
+func cloudAgentMediaConnections(edges []map[string]any, a cloudAgentMediaArgs) []map[string]any {
+	wanted := map[string]bool{}
+	for _, id := range a.ReferenceNodeIDs {
+		wanted[id] = true
+	}
+	if a.SourceNodeID != "" {
+		wanted[a.SourceNodeID] = true
+	}
+	result := make([]map[string]any, 0, len(edges))
+	for _, edge := range edges {
+		if stringValue(edge["toNodeId"]) != a.NodeID || wanted[stringValue(edge["fromNodeId"])] {
+			result = append(result, edge)
+		}
+	}
+	return result
 }
 
 type cloudAgentReferenceAdapter struct {
@@ -157,12 +226,26 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	if !supported {
 		return nil, nil, nil, BadAuthRequest("生成模式当前不受 Agent 支持")
 	}
-	ownedDraft := existing != nil && args.DraftRunID != "" && stringValue(existingMeta["agentDraftRunId"]) == args.DraftRunID && stringValue(existingMeta["taskId"]) == "" && stringValue(existing["type"]) == targetDescriptor.Type
 	if err := validateCloudAgentID(args.NodeID, "生成节点 ID", 80); err != nil {
 		return nil, nil, nil, err
 	}
-	if existing != nil && !ownedDraft {
-		return nil, nil, nil, BadAuthRequest("生成节点必须使用新的唯一 nodeId")
+	if existing != nil {
+		if existingMeta["locked"] == true || stringValue(existingMeta["generationTaskId"]) != "" {
+			return nil, nil, nil, BadAuthRequest("目标节点已锁定或已关联任务，不能提交生成")
+		}
+		if args.DraftRunID == "" || stringValue(existing["type"]) != targetDescriptor.Type || stringValue(existingMeta["taskId"]) != "" || stringValue(existingMeta["storageKey"]) != "" || stringValue(existingMeta["content"]) != "" || stringValue(existingMeta["status"]) != "idle" {
+			return nil, nil, nil, BadAuthRequest("目标不是可续用的未提交媒体草稿；不要覆盖已有任务或成品，也不要循环创建替代节点")
+		}
+		ownerID := stringValue(existingMeta["agentDraftRunId"])
+		if ownerID != "" && ownerID != args.DraftRunID {
+			owner, err := repo.CloudAgent(userID, ownerID)
+			if err != nil {
+				return nil, nil, nil, BadAuthRequest("无法确认草稿所属运行，请停止重试并检查原草稿")
+			}
+			if owner.CanvasID != canvasID || !cloudAgentRunTerminal(owner.Status) || owner.CleanupPending {
+				return nil, nil, nil, BadAuthRequest("草稿仍由另一运行处理，请先完成或取消原运行；不要另建节点绕过审批")
+			}
+		}
 	}
 	if args.SourceNodeID != "" && nodes[args.SourceNodeID] == nil {
 		return nil, nil, nil, BadAuthRequest("来源镜头节点不在当前画布")
@@ -177,7 +260,7 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	// canvas_apply_ops. The old implementation only checked that references
 	// existed, which allowed invalid edges (for example frame -> image) to be
 	// smuggled in through generate_media.
-	prospectiveConnections := creationMaps(doc["connections"])
+	prospectiveConnections := cloudAgentMediaConnections(creationMaps(doc["connections"]), args)
 	target := existing
 	if target == nil {
 		target = map[string]any{"id": args.NodeID, "type": targetDescriptor.Type}
@@ -523,7 +606,7 @@ func createCloudAgentMediaNode(repo *repository.Repository, userID, canvasID str
 		nodes = append(nodes, node)
 	}
 	doc["nodes"] = nodes
-	edges := creationMaps(doc["connections"])
+	edges := cloudAgentMediaConnections(creationMaps(doc["connections"]), a)
 	seen := map[string]bool{}
 	for _, edge := range edges {
 		if stringValue(edge["toNodeId"]) == a.NodeID {

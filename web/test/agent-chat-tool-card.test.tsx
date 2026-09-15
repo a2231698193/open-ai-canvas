@@ -10,6 +10,24 @@ test("completed tools keep an accessible status without a duplicate visual badge
     expect(html).not.toContain("agent-tool-label");
 });
 
+test("empty read and operation events stay flat instead of rendering empty cards", () => {
+    const readHtml = renderToStaticMarkup(<AgentToolCard title="model_list" text="工具执行成功" detail={{ eventType: "tool_completed" }} theme={canvasThemes.dark} />);
+    const operationHtml = renderToStaticMarkup(<AgentToolCard title="canvas_apply_ops" text="画布操作已完成" detail={{ eventType: "canvas_updated" }} theme={canvasThemes.dark} />);
+    expect(readHtml).toContain("agent-tool-row--plain");
+    expect(operationHtml).toContain("agent-tool-row--plain");
+});
+
+test("canvas reads show one node by default and expose the collapsed count", () => {
+    const html = renderToStaticMarkup(<AgentToolCard title="canvas_get_state" text="已读取当前画布" detail={{ eventType: "tool_completed", result: { nodes: [
+        { id: "node-1", title: "第一个节点", type: "image" },
+        { id: "node-2", title: "第二个节点", type: "text" },
+        { id: "node-3", title: "第三个节点", type: "video" },
+    ] } }} theme={canvasThemes.dark} onFocusNode={() => {}} />);
+    expect(html).toContain("读取了图片节点《第一个节点》");
+    expect(html).not.toContain("读取了文本节点《第二个节点》");
+    expect(html).toContain("已折叠 2 个节点，展开查看");
+});
+
 test("failed tools retain a visible failure label", () => {
     const html = renderToStaticMarkup(<AgentToolCard title="model_list" text="无法获取" detail={{ eventType: "tool_failed" }} theme={canvasThemes.light} />);
     expect(html).toContain("agent-tool-label");

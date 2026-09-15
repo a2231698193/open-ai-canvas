@@ -20,7 +20,7 @@ export type AgentProfileView = {
     layers: AgentProfileLayer[];
 };
 
-export type AgentApprovalPreviewOperation = "add_node" | "update_node" | "connect_nodes" | "generate_media";
+export type AgentApprovalPreviewOperation = "add_node" | "update_node" | "connect_nodes" | "generate_media" | "create_storyboard" | "edit_storyboard";
 
 export type AgentApprovalPreviewItem = {
     operation: AgentApprovalPreviewOperation;
@@ -57,7 +57,7 @@ export type AgentApproval = {
 export type AgentRun = {
     id: string;
     canvasId: string;
-    status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+    status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled" | "rejected";
     permissionMode: AgentPermissionMode;
     revision?: number;
     cleanupPending?: boolean;
@@ -250,7 +250,7 @@ export function subscribeAgentEvents(runId: string, onEvent: (event: AgentEvent)
                                     lastStatusKey = statusKey;
                                     emit("run_status", statusPayload);
                                 }
-                                terminal = !run.cleanupPending && ["completed", "failed", "cancelled"].includes(run.status);
+                                terminal = !run.cleanupPending && ["completed", "failed", "cancelled", "rejected"].includes(run.status);
                             } else if (item.event === "error") throw new Error("Agent 状态读取失败");
                         }, done);
                         // A repeated initial snapshot is not a healthy connection.

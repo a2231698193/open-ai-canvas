@@ -7,6 +7,42 @@ export const AGENT_TOOL_METADATA: Record<string, { summary: string | ((context: 
     generate_media: { summary: ({ pending, detail }) => pending ? "准备创建媒体节点并生成" : field(detail, "eventType") === "tool_completed" ? "生成结果已回写画布节点" : "媒体节点已创建，生成任务已提交", failureMessage: "媒体生成未完成" },
 };
 
+export type AgentToolCategory = "read" | "create" | "operate";
+
+function record(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function toolArguments(detail?: unknown) {
+    const value = record(detail).arguments;
+    if (typeof value !== "string") return record(value);
+    try { return record(JSON.parse(value)); } catch { return {}; }
+}
+
+/**
+ * Keeps the activity feed semantic instead of presenting every tool call as
+ * the same check-mark row. This is intentionally based on the tool contract,
+ * not on translated copy, so the visual grouping remains stable as messages
+ * change or get localized.
+ */
+export function agentToolCategory(toolName: string, detail?: unknown): AgentToolCategory {
+    if (["canvas_get_state", "canvas_list_node_types", "model_list", "task_get", "skills_load", "skill_read_file"].includes(toolName)) return "read";
+    if (toolName === "generate_media") return "create";
+    if (toolName === "canvas_apply_ops") {
+        const actions = record(detail).actions;
+        if (Array.isArray(actions) && actions.some((item) => record(item).action === "created" || record(item).action === "generating")) return "create";
+        const ops = toolArguments(detail).ops;
+        if (Array.isArray(ops) && ops.some((item) => record(item).type === "add_node")) return "create";
+    }
+    return "operate";
+}
+
+export function agentToolCategoryLabel(toolName: string, category: AgentToolCategory): string {
+    if (category === "read") return toolName === "canvas_get_state" ? "读取节点" : "读取信息";
+    if (category === "create") return "创建节点";
+    return "操作画布";
+}
+
 type ToolStatus = "completed" | "failed" | "noop" | "rejected" | "pending";
 
 function field(value: unknown, key: string): unknown {

@@ -100,8 +100,8 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
     const installedSkills = useMemo(() => skills.filter((skill) => skill.isAdded), [skills]);
     const enabledSkills = useMemo(() => installedSkills.filter((skill) => selectedSkillIds.includes(skill.skillId)), [installedSkills, selectedSkillIds]);
     const status = run?.status || "idle";
-    const statusLabel = status === "waiting_approval" ? "等待审批" : status === "running" || status === "queued" ? "运行中" : status === "completed" ? "已完成" : status === "failed" ? "异常" : "待命";
-    const statusColor = status === "failed" ? "#e66b6b" : status === "waiting_approval" ? "#d6a24a" : status === "running" || status === "queued" ? "#69c29b" : theme.node.muted;
+    const statusLabel = status === "waiting_approval" ? "等待审批" : status === "running" || status === "queued" ? "运行中" : status === "completed" ? "已完成" : status === "failed" ? "异常" : status === "cancelled" ? "已停止" : status === "rejected" ? "已拒绝" : "待命";
+    const statusColor = status === "failed" ? "#e66b6b" : status === "rejected" || status === "cancelled" ? theme.node.muted : status === "waiting_approval" ? "#d6a24a" : status === "running" || status === "queued" ? "#69c29b" : theme.node.muted;
 
     useEffect(() => {
         if (!open || view !== "chat") setSkillsOpen(false);
@@ -447,7 +447,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
             await decideAgentApproval(runId, approvalId, decision, approval.reason, AbortSignal.timeout(15_000));
             if (currentScope.current === scope) {
                 setApproval((current) => current?.approvalId === approvalId ? null : current);
-                setRun((current) => current?.id === runId && current.status === "waiting_approval" && (!current.approval || current.approval.approvalId === approvalId) ? { ...current, status: "running", approval: undefined } : current);
+                setRun((current) => current?.id === runId && current.status === "waiting_approval" && (!current.approval || current.approval.approvalId === approvalId) ? { ...current, status: decision === "reject" ? "rejected" : "running", approval: undefined } : current);
             }
         } catch (cause) {
             if (currentScope.current !== scope) return;
@@ -1021,7 +1021,7 @@ function ApprovalCard({ approval, theme, submitting, onFocusNode, onReasonChange
 }
 
 function ApprovalPreviewItemView({ item, theme, onFocusNode }: { item: ReturnType<typeof agentApprovalPresentation>["items"][number]; theme: CanvasTheme; onFocusNode?: (nodeId: string) => void }) {
-    const operationLabel = item.operation === "add_node" ? "新增" : item.operation === "update_node" ? "修改" : item.operation === "connect_nodes" ? "连线" : "生成";
+    const operationLabel = item.operation === "add_node" ? "新增" : item.operation === "update_node" ? "修改" : item.operation === "connect_nodes" ? "连线" : item.operation === "create_storyboard" ? "创建分镜" : item.operation === "edit_storyboard" ? "修改分镜" : "生成";
     const renderNode = (title: string | undefined, id: string | undefined, typeLabel: string | undefined, role: "source" | "target" | "node") => {
         if (!title) return null;
         const content = <><span className="canvas-agent-approval-node-title">{title}</span>{typeLabel ? <span className="canvas-agent-approval-node-type">{typeLabel}</span> : null}</>;
@@ -1081,7 +1081,17 @@ function applyAgentEvent(event: AgentEvent, setMessages: Dispatch<SetStateAction
         }
         return;
     }
-    if (event.type === "approval_decided") { setApproval(null); return; }
+    if (event.type === "approval_decided") {
+        setApproval(null);
+        if (payload.decision === "reject") {
+            setMessages((current) => appendUniqueMessage(current, {
+                id: event.eventId,
+                role: "system",
+                text: text || "已拒绝本次操作，未写入画布。你可以告诉 Agent 修改方向后重新申请。",
+            }));
+        }
+        return;
+    }
     if (event.type === "progress_summary") {
         setMessages((current) => appendUniqueMessage(current, { id: event.eventId, role: "system", text: text || "Agent 正在整理执行计划" }));
         return;
@@ -1121,12 +1131,97 @@ function applyAgentEvent(event: AgentEvent, setMessages: Dispatch<SetStateAction
         setMessages((current) => appendUniqueMessage(current, { id, role: "tool", title: "canvas_apply_ops", text: text || "画布操作已完成", detail: { ...payload, eventType: event.type } }));
         return;
     }
-    if (event.type.startsWith("tool_") || event.type === "generation_task_created") {
-        setMessages((current) => appendUniqueMessage(current, { id: event.eventId, role: "tool", title: String(payload.toolName || payload.title || "工具执行"), text: text || event.type, detail: { ...payload, eventType: event.type } }));
+    if (event.type === "generation_task_created") {
+        const message: CloudAgentChatMessage = { id: event.eventId, role: "tool", title: "generate_media", text: text || event.type, detail: { ...payload, eventType: event.type } };
+        setMessages((current) => upsertMediaToolTrace(current, message));
+        return;
+    }
+    if (event.type.startsWith("tool_")) {
+        const message: CloudAgentChatMessage = { id: event.eventId, role: "tool", title: String(payload.toolName || payload.title || "工具执行"), text: text || event.type, detail: { ...payload, eventType: event.type } };
+        if (payload.toolName === "generate_media") {
+            setMessages((current) => upsertMediaToolTrace(current, message));
+        } else {
+            setMessages((current) => appendUniqueMessage(current, message));
+        }
         return;
     }
     if (event.type === "run_failed" || event.type === "error") setMessages((current) => appendAgentError(current, event.eventId, text || "Agent 执行失败"));
 }
+function toolDetailRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function toolDetailNodeIds(detail: unknown): Set<string> {
+    const payload = toolDetailRecord(detail);
+    const ids = new Set<string>();
+    for (const value of [payload.nodeId, toolDetailRecord(payload.result).nodeId]) {
+        if (typeof value === "string" && value) ids.add(value);
+    }
+    if (Array.isArray(payload.actions)) {
+        for (const action of payload.actions) {
+            const nodeId = toolDetailRecord(action).nodeId;
+            if (typeof nodeId === "string" && nodeId) ids.add(nodeId);
+        }
+    }
+    if (typeof payload.arguments === "string") {
+        try {
+            const args = toolDetailRecord(JSON.parse(payload.arguments));
+            if (Array.isArray(args.ops)) {
+                for (const op of args.ops) {
+                    const nodeId = toolDetailRecord(op).id;
+                    if (typeof nodeId === "string" && nodeId) ids.add(nodeId);
+                }
+            }
+        } catch {
+            // Tool arguments are diagnostic data; a malformed value must not break the event feed.
+        }
+    }
+    return ids;
+}
+
+function toolDetailTaskIds(detail: unknown): Set<string> {
+    const payload = toolDetailRecord(detail);
+    const ids = new Set<string>();
+    for (const value of [payload.taskId, toolDetailRecord(payload.result).taskId]) {
+        if (typeof value === "string" && value) ids.add(value);
+    }
+    return ids;
+}
+
+function mergeToolDetails(previous: unknown, next: unknown): Record<string, unknown> {
+    const previousDetail = toolDetailRecord(previous);
+    const nextDetail = toolDetailRecord(next);
+    return {
+        ...previousDetail,
+        ...nextDetail,
+        actions: Array.isArray(nextDetail.actions) ? nextDetail.actions : previousDetail.actions,
+        arguments: nextDetail.arguments || previousDetail.arguments,
+    };
+}
+
+function upsertMediaToolTrace(current: CloudAgentChatMessage[], message: CloudAgentChatMessage): CloudAgentChatMessage[] {
+    const nextNodeIds = toolDetailNodeIds(message.detail);
+    const nextTaskIds = toolDetailTaskIds(message.detail);
+    const index = current.findIndex((item) => {
+        if (item.role !== "tool") return false;
+        const itemToolName = item.title || "";
+        if (itemToolName !== "canvas_apply_ops" && itemToolName !== "generate_media") return false;
+        const itemNodeIds = toolDetailNodeIds(item.detail);
+        const itemTaskIds = toolDetailTaskIds(item.detail);
+        return [...nextNodeIds].some((id) => itemNodeIds.has(id)) || [...nextTaskIds].some((id) => itemTaskIds.has(id));
+    });
+    if (index < 0) return appendUniqueMessage(current, message);
+    const next = [...current];
+    const previous = next[index];
+    next[index] = {
+        ...previous,
+        ...message,
+        id: previous.id,
+        detail: mergeToolDetails(previous.detail, message.detail),
+    };
+    return next;
+}
+
 function appendUniqueMessage(current: CloudAgentChatMessage[], message: CloudAgentChatMessage) {
     return current.some((item) => item.id === message.id) ? current : [...current, message];
 }

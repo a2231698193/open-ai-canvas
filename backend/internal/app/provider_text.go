@@ -58,6 +58,7 @@ func runAgentToolTask(ctx context.Context, input canvasGenerationInput) (map[str
 	}
 	body["model"] = input.Config.Model
 	applyTextThinking(body, input, protocol)
+	normalizeAgentToolChoice(body, input, protocol)
 	result, err := postAgentRequest(ctx, input, path, body, protocol)
 	if protocol == "chat-completion" && isAgentToolChoiceCompatibilityError(err) {
 		if !isAutoAgentToolChoice(body["tool_choice"]) {
@@ -117,6 +118,7 @@ func runDeclarativeAgentTask(ctx context.Context, input canvasGenerationInput, a
 			return nil, errors.New("声明式 Agent 请求体必须是 JSON 对象")
 		}
 		applyTextThinking(body, input, wire)
+		normalizeAgentToolChoice(body, input, wire)
 		spec.Body = body
 		if input.StreamText {
 			body["stream"] = true
@@ -818,6 +820,16 @@ func applyTextThinking(body map[string]interface{}, input canvasGenerationInput,
 		body["reasoning_effort"] = "medium"
 	case "claude-api":
 		body["thinking"] = map[string]interface{}{"type": "enabled", "budget_tokens": 1024}
+	}
+}
+
+// Chat Completion defaults to automatic tool selection when tools are present,
+// so an explicit "auto" only reduces compatibility. Reasoning endpoints also
+// disagree on forced choices. Normalize before the first network request while
+// preserving required/named choices for non-reasoning structured tasks.
+func normalizeAgentToolChoice(body map[string]interface{}, input canvasGenerationInput, protocol string) {
+	if protocol == "chat-completion" && (input.TextOptions.Thinking || isAutoAgentToolChoice(body["tool_choice"])) {
+		delete(body, "tool_choice")
 	}
 }
 

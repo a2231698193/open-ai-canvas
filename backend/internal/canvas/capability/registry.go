@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const SetVersion = "canvas-capabilities/v3"
+const SetVersion = "canvas-capabilities/v4"
 
 type Registry struct{ descriptors map[string]Descriptor }
 
@@ -20,6 +20,11 @@ func NewRegistry(descriptors []Descriptor) (*Registry, error) {
 		descriptor.Type = normalizeType(descriptor.Type)
 		descriptor.Version = strings.TrimSpace(descriptor.Version)
 		descriptor.Label = strings.TrimSpace(descriptor.Label)
+		descriptor.Purpose = strings.TrimSpace(descriptor.Purpose)
+		descriptor.GoodFor = normalizeFields(descriptor.GoodFor)
+		descriptor.NotIdealFor = normalizeFields(descriptor.NotIdealFor)
+		descriptor.Tradeoffs = normalizeFields(descriptor.Tradeoffs)
+		descriptor.Actions = normalizeFields(descriptor.Actions)
 		if descriptor.Type == "" || descriptor.Version == "" || descriptor.Label == "" || descriptor.DefaultWidth <= 0 || descriptor.DefaultHeight <= 0 {
 			return nil, fmt.Errorf("invalid canvas capability descriptor %q", descriptor.Type)
 		}
@@ -183,6 +188,10 @@ func normalizeFields(fields []string) []string {
 func cloneDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.Connection.AcceptedInputKinds = append([]string(nil), descriptor.Connection.AcceptedInputKinds...)
 	descriptor.Connection.RejectedInputKinds = append([]string(nil), descriptor.Connection.RejectedInputKinds...)
+	descriptor.GoodFor = append([]string(nil), descriptor.GoodFor...)
+	descriptor.NotIdealFor = append([]string(nil), descriptor.NotIdealFor...)
+	descriptor.Tradeoffs = append([]string(nil), descriptor.Tradeoffs...)
+	descriptor.Actions = append([]string(nil), descriptor.Actions...)
 	descriptor.SummaryFields = append([]string(nil), descriptor.SummaryFields...)
 	descriptor.DetailFields = append([]string(nil), descriptor.DetailFields...)
 	patchFields := make(map[string]PatchField, len(descriptor.PatchFields))
@@ -197,6 +206,11 @@ type hashDescriptor struct {
 	Type            string
 	Version         string
 	Label           string
+	Purpose         string
+	GoodFor         []string
+	NotIdealFor     []string
+	Tradeoffs       []string
+	Actions         []string
 	DefaultWidth    float64
 	DefaultHeight   float64
 	InputKind       string
@@ -244,6 +258,8 @@ func registryHashItems(descriptors []Descriptor) []hashDescriptor {
 		}
 		items = append(items, hashDescriptor{
 			Type: descriptor.Type, Version: descriptor.Version, Label: descriptor.Label,
+			Purpose: descriptor.Purpose, GoodFor: descriptor.GoodFor, NotIdealFor: descriptor.NotIdealFor,
+			Tradeoffs: descriptor.Tradeoffs, Actions: descriptor.Actions,
 			DefaultWidth: descriptor.DefaultWidth, DefaultHeight: descriptor.DefaultHeight,
 			InputKind: descriptor.InputKind, GenerationMode: descriptor.GenerationMode,
 			ProjectionKind: descriptor.ProjectionKind, ProjectionField: descriptor.ProjectionField,

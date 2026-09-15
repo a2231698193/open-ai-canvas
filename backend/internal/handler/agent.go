@@ -273,7 +273,7 @@ func RegisterAgentRoutes(r *gin.RouterGroup, svc *service.Service) {
 				snapshot.Events = nil // Events were sent once above, never in every snapshot too.
 				writeAgentSSE(c, "run_snapshot", 0, &snapshot)
 				revision, lastWrite = run.Revision, time.Now()
-				if !run.CleanupPending && (run.Status == "completed" || run.Status == "failed" || run.Status == "cancelled") {
+				if !run.CleanupPending && (run.Status == "completed" || run.Status == "failed" || run.Status == "cancelled" || run.Status == "rejected") {
 					return
 				}
 			} else if time.Since(lastWrite) >= 15*time.Second {

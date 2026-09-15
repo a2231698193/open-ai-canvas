@@ -532,7 +532,121 @@ func TestCanonicalAgentBodiesPreserveAssistantToolCalls(t *testing.T) {
 	}
 }
 
-func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
+func TestRunAgentToolTaskOmitsToolChoiceBeforeThinkingRequest(t *testing.T) {
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	forcedChoices := []interface{}{
+		"required",
+		map[string]interface{}{"type": "function", "function": map[string]interface{}{"name": "canvas_get_state"}},
+		"auto",
+	}
+	for _, forcedChoice := range forcedChoices {
+		t.Run(fmt.Sprint(forcedChoice), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				var body map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode request: %v", err)
+				}
+				if _, exists := body["tool_choice"]; exists {
+					t.Errorf("thinking request retained tool_choice: %#v", body["tool_choice"])
+				}
+				if body["reasoning_effort"] != "medium" {
+					t.Errorf("thinking was not forwarded: %#v", body["reasoning_effort"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"完成","tool_calls":[]}}]}`))
+			}))
+
+			result, err := runAgentToolTask(context.Background(), canvasGenerationInput{
+				Config:        providerConfig{BaseURL: server.URL, APIKey: "key", Model: "thinking-model"},
+				TextOptions:   canvasTextOptions{Thinking: true},
+				AgentRequests: &agentToolRequests{ChatCompletion: map[string]interface{}{"messages": []interface{}{}, "tool_choice": forcedChoice}},
+			})
+			server.Close()
+			if err != nil {
+				t.Fatalf("runAgentToolTask() error = %v", err)
+			}
+			if result["text"] != "完成" || requests != 1 {
+				t.Fatalf("result/requests = %#v / %d", result, requests)
+			}
+		})
+	}
+}
+
+func TestRunAgentToolTaskOmitsExplicitAutomaticToolChoice(t *testing.T) {
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if _, exists := body["tool_choice"]; exists {
+			t.Errorf("automatic choice should use the protocol default: %#v", body["tool_choice"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"完成","tool_calls":[]}}]}`))
+	}))
+	defer server.Close()
+
+	result, err := runAgentToolTask(context.Background(), canvasGenerationInput{
+		Config:        providerConfig{BaseURL: server.URL, APIKey: "key", Model: "model"},
+		AgentRequests: &agentToolRequests{ChatCompletion: map[string]interface{}{"messages": []interface{}{}, "tool_choice": "auto"}},
+	})
+	if err != nil || result["text"] != "完成" {
+		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+}
+
+func TestRunDeclarativeAgentTaskOmitsToolChoiceBeforeThinkingRequest(t *testing.T) {
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if _, exists := body["tool_choice"]; exists {
+			t.Errorf("declarative thinking request retained tool_choice: %#v", body["tool_choice"])
+		}
+		if body["reasoning_effort"] != "medium" {
+			t.Errorf("thinking was not forwarded: %#v", body["reasoning_effort"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"完成","tool_calls":[]}}]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := protocol.LoadManifest([]byte(`{
+		"apiVersion":"yingce.plugin/v1",
+		"id":"chat-completion","version":"1.0.0","name":"Chat Completion Test","author":"Test","documentation":"# Test",
+		"contributes":{"providers":[{"id":"chat-completion","label":"Chat Completion Test","capabilities":["text"],"scopes":["agent"],
+		"create":{"method":"POST","path":"/create"},
+		"agent":{"method":"POST","path":"/chat/completions","fields":{"model":"request.model","messages":"request.extra.agent.chatCompletion.messages","tools":"request.extra.agent.chatCompletion.tools","tool_choice":"request.extra.agent.chatCompletion.tool_choice"}},
+		"agentResponse":{"textPaths":["choices.0.message.content"],"toolCallsPath":"choices.0.message.tool_calls","toolCallIdPaths":["id"],"toolCallNamePaths":["function.name"],"toolCallArgumentsPaths":["function.arguments"]},"response":{}}]}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := protocol.NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := runAgentToolTask(withProtocolRegistry(context.Background(), registry), canvasGenerationInput{
+		Config:      providerConfig{BaseURL: server.URL, APIKey: "key", Model: "thinking-model", InterfaceType: "chat-completion"},
+		TextOptions: canvasTextOptions{Thinking: true},
+		AgentRequests: &agentToolRequests{ChatCompletion: map[string]interface{}{
+			"messages": []interface{}{}, "tools": []interface{}{}, "tool_choice": "required",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("runAgentToolTask() error = %v", err)
+	}
+	if result["text"] != "完成" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunAgentToolTaskFallsBackToolChoiceForImplicitThinking(t *testing.T) {
 	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
 	var choices []interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -541,8 +655,8 @@ func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		choice, exists := body["tool_choice"]
-		if body["reasoning_effort"] != "medium" {
-			t.Errorf("thinking was not forwarded: %#v", body["reasoning_effort"])
+		if _, exists := body["reasoning_effort"]; exists {
+			t.Errorf("undeclared thinking should not add reasoning options: %#v", body["reasoning_effort"])
 		}
 		if exists {
 			choices = append(choices, choice)
@@ -561,7 +675,6 @@ func TestRunAgentToolTaskFallsBackToolChoice(t *testing.T) {
 	config := providerConfig{BaseURL: server.URL, APIKey: "key", Model: "thinking-model"}
 	result, err := runAgentToolTask(context.Background(), canvasGenerationInput{
 		Config:        config,
-		TextOptions:   canvasTextOptions{Thinking: true},
 		AgentRequests: &agentToolRequests{ChatCompletion: map[string]interface{}{"messages": []interface{}{}, "tool_choice": "required"}},
 	})
 	if err != nil {

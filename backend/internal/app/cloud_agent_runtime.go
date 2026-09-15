@@ -50,6 +50,7 @@ type cloudAgentRuntime struct {
 	Policy          cloudAgentPolicySnapshot  `json:"policy"`
 	ParentID        string                    `json:"parentId,omitempty"`
 	Fingerprint     string                    `json:"fingerprint,omitempty"`
+	CreativeAnchor  cloudAgentCreativeAnchor  `json:"creativeAnchor,omitempty"`
 	TextHistory     []providerTextMessage     `json:"textHistory,omitempty"`
 	Skills          []cloudAgentSkill         `json:"skills"`
 	SkillReads      map[string]bool           `json:"skillReads,omitempty"`
@@ -80,7 +81,7 @@ func (s *Service) ensureCloudAgentExecution(task *model.Task, initial cloudAgent
 	if err := json.Unmarshal([]byte(task.InputJSON), &input); err != nil {
 		return err
 	}
-	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: input.Requests.Canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Events: []CloudAgentEvent{}}
+	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, CreativeAnchor: initial.CreativeAnchor, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: input.Requests.Canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Events: []CloudAgentEvent{}}
 	if len(initial.Skills) > 0 {
 		state.event(task.ID, "tool_completed", map[string]any{"toolName": "skills_load", "text": fmt.Sprintf("已启用 %d 个技能，正文将按需读取", len(initial.Skills))})
 	}
@@ -356,7 +357,7 @@ func (s *Service) cloudAgentExecutionOutput(task *model.Task, initial cloudAgent
 		// A terminal failed run must remain readable even if its durable runtime
 		// blob was damaged. Do not invent permissions or approval state; expose
 		// only the identity available from the original task input.
-		state = cloudAgentRuntime{Request: initial.Request, ParentID: initial.ParentID, Skills: initial.Skills, Profile: initial.Profile, TaskIDs: []string{task.ID}, Events: []CloudAgentEvent{}}
+		state = cloudAgentRuntime{Request: initial.Request, ParentID: initial.ParentID, CreativeAnchor: initial.CreativeAnchor, Skills: initial.Skills, Profile: initial.Profile, TaskIDs: []string{task.ID}, Events: []CloudAgentEvent{}}
 	}
 	out := agentRunOutput(task, initial)
 	out.Status = run.Status
@@ -865,20 +866,39 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 				state.Calls[state.CallIndex] = call
 				preview = cloudAgentMediaApprovalPreview(plan, modelName)
 			} else {
-				canvasPlan, err := prepareCloudAgentCanvasMutation(repo, run.UserID, state.Request.CanvasID, call)
-				if err != nil {
+				var mutationErr error
+				switch call.Function.Name {
+				case "canvas_create_storyboard":
+					storyboardPlan, err := prepareCloudAgentStoryboardCreate(repo, run.UserID, state.Request.CanvasID, call)
+					mutationErr = err
+					if err == nil {
+						preview = storyboardPlan.Preview
+					}
+				case "canvas_edit_storyboard":
+					storyboardPlan, err := prepareCloudAgentStoryboardEdit(repo, run.UserID, state.Request.CanvasID, call)
+					mutationErr = err
+					if err == nil {
+						preview = storyboardPlan.Preview
+					}
+				default:
+					canvasPlan, err := prepareCloudAgentCanvasMutation(repo, run.UserID, state.Request.CanvasID, call)
+					mutationErr = err
+					if err == nil {
+						preview = canvasPlan.Preview
+					}
+				}
+				if mutationErr != nil {
 					var argumentErr *cloudAgentArgumentError
-					if errors.As(err, &argumentErr) {
-						cloudAgentToolResult(run.ID, state, call, nil, err)
+					if errors.As(mutationErr, &argumentErr) {
+						cloudAgentToolResult(run.ID, state, call, nil, mutationErr)
 						return cloudAgentSave(current, state)
 					}
 					var appErr *AppError
-					if errors.As(err, &appErr) && appErr != nil {
-						return failCloudAgentAdmission(current, state, run.ID, err)
+					if errors.As(mutationErr, &appErr) && appErr != nil {
+						return failCloudAgentAdmission(current, state, run.ID, mutationErr)
 					}
-					return err
+					return mutationErr
 				}
-				preview = canvasPlan.Preview
 			}
 			state.Approval = &cloudAgentApproval{ID: fmt.Sprintf("%s-%d-%d", run.ID, state.Step, state.CallIndex), Call: call, CallHash: cloudAgentApprovalCallHash(call), Preview: preview, ModelName: modelName}
 			current.Status = "waiting_approval"
@@ -894,12 +914,13 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		return s.terminateCloudAgent(run, "Agent 运行策略不可用，本轮已停止")
 	}
 	var modelList any
+	var modelListErr error
 	if allowed && call.Function.Name == "model_list" {
-		models, e := s.cloudAgentModelList()
-		if e != nil {
-			return s.terminateCloudAgent(run, "Agent 模型目录不可用，本轮已停止")
+		intent, e := s.cloudAgentModelIntent(run.UserID, state.Request.CanvasID, call.Function.Arguments)
+		modelListErr = e
+		if e == nil {
+			modelList, modelListErr = s.cloudAgentModelList(intent)
 		}
-		modelList = models
 	}
 	// Skill reads use the domain repository and filesystem, not the checkpoint
 	// transaction's connection. Read first to avoid nesting DB reads on SQLite.
@@ -916,12 +937,12 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		switch {
 		case !allowed:
 			toolErr = BadAuthRequest("工具未获本轮权限授权")
-		case state.Approval != nil && state.Approval.Decision == "reject":
-			toolErr = BadAuthRequest("用户拒绝本次操作：" + state.Approval.Reason)
 		case call.Function.Name == "canvas_apply_ops":
 			result, toolErr = applyCloudAgentCanvas(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
+		case call.Function.Name == "canvas_create_storyboard", call.Function.Name == "canvas_edit_storyboard":
+			result, toolErr = applyCloudAgentStoryboardMutation(repo, run.UserID, state.Request.CanvasID, call, policy, cloudAgentCanvasEventRecorder(run.ID, state))
 		case call.Function.Name == "model_list":
-			result = modelList
+			result, toolErr = modelList, modelListErr
 		case call.Function.Name == "skill_read_file":
 			result, toolErr = skillResult, skillErr
 		default:
@@ -1155,6 +1176,22 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 		state.Approval.Decision = decision
 		state.Approval.Reason = reason
 		state.Decisions[approvalID] = decision
+		if decision == "reject" {
+			// Rejection is a user control-plane decision, not a failed tool
+			// invocation. Make it terminal before the scheduler can advance the
+			// pending call; no tool result, canvas mutation, generation task or
+			// follow-up model request may be produced from this decision.
+			current.Status = "rejected"
+			current.FailureMessage = ""
+			state.Approval = nil
+			state.event(id, "approval_decided", map[string]any{
+				"approvalId": approvalID,
+				"decision":   decision,
+				"reason":     reason,
+				"text":       "已拒绝本次操作，未写入画布。你可以告诉 Agent 修改方向后重新申请。",
+			})
+			return cloudAgentSave(current, &state)
+		}
 		current.Status = "running"
 		state.event(id, "approval_decided", map[string]any{"approvalId": approvalID, "decision": decision})
 		return cloudAgentSave(current, &state)

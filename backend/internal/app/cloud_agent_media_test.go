@@ -48,9 +48,12 @@ func agentMediaCall(a cloudAgentMediaArgs) cloudAgentCall {
 	return call
 }
 
-func agentMediaRun(t *testing.T, s *Service, a cloudAgentMediaArgs, permission string) (*model.CloudAgentExecution, cloudAgentRuntime) {
+func agentMediaRun(t *testing.T, s *Service, a cloudAgentMediaArgs, permission string, idempotencyKeys ...string) (*model.CloudAgentExecution, cloudAgentRuntime) {
 	t.Helper()
 	req := agentTestRequest()
+	if len(idempotencyKeys) > 0 {
+		req.IdempotencyKey = idempotencyKeys[0]
+	}
 	req.PermissionMode = permission
 	req.Budget.MaxGenerationTasks = 2
 	req.Budget.MaxVideoSeconds = 24
@@ -93,7 +96,7 @@ func approveAgentMediaDraft(t *testing.T, s *Service, runID string) {
 
 func TestCloudAgentMediaApprovalCreatesNodeReferencesAndResult(t *testing.T) {
 	s, db, a := agentMediaFixture(t)
-	catalog, err := s.cloudAgentModelList()
+	catalog, err := s.cloudAgentModelList(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +317,27 @@ func TestCloudAgentMediaRejectAndInvalidModelDoNotCreateTasks(t *testing.T) {
 			state, _ = cloudAgentDecode(run)
 			var count int64
 			db.Model(&model.Task{}).Where("type = ?", "canvas_video").Count(&count)
-			if count != 0 || state.CallIndex != 1 || state.Generations != 0 || run.Status == "failed" {
+			if scenario == "reject" {
+				if run.Status != "rejected" || state.Approval != nil || state.CallIndex != 0 {
+					t.Fatalf("rejection did not stop at the approval boundary: status=%s approval=%+v index=%d", run.Status, state.Approval, state.CallIndex)
+				}
+				for _, event := range state.Events {
+					if event.Type == "tool_failed" || event.Type == "run_failed" {
+						t.Fatalf("user rejection was reported as execution failure: %+v", event)
+					}
+				}
+				if err := s.advanceCloudAgentByID("user", run.ID); err != nil {
+					t.Fatal(err)
+				}
+				var modelSteps int64
+				db.Model(&model.Task{}).Where("operation = ?", "cloud_agent_step").Count(&modelSteps)
+				if modelSteps != 0 {
+					t.Fatalf("rejected approval triggered %d follow-up model tasks", modelSteps)
+				}
+			} else if state.CallIndex != 1 || run.Status == "failed" {
+				t.Fatalf("nonrecoverable approved-tool failure: index=%d status=%s", state.CallIndex, run.Status)
+			}
+			if count != 0 || state.Generations != 0 {
 				t.Fatalf("unsafe submission or nonrecoverable tool failure: count=%d index=%d status=%s", count, state.CallIndex, run.Status)
 			}
 		})
@@ -380,6 +403,177 @@ func TestCloudAgentMediaFailedTaskUpdatesNode(t *testing.T) {
 	result, _ := last.Payload["result"].(map[string]any)
 	if last.Type != "tool_failed" || result["taskId"] != taskID || result["nodeId"] != a.NodeID || !strings.Contains(stringValue(result["error"]), "上游拒绝该生成规格") {
 		t.Fatalf("failure lost diagnostic details: %+v", last)
+	}
+}
+
+func TestCloudAgentModelListFiltersActualReferences(t *testing.T) {
+	s, db, _ := agentMediaFixture(t)
+	config := DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceVolcengineArkVideo), "text-only")
+	config.Video.Operations = []string{"text_to_video"}
+	config.Video.DefaultOperation = "text_to_video"
+	config.Video.References.MaxImages = 0
+	config.Video.References.MaxVideos = 0
+	config.Video.References.MaxAudios = 0
+	if err := db.Create(&model.ChannelModel{ID: "text-only", ChannelID: "channel", ModelKey: "text-only", Capability: "video", Protocol: model.ChannelInterfaceVolcengineArkVideo, CapabilityConfigJSON: mustEncodeModelCapabilityConfig(t, config), BillingMode: "per_second", PriceConfigured: true, Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		args     string
+		wantText bool
+	}{
+		{`{}`, true},
+		{`{"mode":"video","referenceNodeIds":[]}`, true},
+		{`{"mode":"video","referenceNodeIds":["hero","cat"]}`, false},
+	} {
+		intent, err := s.cloudAgentModelIntent("user", "agent-canvas", tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		catalog, err := s.cloudAgentModelList(intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(catalog)
+		if strings.Contains(string(encoded), `"channelModelKey":"text-only"`) != tc.wantText || !strings.Contains(string(encoded), `"channelModelKey":"seedance-test"`) {
+			t.Fatalf("unexpected filtered catalog for %s: %s", tc.args, encoded)
+		}
+		if intent != nil && !tc.wantText && (intent.Inputs["image"] != 2 || intent.Operation != "image_to_video") {
+			t.Fatalf("intent = %+v", intent)
+		}
+	}
+	for _, args := range []string{`{"mode":"video","referenceNodeIds":["hero","hero"]}`, `{"mode":"video","referenceNodeIds":["missing"]}`, `{"referenceNodeIds":["hero"]}`, `{"mode":"audio","referenceNodeIds":["hero"]}`} {
+		if _, err := s.cloudAgentModelIntent("user", "agent-canvas", args); err == nil {
+			t.Fatalf("accepted %s", args)
+		}
+	}
+	if _, err := s.cloudAgentModelIntent("other", "agent-canvas", `{"mode":"video"}`); err == nil {
+		t.Fatal("cross-user canvas accepted")
+	}
+	if err := db.Model(&model.ChannelModel{}).Where("id = ?", "video-cm").Update("capability_config_json", mustEncodeModelCapabilityConfig(t, config)).Error; err != nil {
+		t.Fatal(err)
+	}
+	intent, err := s.cloudAgentModelIntent("user", "agent-canvas", `{"mode":"video","referenceNodeIds":["hero","cat"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := s.cloudAgentModelList(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.(map[string]any)["models"].([]map[string]any)) != 0 {
+		t.Fatal("no-match query fell back to incompatible models")
+	}
+}
+
+func TestCloudAgentMediaDraftReuseLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, ownerUser, ownerCanvas        string
+		cleanup, submitted, result, locked, allowed bool
+	}{
+		{name: "completed", status: "completed", allowed: true},
+		{name: "cancelled", status: "cancelled", allowed: true},
+		{name: "failed", status: "failed", allowed: true},
+		{name: "approval", status: "waiting_approval"},
+		{name: "running", status: "running"},
+		{name: "cleanup", status: "cancelled", cleanup: true},
+		{name: "submitted", status: "completed", submitted: true},
+		{name: "result", status: "completed", result: true},
+		{name: "locked", status: "completed", locked: true},
+		{name: "other user", status: "completed", ownerUser: "other"},
+		{name: "other canvas", status: "completed", ownerCanvas: "other"},
+		{name: "plain placeholder", allowed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, db, a := agentMediaFixture(t)
+			meta := map[string]any{"status": "idle", "locked": tc.locked, "composerContent": "保留的草稿"}
+			if tc.status != "" {
+				owner := &model.CloudAgentExecution{ID: "old-run", UserID: firstNonEmpty(tc.ownerUser, "user"), CanvasID: firstNonEmpty(tc.ownerCanvas, "agent-canvas"), Status: tc.status, CleanupPending: tc.cleanup}
+				if err := db.Create(owner).Error; err != nil {
+					t.Fatal(err)
+				}
+				meta["agentDraftRunId"] = owner.ID
+			}
+			if tc.submitted {
+				meta["taskId"] = "existing-task"
+			}
+			if tc.result {
+				meta["storageKey"] = "resource:existing"
+			}
+			canvas, _ := s.repo.CanvasProjectForUser("user", "agent-canvas")
+			doc, _ := creationDocument(canvas.PayloadJSON)
+			doc["nodes"] = append(creationMaps(doc["nodes"]), map[string]any{"id": a.NodeID, "type": "video", "metadata": meta})
+			raw, _ := json.Marshal(doc)
+			if err := db.Model(canvas).Update("payload_json", string(raw)).Error; err != nil {
+				t.Fatal(err)
+			}
+			a.DraftRunID, a.SnapshotHash = "next-run", cloudAgentCanvasHash(doc)
+			_, _, _, err := cloudAgentMediaDocument(s.repo, "user", "agent-canvas", a)
+			if (err == nil) != tc.allowed {
+				t.Fatalf("allowed=%v error=%v", tc.allowed, err)
+			}
+		})
+	}
+}
+
+func TestCloudAgentMediaPreviousDraftRequiresNewApproval(t *testing.T) {
+	s, db, a := agentMediaFixture(t)
+	run, state := agentMediaRun(t, s, a, "auto")
+	if err := s.advanceCloudAgentTool(run, &state); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CancelCloudAgent(context.Background(), "user", run.ID); err != nil {
+		t.Fatal(err)
+	}
+	canvas, _ := s.repo.CanvasProjectForUser("user", "agent-canvas")
+	doc, _ := creationDocument(canvas.PayloadJSON)
+	view, err := cloudAgentCanvasState(s.repo, "user", doc, 0, []string{a.NodeID}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(view)
+	if !strings.Contains(string(encoded), `"ownerStatus":"cancelled"`) || !strings.Contains(string(encoded), `"submitted":false`) {
+		t.Fatalf("missing draft lifecycle: %s", encoded)
+	}
+	a.SnapshotHash = cloudAgentCanvasHash(doc)
+	a.ReferenceNodeIDs = []string{"hero"}
+	next, nextState := agentMediaRun(t, s, a, "auto", "resume-draft-next-turn")
+	if next.ID == run.ID {
+		t.Fatal("expected a distinct run")
+	}
+	if err := s.advanceCloudAgentTool(next, &nextState); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := s.CloudAgentRun("user", next.ID)
+	if err != nil || latest.Approval == nil {
+		t.Fatalf("new approval missing: %+v %v", latest, err)
+	}
+	canvas, _ = s.repo.CanvasProjectForUser("user", "agent-canvas")
+	doc, _ = creationDocument(canvas.PayloadJSON)
+	if len(creationMaps(doc["nodes"])) != 4 {
+		t.Fatal("resuming duplicated the node")
+	}
+	edges := creationMaps(doc["connections"])
+	if len(edges) != 2 {
+		t.Fatalf("stale draft references retained: %+v", edges)
+	}
+	for _, edge := range edges {
+		if stringValue(edge["fromNodeId"]) == "cat" {
+			t.Fatal("removed reference still connected")
+		}
+	}
+	var count int64
+	if err := db.Model(&model.Task{}).Where("type = ?", "canvas_video").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("resuming charged before new approval")
+	}
+	approveAgentMediaDraft(t, s, next.ID)
+	if err := db.Model(&model.Task{}).Where("type = ?", "canvas_video").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("approved task count = %d", count)
 	}
 }
 

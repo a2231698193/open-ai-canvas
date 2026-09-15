@@ -91,9 +91,140 @@
 }
 
 .agent-tool-row {
+    /* 行为用图标和文案区分，颜色只留给真实的成功/失败状态。 */
+    --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
+    min-height: 42px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 11%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--foreground) 2.5%, var(--background));
+    padding: 9px 10px;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.agent-tool-row:hover {
+    border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+    background: color-mix(in srgb, var(--foreground) 4%, var(--background));
+}
+
+/* 没有节点明细的“读取信息 / 操作画布”只保留时间线语义，不再撑成一张空卡片。 */
+.agent-tool-row--plain {
     min-height: 28px;
+    border-color: transparent;
+    border-radius: 9px;
+    background: transparent;
+    padding: 3px 2px;
+}
+
+.agent-tool-row--plain:hover {
+    border-color: transparent;
+    background: transparent;
+}
+
+.agent-tool-row--read {
+    --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
+}
+
+.agent-tool-row--create {
+    --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
+}
+
+.agent-tool-row--operate {
+    --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
+}
+
+.agent-tool-header {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    line-height: 18px;
+}
+
+.agent-tool-category {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 16%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    padding: 2px 7px 2px 6px;
+    color: color-mix(in srgb, var(--foreground) 76%, transparent);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 15px;
+}
+
+.agent-tool-summary {
+    min-width: 0;
+    flex: 1 1 180px;
+    overflow: hidden;
+    color: color-mix(in srgb, currentColor 82%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-tool-action-list {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.agent-tool-action-link {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     border-radius: 8px;
-    padding: 2px 6px;
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    padding: 4px 7px;
+    color: color-mix(in srgb, currentColor 88%, transparent);
+    font-size: 11px;
+    line-height: 17px;
+    overflow-wrap: anywhere;
+    text-align: left;
+    transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.agent-tool-action-link:not(:disabled) {
+    cursor: pointer;
+}
+
+.agent-tool-action-link:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--foreground) 26%, transparent);
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    color: var(--foreground);
+}
+
+.agent-tool-action-link:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--foreground) 56%, transparent);
+    outline-offset: 1px;
+}
+
+.agent-tool-more {
+    align-self: flex-start;
+    border: 0;
+    background: transparent;
+    padding: 2px 2px 0;
+    color: color-mix(in srgb, currentColor 64%, transparent);
+    font-size: 11px;
+    line-height: 17px;
+    text-align: left;
+}
+
+.agent-tool-more:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-tool-row,
+    .agent-tool-action-link { transition: none; }
 }
 
 .agent-composer-prompt-scroll {
@@ -167,6 +298,181 @@
 .agent-tool-label {
     opacity: 0.75;
     white-space: nowrap;
+}
+
+/*
+ * 推理摘要不是普通的折叠文本：它是 Agent 工作流中的“过程层”，需要
+ * 比工具日志更安静、比正文更有层次。使用当前画布主题的 accent，避免
+ * 固定紫色的 AI 默认样式，同时把实时状态、摘要内容和展开动作分开。
+ */
+.agent-reasoning {
+    min-width: 0;
+    color: color-mix(in srgb, var(--foreground) 64%, transparent);
+}
+
+.agent-reasoning-card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--foreground) 2.5%, var(--background));
+    box-shadow: 0 5px 18px color-mix(in srgb, var(--foreground) 3%, transparent);
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.agent-reasoning-card[open] {
+    border-color: color-mix(in srgb, var(--agent-reasoning-accent) 28%, transparent);
+    background: color-mix(in srgb, var(--agent-reasoning-accent) 3.5%, var(--background));
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--agent-reasoning-accent) 7%, transparent);
+}
+
+.agent-reasoning-summary {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    list-style: none;
+    padding: 9px 10px;
+    color: color-mix(in srgb, var(--foreground) 72%, transparent);
+    user-select: none;
+}
+
+.agent-reasoning-summary::-webkit-details-marker {
+    display: none;
+}
+
+.agent-reasoning-summary:hover {
+    background: color-mix(in srgb, var(--agent-reasoning-accent) 4%, transparent);
+}
+
+.agent-reasoning-icon {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--agent-reasoning-accent) 24%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--agent-reasoning-accent) 11%, transparent);
+    color: var(--agent-reasoning-accent);
+}
+
+.agent-reasoning-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: 7px;
+}
+
+.agent-reasoning-title {
+    min-width: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-reasoning-subtitle {
+    min-width: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--foreground) 43%, transparent);
+    font-size: 11px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-reasoning-status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    padding: 2px 7px;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 15px;
+}
+
+.agent-reasoning-status.is-live {
+    border-color: color-mix(in srgb, var(--agent-reasoning-accent) 22%, transparent);
+    background: color-mix(in srgb, var(--agent-reasoning-accent) 9%, transparent);
+    color: var(--agent-reasoning-accent);
+}
+
+.agent-reasoning-status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 13%, transparent);
+    animation: agent-reasoning-pulse 1.5s ease-in-out infinite;
+}
+
+.agent-reasoning-chevron {
+    display: grid;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    place-items: center;
+    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    font-size: 17px;
+    line-height: 12px;
+    transform: translateY(-1px);
+    transition: color 160ms ease, transform 160ms ease;
+}
+
+.agent-reasoning-card[open] .agent-reasoning-chevron {
+    color: var(--agent-reasoning-accent);
+    transform: rotate(180deg) translateY(1px);
+}
+
+.agent-reasoning-content {
+    position: relative;
+    display: flex;
+    max-height: min(232px, 30vh);
+    gap: 10px;
+    overflow: auto;
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    padding: 10px 12px 12px 14px;
+    scrollbar-gutter: stable;
+}
+
+.agent-reasoning-rail {
+    width: 2px;
+    flex: 0 0 2px;
+    align-self: stretch;
+    border-radius: 999px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--agent-reasoning-accent) 72%, transparent), color-mix(in srgb, var(--agent-reasoning-accent) 12%, transparent));
+}
+
+.agent-reasoning-text {
+    min-width: 0;
+    color: color-mix(in srgb, var(--foreground) 58%, transparent);
+    font-size: 12px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@keyframes agent-reasoning-pulse {
+    0%, 100% { opacity: .55; transform: scale(.82); }
+    50% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-reasoning-card,
+    .agent-reasoning-chevron { transition: none; }
+
+    .agent-reasoning-status-dot { animation: none; }
 }
 
 .agent-working-indicator {

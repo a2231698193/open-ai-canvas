@@ -39,6 +39,14 @@ func TestCloudAgentContextCompactionPreservesToolPairsAndWrites(t *testing.T) {
 	}
 }
 
+func TestCloudAgentCanonicalUsesAutomaticToolChoice(t *testing.T) {
+	req := agentTestRequest()
+	request := cloudAgentCanonical("system", nil, "读取画布", req)
+	if request.ToolChoice != "auto" {
+		t.Fatalf("cloud agent tool choice = %#v", request.ToolChoice)
+	}
+}
+
 func TestCloudAgentUnlimitedBudgetKeepsGenerationTools(t *testing.T) {
 	for _, limit := range []int{0, 25} {
 		req := agentTestRequest()

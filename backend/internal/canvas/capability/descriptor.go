@@ -38,6 +38,11 @@ type Descriptor struct {
 	Type            string
 	Version         string
 	Label           string
+	Purpose         string
+	GoodFor         []string
+	NotIdealFor     []string
+	Tradeoffs       []string
+	Actions         []string
 	DefaultWidth    float64
 	DefaultHeight   float64
 	InputKind       string

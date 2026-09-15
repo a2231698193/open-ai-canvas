@@ -1,7 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import { agentToolStatus, friendlyAgentToolSummary } from "@/lib/canvas/agent-tool-presentation";
+import { agentToolCategory, agentToolCategoryLabel, agentToolStatus, friendlyAgentToolSummary } from "@/lib/canvas/agent-tool-presentation";
 
 describe("Agent tool presentation", () => {
+    it("separates read, create, and canvas operation activity", () => {
+        expect(agentToolCategory("canvas_get_state", { eventType: "tool_completed" })).toBe("read");
+        expect(agentToolCategoryLabel("canvas_get_state", "read")).toBe("读取节点");
+        expect(agentToolCategory("generate_media", { eventType: "generation_task_created" })).toBe("create");
+        expect(agentToolCategory("canvas_apply_ops", { eventType: "canvas_updated", actions: [{ action: "updated" }] })).toBe("operate");
+        expect(agentToolCategory("canvas_apply_ops", { eventType: "canvas_updated", actions: [{ action: "created" }] })).toBe("create");
+    });
+
     it("distinguishes media submission from a completed canvas result", () => {
         expect(friendlyAgentToolSummary("generate_media", "", { eventType: "generation_task_created" })).toBe("媒体节点已创建，生成任务已提交");
         expect(friendlyAgentToolSummary("generate_media", "", { eventType: "tool_completed" })).toBe("生成结果已回写画布节点");

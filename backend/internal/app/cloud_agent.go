@@ -42,13 +42,14 @@ type CloudAgentRequest struct {
 }
 
 type cloudAgentState struct {
-	Version     int                       `json:"version"`
-	Request     CloudAgentRequest         `json:"request"`
-	ParentID    string                    `json:"parentId"`
-	Fingerprint string                    `json:"fingerprint"`
-	Skills      []cloudAgentSkill         `json:"skills,omitempty"`
-	Profile     cloudAgentProfileSnapshot `json:"profile"`
-	Policy      cloudAgentPolicySnapshot  `json:"policy"`
+	Version        int                       `json:"version"`
+	Request        CloudAgentRequest         `json:"request"`
+	ParentID       string                    `json:"parentId"`
+	Fingerprint    string                    `json:"fingerprint"`
+	CreativeAnchor cloudAgentCreativeAnchor  `json:"creativeAnchor,omitempty"`
+	Skills         []cloudAgentSkill         `json:"skills,omitempty"`
+	Profile        cloudAgentProfileSnapshot `json:"profile"`
+	Policy         cloudAgentPolicySnapshot  `json:"policy"`
 }
 
 type CloudAgentRun struct {
@@ -236,7 +237,7 @@ func (s *Service) cloudAgentTask(userID, id string) (*model.Task, cloudAgentStat
 	if task.ID != cloudAgentID(userID, state.Request.IdempotencyKey) || task.ProjectID != state.Request.CanvasID {
 		return nil, input.Agent, kernel.NotFound("Agent 运行不存在")
 	}
-	input.Agent = cloudAgentState{Version: 1, Request: state.Request, ParentID: state.ParentID, Fingerprint: state.Fingerprint, Skills: state.Skills, Profile: state.Profile, Policy: state.Policy}
+	input.Agent = cloudAgentState{Version: 1, Request: state.Request, ParentID: state.ParentID, Fingerprint: state.Fingerprint, CreativeAnchor: state.CreativeAnchor, Skills: state.Skills, Profile: state.Profile, Policy: state.Policy}
 	return task, input.Agent, nil
 }
 
@@ -245,7 +246,7 @@ func cloudAgentTaskTerminal(status model.TaskStatus) bool {
 }
 
 func cloudAgentRunTerminal(status string) bool {
-	return status == "completed" || status == "failed" || status == "cancelled"
+	return status == "completed" || status == "failed" || status == "cancelled" || status == "rejected"
 }
 
 func (s *Service) CloudAgentRun(userID, id string) (*CloudAgentRun, error) {
@@ -328,6 +329,7 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		}
 	}
 	var history []providerTextMessage
+	var creativeAnchor cloudAgentCreativeAnchor
 	if parentID != "" {
 		parent, _, parentErr := s.cloudAgentTask(userID, parentID)
 		if parentErr != nil {
@@ -357,6 +359,7 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		if err != nil {
 			return nil, WrapAppError(409, "上一轮 Agent 历史记录不完整，无法继续对话；请新建对话", err)
 		}
+		creativeAnchor = parentState.CreativeAnchor
 		history = parentState.TextHistory
 		if history == nil {
 			history = cloudAgentLegacyHistory(parentState.Canonical.Messages, parent.Prompt)
@@ -380,6 +383,14 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 	if len(encodedHistory) > 64000 {
 		return nil, BadAuthRequest("对话上下文超过 64KB，请新建对话")
 	}
+	var inheritedAnchor *cloudAgentCreativeAnchor
+	if creativeAnchor.Version > 0 {
+		inheritedAnchor = &creativeAnchor
+	}
+	creativeAnchor, err = cloudAgentCreativeAnchorForCanvas(s.repo, userID, canvas, req.Prompt, inheritedAnchor)
+	if err != nil {
+		return nil, err
+	}
 	skillSnapshots, err := s.cloudAgentSkills(userID, req.SkillIDs)
 	if err != nil {
 		return nil, err
@@ -391,11 +402,11 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 			return nil, err
 		}
 	}
-	system, policy, err := compileCloudAgentPolicies(req, skillSnapshots, canvasSummary, profile)
+	system, policy, err := compileCloudAgentPolicies(req, skillSnapshots, canvasSummary, profile, creativeAnchor)
 	if err != nil {
 		return nil, err
 	}
-	state := cloudAgentState{Version: 1, Request: req, ParentID: parentID, Fingerprint: fingerprint, Skills: skillSnapshots, Profile: profile, Policy: policy}
+	state := cloudAgentState{Version: 1, Request: req, ParentID: parentID, Fingerprint: fingerprint, CreativeAnchor: creativeAnchor, Skills: skillSnapshots, Profile: profile, Policy: policy}
 	canonical := cloudAgentCanonical(system, history, req.Prompt, req)
 	input := map[string]any{"mode": "text", "prompt": req.Prompt, "textHistory": history, "textOptions": map[string]any{"stream": true, "thinking": cloudAgentReasoningEnabled(policy.ReasoningMode)}, "cloudAgent": state,
 		"agentRequests": map[string]any{"canonical": canonical},

@@ -112,6 +112,28 @@ func TestCloudAgentPolicyPublishesSkillManifestWithoutInliningSkillBody(t *testi
 	}
 }
 
+func TestCloudAgentPolicyPublishesCapabilityRoutingGuide(t *testing.T) {
+	text, _, err := compileCloudAgentPolicies(agentTestRequest(), nil, "", cloudAgentProfileSnapshot{Revision: agentProfileRevision(nil), Hash: agentProfileHash("")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"节点能力速查",
+		"由服务端能力注册表生成",
+		"分镜脚本（script）",
+		"多镜头",
+		"逐镜审查",
+		"后续维护",
+		"单画面、一次性说明或快速试验优先轻量节点",
+		"普通文本或 Markdown 不能伪装成结构化分镜",
+		"不为形式强制使用任何节点",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("compiled policy omitted capability routing guidance %q: %s", expected, text)
+		}
+	}
+}
+
 func TestCloudAgentGenerationAdapterRejectsUnimplementedMode(t *testing.T) {
 	original := canvasCapabilityRegistry
 	defer func() { canvasCapabilityRegistry = original }()
