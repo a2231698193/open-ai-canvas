@@ -20,8 +20,13 @@ test("Agent 对话和设置复用创作页模型选择器，并且只展示文�
     expect(css).toContain(".agent-model-picker-popover");
     expect(css).toContain("z-index: calc(var(--z-modal-overlay) + 1000)");
 
-    const twoPane = pickerCss.match(/\.creation-model-picker-menu\.is-model-list \.canvas-model-picker-two-pane \{[^}]+\}/)?.[0] || "";
-    expect(twoPane).toContain("min-height: 0");
-    expect(twoPane).toContain("align-items: start");
-    expect(twoPane).not.toContain("min-height: 300px");
+    // 选择器已是单层模型列表：不再有渠道/品牌二级入口，也就没有双栏样式。
+    const picker = await Bun.file(new URL("../src/components/model-picker.tsx", import.meta.url)).text();
+    expect(picker).not.toContain("canvas-model-picker-brands");
+    expect(picker).not.toContain("canvas-model-picker-two-pane");
+    expect(picker).toContain("canvas-model-picker-options");
+    expect(picker).toContain('localeCompare(right.label');
+
+    expect(pickerCss).not.toContain("canvas-model-picker-two-pane");
+    expect(pickerCss).toContain(".creation-model-picker-surface .creation-model-picker-menu { width: min(420px, calc(100vw - 24px)) !important; }");
 });

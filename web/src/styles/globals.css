@@ -8007,12 +8007,6 @@ html:not(.dark) .creation-studio-control:hover,
         padding: 4px;
     }
 
-    .canvas-model-picker-group + .canvas-model-picker-group {
-        border-top: 1px solid var(--workspace-border);
-        margin-top: 5px;
-        padding-top: 5px;
-    }
-
     .canvas-model-picker-group-label {
         align-items: center;
         display: flex;
@@ -19853,25 +19847,8 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     width: min(360px, calc(100vw - 24px)) !important;
     padding: 10px !important;
 }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brands { display: grid; gap: 5px; }
 .app-user-workspace .creation-model-picker-menu .canvas-model-picker-subheading { display: flex; align-items: baseline; justify-content: space-between; padding: 3px 5px 8px; color: var(--user-ink); font-size: 12px; font-weight: 650; }
 .app-user-workspace .creation-model-picker-menu .canvas-model-picker-subheading small { color: var(--user-ink-soft); font-size: 10px; font-weight: 500; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand { display: flex; min-height: 58px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 13px; padding: 8px 10px; background: transparent; color: var(--user-ink); text-align: left; transition: background-color 160ms ease, border-color 160ms ease, transform 160ms cubic-bezier(.16,1,.3,1); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand:hover { border-color: var(--user-border); background: var(--user-surface-hover); transform: translateX(2px); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; background: var(--user-surface-muted); color: var(--user-ink-muted); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand:nth-child(3n) .canvas-model-picker-brand-icon,
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand:nth-child(4n) .canvas-model-picker-brand-icon { background: var(--user-surface-muted); color: var(--user-ink-muted); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand-copy strong { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand-copy small { color: var(--user-ink-muted); font-size: 10px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-brand-arrow { width: 15px; height: 15px; color: var(--user-ink-soft); transform: rotate(-90deg); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-secondary-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 9px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-back { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--user-border); border-radius: 9px; background: var(--user-surface-muted); color: var(--user-ink-muted); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-back:hover { background: var(--user-surface-hover); color: var(--user-ink); }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-back svg { width: 15px; height: 15px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-secondary-head > span { display: grid; gap: 2px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-secondary-head strong { color: var(--user-ink); font-size: 13px; }
-.app-user-workspace .creation-model-picker-menu .canvas-model-picker-secondary-head small { color: var(--user-ink-soft); font-size: 10px; }
 .app-user-workspace .creation-model-picker-menu .canvas-model-picker-option { min-height: 55px; border-radius: 12px; padding: 8px 9px; }
 .app-user-workspace .creation-model-picker-menu .canvas-model-picker-option > span:first-child > span:first-child { width: 32px; height: 32px; border-radius: 10px; background: var(--user-surface-muted) !important; color: var(--user-ink-muted); }
 .app-user-workspace .creation-model-picker-menu .canvas-model-picker-option:nth-child(3n) > span:first-child > span:first-child,
@@ -20127,25 +20104,8 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     width: min(360px, calc(100vw - 24px)) !important;
     padding: 10px !important;
 }
-.creation-model-picker-surface .canvas-model-picker-brands { display: grid; gap: 5px; }
 .creation-model-picker-surface .canvas-model-picker-subheading { display: flex; align-items: baseline; justify-content: space-between; padding: 3px 5px 8px; color: var(--foreground); font-size: 12px; font-weight: 650; }
 .creation-model-picker-surface .canvas-model-picker-subheading small { color: color-mix(in srgb, var(--foreground) 52%, transparent); font-size: 10px; font-weight: 500; }
-.creation-model-picker-surface .canvas-model-picker-brand { display: flex; min-height: 58px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 13px; padding: 8px 10px; background: transparent; color: var(--foreground); text-align: left; transition: background-color 160ms ease, border-color 160ms ease, transform 160ms cubic-bezier(.16,1,.3,1); }
-.creation-model-picker-surface .canvas-model-picker-brand:hover { border-color: var(--workspace-border); background: var(--workspace-surface-hover); transform: translateX(2px); }
-.creation-model-picker-surface .canvas-model-picker-brand-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 11px; background: linear-gradient(135deg, color-mix(in srgb, var(--workspace-accent) 20%, var(--workspace-surface-strong)), color-mix(in srgb, var(--workspace-accent) 6%, var(--workspace-surface-strong))); color: var(--workspace-accent); }
-.creation-model-picker-surface .canvas-model-picker-brand-icon svg { color: currentColor !important; opacity: 1 !important; }
-.creation-model-picker-surface .canvas-model-picker-brand:nth-child(3n) .canvas-model-picker-brand-icon { color: #d57b16; }
-.creation-model-picker-surface .canvas-model-picker-brand:nth-child(4n) .canvas-model-picker-brand-icon { color: #25845d; }
-.creation-model-picker-surface .canvas-model-picker-brand-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.creation-model-picker-surface .canvas-model-picker-brand-copy strong { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.creation-model-picker-surface .canvas-model-picker-brand-copy small { color: color-mix(in srgb, var(--foreground) 55%, transparent); font-size: 10px; }
-.creation-model-picker-surface .canvas-model-picker-brand-arrow { width: 15px; height: 15px; color: color-mix(in srgb, var(--foreground) 48%, transparent); transform: rotate(-90deg); }
-.creation-model-picker-surface .canvas-model-picker-secondary-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 9px; }
-.creation-model-picker-surface .canvas-model-picker-back { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--workspace-border); border-radius: 9px; background: var(--workspace-surface-hover); color: var(--foreground); }
-.creation-model-picker-surface .canvas-model-picker-back svg { width: 15px; height: 15px; }
-.creation-model-picker-surface .canvas-model-picker-secondary-head > span { display: grid; gap: 2px; }
-.creation-model-picker-surface .canvas-model-picker-secondary-head strong { color: var(--foreground); font-size: 13px; }
-.creation-model-picker-surface .canvas-model-picker-secondary-head small { color: color-mix(in srgb, var(--foreground) 52%, transparent); font-size: 10px; }
 .creation-model-picker-surface .canvas-model-picker-option { min-height: 55px; border-radius: 12px; padding: 8px 9px; }
 .creation-model-picker-surface .canvas-model-picker-option > span:first-child > span:first-child { width: 32px; height: 32px; border-radius: 10px; background: color-mix(in srgb, var(--workspace-accent) 10%, var(--workspace-surface-strong)) !important; color: var(--workspace-accent); }
 .creation-model-picker-surface .canvas-model-picker-option > span:first-child > span:first-child svg { color: currentColor !important; opacity: 1 !important; }

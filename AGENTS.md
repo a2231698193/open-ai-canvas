@@ -106,6 +106,7 @@
 - 第三方覆盖限定在具体组件，不新增全局 `.ant-modal-*`、`.dark .ant-switch-*`、`.ant-checkbox-*` 或 Segmented 状态补丁。新增 CSS 前先搜索同名选择器，回到唯一源规则修改。
 - 遵循 `docs/ui-design-system.md` 及项目三层 token：Primitive → Semantic → Component。inline style 优先引用 `var(--token-name)`，不要散落颜色、圆角、阴影和层级字面值。
 - 主操作、普通选中、Checkbox/Radio、Switch 是不同颜色角色；持久切换使用 `aria-pressed`，`type="primary"` 只表示当前主要命令。尊重 `prefers-reduced-motion`，键盘导航保留 `:focus-visible`。
+- 模型选择器是单层列表：打开菜单直接选模型，不按渠道/品牌做二级选择；同名模型按显示名相邻排序，来自多个渠道时在副标题标注渠道名。官方主线已把二级选择器当作全站标准（`variant` 默认 `creation`），合并主线时这一处以本仓库为准，不要跟着改回二级。
 
 ## 7. 本地开发、部署和数据目录
 

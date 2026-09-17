@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { Check, ChevronDown, ChevronLeft, Coins } from "lucide-react";
+import { Check, ChevronDown, Coins } from "lucide-react";
 import { Popover } from "antd";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
@@ -7,7 +7,7 @@ import { modelCapabilityConfigFor, videoDurationOptions } from "@/lib/model-capa
 import { formatPriceRange, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection } from "@/lib/model-pricing";
 import { compatibleModelInGroup, configuredModelDisplayName, groupModelsByDisplayName, modelCompatibilityError, resolveCompatibleModel, type ModelRequirements } from "@/lib/model-selection";
 import { cn } from "@/lib/utils";
-import { modelDisplayName, modelIcon, modelOptionName, PUBLIC_MODEL_CATALOG_ID, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { modelDisplayName, modelIcon, modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { ModelLogo } from "@/components/model-logo";
@@ -52,28 +52,29 @@ export function ModelPicker({
     const rawTheme = useActiveTheme();
     const theme = (canvasThemes[rawTheme as keyof typeof canvasThemes] ?? canvasThemes.dark) as CanvasTheme;
     const [open, setOpen] = useState(false);
-    const [activeGroupKey, setActiveGroupKey] = useState<string | null>(null);
     const [previewedModel, setPreviewedModel] = useState("");
     const [triggerWidth, setTriggerWidth] = useState<number | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const options = useMemo(() => Array.from(new Set(selectableModelsByCapability(config, capability).filter(Boolean))), [capability, config]);
+    // 单层列表：不再按渠道/品牌分组做二级选择，同名模型按显示名相邻排列。
+    // options 已由当前有效渠道重建；任何无法解析渠道的旧值都直接丢弃，
+    // 不再显示“其他模型 / 未指定渠道”这种不可用入口。
     const optionGroups = useMemo(() => {
-        const channelGroups = config.channels
-            .map((channel) => ({
-                key: channel.id,
-                label: channel.name || "未命名渠道",
-                scope: channel.id === PUBLIC_MODEL_CATALOG_ID ? "" : channel.scope === "system" ? "平台服务" : "我的模型",
-                models: groupModelsByDisplayName(
-                    config,
-                    options.filter((model) => resolveModelChannel(config, model).id === channel.id),
-                ),
-            }))
-            .filter((group) => group.models.length);
-        // options 已由当前有效渠道重建；任何无法解析渠道的旧值都直接丢弃，
-        // 不再显示“其他模型 / 未指定渠道”这种不可用入口。
-        return channelGroups;
+        const groups = config.channels.flatMap((channel) =>
+            groupModelsByDisplayName(
+                config,
+                options.filter((model) => resolveModelChannel(config, model).id === channel.id),
+            ),
+        );
+        // 渠道顺序作为稳定次序，因此同名模型会保持在同一段内相邻展示。
+        return groups.sort((left, right) => left.label.localeCompare(right.label, "zh-Hans-CN", { numeric: true, sensitivity: "base" }));
     }, [config, options]);
+    const duplicatedLabels = useMemo(() => {
+        const counts = new Map<string, number>();
+        optionGroups.forEach((group) => counts.set(group.label, (counts.get(group.label) || 0) + 1));
+        return new Set(Array.from(counts).filter(([, count]) => count > 1).map(([label]) => label));
+    }, [optionGroups]);
     const storedCurrent = value?.trim() || "";
     // 参数档位会在选中模型后由调用方归一到其能力配置，不能因为旧模型留下的参数而禁止切换。
     const selectionRequirements = requirements ? { ...requirements, videoSeconds: undefined, imageSize: undefined, options: undefined } : undefined;
@@ -136,7 +137,6 @@ export function ModelPicker({
         if (nextOpen) window.dispatchEvent(new CustomEvent("model-picker-open", { detail: pickerId }));
         if (nextOpen) {
             setPreviewedModel(current || options[0] || "");
-            setActiveGroupKey(null);
         }
         setOpen(nextOpen);
     };
@@ -174,9 +174,7 @@ export function ModelPicker({
             data-canvas-no-zoom
             className={cn(
                 "canvas-model-picker-menu max-w-[calc(100vw-24px)]",
-                creationVariant
-                    ? cn("creation-model-picker-menu", activeGroupKey === null ? "is-brand-list" : "is-model-list")
-                    : "w-[var(--panel-width-compact)]",
+                creationVariant ? "creation-model-picker-menu" : "w-[var(--panel-width-compact)]",
             )}
             style={
                 {
@@ -192,78 +190,49 @@ export function ModelPicker({
             onPointerDown={(event) => event.stopPropagation()}
         >
             {optionGroups.length ? (
-                activeGroupKey === null ? (
-                    <div className="canvas-model-picker-brands" aria-label="选择模型品牌">
-                        {optionGroups.map((group) => {
-                            const groupCurrent = group.models.find((item) => item.models.includes(current));
-                            const firstModel = groupCurrent?.models[0] || group.models[0]?.models[0] || "";
-                            return <button key={group.key} type="button" className="canvas-model-picker-brand" onClick={() => { setActiveGroupKey(group.key); setPreviewedModel(firstModel); }}>
-                                <span className="canvas-model-picker-brand-icon"><ModelIcon config={config} model={firstModel} /></span>
-                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个模型{group.scope ? ` · ${group.scope}` : ""}</small></span>
-                                <ChevronDown className="canvas-model-picker-brand-arrow" aria-hidden="true" />
-                            </button>;
-                        })}
-                    </div>
-                ) : <div className="canvas-model-picker-two-pane">
-                    <div className="canvas-model-picker-brand-rail" aria-label="模型品牌">
-                        {optionGroups.map((group) => {
-                            const groupCurrent = group.models.find((item) => item.models.includes(current));
-                            const firstModel = groupCurrent?.models[0] || group.models[0]?.models[0] || "";
-                            return <button key={group.key} type="button" className={cn("canvas-model-picker-brand", activeGroupKey === group.key && "is-active")} aria-pressed={activeGroupKey === group.key} onClick={() => { setActiveGroupKey(group.key); setPreviewedModel(firstModel); }}>
-                                <span className="canvas-model-picker-brand-icon"><ModelIcon config={config} model={firstModel} /></span>
-                                <span className="canvas-model-picker-brand-copy"><strong>{group.label}</strong><small>{group.models.length} 个模型{group.scope ? ` · ${group.scope}` : ""}</small></span>
-                                <ChevronDown className="canvas-model-picker-brand-arrow" aria-hidden="true" />
-                            </button>;
-                        })}
-                    </div>
-                    {optionGroups.filter((group) => group.key === activeGroupKey).map((group) => <section key={group.key} className="canvas-model-picker-group canvas-model-picker-model-pane min-w-0 overflow-hidden">
-                        <div className="canvas-model-picker-secondary-head">
-                            <button type="button" className="canvas-model-picker-back" onClick={() => setActiveGroupKey(null)} aria-label="返回品牌列表"><ChevronLeft /></button>
-                            <span><strong>{group.label}</strong>{group.scope ? <small>{group.scope}</small> : null}</span>
-                        </div>
-                        <div className="grid min-w-0 gap-1">
-                            {group.models.map((modelGroup) => {
-                                const selected = modelGroup.models.includes(current);
-                                const model = compatibleModelInGroup(config, modelGroup.models, selectionRequirements, selected ? current : undefined);
-                                const displayModel = model || (selected ? current : modelGroup.models[0]);
-                                const disabledReason = model ? "" : modelCompatibilityError(config, modelGroup.models[0], selectionRequirements) || "当前输入不符合该模型能力";
-                                return (
-                                    <button
-                                        key={modelGroup.key}
-                                        type="button"
-                                        role="option"
-                                        aria-selected={selected}
-                                        aria-disabled={Boolean(disabledReason)}
-                                        disabled={Boolean(disabledReason)}
-                                        title={disabledReason || pickerModelOptionLabel(config, displayModel, showConfiguredModelName)}
-                                        className={cn("canvas-model-picker-option disabled:cursor-not-allowed disabled:opacity-45", previewedModel === displayModel && "is-previewed")}
-                                        style={{ background: selected ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
-                                        onMouseEnter={() => setPreviewedModel(displayModel)}
-                                        onFocus={() => setPreviewedModel(displayModel)}
-                                        onClick={() => {
-                                            if (!model) return;
-                                            onChange(model);
-                                            setOpen(false);
-                                            window.requestAnimationFrame(() => triggerRef.current?.focus());
-                                        }}
-                                    >
-                                        <ModelLabel
-                                            config={config}
-                                            model={displayModel}
-                                            capability={capability}
-                                            theme={theme}
-                                            creationVariant={creationVariant}
-                                            showConfiguredModelName={showConfiguredModelName}
-                                            showPrice={showOptionPrices && creditsEnabled}
-                                            disabledReason={disabledReason}
-                                            showDescription={selected || previewedModel === displayModel}
-                                        />
-                                        {selected ? <Check className="canvas-model-picker-option-check ml-1 shrink-0" style={{ color: theme.node.activeStroke }} /> : null}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </section>)}
+                <div className="canvas-model-picker-options grid min-w-0 gap-1" aria-label="模型列表">
+                    {optionGroups.map((modelGroup) => {
+                        const selected = modelGroup.models.includes(current);
+                        const model = compatibleModelInGroup(config, modelGroup.models, selectionRequirements, selected ? current : undefined);
+                        const displayModel = model || (selected ? current : modelGroup.models[0]);
+                        const disabledReason = model ? "" : modelCompatibilityError(config, modelGroup.models[0], selectionRequirements) || "当前输入不符合该模型能力";
+                        const sourceLabel = duplicatedLabels.has(modelGroup.label) ? resolveModelChannel(config, displayModel).name.trim() || "未命名渠道" : "";
+                        return (
+                            <button
+                                key={modelGroup.key}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                aria-disabled={Boolean(disabledReason)}
+                                disabled={Boolean(disabledReason)}
+                                title={[disabledReason, pickerModelOptionLabel(config, displayModel, showConfiguredModelName), sourceLabel].filter(Boolean).join(" · ")}
+                                className={cn("canvas-model-picker-option disabled:cursor-not-allowed disabled:opacity-45", previewedModel === displayModel && "is-previewed")}
+                                style={{ background: selected ? theme.toolbar.activeBg : "transparent", color: theme.node.text }}
+                                onMouseEnter={() => setPreviewedModel(displayModel)}
+                                onFocus={() => setPreviewedModel(displayModel)}
+                                onClick={() => {
+                                    if (!model) return;
+                                    onChange(model);
+                                    setOpen(false);
+                                    window.requestAnimationFrame(() => triggerRef.current?.focus());
+                                }}
+                            >
+                                <ModelLabel
+                                    config={config}
+                                    model={displayModel}
+                                    capability={capability}
+                                    theme={theme}
+                                    creationVariant={creationVariant}
+                                    showConfiguredModelName={showConfiguredModelName}
+                                    showPrice={showOptionPrices && creditsEnabled}
+                                    disabledReason={disabledReason}
+                                    showDescription={selected || previewedModel === displayModel}
+                                    sourceLabel={sourceLabel}
+                                />
+                                {selected ? <Check className="canvas-model-picker-option-check ml-1 shrink-0" style={{ color: theme.node.activeStroke }} /> : null}
+                            </button>
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="canvas-model-picker-empty" style={{ color: theme.node.muted }}>
@@ -328,6 +297,7 @@ function ModelLabel({
     showPrice,
     disabledReason,
     showDescription,
+    sourceLabel,
 }: {
     config: AiConfig;
     model: string;
@@ -338,6 +308,8 @@ function ModelLabel({
     showPrice: boolean;
     disabledReason?: string;
     showDescription: boolean;
+    /** 同名模型来自多个渠道时，用渠道名区分，避免列表里出现两条完全相同的项。 */
+    sourceLabel?: string;
 }) {
     const meta = modelMenuMeta(model, capability);
     const channel = resolveModelChannel(config, model);
@@ -348,6 +320,7 @@ function ModelLabel({
         disabledReason ||
         logicalCost?.description?.trim() ||
         (logicalSpec ? logicalCapabilitySummary(logicalSpec) : videoProfile ? `${formatDurationSummary(videoProfile)} · ${videoProfile.resolutions.map((item) => item.toUpperCase()).join("/")}` : meta.description);
+    const summaryText = sourceLabel ? `${sourceLabel} · ${capabilitySummary}` : capabilitySummary;
     return (
         <span className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden py-0">
             <span className="grid size-6 shrink-0 place-items-center rounded-md" style={{ background: theme.toolbar.itemHover }}>
@@ -355,8 +328,8 @@ function ModelLabel({
             </span>
             <span className="min-w-44 flex-1 overflow-hidden">
                 <span className="block min-w-0 truncate text-[var(--fs-label)] font-medium leading-none">{pickerModelDisplayName(config, model, showConfiguredModelName)}</span>
-                <span className={cn("canvas-model-picker-description mt-1 block truncate text-[var(--fs-tiny)]", showDescription && "is-visible")} style={{ color: theme.node.muted }} title={capabilitySummary}>
-                    {capabilitySummary}
+                <span className={cn("canvas-model-picker-description mt-1 block truncate text-[var(--fs-tiny)]", showDescription && "is-visible")} style={{ color: theme.node.muted }} title={summaryText}>
+                    {summaryText}
                 </span>
             </span>
             {showPrice ? (
