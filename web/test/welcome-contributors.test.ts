@@ -6,9 +6,9 @@ import { parseContributors } from "../src/pages/welcome/contributors-parse";
 
 const identityAvatar = (path: string) => path;
 
-test("welcome contributors parse the README HTML table", () => {
-    const readme = readFileSync(resolve(import.meta.dir, "../../README.md"), "utf8");
-    const people = parseContributors(readme, identityAvatar);
+test("welcome contributors parse the CONTRIBUTORS HTML table", () => {
+    const contributors = readFileSync(resolve(import.meta.dir, "../../CONTRIBUTORS.md"), "utf8");
+    const people = parseContributors(contributors, identityAvatar);
 
     expect(people.length).toBeGreaterThanOrEqual(20);
     expect(people[0]).toMatchObject({

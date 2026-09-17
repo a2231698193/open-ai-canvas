@@ -12,7 +12,7 @@ COPY web/package.json web/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --cache-dir=/root/.bun/install/cache
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md USER_CHANGELOG.md /app/
-COPY README.md /app/README.md
+COPY README.md CONTRIBUTORS.md /app/
 COPY assets /app/assets
 COPY web ./
 # 生产镜像只构建云端工作台前端；Agent Runtime 在后端 Worker 中运行。

@@ -34,16 +34,16 @@ describe("welcome story", () => {
         expect(existsSync(publicFile("/welcome/sequence.mp4"))).toBe(false);
     });
 
-    test("docker web-build copies README and contributor avatars for the welcome page", () => {
+    test("docker web-build copies contributor list and avatars for the welcome page", () => {
         const dockerfile = readFileSync(resolve(import.meta.dir, "../../Dockerfile"), "utf8");
         const contributors = readFileSync(resolve(import.meta.dir, "../src/pages/welcome/contributors.ts"), "utf8");
-        const readme = readFileSync(resolve(import.meta.dir, "../../README.md"), "utf8");
+        const contributorList = readFileSync(resolve(import.meta.dir, "../../CONTRIBUTORS.md"), "utf8");
 
-        expect(contributors).toContain('../../../../README.md?raw');
+        expect(contributors).toContain('../../../../CONTRIBUTORS.md?raw');
         expect(contributors).toContain('../../../../assets/user-*');
-        expect(dockerfile).toContain("COPY README.md /app/README.md");
+        expect(dockerfile).toContain("COPY README.md CONTRIBUTORS.md /app/");
         expect(dockerfile).toContain("COPY assets /app/assets");
-        expect(readme).toContain("## 贡献者与团队");
+        expect(contributorList).toContain("## 贡献者与团队");
         expect(existsSync(resolve(import.meta.dir, "../../assets/user-sikongyue.png"))).toBe(true);
     });
 });
