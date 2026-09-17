@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 
 type Direction = "TOP" | "LEFT" | "BOTTOM" | "RIGHT";
 
-type HoverBorderGradientProps = {
-    as?: ElementType;
+type HoverBorderGradientProps<T extends ElementType = "button"> = {
+    as?: T;
     containerClassName?: string;
     className?: string;
     duration?: number;
     clockwise?: boolean;
     children?: ReactNode;
-} & Omit<ComponentPropsWithoutRef<"button">, "as" | "children">;
+} & Omit<ComponentPropsWithoutRef<T>, "as" | "children">;
 
 const movingMap: Record<Direction, string> = {
     TOP: "radial-gradient(20.7% 50% at 50% 0%, color-mix(in srgb, var(--user-ink) 38%, transparent) 0%, transparent 100%)",
@@ -32,7 +32,7 @@ function rotateDirection(current: Direction, clockwise: boolean): Direction {
 }
 
 // Aceternity Hover Border Gradient：中性墨色描边，不用彩色高光。
-export function HoverBorderGradient({
+export function HoverBorderGradient<T extends ElementType = "button">({
     children,
     containerClassName,
     className,
@@ -42,9 +42,8 @@ export function HoverBorderGradient({
     onMouseEnter,
     onMouseLeave,
     ...props
-}: HoverBorderGradientProps) {
-    // 运行时按 as 决定标签；直接以 ElementType 渲染会让 TS 7 把 JSX props 收窄成 never，这里收敛为 button 的 props 合同。
-    const Tag = (as || "button") as "button";
+}: HoverBorderGradientProps<T>) {
+    const Tag = (as || "button") as any;
     const reducedMotion = useReducedMotion();
     const [hovered, setHovered] = useState(false);
     const [direction, setDirection] = useState<Direction>("TOP");
@@ -59,15 +58,15 @@ export function HoverBorderGradient({
 
     return (
         <Tag
-            {...props}
+            {...(props as any)}
             className={cn("relative flex h-min w-full content-center items-center overflow-hidden bg-[var(--user-surface)] p-px transition-colors duration-500", containerClassName)}
             onMouseEnter={(event: MouseEvent<HTMLElement>) => {
                 setHovered(true);
-                onMouseEnter?.(event as never);
+                (onMouseEnter as any)?.(event);
             }}
             onMouseLeave={(event: MouseEvent<HTMLElement>) => {
                 setHovered(false);
-                onMouseLeave?.(event as never);
+                (onMouseLeave as any)?.(event);
             }}
         >
             <div className={cn("relative z-10 w-full rounded-[inherit]", className)}>{children}</div>
