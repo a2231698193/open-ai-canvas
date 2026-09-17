@@ -10,7 +10,7 @@ import { defaultModelCapabilityConfig, normalizeModelCapabilityConfig, type Mode
 import type { ModelProtocolDefinition } from "@/lib/model-protocols";
 import { createAdminChannelModel, testAdminChannelModel, updateAdminChannelModel, type ChannelModel } from "@/services/api/wallet";
 import type { ModelChannel } from "@/stores/use-config-store";
-import { defaultPriceTier, priceTierResolutionFromForm, priceTierVideoSecondsFromForm, skuSelectorFromForm } from "./channel-model-price-tier-form";
+import { defaultPriceTier, normalizeUpstreamModelKey, priceTierResolutionFromForm, priceTierVideoSecondsFromForm, skuSelectorFromForm } from "./channel-model-price-tier-form";
 import { PriceTierFields } from "./channel-model-price-tier-fields";
 import { changeChannelModelCapability, editorSectionForField, initialChannelModelValues, validateChannelModelPrices, validateChannelModelProtocol, type ChannelModelFormValues as FormValues, type EditorSection } from "./channel-model-editor-form";
 
@@ -50,6 +50,8 @@ export function ChannelModelEditor({
     const modelEnabled = Form.useWatch("enabled", form) !== false;
     const priceTiers = Form.useWatch("priceTiers", form) || [];
     const hasDefaultPriceTier = priceTiers.some((tier) => tier.matchMode === "default");
+    const tiersWithOwnUpstream = priceTiers.filter((tier) => tier.providerModelKey?.trim());
+    const modelUpstream = normalizeUpstreamModelKey(providerModelKey || modelKey);
     const busy = saving || testing;
 
     const requestClose = () => {
@@ -252,7 +254,7 @@ export function ChannelModelEditor({
                                                     placeholder="例如：seedance-2-5"
                                                 />
                                             </Form.Item>
-                                            <Form.Item name="providerModelKey" label="上游模型 ID" tooltip="实际发送给供应商；留空时使用产品模型标识。">
+                                            <Form.Item name="providerModelKey" label="上游模型 ID" tooltip="实际发送给供应商；留空时使用产品模型标识。价格档可配置独立上游 ID，命中时优先于此处。">
                                                 <Input placeholder="留空则使用产品模型标识" />
                                             </Form.Item>
                                             <Form.Item name="displayName" label="后台显示名称" tooltip="仅用于后台识别，不改变调用 ID。">
@@ -262,6 +264,14 @@ export function ChannelModelEditor({
                                                 <ModelIconPicker />
                                             </Form.Item>
                                         </div>
+                                        {tiersWithOwnUpstream.length ? (
+                                            <Alert
+                                                type="info"
+                                                showIcon
+                                                title={`${tiersWithOwnUpstream.length} 个价格档配置了独立上游模型 ID`}
+                                                description="命中的请求会优先使用价格档的上游 ID；修改上方上游模型 ID 时，只有与旧值相同的档位会自动跟随更新，其余保持不变。"
+                                            />
+                                        ) : null}
                                     </section>
                                     <section className="admin-model-editor-section">
                                         <SectionHeading title="能力与协议" description="先选任务类型，再选择对应的调用协议；更换后请核对参数与价格。" />
@@ -376,6 +386,7 @@ export function ChannelModelEditor({
                                                                 capability={modelCapability}
                                                                 protocol={modelProtocol}
                                                                 capabilityConfig={capabilityConfig}
+                                                                modelUpstream={modelUpstream}
                                                                 onDirty={() => {
                                                                     dirtyRef.current = true;
                                                                 }}

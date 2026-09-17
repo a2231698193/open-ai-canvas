@@ -46,29 +46,30 @@ type cloudAgentApproval struct {
 	Reason    string                    `json:"reason,omitempty"`
 }
 type cloudAgentRuntime struct {
-	Request         CloudAgentRequest         `json:"request"`
-	Policy          cloudAgentPolicySnapshot  `json:"policy"`
-	ParentID        string                    `json:"parentId,omitempty"`
-	Fingerprint     string                    `json:"fingerprint,omitempty"`
-	CreativeAnchor  cloudAgentCreativeAnchor  `json:"creativeAnchor,omitempty"`
-	TextHistory     []providerTextMessage     `json:"textHistory,omitempty"`
-	Skills          []cloudAgentSkill         `json:"skills"`
-	SkillReads      map[string]bool           `json:"skillReads,omitempty"`
-	Profile         cloudAgentProfileSnapshot `json:"profile"`
-	ProfileReads    map[string]bool           `json:"profileReads,omitempty"`
-	Canonical       canonicalAgentRequest     `json:"canonical"`
-	ActiveTaskID    string                    `json:"activeTaskId"`
-	ActiveTextDraft string                    `json:"activeTextDraft,omitempty"`
-	MediaTaskID     string                    `json:"mediaTaskId,omitempty"`
-	TaskIDs         []string                  `json:"taskIds"`
-	Step            int                       `json:"step"`
-	Generations     int                       `json:"generations"`
-	VideoSeconds    int                       `json:"videoSeconds"`
-	Calls           []cloudAgentCall          `json:"calls"`
-	CallIndex       int                       `json:"callIndex"`
-	Approval        *cloudAgentApproval       `json:"approval,omitempty"`
-	Decisions       map[string]string         `json:"decisions"`
-	Events          []CloudAgentEvent         `json:"events"`
+	Request          CloudAgentRequest         `json:"request"`
+	Policy           cloudAgentPolicySnapshot  `json:"policy"`
+	ParentID         string                    `json:"parentId,omitempty"`
+	Fingerprint      string                    `json:"fingerprint,omitempty"`
+	CreativeAnchor   cloudAgentCreativeAnchor  `json:"creativeAnchor,omitempty"`
+	TextHistory      []providerTextMessage     `json:"textHistory,omitempty"`
+	Skills           []cloudAgentSkill         `json:"skills"`
+	SkillReads       map[string]bool           `json:"skillReads,omitempty"`
+	Profile          cloudAgentProfileSnapshot `json:"profile"`
+	ProfileReads     map[string]bool           `json:"profileReads,omitempty"`
+	Canonical        canonicalAgentRequest     `json:"canonical"`
+	ActiveTaskID     string                    `json:"activeTaskId"`
+	ActiveTextDraft  string                    `json:"activeTextDraft,omitempty"`
+	MediaTaskID      string                    `json:"mediaTaskId,omitempty"`
+	TaskIDs          []string                  `json:"taskIds"`
+	Step             int                       `json:"step"`
+	Generations      int                       `json:"generations"`
+	VideoSeconds     int                       `json:"videoSeconds"`
+	Calls            []cloudAgentCall          `json:"calls"`
+	CallIndex        int                       `json:"callIndex"`
+	Approval         *cloudAgentApproval       `json:"approval,omitempty"`
+	Decisions        map[string]string         `json:"decisions"`
+	DecisionSettings map[string]string         `json:"decisionSettings,omitempty"`
+	Events           []CloudAgentEvent         `json:"events"`
 }
 
 func (s *Service) ensureCloudAgentExecution(task *model.Task, initial cloudAgentState) error {
@@ -857,7 +858,7 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 				if err != nil {
 					return err
 				}
-				plan.Args.SnapshotHash = cloudAgentCanvasHash(doc)
+				plan.Args.SnapshotHash = cloudAgentMediaContentHash(doc)
 				raw, err := json.Marshal(plan.Args)
 				if err != nil {
 					return err
@@ -993,10 +994,8 @@ func (s *Service) enqueueCloudAgentTask(run *model.CloudAgentExecution, state *c
 	if media != nil {
 		requested, _ := req.Input["config"].(map[string]any)
 		resolved, _ := input["config"].(map[string]any)
-		for _, key := range []string{"size", "videoSeconds", "vquality", "quality", "count", "videoGenerateAudio"} {
-			if value := stringValue(requested[key]); value != "" && !strings.EqualFold(value, stringValue(resolved[key])) {
-				return s.cloudAgentMediaError(run, state, "admission", false, false, creationConflict("模型解析后的生成规格与审批参数不同，请重新读取目录并审批"))
-			}
+		if err := validateCloudAgentResolvedMediaOptions(requested, resolved); err != nil {
+			return s.cloudAgentMediaError(run, state, "admission", false, false, err)
 		}
 	}
 	if err = s.protectTaskSecrets(input); err != nil {
@@ -1153,7 +1152,17 @@ func (s *Service) advanceCloudAgentMedia(run *model.CloudAgentExecution, state *
 	return s.enqueueCloudAgentTask(run, state, req, plan)
 }
 
-func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, reason string) error {
+func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, reason string, mediaSettings ...*CloudAgentMediaSettings) error {
+	var settings *CloudAgentMediaSettings
+	if len(mediaSettings) > 1 {
+		return BadAuthRequest("只能提交一组生成参数")
+	}
+	if len(mediaSettings) == 1 {
+		settings = mediaSettings[0]
+	}
+	if settings != nil && decision != "approve" {
+		return BadAuthRequest("仅批准生成时可修改生成参数")
+	}
 	if decision != "approve" && decision != "reject" {
 		return BadAuthRequest("无效审批决定")
 	}
@@ -1172,7 +1181,7 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 		return err
 	}
 	if previous, ok := state.Decisions[approvalID]; ok {
-		if previous == decision {
+		if previous == decision && (settings == nil || state.DecisionSettings[approvalID] == creationHash(settings)) {
 			return nil
 		}
 		return creationConflict("该审批已有不同决定")
@@ -1180,10 +1189,21 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 	if run.Status != "waiting_approval" || state.Approval == nil || state.Approval.ID != approvalID {
 		return creationConflict("审批不存在或已过期")
 	}
+	if settings != nil {
+		if err := s.updateCloudAgentMediaApproval(run, &state, *settings); err != nil {
+			return err
+		}
+	}
 	return s.repo.MutateCloudAgent(userID, id, run.Revision, func(current *model.CloudAgentExecution, _ *repository.Repository) error {
 		state.Approval.Decision = decision
 		state.Approval.Reason = reason
 		state.Decisions[approvalID] = decision
+		if settings != nil {
+			if state.DecisionSettings == nil {
+				state.DecisionSettings = map[string]string{}
+			}
+			state.DecisionSettings[approvalID] = creationHash(settings)
+		}
 		if decision == "reject" {
 			// Rejection is a user control-plane decision, not a failed tool
 			// invocation. Make it terminal before the scheduler can advance the
@@ -1201,7 +1221,7 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 			return cloudAgentSave(current, &state)
 		}
 		current.Status = "running"
-		state.event(id, "approval_decided", map[string]any{"approvalId": approvalID, "decision": decision})
+		state.event(id, "approval_decided", map[string]any{"approvalId": approvalID, "decision": decision, "arguments": json.RawMessage(state.Approval.Call.Function.Arguments), "preview": state.Approval.Preview, "modelName": state.Approval.ModelName})
 		return cloudAgentSave(current, &state)
 	})
 }

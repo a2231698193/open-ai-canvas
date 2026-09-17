@@ -1,3 +1,4 @@
+import { CollectionToolbar } from "@/components/layout/collection-toolbar";
 import { App, Button, Drawer, Form, Input, Modal, Select, Typography } from "antd";
 import { Switch } from "@/components/ui/base/switch";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
@@ -6,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { MediaPreview } from "@/components/media-preview";
-import { ListToolbar, PageHeader, PaginationBar, WorkspacePage } from "@/components/layout/workspace-page";
+import { PageHeader, PaginationBar, WorkspacePage } from "@/components/layout/workspace-page";
 import { WorkspaceState } from "@/components/layout/workspace-state";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
 import { formatTaskKind, operationOptions, statusLabel } from "@/lib/generation-task-display";
@@ -383,8 +384,17 @@ export default function TasksPage() {
         <>
             <WorkspacePage grid className="library-page task-library-page">
                 <div className="studio-band">
-                    <ListToolbar
-                        className="library-toolbar task-library-toolbar"
+                    <PageHeader
+                        title="创作历史"
+                        description="查看文本、图片和视频生成任务，跟踪进度并处理失败任务。"
+                        meta={<span className="app-projects-header-meta">{taskStats.total} 个任务</span>}
+                        actions={
+                            <Button type="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>
+                                新建任务
+                            </Button>
+                        }
+                    />
+                    <CollectionToolbar
                         active={Boolean(keyword || projectFilter !== "all" || kindFilter !== "all" || modelFilter !== "all" || statusFilter !== "all")}
                         onReset={() => { setKeyword(""); setProjectFilter("all"); setKindFilter("all"); setModelFilter("all"); setStatusFilter("all"); setPage(1); }}
                         trailing={(
@@ -415,10 +425,10 @@ export default function TasksPage() {
                         <Select className="w-full sm:w-48" value={projectFilter} onChange={(value) => { setProjectFilter(value); setPage(1); }} options={[{ label: "全部画布", value: "all" }, ...projectOptions]} />
                         <Select className="w-full sm:w-32" value={kindFilter} onChange={(value) => { setKindFilter(value as TaskKindFilter); setPage(1); }} options={[{ label: "全部类型", value: "all" }, { label: "文本", value: "text" }, { label: "图片", value: "image" }, { label: "视频", value: "video" }]} />
                         <Select className="w-full sm:w-44" value={modelFilter} onChange={(value) => { setModelFilter(value); setPage(1); }} options={[{ label: "全部模型", value: "all" }, ...modelOptions.map((model) => ({ label: model, value: model }))]} />
-                    </ListToolbar>
+                    </CollectionToolbar>
                 </div>
 
-                <div className="canvas-library-frame task-library-frame">
+                <div className="collection-content task-collection-content">
                     {loading && !tasks.length ? <div className="library-loading-grid" aria-label="正在加载任务">{Array.from({ length: 8 }, (_, index) => <div key={index} className="library-skeleton" />)}</div> : null}
                     {!loading || tasks.length ? (
                         visibleTasks.length ? (

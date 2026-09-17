@@ -102,7 +102,7 @@ function SettingsHome({ props, theme, onOpen }: { props: AgentSettingsProps; the
             <section>
                 <SettingLabel label="对话模型" hint="新运行生效" />
                 <div className="min-w-0 rounded-xl px-2 py-1.5" style={{ background: theme.node.fill }}>
-                    <ModelPicker config={props.config} value={props.selectedModel} capability="text" onChange={props.onModelChange} fullWidth showSelectedPrice showOptionPrices placeholder="选择 Agent 模型" className="!border-0 !bg-transparent !shadow-none" />
+                    <ModelPicker config={props.config} value={props.selectedModel} capability="text" onChange={props.onModelChange} variant="creation" fullWidth showSelectedPrice showOptionPrices placeholder="选择文本模型" className="!border-0 !bg-transparent !shadow-none" popoverClassName="agent-model-picker-popover" />
                 </div>
             </section>
             <section>

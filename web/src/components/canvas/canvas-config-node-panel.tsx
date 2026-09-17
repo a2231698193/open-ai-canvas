@@ -12,7 +12,7 @@ import { defaultModelCapabilityConfig, modelCapabilityConfigFor, normalizeImageV
 import { defaultImageParamsForModel, modelCompatibilityError, modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefaults, type ModelRequirements } from "@/lib/model-selection";
 import { resolveCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import type { CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { workflowProviderPluginEnabled } from "@/lib/plugins/builtin/workflows";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata, CanvasVideoEditOperation, CanvasWorkspaceMode } from "@/types/canvas";
@@ -64,7 +64,7 @@ function runningHubWorkflowEntryKey(workflow: RunningHubWorkflow): string {
 export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigChange, onGenerate, onComposerToggle, workspaceMode = "professional" }: CanvasConfigNodePanelProps) {
     const globalConfig = useEffectiveConfig();
     const runtimeStatuses = usePluginStore((state) => state.runtimeStatuses);
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const mode = node.metadata?.generationMode === "video" || node.metadata?.generationMode === "audio" ? node.metadata.generationMode : "image";
     const simpleMode = workspaceMode === "simple";
     const resolvedProvider = resolveCanvasWorkflowProvider(node.metadata);

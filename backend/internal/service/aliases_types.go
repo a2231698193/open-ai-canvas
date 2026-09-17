@@ -4,6 +4,7 @@ import "infinite-canvas/backend/internal/app"
 
 type (
 	CloudAgentRequest                      = app.CloudAgentRequest
+	CloudAgentMediaSettings                = app.CloudAgentMediaSettings
 	CloudAgentCapabilitySet                = app.CloudAgentCapabilitySet
 	AgentProfileRequest                    = app.AgentProfileRequest
 	AgentProfileView                       = app.AgentProfileView

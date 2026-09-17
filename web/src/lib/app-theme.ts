@@ -361,6 +361,34 @@ export function getAntThemeConfig(dark: boolean, skinID: unknown = "classic"): T
 /**
  * 管理后台使用更高密度的控件节奏；只在 AdminShell 内挂载，避免改变创作端的视觉契约。
  */
+/** 用户端与后台共享业务控件，但使用独立的产品尺寸和柔和表面。 */
+export function getWorkspaceAntThemeConfig(): ThemeConfig {
+    return {
+        token: {
+            borderRadius: 12, borderRadiusLG: 16, borderRadiusSM: 8,
+            controlHeight: 38, controlHeightSM: 30, controlHeightLG: 44,
+            motionDurationFast: "0.12s", motionDurationMid: "0.18s", motionDurationSlow: "0.36s",
+            motionEaseInOut: "cubic-bezier(0.16, 1, 0.3, 1)",
+            motionEaseOut: "cubic-bezier(0.16, 1, 0.3, 1)",
+        },
+        components: {
+            Button: {
+                borderRadius: 12, borderRadiusSM: 8, borderRadiusLG: 14, fontWeight: 550,
+                defaultBg: "var(--user-surface-muted)", defaultColor: "var(--user-ink)", defaultBorderColor: "transparent",
+                defaultHoverBg: "var(--user-surface-hover)", defaultHoverColor: "var(--user-ink)", defaultHoverBorderColor: "transparent",
+                defaultActiveBg: "var(--user-control-pressed)", defaultActiveColor: "var(--user-ink)", defaultActiveBorderColor: "transparent",
+                defaultShadow: "none", primaryShadow: "none", dangerShadow: "none",
+                paddingInline: 14, paddingInlineSM: 10,
+            },
+            Input: { borderRadius: 12, activeShadow: "0 0 0 2px var(--user-accent-soft)", paddingInline: 12 },
+            Select: { borderRadius: 12, optionSelectedBg: "var(--user-accent-soft)", optionSelectedColor: "var(--user-ink)", optionActiveBg: "var(--user-surface-muted)", optionPadding: "9px 12px" },
+            Dropdown: { borderRadiusLG: 16, controlItemBgHover: "var(--user-surface-muted)", paddingBlock: 6 },
+            Modal: { borderRadiusLG: 20 },
+            Popconfirm: { borderRadiusLG: 16 },
+        },
+    };
+}
+
 export function getAdminAntThemeConfig(dark: boolean, skinID: unknown = "classic"): ThemeConfig {
     const base = getAntThemeConfig(dark, skinID);
     const skin = getSkinAntOverrides(skinID, dark ? "dark" : "light");

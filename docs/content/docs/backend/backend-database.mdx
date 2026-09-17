@@ -172,7 +172,7 @@ docker compose -f docker-compose.deploy.yml up -d backend web
 | --- | --- | --- |
 | `model_channels` | 保存系统渠道与用户渠道的连接配置，以及系统渠道前台别名和排序 | 系统渠道密钥不进入公开目录；公开名称优先使用 `public_alias`，为空时使用原名；按 `sort_order, created_at, id` 升序展示 |
 | `channel_models` | 保存系统渠道中的产品模型标识、上游模型 ID、显示名称、模型 Logo、排序、能力、协议和版本状态 | 模型排序独立保存，不递增价格或能力版本；能力、协议、启用状态和价格仍由 service 强校验 |
-| `channel_model_price_tiers` | 保存系统模型按规格匹配的上游 SKU 与价格 | 价格档与渠道模型同事务保存；未启用或未完成定价的规格不进入普通用户目录 |
+| `channel_model_price_tiers` | 保存系统模型按规格匹配的上游 SKU 与价格 | 价格档与渠道模型同事务保存；未启用或未完成定价的规格不进入普通用户目录。档位 `provider_model_key` 非空时优先于渠道模型上游键发往供应商；管理端修改模型级上游 ID 时，与旧值相同的档位键自动级联跟随，其余显式 SKU 保持不变 |
 | `logical_models` | 保存前台模型的公开名称、Logo、能力类型和归档状态 | 前台模型与系统渠道模型分别维护展示信息；供应线路通过 revision 和 route 关联；`code` 仅在 `archived_at IS NULL` 的活动记录中唯一，归档后可用同 code 重建目录项 |
 
 图片分档尺寸保存在现有模型能力 JSON 的 `image.size.presets` 中，不新增表、列或 SQL 迁移。每项结构为 `{ tier, ratio, size, width, height }`，例如 `{ "tier": "1k", "ratio": "16:9", "size": "1824x1024", "width": 1824, "height": 1024 }`。

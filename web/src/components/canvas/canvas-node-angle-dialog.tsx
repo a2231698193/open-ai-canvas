@@ -8,7 +8,7 @@ import { CanvasAngleScene } from "@/components/canvas/canvas-angle-scene";
 import { SpotlightSurface } from "@/components/ui/aceternity/spotlight-surface";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 
 export type CanvasImageAngleParams = {
     horizontalAngle: number;
@@ -36,7 +36,7 @@ function distanceLabel(value: number) {
 }
 
 export function CanvasNodeAnglePanel({ dataUrl, onClose, onConfirm }: { dataUrl: string; onClose: () => void; onConfirm: (params: CanvasImageAngleParams) => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const reducedMotion = useReducedMotion();
     const [params, setParams] = useState(defaultParams);
     const [mode, setMode] = useState<"camera" | "skybox">("camera");

@@ -173,7 +173,7 @@ func cloudAgentTools(req CloudAgentRequest) []map[string]any {
 			"mode": map[string]any{"type": "string", "enum": cloudAgentGenerationModeNames()}, "prompt": str("完整生成提示词"),
 			"logicalModelId": str("selection.logicalModelId；与channelId/channelModelKey互斥"), "channelId": str("selection.channelId"), "channelModelKey": str("selection.channelModelKey"),
 			"durationSeconds": map[string]any{"type": "integer", "minimum": 0}, "size": str("模型支持的画幅，例如9:16"), "quality": str("目录支持的分辨率或质量"), "videoGenerateAudio": map[string]any{"type": "boolean", "description": "是否生成音频，仅视频可用"},
-			"snapshotHash": str("最近canvas_get_state的snapshotHash"), "nodeId": str("可续用的未提交媒体草稿ID；无草稿时才使用新唯一ID"), "title": str("媒体节点名称"), "sourceNodeId": str("仅文本/镜头提示词节点ID；无文本来源则留空，绝不能填图片/视频/音频ID"), "referenceNodeIds": map[string]any{"type": "array", "maxItems": 16, "items": str("当前画布媒体参考节点ID；参考图只放此处，保持引用顺序")},
+			"snapshotHash": str("使用最近 canvas_get_state 返回的 mediaSnapshotHash；媒体生成忽略纯节点移动，但仍校验内容与引用变化"), "nodeId": str("可续用的未提交媒体草稿ID；无草稿时才使用新唯一ID"), "title": str("媒体节点名称"), "sourceNodeId": str("仅文本/镜头提示词节点ID；无文本来源则留空，绝不能填图片/视频/音频ID"), "referenceNodeIds": map[string]any{"type": "array", "maxItems": 16, "items": str("当前画布媒体参考节点ID；参考图只放此处，保持引用顺序")},
 		}, "mode", "prompt", "snapshotHash", "nodeId", "title", "referenceNodeIds")
 	}
 	return tools

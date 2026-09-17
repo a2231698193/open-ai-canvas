@@ -17,7 +17,8 @@ test("章节页直接生成到分镜制作，并通过共享选择器执行技�
 
 test("章节分镜任务在 input 顶层声明文本生成模式", async () => {
     const source = await Bun.file(new URL("../src/pages/projects/detail/project-chapter-ai.ts", import.meta.url)).text();
-    expect(source).toContain('input: {\n            mode: "text",');
+    // input 顶层第一条字段必须是 mode；上游在这里补了说明注释，允许注释先于字段出现。
+    expect(source).toMatch(/input: \{\n(?:\s*\/\/.*\n)*\s*mode: "text",/);
     expect(source).toContain("storyboardPlanTaskMetadata({");
 });
 

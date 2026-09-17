@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Clapperboard, CloudDownload, Coins, CopyPlus, Focus, FolderKanban, Gauge, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
+import { Clapperboard, CloudDownload, CloudUpload, Coins, CopyPlus, Focus, FolderKanban, Gauge, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown, Tooltip } from "antd";
 
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
@@ -8,7 +8,7 @@ import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import type { CanvasContextSummary } from "@/lib/canvas/canvas-context-summary";
 import type { CanvasShortDramaProgress } from "@/lib/canvas/canvas-short-drama";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasThemeStore } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { CanvasMediaPerformanceMode } from "@/types/canvas";
 import { CanvasShortcutsModal } from "./canvas-shortcuts-modal";
@@ -25,6 +25,8 @@ type CanvasTopBarProps = {
     canRedo: boolean;
     onCreateProject: () => void;
     onDeleteProject: () => void;
+    onSave: () => void | Promise<void>;
+    onForceSave: () => void;
     onImportImage: () => void;
     onImportLibTV: () => void;
     onImportTapNow: () => void;
@@ -52,6 +54,8 @@ export function CanvasTopBar({
     canRedo,
     onCreateProject,
     onDeleteProject,
+    onSave,
+    onForceSave,
     onImportImage,
     onImportLibTV,
     onImportTapNow,
@@ -66,7 +70,7 @@ export function CanvasTopBar({
     onEnterFocusMode,
     shortDramaGuide,
 }: CanvasTopBarProps) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useCanvasThemeStore((state) => state.theme)];
     const dockStyle = canvasDockStyle(theme, theme.node.text);
     const user = useUserStore((state) => state.user);
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
@@ -105,6 +109,8 @@ export function CanvasTopBar({
                                     { type: "divider" },
                                     { key: "new", icon: <Plus className="size-4" />, label: "新建画布", onClick: onCreateProject },
                                     { key: "delete", danger: true, icon: <Trash2 className="size-4" />, label: "删除当前画布", onClick: onDeleteProject },
+                                    { key: "save", icon: <Save className="size-4" />, label: <MenuLabel text="保存" shortcut="⌘ S" />, onClick: () => void onSave() },
+                                    { key: "force-save", icon: <CloudUpload className="size-4" />, label: "强制覆盖保存", onClick: onForceSave },
                                     { type: "divider" },
                                     { key: "import", icon: <Upload className="size-4" />, label: "导入素材", onClick: onImportImage },
                                     { key: "search", icon: <Search className="size-4" />, label: <MenuLabel text="搜索节点" shortcut="⌘ F" />, onClick: onOpenSearch },
@@ -226,12 +232,12 @@ export function CanvasTopBar({
                         </Dropdown>
                     </CanvasTopBarTooltip>
                     {user && creditsEnabled ? (
-                        <CanvasTopBarTooltip label="查看积分明细">
+                        <CanvasTopBarTooltip label="进入积分超市">
                             <Link
                                 to="/wallet"
                                 className="canvas-topbar-action inline-flex h-9 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium tabular-nums"
                                 style={{ color: theme.node.text }}
-                                aria-label="查看积分明细"
+                                aria-label="进入积分超市"
                             >
                                 {refreshing && availableMicrocredits === null ? <LoaderCircle className="size-3.5 animate-spin opacity-60" style={{ color: theme.accent.primary }} /> : <Coins className="size-3.5" style={{ color: theme.accent.primary }} />}
                                 <span>{availableMicrocredits === null ? "--" : (availableMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 3 })}</span>

@@ -65,6 +65,14 @@ function observe(options: { timeoutMs?: number; after?: number } = {}) {
 }
 
 describe("Agent SSE recovery", () => {
+    it("sends the user's final image settings with the approval and keeps cancellation", async () => {
+        const requests: unknown[][] = [];
+        transport.http.post = async (...args: unknown[]) => { requests.push(args); return { accepted: true }; };
+        const signal = new AbortController().signal;
+        const mediaSettings = { logicalModelId: "chosen-image", size: "1536x1024", quality: "high" };
+        await api.decideAgentApproval("run/id", "approval/id", "approve", "", signal, mediaSettings);
+        expect(requests).toEqual([["/agent/runs/run%2Fid/approvals/approval%2Fid/decision", { decision: "approve", reason: undefined, mediaSettings }, { signal }]]);
+    });
     it.each([401, 403, 404, 422])("stops immediately on definitive %s", async (status) => {
         let requests = 0;
         globalThis.fetch = (async () => { requests++; return new Response("", { status }); }) as typeof fetch;

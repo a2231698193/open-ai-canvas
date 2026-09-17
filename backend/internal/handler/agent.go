@@ -22,7 +22,7 @@ func RegisterAgentRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		capabilities := service.CloudAgentCapabilitySetInfo()
-		ok(c, gin.H{"version": 2, "permissionModes": []string{"read_only", "request_approval", "auto"}, "contextScopes": []string{"canvas"}, "skills": true, "writeTools": true, "billing": "fixed_request", "maxHistoryPairs": 8, "maxSteps": 8, "tools": service.CloudAgentSupportedToolNames(), "capabilitySetVersion": capabilities.Version, "capabilitySetHash": capabilities.Hash, "nodeTypes": capabilities.Nodes})
+		ok(c, gin.H{"version": 2, "permissionModes": []string{"read_only", "request_approval", "auto"}, "contextScopes": []string{"canvas"}, "skills": true, "writeTools": true, "billing": "fixed_request", "maxHistoryPairs": 0, "maxHistoryBytes": 64000, "maxSteps": 0, "tools": service.CloudAgentSupportedToolNames(), "capabilitySetVersion": capabilities.Version, "capabilitySetHash": capabilities.Hash, "nodeTypes": capabilities.Nodes})
 	})
 	// Profiles are durable preference data, not an authorization surface. The
 	// service validates scope ownership and the compiler injects the effective
@@ -204,8 +204,9 @@ func RegisterAgentRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 		var req struct {
-			Decision string `json:"decision"`
-			Reason   string `json:"reason"`
+			Decision      string                           `json:"decision"`
+			Reason        string                           `json:"reason"`
+			MediaSettings *service.CloudAgentMediaSettings `json:"mediaSettings,omitempty"`
 		}
 		decoder := json.NewDecoder(c.Request.Body)
 		decoder.DisallowUnknownFields()
@@ -225,7 +226,7 @@ func RegisterAgentRoutes(r *gin.RouterGroup, svc *service.Service) {
 			fail(c, http.StatusBadRequest, errors.New("请求必须只包含一个 JSON 对象"))
 			return
 		}
-		if err := svc.DecideCloudAgentApproval(user.ID, c.Param("id"), c.Param("approvalId"), req.Decision, req.Reason); err != nil {
+		if err := svc.DecideCloudAgentApproval(user.ID, c.Param("id"), c.Param("approvalId"), req.Decision, req.Reason, req.MediaSettings); err != nil {
 			failService(c, err)
 			return
 		}

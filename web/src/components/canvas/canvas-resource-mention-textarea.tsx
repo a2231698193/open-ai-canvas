@@ -5,7 +5,7 @@ import { ArrowLeft, ChevronRight, FileText, Folder, Image as ImageIcon, Music2, 
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { ASSET_CATEGORY_LABELS } from "@/lib/asset-category";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { buildAssetMentionReferences, canvasResourceMentionToken, findCanvasResourceAutoLinkMatch, type CanvasResourceAutoLinkMatch, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useAssetStore, type AssetCategory } from "@/stores/use-asset-store";
 import { CanvasNodeType } from "@/types/canvas";
@@ -54,7 +54,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     { value, references, onSelectReference, onChange, onSubmit, onKeyDown, className, containerClassName, style, highlightLabels = true, mentionMenuWidth = 320, sendOnEnter = true, onContentSizeChange, includeAssetLibrary = false, activeDropReferenceId, onReferenceFilesDrop, autoLinkEnabled = false, ...props },
     forwardedRef,
 ) {
-    const rawTheme = useThemeStore((state) => state.theme);
+    const rawTheme = useActiveTheme();
     const assets = useAssetStore((state) => state.assets);
     const theme = canvasThemes[rawTheme as keyof typeof canvasThemes] ?? canvasThemes.dark;
     const containerRef = useRef<HTMLDivElement | null>(null);

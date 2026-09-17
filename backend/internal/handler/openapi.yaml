@@ -40,7 +40,7 @@ paths:
       summary: 读取云端 Agent 能力
       responses:
         "200":
-          description: 信封 data 包含 version、permissionModes、contextScopes、skills、writeTools、billing、maxHistoryPairs、capabilitySetVersion、capabilitySetHash、nodeTypes、tools
+          description: 信封 data 包含 version、permissionModes、contextScopes、skills、writeTools、billing、maxHistoryPairs、maxSteps、maxHistoryBytes、capabilitySetVersion、capabilitySetHash、nodeTypes、tools；maxHistoryPairs 和 maxSteps 为 0 表示无固定轮数上限，历史仍受 maxHistoryBytes 限制
   /agent/profile:
     get:
       tags: [agent]
@@ -192,6 +192,22 @@ paths:
                 reason:
                   type: string
                   maxLength: 2000
+                mediaSettings:
+                  type: object
+                  additionalProperties: false
+                  description: 仅 approve 图片生成审批可传；替换本次模型、画幅和质量，重新强校验，不修改提示词、引用或目标。logicalModelId 与 channelId + channelModelKey 二选一。
+                  required: [size, quality]
+                  properties:
+                    logicalModelId:
+                      type: string
+                    channelId:
+                      type: string
+                    channelModelKey:
+                      type: string
+                    size:
+                      type: string
+                    quality:
+                      type: string
       responses:
         "200":
           description: 信封 data.accepted

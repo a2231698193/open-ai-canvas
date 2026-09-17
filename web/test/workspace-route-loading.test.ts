@@ -40,7 +40,8 @@ describe("workspace route loading", () => {
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
         expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
         expect(home).toContain("return <WelcomePage />");
-        expect(navigation).toContain('{ id: "home", title: "首页", icon: Home, to: "/create" }');
+        expect(navigation).toContain('{ ...toolItem("create", "/create"), id: "home", title: "创作" }');
+        expect(navigation).not.toContain('to: "/home"');
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {
@@ -68,6 +69,9 @@ describe("workspace route loading", () => {
         expect(layout).not.toContain("useCanvasUiStore");
         expect(layout).not.toContain("CanvasDeleteProjectsDialog");
         expect(canvas).toContain("deleteDialogOpen ? <Suspense");
+        expect(detail).toContain("project-workspace-header");
+        expect(detail).not.toContain("useWorkspaceTopBarExtension");
+        expect(detail).toContain("新建画布");
     });
 
 

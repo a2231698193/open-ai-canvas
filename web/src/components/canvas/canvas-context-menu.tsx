@@ -10,7 +10,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { canvasNodeAssetCategory } from "@/lib/canvas/canvas-node-asset";
 import { isCanvasFolderNode } from "@/lib/canvas/canvas-frame";
 import { resolveAddNodeMenuCommands, type AddNodeMenuContext } from "@/lib/canvas/tool-registry";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeTypeId, type CanvasWorkspaceMode, type ContextMenuState, type Position } from "@/types/canvas";
 
@@ -95,7 +95,7 @@ export function CanvasNodeContextMenu({
     onCopySelection,
     onDeleteSelection,
 }: CanvasNodeContextMenuProps) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const [addOpen, setAddOpen] = useState(false);
     const [categoryOpen, setCategoryOpen] = useState(false);
 
@@ -279,7 +279,7 @@ export function CanvasNodeContextMenu({
 }
 
 function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, onAddNode, onAddFolder, onChooseStyle, onOpenDirector, onUpload, onOpenAssets, onOpenProjectCharacters }: { parentPosition: { left: number; top: number }; workspaceMode: CanvasWorkspaceMode; isProjectLinked: boolean; onAddNode: (type: CanvasNodeTypeId) => void; onAddFolder: () => void; onChooseStyle: () => void; onOpenDirector: () => void; onUpload: () => void; onOpenAssets: () => void; onOpenProjectCharacters: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const installations = usePluginStore((state) => state.installations);
     const pluginStates = usePluginStore((state) => state.pluginStates);
     const left = getSubmenuLeft(parentPosition.left);
@@ -332,7 +332,7 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
 }
 
 function MenuHeader({ title, description, onBack }: { title: string; description?: string; onBack?: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     return (
         <div className="mb-0.5 flex items-start gap-1 px-1.5 py-1.5">
             {onBack ? <button type="button" onClick={onBack} className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md outline-none hover:bg-black/5 focus-visible:ring-2 dark:hover:bg-white/8" aria-label="返回媒体操作"><ArrowLeft className="size-3.5" /></button> : null}
@@ -346,7 +346,7 @@ function MenuSection({ label }: { label: string }) {
 }
 
 function MenuButton({ icon, label, detail, shortcut, badge, chevron = false, active = false, disabled = false, danger = false, onClick }: { icon: ReactNode; label: string; detail?: string; shortcut?: string; badge?: string; chevron?: boolean; active?: boolean; disabled?: boolean; danger?: boolean; onClick?: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const color = danger ? theme.accent.danger : theme.node.text;
     return (
         <button
@@ -365,7 +365,7 @@ function MenuButton({ icon, label, detail, shortcut, badge, chevron = false, act
 }
 
 function MenuDivider() {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     return <div className="mx-1.5 my-1 h-px" style={{ background: `linear-gradient(90deg, transparent, ${theme.toolbar.border}, transparent)` }} />;
 }
 

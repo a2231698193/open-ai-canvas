@@ -42,6 +42,11 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
         writeWorkspaceSidebarCollapsed(false);
     };
 
+    const collapseDesktopSidebar = () => {
+        setDesktopSidebarCollapsed(true);
+        writeWorkspaceSidebarCollapsed(true);
+    };
+
     const handleNavClick = () => {
         if (isMobileViewport()) setMobileSidebarExpanded(false);
     };
@@ -89,6 +94,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                                     onNavigate={handleNavClick}
                                     onOpenSearch={() => setPaletteOpen(true)}
                                     onExpand={expandDesktopSidebar}
+                                    onCollapse={collapseDesktopSidebar}
                                 />
                             </aside>
                         ) : null}

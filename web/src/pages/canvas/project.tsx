@@ -24,7 +24,7 @@ import { refreshCanvasCharacterReferenceNodes } from "@/lib/canvas/canvas-charac
 import { useAssetStore } from "@/stores/use-asset-store";
 import { flushCanvasStorePersistence } from "@/stores/canvas/use-canvas-store";
 import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasThemeStore, useCanvasThemeScope } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { App, Button } from "antd";
 import { ArrowLeftRight } from "lucide-react";
@@ -227,6 +227,7 @@ function visibleGenerationBatch(node: CanvasNodeData) {
 }
 
 export default function CanvasPage() {
+    useCanvasThemeScope();
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -257,8 +258,8 @@ function InfiniteCanvasPage() {
     const assets = useAssetStore((state) => state.assets);
     const assetsHydrated = useAssetStore((state) => state.hydrated);
     const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
-    const colorTheme = useThemeStore((state) => state.theme);
-    const setTheme = useThemeStore((state) => state.setTheme);
+    const colorTheme = useCanvasThemeStore((state) => state.theme);
+    const setTheme = useCanvasThemeStore((state) => state.setTheme);
     const theme = canvasThemes[colorTheme];
     const defaultDrawingEngine = useUserStore((state) => state.drawingEngine.defaultEngine);
     const shortDramaEnabled = useUserStore((state) => state.features.shortDramaEnabled);
@@ -415,7 +416,7 @@ function InfiniteCanvasPage() {
         [cleanupAssetImages, getHistoryCleanupContext],
     );
 
-    const { loadError, retryLoad, addedSkills, agentCreatedNodes, clearCanvasFiles, createAndOpenProject, currentProject, deleteCurrentProject, renameCurrentProject, saveCanvasProject, updateProject } = useCanvasProjectLifecycle({
+    const { loadError, retryLoad, addedSkills, agentCreatedNodes, clearCanvasFiles, createAndOpenProject, currentProject, deleteCurrentProject, renameCurrentProject, saveCanvasProject, forceSaveCanvasProject, updateProject } = useCanvasProjectLifecycle({
         projectId,
         projectLoaded,
         nodes,
@@ -443,6 +444,18 @@ function InfiniteCanvasPage() {
         cleanupAssetImages,
         cleanupCanvasFiles,
     });
+
+    // 强制覆盖会改写云端版本并重绑媒体素材关联，必须让用户显式确认 destructive 语义。
+    const confirmForceSaveCanvas = useCallback(() => {
+        modal.confirm({
+            title: "用本地内容强制覆盖云端？",
+            content: "将把当前本地画布保存并覆盖云端版本，同时自动修复画布媒体与素材库的绑定（缺少素材记录时会按节点新建）。云端尚未同步到本地的改动会被覆盖。",
+            okText: "强制覆盖保存",
+            okButtonProps: { danger: true },
+            cancelText: "取消",
+            onOk: () => forceSaveCanvasProject(),
+        });
+    }, [forceSaveCanvasProject, modal]);
 
     const applyLibTVImport = useCallback(
         async (importedNodes: CanvasNodeData[], importedConnections: CanvasConnection[]) => {
@@ -569,6 +582,14 @@ function InfiniteCanvasPage() {
         next.delete("conversation");
         setSearchParams(next, { replace: true });
     }, [projectLoaded, chatSessions, searchParams, setSearchParams, openAgent, message]);
+
+    useEffect(() => {
+        if (!projectLoaded || searchParams.get("agent") !== "1") return;
+        openAgent();
+        const next = new URLSearchParams(searchParams);
+        next.delete("agent");
+        setSearchParams(next, { replace: true });
+    }, [projectLoaded, searchParams, setSearchParams, openAgent]);
 
     // 沉浸专注进入时收起智能体与小地图、重置 Dock 唤出态；仅响应「进入」瞬间，避免关闭专注内主动唤出的面板。
     const prevFocusModeRef = useRef(focusMode);
@@ -2327,6 +2348,8 @@ function InfiniteCanvasPage() {
                                 canRedo={historyState.canRedo}
                                 onCreateProject={createAndOpenProject}
                                 onDeleteProject={deleteCurrentProject}
+                                onSave={() => void saveCanvasProject()}
+                                onForceSave={confirmForceSaveCanvas}
                                 onImportImage={() => handleUploadRequest()}
                                 onImportLibTV={() => setLibTVImportOpen(true)}
                                 onImportTapNow={() => setTapNowImportOpen(true)}

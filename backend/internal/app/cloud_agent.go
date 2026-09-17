@@ -373,9 +373,6 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		history = append(history, providerTextMessage{Role: "user", Content: parent.Prompt}, providerTextMessage{Role: "assistant", Content: text})
 	}
 	// Bound prompt growth without silently injecting a huge canvas or transcript.
-	if len(history) > 16 {
-		return nil, BadAuthRequest("对话已达到 8 轮上下文上限，请新建对话")
-	}
 	encodedHistory, err := json.Marshal(history)
 	if err != nil {
 		return nil, err

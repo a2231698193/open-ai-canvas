@@ -1,9 +1,10 @@
-import { Button, Form, Input, InputNumber, Segmented, Select, Switch, type FormInstance } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Segmented, Select, Switch, type FormInstance } from "antd";
 import { Trash2 } from "lucide-react";
 import type { ModelCapabilityConfig } from "@/lib/model-capabilities";
 import { modelProtocolSupportsTokenBilling, type ModelProtocol } from "@/lib/model-protocols";
 import type { ModelCapabilityChoice as EditableCapability } from "@/components/model-protocol-picker";
 import type { ChannelModelFormValues as FormValues } from "./channel-model-editor-form";
+import { normalizeUpstreamModelKey } from "./channel-model-price-tier-form";
 
 export function PriceTierFields({
     index,
@@ -12,6 +13,7 @@ export function PriceTierFields({
     capability,
     protocol,
     capabilityConfig,
+    modelUpstream,
     onDirty,
     onRemove,
 }: {
@@ -21,6 +23,7 @@ export function PriceTierFields({
     capability: EditableCapability | undefined;
     protocol: ModelProtocol | undefined;
     capabilityConfig?: ModelCapabilityConfig;
+    modelUpstream: string;
     onDirty: () => void;
     onRemove: () => void;
 }) {
@@ -28,6 +31,10 @@ export function PriceTierFields({
     const matchMode = Form.useWatch(["priceTiers", index, "matchMode"], form) || "default";
     const priceConfigured = Form.useWatch(["priceTiers", index, "priceConfigured"], form) !== false;
     const tierEnabled = Form.useWatch(["priceTiers", index, "enabled"], form) !== false;
+    const tierUpstream = normalizeUpstreamModelKey(Form.useWatch(["priceTiers", index, "providerModelKey"], form));
+    // 统一价格档不展示上游键输入，但历史数据可能固化了独立键；它与模型级不一致时会
+    // 静默改变实际发往供应商的模型，必须显式提示并允许一键恢复“跟随模型默认”。
+    const staleTierUpstream = matchMode === "default" && tierUpstream && modelUpstream && tierUpstream !== modelUpstream ? tierUpstream : "";
     const video = capabilityConfig?.video;
     const resolutionOptions = video?.resolutions || [];
     const durationOptions = video?.duration.selection === "enum" ? video.duration.values || [] : [];
@@ -155,6 +162,25 @@ export function PriceTierFields({
                         </Form.Item>
                     </div>
                 )}
+                {staleTierUpstream ? (
+                    <Alert
+                        type="warning"
+                        showIcon
+                        title="该统一价格档仍指向独立上游模型 ID"
+                        description={`命中此档的请求会优先使用「${staleTierUpstream}」，而不是模型默认上游「${modelUpstream}」。`}
+                        action={
+                            <Button
+                                size="small"
+                                onClick={() => {
+                                    onDirty();
+                                    form.setFieldValue(["priceTiers", index, "providerModelKey"], "");
+                                }}
+                            >
+                                清除并跟随模型
+                            </Button>
+                        }
+                    />
+                ) : null}
             </div>
         </div>
     );

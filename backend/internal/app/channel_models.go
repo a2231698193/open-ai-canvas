@@ -326,12 +326,23 @@ func (s *Service) SaveAdminChannelModel(actor *model.User, channelID string, id 
 		return nil, err
 	}
 	item := &model.ChannelModel{ID: modelID, ChannelID: channelID, Enabled: true, PriceVersion: 1}
+	previousProviderModelKey := ""
 	if id != "" {
 		item, err = s.repo.ChannelModelByID(channelID, id)
 		if err != nil {
 			return nil, err
 		}
+		previousProviderModelKey = strings.TrimPrefix(strings.TrimSpace(item.ProviderModelKey), "models/")
 		item.PriceVersion++
+	}
+	// 模型级上游键重命名时，与旧值相同的档位键属于“跟随模型默认”的隐式固化，必须级联跟随；
+	// 否则任务请求会继续把旧上游键发给供应商。管理员显式配置的其他上游 SKU 不受影响。
+	if previousProviderModelKey != "" && providerModelKey != previousProviderModelKey {
+		for index := range tiers {
+			if strings.TrimPrefix(strings.TrimSpace(tiers[index].ProviderModelKey), "models/") == previousProviderModelKey {
+				tiers[index].ProviderModelKey = providerModelKey
+			}
+		}
 	}
 	item.ModelKey = modelKey
 	item.ProviderModelKey = providerModelKey

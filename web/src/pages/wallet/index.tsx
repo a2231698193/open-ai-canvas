@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlipayCircleFilled, WechatFilled } from "@ant-design/icons";
-import { App, Button, Grid, Input, Modal, QRCode, Skeleton, Table, Tag } from "antd";
+import { App, Button, Grid, Input, Modal, QRCode, Skeleton, Table } from "antd";
+import { StatusBadge } from "@/components/ui/base/badges/status-badge";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
 import type { ColumnsType } from "antd/es/table";
 import { motion, useReducedMotion } from "motion/react";
@@ -298,7 +299,7 @@ export default function WalletPage() {
     ];
 
     return (
-        <main className="app-user-content app-workspace-scroll library-page wallet-library-page relative h-full overflow-y-auto text-foreground">
+        <main className="app-user-content app-workspace-scroll library-page wallet-library-page wallet-market-page relative h-full overflow-y-auto text-foreground">
             <div className="relative w-full px-4 py-6 sm:px-6 lg:px-8">
                 <div className="studio-band">
                     <motion.header
@@ -309,8 +310,8 @@ export default function WalletPage() {
                     >
                         <div className="flex min-w-0 items-center gap-3">
                             <div className="min-w-0">
-                                <h1 className="text-[var(--fs-heading-lg)] font-semibold leading-7">积分中心</h1>
-                                <p className="mt-1 text-xs leading-5 text-foreground/58">模型调用、冻结与退款都在同一条可追溯流水中。</p>
+                                <h1 className="text-[var(--fs-heading-lg)] font-semibold leading-7">积分超市</h1>
+                                <p className="mt-1 text-xs leading-5 text-foreground/58">用真实余额补充创作额度，兑换码、充值与消费记录都可追溯。</p>
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -344,7 +345,7 @@ export default function WalletPage() {
                                         <Coins />
                                     </span>
                                     <div>
-                                        <strong>可用创作积分</strong>
+                                        <strong>我的创作积分</strong>
                                         <span>最近更新 {formatTime(account?.updatedAt)}</span>
                                     </div>
                                 </div>
@@ -375,7 +376,7 @@ export default function WalletPage() {
                                 <TicketCheck className="size-4" />
                             </span>
                             <div>
-                                <h2 className="text-base font-semibold">兑换积分</h2>
+                                <h2 className="text-base font-semibold">兑换码入账</h2>
                                 <p className="mt-1 text-xs leading-5 text-foreground/55">输入管理员发放的 32 位兑换码。</p>
                             </div>
                         </div>
@@ -411,7 +412,7 @@ export default function WalletPage() {
                                     <CreditCard className="size-4" />
                                 </span>
                                 <div>
-                                    <h2 className="text-base font-semibold">在线充值</h2>
+                                    <h2 className="text-base font-semibold">购买创作积分</h2>
                                     <p className="mt-1 text-xs leading-5 text-foreground/55">支付成功后自动充值积分。平台不提供退款，请确认商品和金额后付款。</p>
                                 </div>
                             </div>
@@ -473,7 +474,7 @@ export default function WalletPage() {
                 <section className="wallet-ledger-panel app-workspace-surface mt-9 rounded-lg p-4 backdrop-blur-xl sm:p-5">
                     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <h2 className="text-base font-semibold">积分流水</h2>
+                            <h2 className="text-base font-semibold">积分使用明细</h2>
                             <p className="mt-1 text-xs text-foreground/55">当前展示最近 {wallet?.entries.length || 0} 条记录。</p>
                         </div>
                         <SegmentedControl
@@ -612,26 +613,24 @@ function CreditDelta({ value }: { value: number }) {
 
 function LedgerTypeTag({ type }: { type: CreditLedgerEntry["type"] }) {
     const meta = ledgerTypeMeta(type);
-    return (
-        <Tag variant="filled" color={meta.tagColor}>
-            {meta.label}
-        </Tag>
-    );
+    // 用项目 StatusBadge 而不是 antd Tag：Tag 的 default/error 配色在本项目主题下不可读。
+    return <StatusBadge variant="filled" tone={meta.tone} label={meta.label} />;
 }
 
 function ledgerTypeMeta(type: CreditLedgerEntry["type"]) {
+    // tone 走 StatusBadge 的语义色，明暗主题都自适应；不再用 antd Tag 的 default 配色。
     const values = {
-        redeem: { label: "兑换充值", tagColor: "default", icon: <ArrowDownLeft className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
-        payment_topup: { label: "在线充值", tagColor: "success", icon: <CreditCard className="size-4" />, iconClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" },
-        admin_grant: { label: "管理员充值", tagColor: "default", icon: <ArrowDownLeft className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
-        consume: { label: "模型消费", tagColor: "error", icon: <Sparkles className="size-4" />, iconClass: "bg-rose-500/10 text-rose-600 dark:text-rose-300" },
-        reserve: { label: "积分冻结", tagColor: "warning", icon: <ArrowUpRight className="size-4" />, iconClass: "bg-amber-500/10 text-amber-600 dark:text-amber-300" },
-        refund: { label: "消费退款", tagColor: "warning", icon: <RotateCcw className="size-4" />, iconClass: "bg-amber-500/10 text-amber-600 dark:text-amber-300" },
-        admin_adjustment: { label: "管理员调账", tagColor: "default", icon: <SlidersHorizontal className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
-        signup_bonus: { label: "注册奖励", tagColor: "default", icon: <Sparkles className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
-        checkin_bonus: { label: "签到奖励", tagColor: "default", icon: <CalendarCheck className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
+        redeem: { label: "兑换充值", tone: "neutral", icon: <ArrowDownLeft className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
+        payment_topup: { label: "在线充值", tone: "success", icon: <CreditCard className="size-4" />, iconClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" },
+        admin_grant: { label: "管理员充值", tone: "neutral", icon: <ArrowDownLeft className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
+        consume: { label: "模型消费", tone: "error", icon: <Sparkles className="size-4" />, iconClass: "bg-rose-500/10 text-rose-600 dark:text-rose-300" },
+        reserve: { label: "积分冻结", tone: "warning", icon: <ArrowUpRight className="size-4" />, iconClass: "bg-amber-500/10 text-amber-600 dark:text-amber-300" },
+        refund: { label: "消费退款", tone: "warning", icon: <RotateCcw className="size-4" />, iconClass: "bg-amber-500/10 text-amber-600 dark:text-amber-300" },
+        admin_adjustment: { label: "管理员调账", tone: "neutral", icon: <SlidersHorizontal className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
+        signup_bonus: { label: "注册奖励", tone: "neutral", icon: <Sparkles className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
+        checkin_bonus: { label: "签到奖励", tone: "neutral", icon: <CalendarCheck className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" },
     } as const;
-    return values[type] || { label: "其他积分变动", tagColor: "default", icon: <ArrowUpRight className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" };
+    return values[type] || { label: "其他积分变动", tone: "neutral", icon: <ArrowUpRight className="size-4" />, iconClass: "bg-foreground/8 text-foreground/70" };
 }
 
 function ledgerTitle(entry: CreditLedgerEntry) {

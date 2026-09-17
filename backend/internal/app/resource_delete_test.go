@@ -225,6 +225,80 @@ func TestDeleteAssetStillRejectsLiveCanvasResourceReference(t *testing.T) {
 	}
 }
 
+func TestDeleteGeneratedAssetTaskReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status model.TaskStatus
+		input  bool
+		canvas bool
+		block  bool
+	}{
+		{name: "completed output", status: model.TaskStatusSucceeded},
+		{name: "failed output", status: model.TaskStatusFailed},
+		{name: "cancelled output", status: model.TaskStatusCancelled},
+		{name: "running output", status: model.TaskStatusRunning, block: true},
+		{name: "queued output", status: model.TaskStatusQueued, block: true},
+		{name: "unknown status", block: true},
+		{name: "completed input", status: model.TaskStatusSucceeded, input: true, block: true},
+		{name: "completed output on canvas", status: model.TaskStatusSucceeded, canvas: true, block: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, db, _ := newResourceDeletionTestService(t)
+			payload := `{"url":"/api/resources/generated-resource/file"}`
+			resource := model.Resource{ID: "generated-resource", UserID: "user-1", Provider: "unsupported-test-provider", ObjectKey: "generated.png", Status: model.ResourceStatusReady}
+			asset := model.Asset{ID: "generated-asset", UserID: "user-1", Title: "生成图片", PayloadJSON: payload}
+			task := model.Task{ID: "generation-task", UserID: "user-1", Prompt: "生成图片", Status: tc.status, InputJSON: `{}`, ResultJSON: payload}
+			if tc.input {
+				task.InputJSON = payload
+			}
+			items := []any{&resource, &asset, &task,
+				&model.TaskLog{ID: "generation-log", UserID: "user-1", TaskID: task.ID, Payload: payload},
+				&model.Result{ID: "generation-result", UserID: "user-1", TaskID: task.ID, URL: "/api/resources/generated-resource/file", Payload: payload},
+			}
+			if tc.canvas {
+				items = append(items, &model.CanvasProject{ID: "canvas", UserID: "user-1", Title: "使用中的画布", PayloadJSON: payload})
+			}
+			for _, item := range items {
+				if err := db.Create(item).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			// 自动孤儿清理仍须保留生成历史中的产物，不能扩大为自动删除。
+			if err := svc.cleanupDetachedUserResources("user-1", []model.Resource{resource}); err != nil {
+				t.Fatal(err)
+			}
+			remaining, err := svc.repo.ResourcesForUserIDs("user-1", []string{resource.ID})
+			if err != nil || len(remaining) != 1 {
+				t.Fatalf("automatic cleanup must keep task output: resources=%v, error=%v", remaining, err)
+			}
+			err = svc.DeleteUserAsset("user-1", asset.ID)
+			if (err != nil) != tc.block {
+				t.Fatalf("DeleteUserAsset() = %v, want blocked=%v", err, tc.block)
+			}
+			wantRemaining, wantJobs := int64(0), int64(1)
+			if tc.block {
+				wantRemaining, wantJobs = 1, 0
+			}
+			for _, check := range []struct {
+				model any
+				want  int64
+			}{
+				{&model.Asset{}, wantRemaining}, {&model.Resource{}, wantRemaining},
+				{&model.ResourceDeletionJob{}, wantJobs},
+				{&model.Task{}, 1}, {&model.TaskLog{}, 1}, {&model.Result{}, 1},
+			} {
+				var count int64
+				if err := db.Model(check.model).Count(&count).Error; err != nil {
+					t.Fatal(err)
+				}
+				if count != check.want {
+					t.Fatalf("%T count=%d, want %d", check.model, count, check.want)
+				}
+			}
+		})
+	}
+}
+
 func TestResourceDeletionWorkerRemovesObjectAndCompletesOutbox(t *testing.T) {
 	svc, db, dataDir := newResourceDeletionTestService(t)
 	objectKey := "users/user-1/image/queued.png"

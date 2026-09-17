@@ -636,11 +636,7 @@ func (s *Service) loadRouteCatalog() (*routeCatalogSnapshot, error) {
 			}
 			cached.Routes = append(cached.Routes, cachedLogicalRoute{Route: route, CapabilitySpec: capabilitySpec, ChannelModel: channelModel})
 		}
-		routeSpecs := make([]CapabilitySpec, 0, len(cached.Routes))
-		for _, route := range cached.Routes {
-			routeSpecs = append(routeSpecs, route.CapabilitySpec)
-		}
-		productSpec = capabilitySpecWithRoutePresets(productSpec, routeSpecs)
+		productSpec = capabilitySpecWithRoutePresets(productSpec, enabledLogicalRouteSpecs(cached.Routes))
 		defaults, defaultsErr := decodeLogicalDefaults(graph.Revision.DefaultOptionsJSON, productSpec)
 		if defaultsErr != nil {
 			log.Printf("logical model omitted from route catalog id=%s: invalid defaults: %v", item.ID, defaultsErr)

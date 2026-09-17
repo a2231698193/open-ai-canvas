@@ -8,7 +8,7 @@ import { Tooltip } from "@/components/ui/base/tooltip";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useCopyText } from "@/hooks/use-copy-text";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import {
     APERTURES,
     APERTURE_META,
@@ -139,7 +139,7 @@ interface HoverTipProps {
 }
 
 const HoverTip = memo(({ title, description, useCase, children }: HoverTipProps) => {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const [coords, setCoords] = useState<{ left: number; top: number; placement: "top" | "bottom" } | null>(null);
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const tipRef = useRef<HTMLDivElement | null>(null);
@@ -282,7 +282,7 @@ export function CanvasNodeCameraPanel({
     onClose: () => void;
     onConfirm: (options: CameraControlOptions, prompt: string) => void;
 }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const reducedMotion = useReducedMotion();
     const copyText = useCopyText();
 

@@ -785,6 +785,57 @@ add({
   })
 });
 
+// Agnes 图像是同步端点，文生图与图生图共用 POST /v1/images/generations：
+// 不传 image 为文生图，传 image 为图生图或多图合成。官方参数表只承认
+// model、prompt、size（必填，档位 1K/2K/3K/4K 或 WxH 精确尺寸）、ratio、image、
+// return_base64 和 extra_body，因此这里不发送 n、output_format、quality、
+// background 等 OpenAI 兼容字段。顶层 response_format 是官方明确列出的错误写法，
+// 输出格式只能声明在 extra_body 内。参考图放 extra_body.image，支持公共 HTTPS URL
+// 和 Data URI Base64，所以不强制公共媒体 URL，本地开发也能直接联调。
+const agnesImageRatios = ["1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"];
+const agnesImageAspect = trim(ref("request.aspectRatio"));
+const agnesImageIsRatio = { $in: [agnesImageAspect, agnesImageRatios] };
+const agnesImageIsPixel = eq(len(split(agnesImageAspect, "x")), 2);
+// size 是官方必填项：像素尺寸原样透传，其余情况（比例、auto、空值）一律落到分辨率档位，不能省略。
+const agnesImageSize = conditional(agnesImageIsPixel, agnesImageAspect, {
+  $switch: {
+    cases: [
+      { when: { $in: [lower(trim(ref("request.quality"))), ["1k", "low", "standard"]] }, then: "1K" },
+      { when: { $in: [lower(trim(ref("request.quality"))), ["2k", "medium", "hd", "high"]] }, then: "2K" },
+      { when: { $in: [lower(trim(ref("request.quality"))), ["3k"]] }, then: "3K" },
+      { when: { $in: [lower(trim(ref("request.quality"))), ["4k"]] }, then: "4K" }
+    ],
+    default: "1K"
+  }
+});
+
+add({
+  id: "agnes-image", providerId: "agnes-image", name: "Agnes Image", vendor: "Agnes AI", capability: "image",
+  baseUrl: "https://api.agnes-ai.cn", auth: bearer, params: imageParams, requiresPublicMediaUrls: false,
+  notes: "Agnes 官方图像端点，同步返回。文生图与图生图共用 /v1/images/generations：不传 image 为文生图，传 image 为图生图或多图合成。size 必填，取 1K/2K/3K/4K 档位或 WxH 精确尺寸；画面比例走独立的 ratio 字段。参考图放在 extra_body.image，支持公共 HTTPS URL 或 Data URI Base64。顶层 response_format 是官方明确列出的错误写法，输出格式只能声明在 extra_body.response_format。该端点不接受 n，单次请求固定返回一张图片，需要多张时由上层拆分为多个任务。",
+  validations: [
+    { assert: { $or: [{ $in: [agnesImageAspect, ["", "auto", ...agnesImageRatios]] }, eq(len(split(agnesImageAspect, "x")), 2)] }, message: "Agnes 图像只支持 1:1、3:4、4:3、16:9、9:16、2:3、3:2、21:9 比例或 WxH 像素尺寸" }
+  ],
+  create: jsonCreate("/v1/images/generations", {
+    model: ref("request.model"),
+    prompt: ref("request.prompt"),
+    size: omit(agnesImageSize),
+    ratio: omit(conditional(agnesImageIsRatio, agnesImageAspect)),
+    extra_body: omit({
+      image: omit(map(sorted(ref("request.images")), "media", coalesce(ref("media.dataUrl"), ref("media.url")))),
+      response_format: coalesce(ref("request.providerOptions.agnes-image.response_format"), "url")
+    })
+  }, { originPath: true }),
+  response: {
+    status: "succeeded",
+    images: map(ref("response.data"), "item", {
+      url: omit(ref("item.url")),
+      dataUrl: conditional(ref("item.b64_json"), { $concat: ["data:image/png;base64,", ref("item.b64_json")] })
+    }),
+    errorPaths: ["error.code", "code"], messagePaths: ["error.message", "message", "msg"]
+  }
+});
+
 add({
   id: "agnes-video-v20", providerId: "agnes-video-v20", name: "Agnes Video V2.0", vendor: "Agnes AI", capability: "video",
   baseUrl: "https://apihub.agnes-ai.com/v1", auth: bearer, params: videoParams, requiresPublicMediaUrls: true,

@@ -8,6 +8,7 @@ type CachedResourceImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
     storageKey?: string;
     src?: string;
     fallback?: ReactNode;
+    loadingFallback?: ReactNode;
     eager?: boolean;
 };
 
@@ -15,7 +16,7 @@ type CachedResourceImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
  * 资源图片优先读取按用户隔离的本地 Blob 缓存，避免刷新后再次从对象存储下载。
  * 本地 image: 类型的 storageKey 也会自动从 LocalForage 恢复有效的 Object URL。
  */
-export function CachedResourceImage({ storageKey, src = "", fallback = null, eager = false, onError, ...props }: CachedResourceImageProps) {
+export function CachedResourceImage({ storageKey, src = "", fallback = null, loadingFallback = fallback, eager = false, onError, ...props }: CachedResourceImageProps) {
     const remoteResource = Boolean(resourceIdFromStorageKey(storageKey));
     const localImageResource = Boolean(storageKey && storageKey.startsWith("image:"));
     const targetRef = useRef<HTMLSpanElement>(null);
@@ -61,11 +62,15 @@ export function CachedResourceImage({ storageKey, src = "", fallback = null, eag
             const resolve = cacheResourceObjectUrl(storageKey);
             void resolve
                 .then((url) => {
-                    if (!cancelled) setCachedSrc(url || src);
+                    if (!cancelled) {
+                        setCachedSrc(url || src);
+                        setCacheFailed(!url && !src);
+                    }
                 })
                 .catch(() => {
                     if (!cancelled) {
-                        setCacheFailed(true);
+                        // 缓存读取失败时仍允许原始地址加载，真正的解码失败再显示占位。
+                        setCacheFailed(!src);
                         setCachedSrc(src);
                     }
                 });
@@ -120,7 +125,7 @@ export function CachedResourceImage({ storageKey, src = "", fallback = null, eag
     }
     return (
         <span ref={targetRef} className="cached-resource-image-shell">
-            {cachedSrc && !(cacheFailed && !src) ? <img {...props} src={cachedSrc} onError={handleImgError} /> : fallback}
+            {cachedSrc && !cacheFailed ? <img {...props} src={cachedSrc} onError={handleImgError} /> : cacheFailed ? fallback : loadingFallback}
         </span>
     );
 }

@@ -96,7 +96,7 @@ func compileCloudAgentPolicies(req CloudAgentRequest, skills []cloudAgentSkill, 
 	b.WriteString(media.Text)
 	b.WriteString("\n\n")
 	b.WriteString("本轮执行上下文（仅供行为编排，不改变服务端权限）：\n")
-	b.WriteString("- 本轮最多 8 次模型调用，每次最多 8 个工具。\n")
+	b.WriteString("- 模型调用不设固定轮数，由累计积分预算和运行状态控制；每次响应最多 8 个工具。生成任务数和视频秒数预算为 0 时表示该项不限。\n")
 	b.WriteString("- 当前权限模式：")
 	b.WriteString(req.PermissionMode)
 	b.WriteString("。只读模式只能读取分析，不能修改或生成媒体。\n")

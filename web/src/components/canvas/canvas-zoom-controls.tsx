@@ -7,7 +7,7 @@ import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { subscribeCanvasViewportPreview } from "@/lib/canvas/canvas-live-viewport";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 
 type CanvasZoomControlsProps = {
     scale: number;
@@ -23,7 +23,7 @@ type CanvasZoomControlsProps = {
 const QUICK_ZOOM_LEVELS = [0.25, 0.5, 1, 2] as const;
 
 export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoArrange, isMiniMapOpen, onToggleMiniMap, onOpenShortcuts, containerRef }: CanvasZoomControlsProps) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const rootRef = useRef<HTMLDivElement>(null);
     const liveScaleRef = useRef(scale);
     const rangeRef = useRef<HTMLInputElement>(null);

@@ -6,7 +6,7 @@ import { useCanvasOverlayLayer } from "@/components/canvas/canvas-overlay-layer"
 import { canvasThemes } from "@/lib/canvas-theme";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { subscribeCanvasGraphicsViewportPreview, subscribeCanvasNodeDragPreview, subscribeCanvasViewportPreview } from "@/lib/canvas/canvas-live-viewport";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type ConnectionHandle, type Position, type ViewportTransform } from "@/types/canvas";
 
 export type PendingConnectionCreate = {
@@ -17,7 +17,7 @@ export type PendingConnectionCreate = {
 };
 
 export function CanvasSelectionToolbar({ anchorRef, containerRef, count, children }: { anchorRef: RefObject<HTMLDivElement | null>; containerRef: RefObject<HTMLDivElement | null>; count: number; children: ReactNode }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const reducedMotion = useReducedMotion();
     const toolbarRef = useRef<HTMLDivElement>(null);
     const [anchor, setAnchor] = useState<{ left: number; top: number; placement: "above" | "below" } | null>(null);
@@ -155,7 +155,7 @@ function resolveNodePanelWidth(node: CanvasNodeData, viewport: ViewportTransform
 }
 
 export function CanvasConnectionCreateMenu({ pending, viewport, viewportSize, containerRef, canCreateDrawing, getDisabledReason, onCreate, onClose }: { pending: PendingConnectionCreate; viewport: ViewportTransform; viewportSize: { width: number; height: number }; containerRef: RefObject<HTMLDivElement | null>; canCreateDrawing: boolean; getDisabledReason: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.BatchTable | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config | CanvasNodeType.MediaConversion, provider?: "runninghub") => string; onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.BatchTable | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config | CanvasNodeType.MediaConversion, provider?: "runninghub") => void; onClose: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const reducedMotion = useReducedMotion();
     const menuRef = useRef<HTMLDivElement>(null);
     const [activeOption, setActiveOption] = useState<string | null>(null);
@@ -241,7 +241,7 @@ export function CanvasConnectionCreateMenu({ pending, viewport, viewportSize, co
 }
 
 function ConnectionCreateOption({ expanded, motionEnabled, icon, title, description, disabledReason, onClick }: { expanded: boolean; motionEnabled: boolean; icon: ReactNode; title: string; description: string; disabledReason?: string; onClick: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     return (
         <button type="button" aria-disabled={Boolean(disabledReason)} aria-label={title} aria-description={disabledReason || description} data-create-option={title} data-expanded={expanded} data-motion={motionEnabled ? "enabled" : "reduced"} className="canvas-connection-create-option group flex min-h-10 w-full cursor-pointer items-start gap-2 rounded-[var(--dock-item-radius)] px-2 py-1.5 text-left outline-none focus-visible:ring-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-40" style={{ color: theme.node.text, "--tw-ring-color": theme.node.muted, background: expanded ? theme.toolbar.itemHover : undefined } as CSSProperties} onClick={() => { if (!disabledReason) onClick(); }}>
             <span className="grid size-7 shrink-0 place-items-center rounded-[var(--r-md)] opacity-65 transition-opacity group-hover:opacity-100 [&_svg]:size-3.5" style={{ background: theme.toolbar.itemHover }}>{icon}</span>

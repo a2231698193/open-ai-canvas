@@ -8,7 +8,7 @@ import { formatVideoFrameTime, normalizeVideoFrameTimes } from "@/lib/canvas/can
 import { resourceIdFromStorageKey } from "@/services/api/resources";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { cacheResourceObjectUrl } from "@/services/resource-blob-cache";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeData } from "@/types/canvas";
 
 type SelectedVideoFrame = {
@@ -31,7 +31,7 @@ const MAX_SELECTED_FRAMES = 30;
 
 export function CanvasVideoFrameDialog({ node, open, onClose, onConfirm }: CanvasVideoFrameDialogProps) {
     const { message } = App.useApp();
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const videoRef = useRef<HTMLVideoElement>(null);
     const [videoUrl, setVideoUrl] = useState("");
     const [videoError, setVideoError] = useState(false);

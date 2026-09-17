@@ -282,10 +282,10 @@ function syncConnectionPath(entry: ConnectionSceneEntry, props: CanvasLeaferGrap
     entry.path.set({
         path: canvasConnectionPath(entry.connection, from, to, props.scriptScrollTopById[entry.from.id] || 0, props.scriptScrollTopById[entry.to.id] || 0).pathD,
         stroke: emphasized ? props.theme.accent.primary : props.theme.node.muted,
-        strokeWidth: emphasized ? 1.6 : 1,
+        strokeWidth: emphasized ? 2.8 : 2,
         strokeScaleFixed: true,
         strokeCap: "round",
-        opacity: emphasized ? 0.52 : 0.24,
+        opacity: emphasized ? 0.95 : 0.8,
         hittable: false,
     });
 }

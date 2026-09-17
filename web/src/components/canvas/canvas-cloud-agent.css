@@ -3,6 +3,11 @@
     overscroll-behavior: contain;
 }
 
+/* Agent 浮窗高于普通画布层，模型菜单必须叠在对话窗之上。 */
+.agent-model-picker-popover {
+    z-index: calc(var(--z-modal-overlay) + 1000) !important;
+}
+
 /* Flex 子页必须允许收缩，长模型名和 Skill 文案不能决定窗口宽度。 */
 .canvas-agent-panel > div,
 .canvas-agent-settings,
@@ -272,6 +277,86 @@
 .agent-composer-submit {
     min-width: 0;
     justify-self: end;
+}
+
+.canvas-agent-launcher {
+    display: grid;
+    width: 76px;
+    height: 76px;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    padding: 7px;
+    box-shadow: 0 16px 38px color-mix(in srgb, var(--canvas-agent-launcher-shadow) 64%, transparent);
+    cursor: pointer;
+    isolation: isolate;
+}
+
+.canvas-agent-launcher::before {
+    position: absolute;
+    inset: 3px;
+    border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    box-shadow: 0 5px 18px color-mix(in srgb, var(--foreground) 10%, transparent);
+    content: "";
+    backdrop-filter: blur(12px);
+    z-index: -1;
+}
+
+.canvas-agent-launcher-label {
+    position: absolute;
+    bottom: -17px;
+    left: 50%;
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--background) 92%, transparent);
+    color: color-mix(in srgb, var(--foreground) 72%, transparent);
+    font-size: 10px;
+    font-weight: 680;
+    line-height: 1;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+}
+
+.canvas-agent-launcher-status {
+    position: absolute;
+    top: 6px;
+    right: 7px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--background);
+    border-radius: 50%;
+    background: #57b786;
+    box-shadow: 0 2px 7px rgba(23, 90, 61, .28);
+}
+
+.canvas-agent-launcher-status.is-pending {
+    background: var(--canvas-agent-status-color, #df9b47);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--canvas-agent-status-color, #df9b47) 20%, transparent);
+}
+
+.canvas-agent-launcher-badge {
+    position: absolute;
+    top: 1px;
+    right: 62px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--background) 94%, transparent);
+    padding: 5px 8px;
+    color: var(--foreground);
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .canvas-agent-launcher { transition: none !important; }
 }
 
 .agent-composer-send-hint {

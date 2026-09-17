@@ -13,7 +13,7 @@ import type { ImageSplitParams } from "@/lib/canvas/canvas-image-data";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { generationErrorMessage } from "@/lib/generation-error";
 import { useCopyText } from "@/hooks/use-copy-text";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ViewportTransform } from "@/types/canvas";
 import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
 import { CanvasGridSplitPicker } from "./canvas-grid-split-picker";
@@ -127,7 +127,7 @@ export function CanvasNodeToolbar({
     const toolbarRef = useRef<HTMLDivElement>(null);
     const { message } = App.useApp();
     const copyText = useCopyText();
-    const themeName = useThemeStore((state) => state.theme);
+    const themeName = useActiveTheme();
     const theme = canvasThemes[themeName];
     const simpleMode = workspaceMode === "simple";
 
@@ -486,7 +486,7 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
 }
 
 export function CanvasNodeInfoModal({ node, open, onClose, onMetadataChange, readOnly = false, onUnauthorized }: { node: CanvasNodeData | null; open: boolean; onClose: () => void; onMetadataChange?: (nodeId: string, metadata: Partial<CanvasNodeMetadata>) => void; readOnly?: boolean; onUnauthorized?: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useActiveTheme()];
     const [assetTags, setAssetTags] = useState<string[]>([]);
     const [assetTagInput, setAssetTagInput] = useState("");
     const [assetCategory, setAssetCategory] = useState<CanvasAssetCategory>("other");

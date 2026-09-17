@@ -3,6 +3,13 @@ import { consumeTaskTextStream, createTaskTextStreamParser } from "@/services/ap
 
 export type AgentPermissionMode = "read_only" | "auto" | "request_approval";
 export type AgentReasoningMode = "off" | "auto" | "deep";
+export type AgentMediaSettings = {
+    logicalModelId?: string;
+    channelId?: string;
+    channelModelKey?: string;
+    size: string;
+    quality: string;
+};
 export type AgentProfileScope = "user" | "project" | "canvas";
 
 export type AgentProfileLayer = {
@@ -167,8 +174,8 @@ export function undoAgentCanvasRun(runId: string, input: { stepId?: string; expe
     return http.post<{ accepted: boolean; snapshotHash: string }>(`/agent/runs/${encodeURIComponent(runId)}/undo`, input, { signal });
 }
 
-export async function decideAgentApproval(runId: string, approvalId: string, decision: "approve" | "reject", reason?: string, signal?: AbortSignal) {
-    return http.post<{ accepted: boolean }>(`/agent/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}/decision`, { decision, reason: reason?.trim() || undefined }, { signal });
+export async function decideAgentApproval(runId: string, approvalId: string, decision: "approve" | "reject", reason?: string, signal?: AbortSignal, mediaSettings?: AgentMediaSettings) {
+    return http.post<{ accepted: boolean }>(`/agent/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}/decision`, { decision, reason: reason?.trim() || undefined, ...(mediaSettings ? { mediaSettings } : {}) }, { signal });
 }
 
 export function subscribeAgentEvents(runId: string, onEvent: (event: AgentEvent) => void, options: { after?: number; onError?: (error: unknown) => void; onConnectionChange?: (status: "connecting" | "connected" | "reconnecting" | "disconnected") => void; timeoutMs?: number } = {}) {

@@ -3,6 +3,11 @@ import type { ChannelModel, ChannelModelPriceTier } from "@/services/api/wallet"
 
 export type PriceTierMatchMode = "default" | "advanced";
 
+// 与后端保存口径一致：上游键比较前剥掉一次 models/ 前缀，避免极旧存量行误报差异。
+export function normalizeUpstreamModelKey(value: unknown): string {
+    return String(value || "").trim().replace(/^models\//, "");
+}
+
 export type PriceTierFormValues = {
     matchMode: PriceTierMatchMode;
     operation: string;
@@ -66,7 +71,8 @@ export function priceTierToForm(tier: ChannelModelPriceTier): PriceTierFormValue
 export function legacyPriceTierToForm(item: ChannelModel): PriceTierFormValues {
     return {
         ...defaultPriceTier(),
-        providerModelKey: item.providerModelKey || "",
+        // 不预填顶层上游键：统一价格档保持“跟随模型默认上游 ID”，
+        // 否则首次保存会把当时的上游键固化进档位，之后模型级重命名会被旧值遮蔽。
         billingMode: item.billingMode,
         unitPrice: item.unitPriceMicrocredits / 1_000_000,
         inputTokenPrice: item.inputTokenPriceMicrocredits / 1_000_000,

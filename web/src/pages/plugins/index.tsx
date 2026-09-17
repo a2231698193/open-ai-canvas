@@ -1,3 +1,4 @@
+import { CollectionToolbar } from "@/components/layout/collection-toolbar";
 import { App, Button, Input, Modal, Select, Typography } from "antd";
 import { Switch } from "@/components/ui/base/switch";
 import { AudioLines, CalendarDays, CheckCircle2, Clock3, CreditCard, ExternalLink, Film, FolderOpen, Image as ImageIcon, MessageSquareText, PlugZap, RefreshCw, Search, Settings2, ShieldCheck, SlidersHorizontal } from "lucide-react";
@@ -5,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { EmptyState } from "@/components/ui/product/empty-state";
+import { PageHeader } from "@/components/layout/workspace-page";
 import { listRegisteredPlugins } from "@/lib/plugins/plugin-registry";
 import "@/lib/plugins/builtin";
 import { EAGLE_PLUGIN_ID } from "@/lib/plugins/builtin/eagle";
@@ -250,9 +252,7 @@ export default function PluginsPage() {
                 <div className="plugins-page-layout">
                     <aside className="plugins-sidebar" aria-label="插件分类">
                         <div className="plugins-sidebar-heading">
-                            <span className="plugins-sidebar-kicker">PLUGIN CENTER</span>
-                            <h1>插件中心</h1>
-                            <p>统一管理 provider、工作流、画布节点和其他扩展能力。</p>
+                            <PageHeader title="插件中心" description="连接模型、素材与工作流，拓展你的创作工具。" />
                         </div>
                         <nav className="plugins-sidebar-nav">
                             <button type="button" className={`plugins-sidebar-item${categoryFilter === "all" ? " is-active" : ""}`} aria-current={categoryFilter === "all" ? "page" : undefined} onClick={() => selectCategory("all")}>
@@ -290,7 +290,16 @@ export default function PluginsPage() {
                         </nav>
                     </aside>
                     <div className="plugins-page-content">
-                        <div className="plugins-toolbar" aria-label="插件筛选">
+                        <CollectionToolbar label="插件筛选" trailing={<div className="plugins-toolbar-actions">
+                                <Button icon={<RefreshCw className="size-4" />} loading={backendPluginsLoading} onClick={() => void reloadBackendPlugins()}>
+                                    刷新插件
+                                </Button>
+                                {user?.role === "admin" ? (
+                                    <Button type="primary" onClick={() => navigate("/admin/plugins")}>
+                                        管理员插件管理
+                                    </Button>
+                                ) : null}
+                            </div>}>
                             <Input
                                 className="plugins-search"
                                 prefix={<Search className="size-4 text-foreground/38" aria-hidden="true" />}
@@ -320,20 +329,7 @@ export default function PluginsPage() {
                                 onChange={(value) => setTrustFilter(value as "all" | "trusted")}
                                 aria-label="按来源筛选"
                             />
-                            <span className="plugins-filter-icon" aria-hidden="true">
-                                <SlidersHorizontal className="size-4" />
-                            </span>
-                            <div className="plugins-toolbar-actions">
-                                <Button icon={<RefreshCw className="size-4" />} loading={backendPluginsLoading} onClick={() => void reloadBackendPlugins()}>
-                                    刷新插件
-                                </Button>
-                                {user?.role === "admin" ? (
-                                    <Button type="primary" onClick={() => navigate("/admin/plugins")}>
-                                        管理员插件管理
-                                    </Button>
-                                ) : null}
-                            </div>
-                        </div>
+                        </CollectionToolbar>
 
                         {filteredPlugins.length ? (
                             <div className="plugins-sections">
@@ -348,6 +344,7 @@ export default function PluginsPage() {
                                                 sectionRefs.current[section.key] = element;
                                             }}
                                             className="plugin-section"
+                                            data-category={section.key === "image" ? "creative" : section.key === "video" ? "drama" : section.key === "audio" ? "social" : section.key === "payment" ? "ecommerce" : undefined}
                                         >
                                             <header className="plugin-section-heading">
                                                 <span className="plugin-section-icon">
@@ -369,7 +366,7 @@ export default function PluginsPage() {
                                                     const sourceLabel = pluginSourceLabel(plugin, state);
                                                     const canConfigure = canConfigurePlugin(plugin);
                                                     return (
-                                                        <section key={plugin.manifest.id} className={`plugin-card library-card-surface${trusted ? " is-trusted" : ""}`}>
+                                                        <section key={plugin.manifest.id} className={`product-collection-card plugin-card library-card-surface${trusted ? " is-trusted" : ""}`}>
                                                             <button
                                                                 type="button"
                                                                 className="plugin-card-main"
@@ -383,7 +380,7 @@ export default function PluginsPage() {
                                                             >
                                                                 <div className="plugin-card-heading">
                                                                     <span className={`plugin-icon-tile${trusted ? " is-trusted" : ""}`} aria-hidden="true">
-                                                                        <PlugZap className="size-5" />
+                                                                        <SectionIcon className="size-5" />
                                                                     </span>
                                                                     <div className="min-w-0 flex-1">
                                                                         <div className="plugin-card-title-row">

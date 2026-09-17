@@ -24,6 +24,15 @@ export type TextCapabilityConfig = {
 
 export type ImageSizeParameter = "none" | "size" | "aspect_ratio";
 
+/**
+ * 普通视频模型提示词字符数的默认上限。
+ *
+ * 视频提示词由「输入框文本 + 连线内容 + 技能上下文」合成，远长于用户手输内容，
+ * 因此不能沿用偏小的默认值把画布工作流拦在本地。必须与后端
+ * `DefaultVideoPromptMaxChars` 保持一致，否则前端放行后端拒绝（或反之）。
+ */
+export const DEFAULT_VIDEO_PROMPT_MAX_CHARS = 8000;
+
 export type ImageCapabilityConfig = {
     references: {
         promptMaxChars: number;
@@ -250,6 +259,26 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         image.outputFormat = { supported: false };
         image.maxOutputs = 4;
     }
+    if (protocol === "agnes-image") {
+        // Agnes 图像：size 必填，取 1K/2K/3K/4K 档位或 WxH 精确尺寸，画面比例走独立的 ratio 字段；
+        // 参考图放 extra_body.image，支持多图合成，但没有蒙版端点。
+        image.references.maxImages = 9;
+        image.references.maskSupported = false;
+        image.size = {
+            parameter: "aspect_ratio",
+            values: ["1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"],
+            default: "1:1",
+            allowCustom: false,
+        };
+        // 官方档位是 1K/2K/3K/4K，统一层只提供 1k/2k/4k 三档；3K 保留在协议映射里但不在界面露出。
+        image.quality = { supported: true, values: ["1k", "2k", "4k"], default: "2k" };
+        image.transparentBackground = { supported: false, default: false };
+        // 顶层 response_format 是官方明确的错误写法，输出格式只能在 extra_body 内声明。
+        image.responseFormat = { supported: false };
+        image.outputFormat = { supported: false };
+        // 该端点不接受 n，单次请求固定返回一张图片。
+        image.maxOutputs = 1;
+    }
     if (protocol !== "grok-image" && model.trim().toLowerCase().startsWith("grok-imagine-image")) {
         image.references.maxImages = 0;
         image.references.maskSupported = false;
@@ -276,7 +305,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
     };
     const video: VideoCapabilityConfig = {
         references: {
-            promptMaxChars: 1000,
+            promptMaxChars: DEFAULT_VIDEO_PROMPT_MAX_CHARS,
             minImages: 0,
             maxImages: 9,
             maxImageBytes: 30 * 1024 * 1024,

@@ -320,7 +320,8 @@ export function useCanvasConnectionController({
             setConnections(nextConnections);
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
-            if (nodeType !== CanvasNodeType.Text && nodeType !== CanvasNodeType.Script && nodeType !== CanvasNodeType.BatchTable && nodeType !== CanvasNodeType.Audio && nodeType !== CanvasNodeType.MediaConversion) setDialogNodeId(newNode.id);
+            if (nodeType === CanvasNodeType.Script) setDialogNodeId(null);
+            else if (nodeType !== CanvasNodeType.Text && nodeType !== CanvasNodeType.BatchTable && nodeType !== CanvasNodeType.Audio && nodeType !== CanvasNodeType.MediaConversion) setDialogNodeId(newNode.id);
             const skippedCount = batchPlan.skipped.length;
             const duplicateCount = batchPlan.duplicates.length;
             const suffix = skippedCount || duplicateCount ? `，跳过 ${skippedCount + duplicateCount} 个` : "";
@@ -386,7 +387,8 @@ export function useCanvasConnectionController({
         setSelectedNodeIds(new Set([newNode.id]));
         setSelectedConnectionId(null);
         if (nodeType === CanvasNodeType.Drawing) setDrawingNodeId(newNode.id);
-        else if (nodeType !== CanvasNodeType.Text && nodeType !== CanvasNodeType.Script && nodeType !== CanvasNodeType.BatchTable && nodeType !== CanvasNodeType.Audio && nodeType !== CanvasNodeType.MediaConversion) setDialogNodeId(newNode.id);
+        else if (nodeType === CanvasNodeType.Script) setDialogNodeId(null);
+        else if (nodeType !== CanvasNodeType.Text && nodeType !== CanvasNodeType.BatchTable && nodeType !== CanvasNodeType.Audio && nodeType !== CanvasNodeType.MediaConversion) setDialogNodeId(newNode.id);
         closeConnectionCreateMenu();
         setConnecting(null);
     }, [closeConnectionCreateMenu, config, connectionsRef, defaultDrawingEngine, message, nodesRef, projectId, runtimeStatuses, setConnecting, setConnections, setDialogNodeId, setDrawingNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, tldrawLicenseKey]);

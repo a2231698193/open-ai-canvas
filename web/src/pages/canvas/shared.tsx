@@ -20,16 +20,17 @@ import { FOLDER_COLLAPSED_HEIGHT, FOLDER_COLLAPSED_WIDTH, isCanvasFolderNode, is
 import { ensureMediaNodeMinimumSize } from "@/lib/canvas/canvas-node-size";
 import { getContextResourceNodes } from "@/lib/canvas/canvas-resource-references";
 import { getPublicCanvasShare } from "@/services/api/canvas-share";
-import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasThemeStore, useCanvasThemeScope } from "@/stores/canvas/use-canvas-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type Position, type ViewportTransform } from "@/types/canvas";
 
 type ContextMenu = { x: number; y: number; world: Position; nodeId?: string };
 type DragState = { primaryId: string; nodeIds: string[]; startX: number; startY: number; origins: Map<string, Position>; moved: boolean };
 
 export default function SharedCanvasPage() {
+    useCanvasThemeScope();
     const { token = "" } = useParams();
     const { message } = App.useApp();
-    const colorTheme = useThemeStore((state) => state.theme);
+    const colorTheme = useCanvasThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const containerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<ViewportTransform>({ x: 0, y: 0, k: 1 });
@@ -79,10 +80,10 @@ export default function SharedCanvasPage() {
 
     useEffect(() => {
         let active = true;
-        const themeBeforeShare = useThemeStore.getState().theme;
+        const themeBeforeShare = useCanvasThemeStore.getState().theme;
         let appliedShareTheme: typeof themeBeforeShare | null = null;
         let themeChangedAfterApply = false;
-        const unsubscribeTheme = useThemeStore.subscribe((state, previous) => {
+        const unsubscribeTheme = useCanvasThemeStore.subscribe((state, previous) => {
             if (appliedShareTheme && state.theme !== previous.theme && state.theme !== appliedShareTheme) themeChangedAfterApply = true;
         });
         setLoading(true);
@@ -94,7 +95,7 @@ export default function SharedCanvasPage() {
             const nextAppearance = project.appearance ? normalizeCanvasAppearance(project.appearance, themeBeforeShare) : canvasAppearanceForTheme(themeBeforeShare);
             setAppearance(nextAppearance);
             appliedShareTheme = canvasAppearanceBaseTheme(nextAppearance, themeBeforeShare);
-            useThemeStore.getState().setTheme(appliedShareTheme);
+            useCanvasThemeStore.getState().setTheme(appliedShareTheme);
             setBackgroundMode(project.backgroundMode || DEFAULT_CANVAS_BACKGROUND_MODE);
             const initial = project.viewport || { x: 0, y: 0, k: 1 };
             viewportRef.current = initial;
@@ -107,8 +108,8 @@ export default function SharedCanvasPage() {
         return () => {
             active = false;
             unsubscribeTheme();
-            if (appliedShareTheme && !themeChangedAfterApply && useThemeStore.getState().theme === appliedShareTheme) {
-                useThemeStore.getState().setTheme(themeBeforeShare);
+            if (appliedShareTheme && !themeChangedAfterApply && useCanvasThemeStore.getState().theme === appliedShareTheme) {
+                useCanvasThemeStore.getState().setTheme(themeBeforeShare);
             }
         };
     }, [token]);
@@ -293,7 +294,7 @@ export default function SharedCanvasPage() {
 }
 
 function SharedContextMenu({ menu, onAdd, onInfo, onUnauthorized }: { menu: ContextMenu; onAdd: (type: CanvasNodeType) => void; onInfo: () => void; onUnauthorized: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useCanvasThemeStore((state) => state.theme)];
     return <div data-canvas-no-zoom className="absolute z-[var(--z-modal)] min-w-48 rounded-lg border p-1.5 shadow-xl" style={{ left: menu.x, top: menu.y, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
         {menu.nodeId ? <><MenuButton icon={<Eye />} label="查看节点信息" onClick={onInfo} /><MenuButton icon={<LockKeyhole />} label="编辑或生成" onClick={onUnauthorized} /></> : <>
             <div className="px-2 py-1.5 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>添加临时节点</div>
@@ -310,7 +311,7 @@ function MenuButton({ icon, label, onClick }: { icon: ReactNode; label: string; 
 }
 
 function SharedConfigNode({ node, onUnauthorized }: { node: CanvasNodeData; onUnauthorized: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useCanvasThemeStore((state) => state.theme)];
     return <div className="flex h-full w-full flex-col overflow-hidden rounded-[var(--panel-radius)]">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}><ImageIcon className="size-4" /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{node.title}</span></div>
         <div className="min-h-0 flex-1 whitespace-pre-wrap break-words p-4 text-sm leading-6" style={{ color: theme.node.muted }}>{node.metadata?.composerContent || node.metadata?.prompt || "未填写提示词"}</div>
@@ -319,7 +320,7 @@ function SharedConfigNode({ node, onUnauthorized }: { node: CanvasNodeData; onUn
 }
 
 function SharedScriptNode({ node, onUnauthorized }: { node: CanvasNodeData; onUnauthorized: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const theme = canvasThemes[useCanvasThemeStore((state) => state.theme)];
     const rows = node.metadata?.storyboard?.rows || [];
     return <div className="flex h-full w-full flex-col overflow-hidden rounded-[var(--panel-radius)]">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4" style={{ background: theme.node.panel, borderColor: theme.node.stroke }}><Clapperboard className="size-4" /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{node.title}</span><span className="text-xs" style={{ color: theme.node.muted }}>{rows.length} 镜</span><button type="button" className="grid size-7 place-items-center rounded hover:bg-black/5 dark:hover:bg-white/10" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onUnauthorized(); }} aria-label="一键创建视频节点"><Video className="size-3.5" /></button></div>

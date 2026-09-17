@@ -17,11 +17,12 @@ description: 信封、错误码与 OpenAPI
 
 ## 云端 Agent
 
-所有 `/agent` 路径都需要登录 Cookie。`GET /agent/capabilities` 返回当前版本（2）、权限模式、上下文范围、技能和工具清单。Agent 运行由服务端任务 Worker 驱动，浏览器断开不会停止运行。
+所有 `/agent` 路径都需要登录 Cookie。`GET /agent/capabilities` 返回当前版本（2）、权限模式、上下文范围、技能和工具清单；`maxHistoryPairs: 0`、`maxSteps: 0` 表示不设固定对话 / 模型调用轮数，历史仍受 `maxHistoryBytes: 64000` 约束。Agent 运行由服务端任务 Worker 驱动，浏览器断开不会停止运行。
 
 - `POST /agent/runs` 创建一轮；`POST /agent/runs/:id/messages` 以上一轮为父节点创建新的不可变轮次，两者返回 `{ run }`，追加后必须使用新的 `run.id` 订阅。
 - 请求字段：`canvasId`、`prompt`、受管 `logicalModelId` 或 `channelId` + `channelModelKey`、`permissionMode: "read_only" | "request_approval" | "auto"`、`reasoningMode: "off" | "auto" | "deep"`、`profileRevision`、`skillIds`、`contextScope: [] | ["canvas"]`、`budget: { maxCredits, maxGenerationTasks, maxVideoSeconds }`、`idempotencyKey`。不接受密钥、自定义 URL、客户端历史或未知字段。
-- 同用户同幂等键及相同请求返回同一运行；不同请求复用键返回 409。失败后重试同一提交应保留键。上一轮未完成时禁止追加；已完成、失败、取消或已拒绝的终态轮次作为不可变历史读取，即使其冻结的策略或节点能力版本早于当前服务，也可用于创建采用当前执行合同的新一轮，父运行不会被改写。旧版合同下仍活动或待审批的运行不得恢复执行。历史最多携带 8 对消息及 64KB JSON，超限提示新建对话；历史结构损坏返回明确 409，不投影为通用 500。
+- 同用户同幂等键及相同请求返回同一运行；不同请求复用键返回 409。失败后重试同一提交应保留键。上一轮未完成时禁止追加；已完成、失败、取消或已拒绝的终态轮次作为不可变历史读取，即使其冻结的策略或节点能力版本早于当前服务，也可用于创建采用当前执行合同的新一轮，父运行不会被改写。旧版合同下仍活动或待审批的运行不得恢复执行。历史不设固定消息对数，JSON 最大 64000 字节，超限提示新建对话；历史结构损坏返回明确 409，不投影为通用 500。
+- `POST /agent/runs/:id/approvals/:approvalId/decision` 的 `{ decision, reason? }` 可在批准图片生成时附带 `mediaSettings: { logicalModelId? | channelId? + channelModelKey?, size, quality }`。仅替换本次模型选择、画幅和质量，不允许修改目标、提示词、引用、模式或快照。服务端先无收费预检，失败保留待审批状态；成功原子更新审批调用、哈希及预览，提交任务时再次校验内容、资源归属、模型能力、价格与累计预算。相同参数重复批准幂等，不同参数复用已决定审批返回 409。
 - 审批拒绝是独立终态 `rejected`，表示本次操作未执行；不会生成 `tool_failed`、继续调用模型、写入画布、提交生成任务或扣费。拒绝后的草稿按既有草稿策略保留，用户可在下一轮说明修改方向。
 - 创建和追加消息可选择 `reasoningMode`，默认 `off`；`auto`/`deep` 为服务端行为策略与模型推理配置的选择，不等于允许暴露内部思维链。供应商能力由后端校验；声明式 Agent 渠道不支持时明确报错。推理可能增加耗时和费用。
 - Cloud Agent 与首页创造的规划请求使用自动工具选择。OpenAI Chat Completion 兼容协议会把显式 `auto` 归一化为省略 `tool_choice`，沿用协议默认的自动选择语义；显式开启思考模式时还会在首个上游请求前移除 `required` 或指定函数对象。非思考模式仍保留艺术点评、提示词优化等结构化任务的强制函数选择。若上游隐式开启思考而本地未声明，仍按 `required` → `auto` → 省略字段做兼容重试。
@@ -36,7 +37,7 @@ description: 信封、错误码与 OpenAPI
 - `generate_media` 支持图片 / 视频 / 音频：必填 `mode`、`prompt`、`snapshotHash`、`nodeId`（可续用草稿，无草稿时才新建）、`title`、有序 `referenceNodeIds`（无参考传空数组），再加一种模型选择；图片 / 视频要求 `size`，视频要求正数 `durationSeconds`，图片 / 音频时长为 0。可传来源节点 `sourceNodeId`、`quality`、视频 `videoGenerateAudio`。`sourceNodeId` 仅接文本 / 镜头提示词节点；参考图片、视频、音频只放 `referenceNodeIds`，无文本来源时留空且不重复传入。引用从当前画布节点的账号资源解析，校验归属、类型、就绪状态和模型能力，不接受任意 URL。图片生成仅接图片参考；视频可按模型能力接图片、视频、音频参考；音频生成当前仅支持文本输入。
 - 参数选择与收费授权分开：用户明确说“随便 / 你决定 / 按默认”时，Agent 可从当前目录选择能力及预算匹配的模型，优先用户最近明确使用的可用模型，其次价格清楚的低成本选项；支持时沿用参考图原始比例，否则选目录默认，时长用目录默认。未要求音频且模型不支持时用默片。用户接受已推荐方案后不再要求特定确认口令；仅真正缺失或冲突的阻塞项一次性询问。本轮已有目录结果应复用。以上是 Agent 的参数选择策略，服务端仍强校验具体规格，不提供绕过预算 / 能力校验的默认兜底，也不绕过独立收费审批。
 - 媒体参数先进行无任务、无预留账单的准入校验，再在同一事务创建草稿节点、来源 / 资产连线及待审批检查点；`approval_requested` 和运行中的 `approval` 携带目录真实 `modelName`。用户批准后才在事务中绑定任务、创建预留账单并更新检查点；拒绝或取消保留未生成草稿，不提交媒体任务。`nodeId` 可续用同类型、未锁定、idle、无任务且无媒体结果的空白占位节点或当前运行草稿；跨轮 Agent 草稿还要求原运行属于同一用户和画布、已结束且清理完成。续用必须重新读取快照并重新审批，不能复用旧审批、覆盖已有任务或成品，不能通过循环新建节点绕过限制。画布读取的 `generationDraft` 提示未提交、原运行状态、是否仍在清理及仍需审批；写入仍重新强校验。已明确审批的规格不得被模型默认值静默替换。媒体终态回写原节点；已删除或已换任务的节点不自动复活，结果仍可从任务中心查看。
-- Agent 的 `snapshotHash` 忽略顶层 `viewport`、`updatedAt`，避免平移 / 聚焦自动保存使审批失效；节点、连线、标题等内容改动仍需重新读取并审批，数据库写入仍使用完整快照 CAS。客户端刷新同样区分视口和真实内容编辑，并保留本地视口。
+- Agent 的 `snapshotHash` 忽略顶层 `viewport`、`updatedAt`。`canvas_get_state` 另返回 `mediaSnapshotHash`，供 `generate_media.snapshotHash` 使用，并额外忽略节点 `position`；创建生成草稿后的审批也固定该内容哈希。因此移动图片或草稿不会使生成审批失效，执行时保留最新坐标；节点内容、素材、锁定状态和连线变化仍需重新读取并审批。画布修改与撤销继续使用包含位置的 `snapshotHash`，数据库写入仍使用完整快照 CAS。客户端刷新保留本地视口。
 - `read_only` 只允许读取；`request_approval` 对写画布和媒体生成暂停为 `waiting_approval`；`auto` 可在预算内执行已授权画布操作，但图片 / 视频生成始终独立审批，不能绕过。`maxGenerationTasks` / `maxVideoSeconds` 为非负整数，0 表示该项不设业务上限，正数按本轮累计执行；不再固定 8 次模型调用、8 个生成任务或 120 秒视频。积分上限仍必填且大于 0，实际报价在任务创建与预留积分前校验，时长必须符合所选模型的实际能力。失败事件保留具体错误和已有任务的 `taskId`、`nodeId`、`status`；媒体结果的 `phase` 区分 `admission` 与 `completion`，`taskSubmitted` 表达是否已提交。模型应报告错误，不能自行删减提示词或自动重试收费生成。
 - 必须有当前用户已保存的画布。首轮摘要最多取前 80 个节点；`canvas_get_state` 可按 `offset` 每页读取 40 个节点、资产可引用状态及相关连线，按 `nodeIds` 精读最多 8 个节点（正文每字段最多 16000 字符），通过 `hasMore` / `nextOffset` 和字段 `Truncated` 判断是否完整。分镜表包含镜头、角色节点与资产绑定；摘要每页最多 20 行，精读每次 1 行，可用 `storyboardOffset` 翻页；单行叙事文本累计最多 24000 字符，角色 / 绑定各最多 16 项。上下文不含媒体 URL、任意元数据或未同步修改；节点名称不等于图像视觉识别。普通任务重试接口不能重试 Agent 任务。
 - `GET /agent/runs/:id` 返回运行信息；`POST /agent/runs/:id/cancel` 取消当前运行及活动子任务；`POST /agent/runs/:id/approvals/:approvalId/decision` 接受 `{"decision":"approve"|"reject","reason":"..."}`，审批决定幂等且服务端校验归属。

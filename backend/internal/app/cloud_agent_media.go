@@ -213,7 +213,8 @@ func cloudAgentMediaDocument(repo *repository.Repository, userID, canvasID strin
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if args.SnapshotHash == "" || cloudAgentCanvasHash(doc) != args.SnapshotHash {
+	unchanged := args.SnapshotHash != "" && (cloudAgentCanvasHash(doc) == args.SnapshotHash || cloudAgentMediaContentHash(doc) == args.SnapshotHash)
+	if !unchanged {
 		return nil, nil, nil, creationConflict("画布已变化，请重新读取画布并重新审批；未提交生成任务")
 	}
 	nodes, err := creationObjects(doc["nodes"])
