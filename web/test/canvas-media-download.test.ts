@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildImageGenerationNodeTitle } from "@/lib/canvas/canvas-generation-title";
+import { buildImageGenerationNodeTitle, mergeLiveCanvasNodeTitles } from "@/lib/canvas/canvas-generation-title";
 import { buildCanvasMediaDownloadFileName, canvasMediaFileExtension } from "@/lib/canvas/canvas-media-download";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -68,5 +68,19 @@ describe("generated image title", () => {
         const variant = mediaNode({ title: buildImageGenerationNodeTitle("未来城市", mediaNode({ title: "未来城市 · C", metadata: { versionOfNodeId: "source", versionLabel: "C" } })) });
         expect(buildCanvasMediaDownloadFileName("自由画布", copy, now)).toBe("自由画布_未来城市_copy1_20260829.png");
         expect(buildCanvasMediaDownloadFileName("自由画布", variant, now)).toBe("自由画布_未来城市 · C_20260829.png");
+    });
+
+    test("原位生成保留用户重命名，不退回默认「图片」", () => {
+        const renamed = mediaNode({ title: "女主" });
+        expect(buildImageGenerationNodeTitle("一个女孩站在海边", renamed, undefined, 1, { preserveCustomTitle: true })).toBe("女主");
+        expect(buildImageGenerationNodeTitle("一个女孩站在海边", mediaNode({ title: "图片" }), undefined, 1, { preserveCustomTitle: true })).toBe("一个女孩站在海边");
+        expect([0, 1].map((index) => buildImageGenerationNodeTitle("一个女孩站在海边", renamed, index, 2, { preserveCustomTitle: true }))).toEqual(["女主 · 1", "女主 · 2"]);
+    });
+
+    test("生成结果回写时保留画布上已经改过的名称", () => {
+        const persisted = [mediaNode({ id: "image-1", title: "图片" })];
+        const live = [mediaNode({ id: "image-1", title: "女主立绘" })];
+        expect(mergeLiveCanvasNodeTitles(persisted, live)[0]?.title).toBe("女主立绘");
+        expect(mergeLiveCanvasNodeTitles(persisted, [mediaNode({ id: "image-1", title: "图片" })])[0]?.title).toBe("图片");
     });
 });

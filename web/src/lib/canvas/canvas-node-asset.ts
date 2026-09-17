@@ -1,3 +1,4 @@
+import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { getDataUrlByteSize } from "@/lib/image-utils";
 import { canvasNodeVideoPreviewUrl } from "@/lib/canvas/canvas-media-preview";
 import type { Asset, AssetCategory, NewAsset } from "@/stores/use-asset-store";
@@ -21,7 +22,7 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
     if (node.type === CanvasNodeType.Text && !content) return null;
     if (isMedia && !content && !storageKey) return null;
     if (!isMedia && node.type !== CanvasNodeType.Text) return null;
-    const title = node.metadata?.prompt?.slice(0, 24) || node.title || canvasAssetFallbackTitle(node.type);
+    const title = (!isGenericCanvasNodeTitle(node.title) && node.title.trim()) || node.metadata?.prompt?.slice(0, 24) || node.title || canvasAssetFallbackTitle(node.type);
     const metadata = {
         source: options.source,
         canvasId: options.canvasId,

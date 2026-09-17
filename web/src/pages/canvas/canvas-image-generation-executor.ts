@@ -90,7 +90,7 @@ export async function executeImageGeneration({
     const rootNode: CanvasNodeData = {
         id: rootId,
         type: CanvasNodeType.Image,
-        title: buildImageGenerationNodeTitle(effectivePrompt, sourceNode),
+        title: buildImageGenerationNodeTitle(effectivePrompt, sourceNode, undefined, 1, { preserveCustomTitle: reuseSourceNode }),
         position: rootPosition,
         width: rootWidth,
         height: rootHeight,
@@ -117,7 +117,7 @@ export async function executeImageGeneration({
     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
         id,
         type: CanvasNodeType.Image,
-        title: buildImageGenerationNodeTitle(effectivePrompt, sourceNode, index, count),
+        title: buildImageGenerationNodeTitle(effectivePrompt, sourceNode, index, count, { preserveCustomTitle: reuseSourceNode }),
         position: imageGenerationChildPosition(rootNode.position, rootNode.width, outputNodeSize, index),
         width: outputNodeSize.width,
         height: outputNodeSize.height,

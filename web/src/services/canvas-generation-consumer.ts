@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 
+import { mergeLiveCanvasNodeTitles } from "@/lib/canvas/canvas-generation-title";
 import { applyMaterializedGenerationTaskResultToNodes } from "@/lib/canvas/canvas-generation-task-sync";
 import { parseCanvasStorageDocument, rebaseCanvasProjects, serializeCanvasStorageDocument } from "@/lib/canvas/canvas-storage-revision";
 import { localForageStorageForScope } from "@/lib/localforage-storage";
@@ -124,8 +125,7 @@ export async function applyCanvasGenerationTaskNodeEffect(input: {
         nodes: applied.nodes,
         signal: input.signal,
     });
-    input.nodesRef.current = persistedProject.nodes;
-    input.setNodes(persistedProject.nodes);
+    writePersistedGenerationNodes(input, persistedProject.nodes);
 }
 
 export async function persistCanvasOperationContinuationEffect(input: {
@@ -170,8 +170,14 @@ export async function persistCanvasOperationContinuationEffect(input: {
         if (error instanceof Error && error.name === "AbortError") throw error;
         throw new CanvasGenerationDurableAckError(error);
     }
-    input.nodesRef.current = persistedProject.nodes;
-    input.setNodes(persistedProject.nodes);
+    writePersistedGenerationNodes(input, persistedProject.nodes);
+}
+
+
+function writePersistedGenerationNodes(input: { nodesRef: { current: CanvasNodeData[] }; setNodes: Dispatch<SetStateAction<CanvasNodeData[]>> }, persistedNodes: CanvasNodeData[]) {
+    const nodes = mergeLiveCanvasNodeTitles(persistedNodes, input.nodesRef.current);
+    input.nodesRef.current = nodes;
+    input.setNodes(nodes);
 }
 
 type CinematicCanvasRollbackState = Pick<CanvasProject, "nodes" | "connections">;

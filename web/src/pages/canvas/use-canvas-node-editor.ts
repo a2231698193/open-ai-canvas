@@ -11,6 +11,7 @@ import { applyBatchPrimaryImage, applyNodeConfigPatch } from "@/lib/canvas/canva
 import { resetGenerationTaskMetadata } from "@/lib/canvas/canvas-project-generation";
 import { CONTENT_MODERATION_ERROR_CODE, isContentModerationError } from "@/lib/generation-error";
 import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
+import { useAssetStore } from "@/stores/use-asset-store";
 import { CanvasNodeType, type CanvasFolderStyle, type CanvasFolderTheme, type CanvasNodeData, type CanvasNodeMetadata, type Position } from "@/types/canvas";
 
 type UseCanvasNodeEditorOptions = {
@@ -88,7 +89,12 @@ export function useCanvasNodeEditor({
     }, [nodesRef, setDialogNodeId, setHoveredNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds, setToolbarNodeId]);
 
     const handleNodeTitleChange = useCallback((nodeId: string, title: string) => {
-        setNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, title } : node)));
+        setNodes((current) => current.map((node) => {
+            if (node.id !== nodeId) return node;
+            const assetId = node.metadata?.assetId?.trim();
+            if (assetId) useAssetStore.getState().updateAsset(assetId, { title });
+            return { ...node, title };
+        }));
     }, [setNodes]);
 
     const handleFolderStyleChange = useCallback((nodeId: string, style: CanvasFolderStyle) => {

@@ -1,3 +1,4 @@
+import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { canvasNodeToAsset, declaredCanvasNodeAssetCategory, findCanvasNodeAsset, type CanvasAssetSource } from "@/lib/canvas/canvas-node-asset";
 import { canvasVideoAssetPreviewUrl } from "@/lib/canvas/canvas-media-preview";
 import { readImageMeta } from "@/lib/image-utils";
@@ -17,6 +18,7 @@ import { getActiveUserScope } from "@/lib/user-scope";
 import { normalizeAssetCategory } from "@/lib/asset-category";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
 import { useAssetStore, type AssetCategory, type AssetStatus, type NewAsset } from "@/stores/use-asset-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import type { CanvasNodeData } from "@/types/canvas";
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -97,15 +99,18 @@ export function ensureCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions) {
 async function persistCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions): Promise<CanvasNodeAssetResult> {
     throwIfAborted(options.signal);
     const store = useAssetStore.getState();
+    const input = canvasNodeToAsset(options.node, { canvasId: options.canvasId, source: options.source, taskId: options.taskId });
     let asset = findCanvasNodeAsset(store.assets, options.node, options.canvasId, options.taskId);
     const declaredCategory = options.category || declaredCanvasNodeAssetCategory(options.node);
     let created = false;
     if (!asset) {
-        const input = canvasNodeToAsset(options.node, { canvasId: options.canvasId, source: options.source, taskId: options.taskId });
         if (!input) throw new Error("当前节点没有可保存的素材内容");
         const assetId = store.addAsset(options.category ? { ...input, category: options.category } : input);
         asset = useAssetStore.getState().assets.find((item) => item.id === assetId);
         created = true;
+    } else if (input?.title && asset.title !== input.title && (!isGenericCanvasNodeTitle(options.node.title) || isGenericCanvasNodeTitle(asset.title))) {
+        store.updateAsset(asset.id, { title: input.title });
+        asset = useAssetStore.getState().assets.find((item) => item.id === asset?.id) || asset;
     }
     if (!asset) throw new Error("素材写入本地失败");
     if (declaredCategory && asset.category !== declaredCategory) {
@@ -284,7 +289,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
         const stored = await storedGenerationImage(image, input.effectKey, scope, input.signal);
         return {
             kind: "image",
-            title: "生成图片",
+            title: generationAssetTitle(input.task, "生成图片"),
             coverUrl: stored.url,
             tags: ["生成"],
             status: "confirmed",
@@ -331,7 +336,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
         if (!stored.url) throw new Error("视频结果资源不可用");
         return {
             kind: "video",
-            title: "生成视频",
+            title: generationAssetTitle(input.task, "生成视频"),
             coverUrl: canvasVideoAssetPreviewUrl(stored.url),
             tags: ["生成"],
             status: "confirmed",
@@ -374,7 +379,7 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
     if (!stored.url) throw new Error("音频结果资源不可用");
     return {
         kind: "audio",
-        title: "生成音频",
+        title: generationAssetTitle(input.task, "生成音频"),
         coverUrl: "",
         tags: ["生成"],
         status: "confirmed",
@@ -388,6 +393,19 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
             mimeType: stored.mimeType || "audio/mpeg",
         },
     };
+}
+
+
+function generationAssetTitle(task: GenerationTask, fallback: string) {
+    const nodeId = task.clientContext?.nodeId;
+    if (nodeId) {
+        for (const project of useCanvasStore.getState().projects) {
+            const title = project.nodes.find((node) => node.id === nodeId)?.title?.trim() || "";
+            if (title && !isGenericCanvasNodeTitle(title)) return title;
+        }
+    }
+    const promptTitle = task.prompt?.trim().slice(0, 32) || "";
+    return promptTitle && !isGenericCanvasNodeTitle(promptTitle) ? promptTitle : fallback;
 }
 
 const materializeGenerationOutput: MaterializeGenerationTaskOutput = createIdempotentMaterializeOutput({

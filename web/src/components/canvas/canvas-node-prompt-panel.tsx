@@ -6,6 +6,7 @@ import { ArrowLeftRight, ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { resolveCanvasGenerationModel } from "@/lib/canvas/canvas-project-generation";
+import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { modelQuoteRequest } from "@/lib/model-pricing";
@@ -794,7 +795,7 @@ function ConnectedReferenceShelf({
                                 </button>
                                 <button type="button" className="canvas-node-reference-label" title={`插入 @${reference.label}`} onClick={() => onInsert(reference)}>
                                     <span className="opacity-55">@</span>
-                                    <span className="truncate">{reference.label}</span>
+                                    <span className="truncate">{referenceChipName(reference)}</span>
                                 </button>
                                 {onRemove ? (
                                     <button
@@ -1013,4 +1014,10 @@ function audioConfigPatch(key: CanvasAudioSettingKey, value: string) {
     if (key === "audioFormat") return { audioFormat: value };
     if (key === "audioSpeed") return { audioSpeed: value };
     return { audioInstructions: value };
+}
+
+
+function referenceChipName(reference: { label: string; title?: string; kind?: string }) {
+    const title = reference.title?.trim() || "";
+    return title && !isGenericCanvasNodeTitle(title) ? title : reference.label;
 }
