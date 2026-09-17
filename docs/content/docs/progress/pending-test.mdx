@@ -5,6 +5,12 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 画布节点快速引用 Agent
+
+- 多选节点后，选区浮动工具栏应显示 `@` 图标；点击「发送到 Agent」后，Agent 输入框应自动带入所有选中节点引用。
+- 单节点右键菜单（图片、视频、文本及其他节点）应显示「发送到 Agent」；点击后仅带入当前节点引用。
+- 引用应以节点 mention token 保存，发送前可以继续补充操作描述。
+
 ## 画布生成图片重命名
 
 生成后的图片节点改名不再被默认「图片」覆盖。原位再次生成、任务结果回写和素材入库都会使用自定义名称；提示词里的 @图片1 槽位标记保持不变。
@@ -19,6 +25,7 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 - [x] `cd backend && go test ./internal/app -run 'TestSanitizeChannelModelAppliesCreditMultiplier|TestPublicCatalogPriceAppliesCreditMultiplier' -count=1`
 - [ ] 将默认倍率改为 2 后，创作页/画布发送按钮显示的积分数与实际预扣一致，后台渠道模型编辑页仍显示原配置单价。
+
 ## Agent 对话模型选择器复用创造页样式
 
 - Agent 底部 Composer 与设置页「对话模型」改为复用画布节点 / 创造页的 `ModelPicker` `variant="creation"`：先选品牌、再选模型，不再把品牌挤成一行。

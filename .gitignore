@@ -61,6 +61,8 @@ assets/prototypes/.*.drawio.bkp
 camera_language_guide.md
 .superdesign
 .playwright-cli/
+# Local Playwright / browser verification artifacts.
+/output/
 /project-memory/
 .workbuddy/
 
