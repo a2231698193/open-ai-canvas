@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>灵感 Logo（深色界面）</title>
+  <desc>由取景框与灵感火花组成的几何品牌标记</desc>
+  <path d="M96 206V122C96 107.641 107.641 96 122 96H206" stroke="#F7F7F2" stroke-width="44" stroke-linecap="round"/>
+  <path d="M306 96H390C404.359 96 416 107.641 416 122V206" stroke="#F7F7F2" stroke-width="44" stroke-linecap="round"/>
+  <path d="M416 306V390C416 404.359 404.359 416 390 416H306" stroke="#F7F7F2" stroke-width="44" stroke-linecap="round"/>
+  <path d="M206 416H122C107.641 416 96 404.359 96 390V306" stroke="#F7F7F2" stroke-width="44" stroke-linecap="round"/>
+  <path d="M256 145L279.486 217.514L352 241L279.486 264.486L256 337L232.514 264.486L160 241L232.514 217.514L256 145Z" fill="#FF725E"/>
+  <circle cx="332" cy="332" r="24" fill="#F7F7F2"/>
+</svg>

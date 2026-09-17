@@ -10,7 +10,7 @@ import (
 	"infinite-canvas/backend/internal/repository"
 )
 
-const DefaultBrandName = "影策"
+const DefaultBrandName = "灵感"
 
 // Host 由组合根注入，避免 auth → service 回环。
 type Host interface {
