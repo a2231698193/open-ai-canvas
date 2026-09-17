@@ -129,13 +129,15 @@ describe("site appearance and editable skin library", () => {
     });
 
     test("site UI wires metadata, editable theme actions, and the official ICP destination", async () => {
-        const [storeSource, footerSource, pageSource, editorSource, globalStyles, adminStyles] = await Promise.all([
+        const [storeSource, footerSource, pageSource, editorSource, globalStyles, adminStyles, adminTokens] = await Promise.all([
             Bun.file(new URL("../src/stores/use-appearance-store.ts", import.meta.url)).text(),
             Bun.file(new URL("../src/components/layout/site-compliance-footer.tsx", import.meta.url)).text(),
             Bun.file(new URL("../src/pages/admin/settings/appearance-settings-page.tsx", import.meta.url)).text(),
             Bun.file(new URL("../src/pages/admin/settings/components/skin-theme-editor.tsx", import.meta.url)).text(),
             Bun.file(new URL("../src/styles/globals.css", import.meta.url)).text(),
             Bun.file(new URL("../src/styles/admin-ui.css", import.meta.url)).text(),
+            // 后台已独立设计系统：状态色 token 从 admin-ui.css 移到 theme/admin-tokens.css。
+            Bun.file(new URL("../src/pages/admin/theme/admin-tokens.css", import.meta.url)).text(),
         ]);
 
         expect(storeSource).toContain('setMeta(targetDocument, "name", "description"');
@@ -159,7 +161,7 @@ describe("site appearance and editable skin library", () => {
         expect(globalStyles).toContain("--ant-tooltip-overlay-color: var(--popover-foreground) !important");
         expect(globalStyles).toContain(":where(.ant-tooltip-container, .ant-tooltip-inner)");
         expect(globalStyles).toContain("color: var(--popover-foreground) !important");
-        expect(adminStyles).toContain("--admin-status-warning: var(--palette-status-warning)");
+        expect(adminTokens).toContain("--admin-status-warning");
         expect(adminStyles).toContain("border-radius: var(--menu-radius);");
     });
 });

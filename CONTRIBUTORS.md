@@ -199,4 +199,13 @@
   <br clear="left">
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+  <img src="assets/user-morrow.jpg" alt="morrow" width="56" align="left">
+  <strong>morrow<br><sub>VV：morrow0127</sub></strong><br>
+  <a href="mailto:3201190041@qq.com">3201190041@qq.com</a><br>
+  <em>最难不过坚持</em>
+  <br clear="left">
+</td>
+</tr>
 </table>

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 15
+const CurrentSchemaVersion int64 = 19
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -67,6 +67,16 @@ var schemaMigrations = []migration{
 	{version: 15, name: "agent_profiles", checksum: "sha256:agent-profiles-v15-20260914", apply: func(tx *gorm.DB) error {
 		return tx.AutoMigrate(&model.AgentProfile{})
 	}},
+	{version: 16, name: "agent_lessons", checksum: "sha256:agent-lessons-v16-20260917", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.AgentLesson{})
+	}},
+	{version: 17, name: "agent_lessons_owner_index", checksum: "sha256:agent-lessons-owner-index-v17-20260917", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.AgentLesson{})
+	}},
+	{version: 18, name: "agent_memory_settings", checksum: "sha256:agent-memory-settings-v18-20260917", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.AgentMemorySetting{})
+	}},
+	{version: 19, name: "payment_plugin_version", checksum: "sha256:payment-plugin-version-v19-20260917", apply: migrateSchemaV19},
 }
 
 func migrateSchemaV14(tx *gorm.DB) error {
@@ -226,6 +236,28 @@ func migrateSchemaV5(tx *gorm.DB) error {
 		&model.PaymentReconciliationItem{},
 	); err != nil {
 		return fmt.Errorf("创建积分支付与对账结构：%w", err)
+	}
+	return nil
+}
+
+func migrateSchemaV19(tx *gorm.DB) error {
+	for _, value := range []any{&model.PaymentProviderConfig{}, &model.PaymentOrder{}} {
+		if !tx.Migrator().HasTable(value) {
+			continue
+		}
+		if err := addPaymentPluginVersionColumn(tx, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addPaymentPluginVersionColumn(tx *gorm.DB, value any) error {
+	if tx.Migrator().HasColumn(value, "plugin_version") {
+		return nil
+	}
+	if err := tx.Migrator().AddColumn(value, "PluginVersion"); err != nil {
+		return fmt.Errorf("增加支付插件版本列：%w", err)
 	}
 	return nil
 }
