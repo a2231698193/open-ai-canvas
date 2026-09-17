@@ -251,7 +251,8 @@ function rowStatus(item: CanvasGenerationBatchItem | undefined, output: CanvasNo
     if (hasNodeMedia(output)) return { label: "生成完成", loading: false, retryable: false };
     if (item?.status === "failed") return { label: item.errorDetails || "生成失败", loading: false, retryable: true };
     if (item?.status === "cancelled") return { label: "已停止", loading: false, retryable: false };
-    if (item && ["waiting", "submitting", "queued", "running"].includes(item.status)) return { label: item.status === "waiting" ? "等待中" : item.status === "submitting" ? "正在提交" : item.status === "queued" ? "已排队" : "生成中", loading: true, retryable: false };
+    // 未完成项统一显示「生成中」，不再区分等待/提交/排队。
+    if (item && ["waiting", "submitting", "queued", "running"].includes(item.status)) return { label: "生成中", loading: true, retryable: false };
     if (output?.metadata?.status === "error") return { label: output.metadata.errorDetails || "生成失败", loading: false, retryable: false };
     return { label: "待生成", loading: false, retryable: false };
 }

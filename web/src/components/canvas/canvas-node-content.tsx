@@ -191,6 +191,8 @@ function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNodeConte
     const progress = showsProgress && typeof node.metadata?.taskProgress === "number" ? Math.max(0, Math.min(100, Math.round(node.metadata.taskProgress))) : null;
     const statusLabel = taskId ? generationTaskStatusLabel(displayTask) : "等待任务状态";
     const stageLabel = taskId ? generationTaskStageLabel(displayTask) : "正在创建任务";
+    // 阶段与状态现在都是「生成中」，合成一行，避免同句出现两次。
+    const statusLine = [stageLabel === statusLabel ? "" : statusLabel, progress !== null ? `${progress}%` : ""].filter(Boolean).join(" · ");
     const elapsed = useTaskElapsed(node.metadata?.taskCreatedAt);
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2.5 px-5 text-center" style={{ color: theme.node.activeStroke }}>
@@ -198,10 +200,11 @@ function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNodeConte
             <span className="text-[var(--fs-tiny)] font-semibold">{stageLabel}</span>
             {taskId ? (
                 <div className="flex w-full max-w-[210px] flex-col items-center gap-1.5">
-                    <div className="max-w-full truncate text-[var(--fs-label)] font-medium" style={{ color: theme.node.text }}>
-                        {statusLabel}
-                        {progress !== null ? ` · ${progress}%` : ""}
-                    </div>
+                    {statusLine ? (
+                        <div className="max-w-full truncate text-[var(--fs-label)] font-medium" style={{ color: theme.node.text }}>
+                            {statusLine}
+                        </div>
+                    ) : null}
                     {progress !== null ? (
                         <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: theme.node.stroke }}>
                             <div className="h-full rounded-full transition-[width]" style={{ width: `${progress}%`, background: theme.node.activeStroke }} />

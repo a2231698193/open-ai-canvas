@@ -5,7 +5,7 @@ import { Eye, FileText, Image as ImageIcon, RotateCcw, Video } from "lucide-reac
 
 import { MediaPreview } from "@/components/media-preview";
 import { CONTENT_MODERATION_ERROR_CODE, isContentModerationError } from "@/lib/generation-error";
-import { statusLabel } from "@/lib/generation-task-display";
+import { generationTaskProgressText, statusLabel } from "@/lib/generation-task-display";
 import type { GenerationTask } from "@/services/api/task-center";
 import { isTaskFailed, statusDotClassName, taskAttentionReason, TaskDate } from "./task-shared";
 import { TaskVideoThumbnail } from "./task-video-thumbnail";
@@ -61,8 +61,8 @@ export function TaskGridCard({ task, actingId, onOpen, onRetry }: { task: Genera
                     </span>
                 </div>
                 {isActive ? (
-                    <div className="task-grid-progress" role="progressbar" aria-label={task.stage || "任务生成进度"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
-                        <span>{task.stage || "正在生成"}</span>
+                    <div className="task-grid-progress" role="progressbar" aria-label="任务生成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
+                        <span>{generationTaskProgressText(task)}</span>
                         <strong>{task.progress || 0}%</strong>
                         <i><b style={{ width: `${task.progress || 0}%` }} /></i>
                     </div>

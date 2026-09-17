@@ -316,7 +316,7 @@ export function useCanvasGenerationBatches({ projectId, projectLoaded, nodes, no
             if (!stoppableItems.length) return message.info("没有尚未提交的任务");
             modal.confirm({
                 title: "停止剩余任务？",
-                content: `将停止 ${stoppableItems.length} 个尚未提交的任务；已经排队或运行的任务会继续。`,
+                content: `将停止 ${stoppableItems.length} 个尚未提交的任务；已经提交的任务会继续。`,
                 okText: "停止剩余任务",
                 cancelText: "继续生成",
                 okButtonProps: { danger: true },

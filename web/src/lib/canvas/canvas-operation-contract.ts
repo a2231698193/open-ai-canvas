@@ -426,7 +426,7 @@ function generationOutcome(taskStatus?: string, officialStatus?: string, taskId?
 
 function generationVerificationMessage(outcome: CanvasGenerationVerification["outcome"], resourceReady: boolean) {
     if (outcome === "not_started") return "没有成功提交任务";
-    if (outcome === "queued") return "排队中";
+    if (outcome === "queued") return "生成中";
     if (outcome === "running") return "生成中";
     if (outcome === "failed") return "生成失败";
     if (outcome === "cancelled") return "已取消";

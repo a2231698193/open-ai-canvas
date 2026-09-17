@@ -152,7 +152,7 @@ export function CanvasOperationChangeToast({ change, theme, onView, onUndo, onCl
 }
 
 export function taskStatusText(status: GenerationTask["status"]) {
-    if (status === "queued") return "排队中";
+    if (status === "queued") return "生成中";
     if (status === "running") return "生成中";
     if (status === "succeeded") return "任务完成";
     if (status === "failed") return "任务失败";

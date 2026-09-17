@@ -134,9 +134,13 @@ function ActiveTaskCard({
     const progress = showsProgress && typeof task.progress === "number" ? Math.max(0, Math.min(100, Math.round(task.progress))) : showsProgress && task.status === "queued" ? 0 : undefined;
     const startedAt = task.startedAt || task.createdAt;
     const elapsedMs = Math.max(0, now - parseTime(startedAt));
-    const durationLabel = `${task.status === "queued" ? "已等待" : "已运行"} ${formatDuration(elapsedMs)}`;
+    // 文案已统一为「生成中」，计时也不再区分排队与运行。
+    const durationLabel = `已运行 ${formatDuration(elapsedMs)}`;
     const billingLabel = task.billing ? `冻结 ${formatCredits(task.billing.amountMicrocredits)} 积分` : "未计费";
     const statusTone = task.status === "running" ? theme.accent.primary : theme.node.muted;
+    const stageLabel = generationTaskStageLabel(task);
+    const statusText = generationTaskStatusLabel(task);
+    const showStageLine = stageLabel !== statusText;
     const transition = reducedMotion ? { duration: 0 } : aceternityMotion.spring.panel;
 
     return (
@@ -152,12 +156,14 @@ function ActiveTaskCard({
                                 {formatTaskKind(task)}
                             </span>
                             <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[var(--fs-tiny)] font-medium" style={{ borderColor: `${statusTone}44`, color: statusTone }}>
-                                {generationTaskStatusLabel(task)}
+                                {statusText}
                             </span>
                         </span>
-                        <span className="mt-1 block truncate text-[var(--fs-label)]" style={{ color: theme.node.muted }} title={generationTaskStageLabel(task)}>
-                            {generationTaskStageLabel(task)}
-                        </span>
+                        {showStageLine ? (
+                            <span className="mt-1 block truncate text-[var(--fs-label)]" style={{ color: theme.node.muted }} title={stageLabel}>
+                                {stageLabel}
+                            </span>
+                        ) : null}
                     </span>
                     {expanded ? <ChevronUp className="mt-0.5 size-3.5 shrink-0" style={{ color: theme.node.muted }} /> : <ChevronDown className="mt-0.5 size-3.5 shrink-0" style={{ color: theme.node.muted }} />}
                 </div>
@@ -221,7 +227,7 @@ function ActiveTaskCard({
                         <div className="flex items-center justify-between gap-2">
                             <span>当前阶段</span>
                             <span className="max-w-[200px] truncate text-right" style={{ color: theme.node.text }}>
-                                {generationTaskStageLabel(task)}
+                                {stageLabel}
                             </span>
                         </div>
                         {onCancelTask && (task.status === "queued" || task.status === "running") ? (

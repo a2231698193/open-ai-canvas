@@ -40,7 +40,7 @@ const statusLabels: Record<string, string> = {
     disabled: "已停用",
     idle: "待开始",
     loading: "处理中",
-    queued: "排队中",
+    queued: "生成中",
     success: "已完成",
     error: "异常",
     deleted: "已删除",

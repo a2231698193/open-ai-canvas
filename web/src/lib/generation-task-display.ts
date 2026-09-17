@@ -1,7 +1,7 @@
 import type { GenerationTask, TaskStatus } from "@/services/api/task-center";
 
 export const statusLabel: Record<TaskStatus, string> = {
-    queued: "排队中",
+    queued: "生成中",
     running: "生成中",
     succeeded: "已完成",
     failed: "失败",
@@ -21,17 +21,26 @@ export function generationTaskStatusLabel(task: GenerationTaskDisplayTarget) {
 
 export function generationTaskStageLabel(task: GenerationTaskDisplayTarget) {
     if (isGenerationTaskSubmissionUncertain(task)) return "为避免重复扣费，未自动重试";
-    if (task.stage === "generating") return "生成中";
-    if (task.stage === "queued") return "排队中";
-    return task.stage || generationTaskStatusLabel(task);
+    // 进行中统一显示「生成中」：不回显后端阶段文案（等待队列调度 / 正在连接上游 / 上游生成中 …），
+    // 同一件事不因为落到哪个阶段而换措辞。
+    if (task.status === "queued" || task.status === "running") return "生成中";
+    return generationTaskStatusLabel(task);
 }
 
 export function generationTaskShowsProgress(task: GenerationTaskDisplayTarget) {
     if (isGenerationTaskSubmissionUncertain(task)) return false;
-    // 排队、后端接管和连接供应商都没有真实百分比。只有上游状态响应
-    // 已经写回任务后才显示进度，避免所有图片/视频长期停在同一个假数值。
-    if (["等待队列调度", "后端接管任务", "正在连接上游", "调用生成模型"].includes(task.stage || "")) return false;
+    // 进行中一律带进度条：文案已统一为「生成中」，不再按阶段隐藏进度。
     return true;
+}
+
+type GenerationTaskProgressTarget = GenerationTaskDisplayTarget & { progress?: number };
+
+/** 进度行文案：阶段与状态一致时只保留百分比，避免同一句「生成中」出现两次。 */
+export function generationTaskProgressText(task: GenerationTaskProgressTarget) {
+    const stage = generationTaskStageLabel(task);
+    const status = generationTaskStatusLabel(task);
+    const percent = typeof task.progress === "number" ? `${Math.max(0, Math.min(100, Math.round(task.progress)))}%` : "";
+    return [stage === status ? "" : stage, percent].filter(Boolean).join(" · ");
 }
 
 export const operationOptions = [

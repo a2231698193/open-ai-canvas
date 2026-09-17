@@ -159,7 +159,7 @@ export function WorkflowTestWorkbench({ provider, workflowId, workflowKind = "wo
                 metadata: { source: "workflow_settings_test", workflowProvider: provider, workflowId },
                 onTaskUpdate: (task) => {
                     setProgress(Math.max(0, Math.min(100, Number(task.progress) || 0)));
-                    setStage(taskStageLabel(task.status, task.stage));
+                    setStage(taskStageLabel(task.status));
                 },
             });
             setResult(response);
@@ -561,9 +561,9 @@ function mediaName(value: MediaKind) {
 function mediaIcon(value: MediaKind) {
     return value === "video" ? <Film /> : value === "audio" ? <FileAudio /> : <FileImage />;
 }
-function taskStageLabel(status: string, stage?: string) {
-    if (status === "queued") return "任务已排队";
+function taskStageLabel(status: string) {
+    if (status === "queued") return "生成中";
     if (status === "succeeded") return "正在读取结果";
     if (status === "failed") return "任务失败";
-    return stage ? `运行中 · ${stage}` : "工作流运行中";
+    return "生成中";
 }

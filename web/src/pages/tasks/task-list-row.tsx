@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { MediaPreview } from "@/components/media-preview";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
-import { formatTaskKind, statusLabel } from "@/lib/generation-task-display";
+import { formatTaskKind, generationTaskProgressText, statusLabel } from "@/lib/generation-task-display";
 import type { GenerationTask } from "@/services/api/task-center";
 import type { AiConfig } from "@/stores/use-config-store";
 import { formatModelName, getTaskCanvasContext, isTaskFailed, statusDotClassName, taskAttentionReason, TaskBilling, TaskDate } from "./task-shared";
@@ -61,8 +61,8 @@ export function TaskListRow({
                     </span>
                 </div>
                 {isActive ? (
-                    <div className="task-record-progress" role="progressbar" aria-label={task.stage || "任务生成进度"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
-                        <span>{task.stage || "正在生成"}</span>
+                    <div className="task-record-progress" role="progressbar" aria-label="任务生成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
+                        <span>{generationTaskProgressText(task)}</span>
                         <span>{task.progress || 0}%</span>
                         <i>
                             <b style={{ width: `${task.progress || 0}%` }} />
