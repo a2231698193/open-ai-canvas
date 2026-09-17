@@ -6,6 +6,16 @@
 #   sudo bash scripts/export-lk888-audit.sh --match lk888
 #   sudo bash scripts/export-lk888-audit.sh --channel-id CHANNEL_000004
 # 产物：/tmp/lk888-audit-<时间戳>/{channels.txt,model_channels.csv,channel_models.csv,channel_model_price_tiers.csv,model_price_report.csv}
+
+# 允许用 sh 调用：Debian/Ubuntu 的 sh 是 dash，不支持 set -o pipefail，这里自动切回 bash。
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+    echo "本脚本需要 bash（dash/sh 不支持 set -o pipefail）：请用 bash $(basename "$0") 执行。" >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 OUT_DIR="/tmp/lk888-audit-$(date +%Y%m%d-%H%M%S)"
