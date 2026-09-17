@@ -1039,6 +1039,14 @@ func manifestRequestValues(request GenerationRequest) map[string]any {
 	output.Watermark = output.Watermark || request.Watermark
 	outputValue, _ := requestAsManifestValue(output)
 
+	// GenerationRequest.ProviderOptions 是 map[string]map[string]any，而 manifestPathValue
+	// 只遍历 map[string]any；先做 JSON 归一化，插件的
+	// request.providerOptions.<命名空间>.<键> 才能解析到值。
+	providerOptions, err := requestAsManifestValue(request.ProviderOptions)
+	if err != nil {
+		providerOptions = request.ProviderOptions
+	}
+
 	return map[string]any{
 		"capability":      request.Capability,
 		"model":           request.Model,
@@ -1058,7 +1066,7 @@ func manifestRequestValues(request GenerationRequest) map[string]any {
 		"watermark":       request.Watermark,
 		"operation":       request.Operation,
 		"output":          outputValue,
-		"providerOptions": request.ProviderOptions,
+		"providerOptions": providerOptions,
 		"extra":           request.Extra,
 	}
 }

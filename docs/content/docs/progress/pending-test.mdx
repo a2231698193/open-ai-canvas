@@ -26,11 +26,24 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] `cd backend && go test ./internal/app -run 'TestSanitizeChannelModelAppliesCreditMultiplier|TestPublicCatalogPriceAppliesCreditMultiplier' -count=1`
 - [ ] 将默认倍率改为 2 后，创作页/画布发送按钮显示的积分数与实际预扣一致，后台渠道模型编辑页仍显示原配置单价。
 
+## 模型选择器单层列表与同名排序
+
+- 画布节点、创作页和画布 Agent 共用的 `ModelPicker` 不再按渠道/品牌分组做二级选择，打开后直接是模型列表。
+- 列表按显示名排序（中文按拼音、数字按数值），同名模型相邻展示；同名来自多个渠道时，副标题前缀渠道名以便区分。
+- 已移除品牌卡片、左侧品牌栏与双栏样式；Agent 浮层只保留菜单宽度与层级约束。
+- 这是与官方主线的有意分叉（主线把二级选择器当全站标准），约定写在 `AGENTS.md` 第 6 节：合并主线时这一处以本仓库为准。
+
+- [x] `cd web && bun run typecheck && bun run lint && bun run build`
+- [x] `cd web && bun test test/model-picker-single-level.test.ts test/agent-model-picker.test.ts test/canvas-model-policy.test.ts test/workflow-model-picker-style.test.ts`
+- [ ] 登录后打开画布节点、创作页与画布 Agent 的模型菜单：应直接出现模型列表，没有「先选品牌」这一层；同名模型相邻，副标题能区分渠道。
+- [ ] 键盘上下键、Home/End、Esc 与选中态仍正常；窄屏（≤720px）菜单不超出视口，模型名与价格不被裁切；深浅主题样式正常。
+
 ## Agent 对话模型选择器复用创造页样式
 
-- Agent 底部 Composer 与设置页「对话模型」改为复用画布节点 / 创造页的 `ModelPicker` `variant="creation"`：先选品牌、再选模型，不再把品牌挤成一行。
+- Agent 底部 Composer 与设置页「对话模型」复用画布节点 / 创造页的 `ModelPicker` `variant="creation"`。
 - 目录只展示文本模型；图片、视频、音频模型不进入 Agent 对话选择。当前选中若不是文本模型，回退到第一个可用文本模型。
-- 待登录后打开画布 Agent：核对品牌列表为纵向卡片、点入后出现双栏模型列表且高度跟品牌列表走、不再被 300px 最小高度撑空；设置页同样；深浅主题与窄面板不裁切。
+- 选择器已是单层列表（见「模型选择器单层列表与同名排序」），本节只保留 Agent 侧的模型范围与浮层约束。
+- 待登录后打开画布 Agent 与设置页「对话模型」：菜单只列文本模型，浮层宽度受 340px 约束、层级高于对话窗；深浅主题与窄面板不裁切。
 
 ## 设置页页头与生成偏好精简
 
@@ -166,9 +179,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 ## 问鼎 LK888 协议插件
 
-- 四个官方声明式协议：`lk888-image`、`lk888-video`、`lk888-seedance`（token，`/api/v3/contents/generations/tasks`）、`lk888-seedance-anmiao`（按秒，`/api/v3/anmiao/contents/generations/tasks`）。
+- 五个官方声明式协议：`lk888-image`、`lk888-mj`、`lk888-video`、`lk888-seedance`（token，`/api/v3/contents/generations/tasks`）、`lk888-seedance-anmiao`（按秒，`/api/v3/anmiao/contents/generations/tasks`）。
 - 图片和媒体视频共用 `POST /v1/media/generate` + `GET /v1/media/status?task_id=`。一个问鼎渠道可挂多个模型，每个模型选对应协议。
 - [x] `cd backend && go test ./internal/protocol -run 'TestLK888|TestOfficialProtocolPackagesAreSelfContainedDeclarativePlugins' -count=1`
+- [x] `lk888-mj` 只接 `mj_imagine`：`botType` 默认 `MID_JOURNEY`、`aspectRatio` 兜底 `1:1`，`quality`/`stylize`/`chaos`/`style` 只从 `providerOptions.lk888-mj.*` 读且越界值不提交；画布 `1k/2k/4k` 不写入上游 `quality`。
+- [x] 修复宿主 `request.providerOptions.<命名空间>.<键>` 取不到值的问题（`GenerationRequest.ProviderOptions` 是 `map[string]map[string]any`，模板只遍历 `map[string]any`）。此前 `lk888-image` 文档里的 `lk888-image.quality` 扩展键实际不生效。
+- [ ] 系统渠道协议选 `问鼎 LK888 Midjourney`、模型填 `mj_imagine` 后，画布文生图能提交并轮询出图；确认 `result_url` 返回单图还是 MJ 四宫格，以及原版 `GET /v1/media/status` 对该模型是否可用。
+- [ ] Midjourney 没有 `n`/`size`/`resolution` 参数，画布数量与尺寸档不应出现在上游 `params`。
+- [ ] 用模型默认参数写入 `providerOptions.lk888-mj.botType=niji` 时上游为 `NIJI_JOURNEY`，写 `stylize`/`chaos` 越界值时上游不出现对应字段。
 - [ ] 系统渠道协议选 `问鼎 LK888 Image`、模型填 `tt-image-2` 后，画布文生图能提交并轮询出图。
 - [ ] 带参考图时上游 `params.images` 含公网 URL 或 data URL。
 - [ ] 选 16:9 + 2K 时上游 `params.size` 为 `2560x1440`，不能把 `16:9` 原样提交。

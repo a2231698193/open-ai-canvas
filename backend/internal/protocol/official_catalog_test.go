@@ -932,6 +932,125 @@ func TestLK888ImageProfile(t *testing.T) {
 	}
 }
 
+func TestLK888MJProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-mj.yingce-plugin", "lk888-mj")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "mj_imagine", Prompt: "neon samurai", AspectRatio: "16:9", Quality: "2k", ImageCount: 1,
+		Images: []MediaReference{{URL: "https://cdn.example/ref.png", Role: "edit_source"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if create.Method != "POST" || create.Path != "/v1/media/generate" {
+		t.Fatalf("lk888 mj create = %#v", create)
+	}
+	body := manifestTestBody(t, create)
+	params, _ := body["params"].(map[string]any)
+	images, _ := params["images"].([]any)
+	if body["model"] != "mj_imagine" || body["prompt"] != "neon samurai" || params["botType"] != "MID_JOURNEY" || params["aspectRatio"] != "16:9" || len(images) != 1 || images[0] != "https://cdn.example/ref.png" {
+		t.Fatalf("lk888 mj create body = %#v", body)
+	}
+	// 画布的 1k/2k/4k 是尺寸档，Midjourney 的 quality 是精细度，两者不能互相映射；上游也没有 n/size/resolution。
+	for _, key := range []string{"quality", "stylize", "chaos", "style", "n", "size", "resolution"} {
+		if _, ok := params[key]; ok {
+			t.Fatalf("unset MJ param %q must be omitted: %#v", key, params)
+		}
+	}
+
+	niji, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "mj_imagine", Prompt: "anime girl", AspectRatio: "auto",
+		ProviderOptions: map[string]map[string]any{"lk888-mj": {
+			"botType": "Niji", "quality": "2", "stylize": " 250 ", "chaos": 50, "style": "RAW",
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nijiParams, _ := manifestTestBody(t, niji)["params"].(map[string]any)
+	if nijiParams["botType"] != "NIJI_JOURNEY" || nijiParams["aspectRatio"] != "1:1" || nijiParams["quality"] != "2" || nijiParams["stylize"] != "250" || nijiParams["chaos"] != "50" || nijiParams["style"] != "raw" {
+		t.Fatalf("lk888 mj niji params = %#v", nijiParams)
+	}
+
+	fallback, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "mj_imagine", Prompt: "poster", AspectRatio: "2560x1440",
+		ProviderOptions: map[string]map[string]any{"lk888-mj": {"aspectRatio": "21:9"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := manifestTestBody(t, fallback)["params"].(map[string]any)["aspectRatio"]; got != "21:9" {
+		t.Fatalf("pixel size must fall back to provider ratio, got %#v", got)
+	}
+
+	invalid, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "mj_imagine", Prompt: "poster",
+		ProviderOptions: map[string]map[string]any{"lk888-mj": {
+			"botType": "mid_journey", "quality": "2k", "stylize": "999", "chaos": "120", "style": "vivid",
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidParams, _ := manifestTestBody(t, invalid)["params"].(map[string]any)
+	if invalidParams["botType"] != "MID_JOURNEY" || invalidParams["aspectRatio"] != "1:1" {
+		t.Fatalf("lk888 mj defaults = %#v", invalidParams)
+	}
+	for _, key := range []string{"quality", "stylize", "chaos", "style"} {
+		if _, ok := invalidParams[key]; ok {
+			t.Fatalf("out-of-range MJ param %q must be omitted: %#v", key, invalidParams)
+		}
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":123456},"msg":"任务创建成功"}`))
+	if err != nil || created.TaskID != "123456" || created.Status != StatusPending {
+		t.Fatalf("lk888 mj create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "123456"})
+	if err != nil || poll.Path != "/v1/media/status" || len(poll.Query["task_id"]) != 1 || poll.Query["task_id"][0] != "123456" {
+		t.Fatalf("lk888 mj poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"success","is_final":true,"result_url":"https://cdn.example/mj.png","result_type":"image","error":""}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Images) != 1 || result.Result.Images[0].URL != "https://cdn.example/mj.png" {
+		t.Fatalf("lk888 mj success response = %#v", result)
+	}
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"failed","is_final":true,"result_url":"","error":"上游拒绝"}`))
+	if err != nil || failed.Status != StatusFailed || failed.Message != "上游拒绝" {
+		t.Fatalf("lk888 mj failure response = %#v, err = %v", failed, err)
+	}
+}
+
+func TestProtocolProviderOptionsReachPluginTemplates(t *testing.T) {
+	// providerOptions 是 map[string]map[string]any，插件模板按
+	// request.providerOptions.<命名空间>.<键> 取值，宿主必须先把嵌套 map 归一化。
+	image := officialPackageAdapter(t, "lk888-image.yingce-plugin", "lk888-image")
+	imageCreate, err := image.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "tt-image-2", Prompt: "still", AspectRatio: "1:1",
+		ProviderOptions: map[string]map[string]any{"lk888-image": {"quality": "high"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := manifestTestBody(t, imageCreate)["params"].(map[string]any)["quality"]; got != "high" {
+		t.Fatalf("lk888-image providerOptions quality = %#v", got)
+	}
+
+	mj := officialPackageAdapter(t, "lk888-mj.yingce-plugin", "lk888-mj")
+	mjCreate, err := mj.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "mj_imagine", Prompt: "poster",
+		ProviderOptions: map[string]map[string]any{"lk888-mj": {"botType": "NIJI_JOURNEY", "stylize": "250"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, _ := manifestTestBody(t, mjCreate)["params"].(map[string]any)
+	if params["botType"] != "NIJI_JOURNEY" || params["stylize"] != "250" {
+		t.Fatalf("lk888-mj providerOptions = %#v", params)
+	}
+}
+
 func TestLK888VideoProfile(t *testing.T) {
 	adapter := officialPackageAdapter(t, "lk888-video.yingce-plugin", "lk888-video")
 	minimax, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
