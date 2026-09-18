@@ -374,6 +374,7 @@ type CanvasProject struct {
 	ProjectID   string    `json:"projectId,omitempty" gorm:"index;size:36;index:idx_canvas_projects_user_project_updated,priority:2"`
 	Title       string    `json:"title" gorm:"size:240"`
 	PayloadJSON string    `json:"payloadJson" gorm:"type:text"`
+	Revision    int64     `json:"revision" gorm:"not null;default:1"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"index:idx_canvas_projects_user_updated,priority:2;index:idx_canvas_projects_user_project_updated,priority:3"`
 }
