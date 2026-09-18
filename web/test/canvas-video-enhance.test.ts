@@ -10,7 +10,7 @@ import {
     videoEnhanceDurationSeconds,
     videoEnhanceProviderOptions,
 } from "../src/lib/canvas/canvas-video-enhance";
-import { defaultConfig, type AiConfig } from "../src/stores/use-config-store";
+import { defaultConfig, selectableModelsByCapability, type AiConfig } from "../src/stores/use-config-store";
 
 function configWithVideoModels(models: Array<{ model: string; displayName: string; protocol?: string }>): AiConfig {
     return {
@@ -43,6 +43,7 @@ test("finds video-enhance by upstream key or display name", () => {
     ]);
     expect(findVideoEnhanceModel(config)).toContain("video-enhance");
     expect(isVideoEnhanceModel(config, "CHANNEL_000010::video-enhance")).toBe(true);
+    expect(selectableModelsByCapability(config, "video")).toEqual(["CHANNEL_000010::minimax-h3"]);
 });
 
 test("caps source duration and estimates credits with multipliers", () => {

@@ -543,9 +543,15 @@ export function modelMatchesCapability(model: string, capability?: ModelCapabili
     return isTextModelName(model);
 }
 
+function isHiddenSelectableModel(model: string) {
+    // 视频超分只走节点「高清」入口，不进入创作/画布模型列表。
+    return modelOptionName(model).trim().toLowerCase() === "video-enhance";
+}
+
 export function filterModelsByCapability(models: string[], capability?: ModelCapability, channels?: ModelChannel[]) {
-    if (!capability) return models;
-    return models.filter((model) => {
+    const visible = models.filter((model) => !isHiddenSelectableModel(model));
+    if (!capability) return visible;
+    return visible.filter((model) => {
         const decoded = decodeChannelModel(model);
         const channel = decoded ? channels?.find((item) => item.id === decoded.channelId) : undefined;
         const modelName = decoded?.model || modelOptionName(model);
@@ -568,9 +574,7 @@ export function filterModelsByCapability(models: string[], capability?: ModelCap
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {
     // 选项目录只从当前有效渠道重建，不能信任旧快照里残留的 config.models。
     // 这样旧版本内置模型、未绑定渠道的裸模型不会再次进入创作端。
-    const models = modelOptionsFromChannels(config.channels);
-    if (!capability) return models;
-    return filterModelsByCapability(models, capability, config.channels);
+    return filterModelsByCapability(modelOptionsFromChannels(config.channels), capability, config.channels);
 }
 
 export function configuredModelMatchesCapability(config: AiConfig, model: string, capability?: ModelCapability) {

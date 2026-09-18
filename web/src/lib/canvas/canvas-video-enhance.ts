@@ -1,4 +1,4 @@
-import { modelDisplayName, modelOptionName, selectableModelsByCapability, type AiConfig } from "@/stores/use-config-store";
+import { modelDisplayName, modelOptionName, modelOptionsFromChannels, type AiConfig } from "@/stores/use-config-store";
 
 export const VIDEO_ENHANCE_MODEL_KEY = "video-enhance";
 export const VIDEO_ENHANCE_MAX_SECONDS = 600;
@@ -83,7 +83,7 @@ export function isVideoEnhanceModel(config: AiConfig, model: string) {
 }
 
 export function findVideoEnhanceModel(config: AiConfig) {
-    return selectableModelsByCapability(config, "video").find((model) => isVideoEnhanceModel(config, model));
+    return modelOptionsFromChannels(config.channels).find((model) => isVideoEnhanceModel(config, model));
 }
 
 export function videoEnhanceDurationSeconds(durationMs?: number) {
