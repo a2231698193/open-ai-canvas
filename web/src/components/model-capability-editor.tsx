@@ -656,7 +656,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function NumberField({ label, value, min, max, disabled, onChange }: { label: string; value?: number; min: number; max?: number; disabled: boolean; onChange: (value: number | null) => void }) {
     return (
-        <label className="admin-capability-number-field block min-w-0">
+        <label className="admin-capability-number-field min-w-0">
             <span className="admin-capability-field-label mb-1.5 block text-xs text-foreground/62">{label}</span>
             <InputNumber className="w-full" disabled={disabled} min={min} max={max} precision={0} value={value} onChange={onChange} />
         </label>

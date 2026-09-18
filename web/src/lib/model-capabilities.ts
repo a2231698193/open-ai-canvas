@@ -142,9 +142,17 @@ export function normalizeModelCapabilityConfig(config: ModelCapabilityConfig): M
                   defaultResolution: normalizeCapabilityString(config.video.defaultResolution),
                   operations: normalizeCapabilityStrings(config.video.operations),
                   defaultOperation: normalizeCapabilityString(config.video.defaultOperation),
+                  references: {
+                      ...config.video.references,
+                      promptMaxChars: normalizeVideoPromptMaxChars(config.video.references.promptMaxChars),
+                  },
               }
             : undefined,
     };
+}
+
+function normalizeVideoPromptMaxChars(value: number) {
+    return !value || value === 1000 ? DEFAULT_VIDEO_PROMPT_MAX_CHARS : value;
 }
 
 // Keep explicit pixel presets for each resolution tier so the settings panel can

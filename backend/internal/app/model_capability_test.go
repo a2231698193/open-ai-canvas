@@ -196,6 +196,18 @@ func TestLK888SeedanceCapabilitiesIncludeAdaptiveRatio(t *testing.T) {
 	}
 }
 
+func TestNormalizeVideoCapabilityPromotesLegacyPromptLimit(t *testing.T) {
+	input := DefaultModelCapabilityConfigForModel("lk888-seedance", "doubao-seedance-2-0-260128")
+	input.Video.References.PromptMaxChars = 1000
+	got, err := NormalizeModelCapabilityConfigForModel("video", "lk888-seedance", "doubao-seedance-2-0-260128", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Video.References.PromptMaxChars != DefaultVideoPromptMaxChars {
+		t.Fatalf("promptMaxChars = %d, want %d", got.Video.References.PromptMaxChars, DefaultVideoPromptMaxChars)
+	}
+}
+
 func TestDefaultMiniMaxVideoCapabilitySupportsReferenceGeneration(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel("minimax-video", "MiniMax-H3")
 	if profile == nil || profile.Video == nil {

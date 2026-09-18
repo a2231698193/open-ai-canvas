@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { defaultModelCapabilityConfig } from "../src/lib/model-capabilities";
+import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, normalizeModelCapabilityConfig } from "../src/lib/model-capabilities";
 
 test("lk888-video MiniMax H3 uses vendor ratios and resolutions", () => {
     expect(defaultModelCapabilityConfig("lk888-video", "minimax-h3").video).toMatchObject({
@@ -21,6 +21,13 @@ test("lk888-seedance includes adaptive ratio", () => {
         defaultRatio: "adaptive",
         resolutions: ["480p", "720p"],
     });
+});
+
+test("legacy video prompt limit 1000 normalizes to 8000", () => {
+    const profile = defaultModelCapabilityConfig("lk888-seedance", "doubao-seedance-2-0-260128").video!;
+    expect(profile.references.promptMaxChars).toBe(DEFAULT_VIDEO_PROMPT_MAX_CHARS);
+    profile.references.promptMaxChars = 1000;
+    expect(normalizeModelCapabilityConfig({ version: 1, video: profile }).video?.references.promptMaxChars).toBe(8000);
 });
 
 test("lk888-video video-enhance is video-to-video with 2K-to-8K output", () => {

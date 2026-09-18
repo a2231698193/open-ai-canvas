@@ -437,6 +437,9 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		return nil, BadAuthRequest("请配置视频模型能力参数")
 	}
 	value := &ModelCapabilityConfig{Version: 1, Video: applyModelSpecificVideoCapability(input.Video, protocol, modelName)}
+	if value.Video.References.PromptMaxChars <= 0 || value.Video.References.PromptMaxChars == 1000 {
+		value.Video.References.PromptMaxChars = DefaultVideoPromptMaxChars
+	}
 	if err := validateVideoCapabilityConfig(value.Video); err != nil {
 		return nil, err
 	}

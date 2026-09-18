@@ -8886,6 +8886,119 @@
     overflow-y: auto;
 }
 
+.admin-capability-reference-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.admin-capability-reference-grid.is-three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-capability-reference-grid.is-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-capability-reference-card,
+.admin-capability-protocol-card {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--foreground) 2.5%, var(--admin-layer-1));
+    padding: 14px;
+}
+
+.admin-capability-reference-card-heading {
+    min-height: 38px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--admin-divider);
+}
+
+.admin-capability-reference-card-heading h3,
+.admin-capability-protocol-card-heading h3 {
+    color: var(--admin-text-primary);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.admin-capability-reference-card-heading p,
+.admin-capability-protocol-card-heading p {
+    margin-top: 3px;
+    color: var(--admin-text-muted);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.admin-capability-reference-fields {
+    display: grid;
+    gap: 4px;
+}
+
+.admin-capability-reference-fields .admin-capability-number-field {
+    display: grid;
+    min-height: 32px;
+    grid-template-columns: minmax(0, 1fr) 80px;
+    align-items: center;
+    gap: 8px;
+    padding-block: 4px;
+}
+
+.admin-capability-reference-fields .admin-capability-field-label {
+    margin-bottom: 0;
+    line-height: 1.4;
+}
+
+.admin-capability-reference-fields .admin-capability-boolean-field {
+    min-height: 48px;
+    margin-top: 4px;
+    padding-block: 6px;
+}
+
+.admin-capability-protocol-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.admin-capability-protocol-card-heading {
+    display: flex;
+    min-height: 46px;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--admin-divider);
+}
+
+.admin-capability-protocol-card-heading > span {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--admin-layer-3);
+    color: var(--admin-text-muted);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.admin-capability-protocol-fields,
+.admin-capability-spec-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-capability-duration-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
 /* 系统渠道模型编辑器：恢复已确认的信息层级、协议参数与价格档布局。 */
 .admin-model-import-modal .channel-model-import-picker .ant-checkbox-wrapper {
     display: flex;
@@ -9437,6 +9550,7 @@
 
 @media (max-width: 899px) {
     .admin-model-editor-section,
+    .admin-capability-protocol-grid,
     .admin-price-tier-card-body {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -10853,4 +10967,3 @@ html[data-magicui-theme-vt="active"] .admin-shell * {
 .admin-banner-type-card[data-banner-type="warning"] .admin-banner-type-card-preview {
     background: var(--notice-banner-surface-warning);
 }
-
