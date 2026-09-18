@@ -883,7 +883,8 @@
                         }
                       },
                       [
-                        "tt-image-2"
+                        "tt-image-2",
+                        "tt-image-2.5"
                       ]
                     ]
                   },
@@ -1221,6 +1222,31 @@
                               ]
                             },
                             "then": "1K"
+                          },
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$coalesce": [
+                                        {
+                                          "$ref": "request.quality"
+                                        },
+                                        {
+                                          "$ref": "request.resolution"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                [
+                                  "auto",
+                                  ""
+                                ]
+                              ]
+                            },
+                            "then": "auto"
                           }
                         ],
                         "default": null
@@ -1272,6 +1298,90 @@
                         }
                       ],
                       "default": "flare"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "background": {
+                "$if": {
+                  "condition": {
+                    "$in": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      [
+                        "tt-image-2.5"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$omitEmpty": {
+                      "$switch": {
+                        "cases": [
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$toString": {
+                                        "$ref": "request.providerOptions.lk888-image.background"
+                                      }
+                                    }
+                                  }
+                                },
+                                [
+                                  "transparent",
+                                  "opaque",
+                                  "auto"
+                                ]
+                              ]
+                            },
+                            "then": {
+                              "$lower": {
+                                "$trim": {
+                                  "$toString": {
+                                    "$ref": "request.providerOptions.lk888-image.background"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$toString": {
+                                        "$coalesce": [
+                                          {
+                                            "$ref": "request.extra.transparentBackground"
+                                          },
+                                          {
+                                            "$ref": "request.extra.background"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                [
+                                  "true",
+                                  "transparent"
+                                ]
+                              ]
+                            },
+                            "then": "transparent"
+                          }
+                        ],
+                        "default": null
+                      }
                     }
                   },
                   "else": null

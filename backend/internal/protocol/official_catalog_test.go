@@ -911,6 +911,30 @@ func TestLK888ImageProfile(t *testing.T) {
 		t.Fatalf("seedream params = %#v", seedreamParams)
 	}
 
+	tt25, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "tt-image-2.5", Prompt: "still", AspectRatio: "16:9", Quality: "4k",
+		ProviderOptions: map[string]map[string]any{"lk888-image": {"version": "sunburst", "quality": "high", "background": "transparent"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt25Params, _ := manifestTestBody(t, tt25)["params"].(map[string]any)
+	if tt25Params["version"] != "sunburst" || tt25Params["aspect_ratio"] != "16:9" || tt25Params["resolution"] != "4K" || tt25Params["quality"] != "high" || tt25Params["background"] != "transparent" {
+		t.Fatalf("tt-image-2.5 params = %#v", tt25Params)
+	}
+
+	tt25Default, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "tt-image-2.5", Prompt: "still", AspectRatio: "auto"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt25DefaultParams, _ := manifestTestBody(t, tt25Default)["params"].(map[string]any)
+	if tt25DefaultParams["version"] != "flare" {
+		t.Fatalf("tt-image-2.5 default version = %#v", tt25DefaultParams)
+	}
+	if _, ok := tt25DefaultParams["aspect_ratio"]; ok {
+		t.Fatalf("auto ratio must be omitted: %#v", tt25DefaultParams)
+	}
+
 	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":123456},"msg":"任务创建成功"}`))
 	if err != nil || created.TaskID != "123456" || created.Status != StatusPending {
 		t.Fatalf("lk888 create response = %#v, err = %v", created, err)

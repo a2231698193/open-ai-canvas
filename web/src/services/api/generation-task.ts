@@ -10,6 +10,8 @@ import { resolveVideoOperation } from "@/lib/model-selection";
 import { logicalModelIDForConfig, modelOptionName, resolveModelChannel, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import { isLk888MjProtocol, lk888MjProviderPayload } from "@/lib/lk888-mj-options";
 import { useLk888MjOptionsStore } from "@/stores/use-lk888-mj-options-store";
+import { isTtImage25, lk888Image25ProviderPayload } from "@/lib/lk888-image-options";
+import { useLk888ImageOptionsStore } from "@/stores/use-lk888-image-options-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { buildBackendToolRequests, type ResponseFunctionTool, type ResponseInputMessage, type ToolChoice, type ToolResponseResult } from "@/services/api/image";
@@ -318,14 +320,15 @@ function generationMetadata(config: AiConfig, metadata?: Record<string, unknown>
     const protocol = modelCost?.protocol || channel.interfaceType;
     const defaults = modelCost?.defaultOptions;
     const mjOptions = isLk888MjProtocol(protocol) ? lk888MjProviderPayload(useLk888MjOptionsStore.getState().options) : undefined;
-    if (!protocol || ((!defaults || !Object.keys(defaults).length) && !mjOptions)) return metadata;
+    const tt25Options = isTtImage25(protocol, model) ? lk888Image25ProviderPayload(useLk888ImageOptionsStore.getState().options) : undefined;
+    if (!protocol || ((!defaults || !Object.keys(defaults).length) && !mjOptions && !tt25Options)) return metadata;
     const existing = metadata?.providerOptions && typeof metadata.providerOptions === "object" && !Array.isArray(metadata.providerOptions)
         ? metadata.providerOptions as Record<string, unknown>
         : {};
     const namespace = existing[protocol] && typeof existing[protocol] === "object" && !Array.isArray(existing[protocol])
         ? existing[protocol] as Record<string, unknown>
         : {};
-    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...mjOptions, ...namespace } } };
+    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...mjOptions, ...tt25Options, ...namespace } } };
 }
 
 async function prepareBackendMediaReference(media: ReferenceVideo | ReferenceAudio) {

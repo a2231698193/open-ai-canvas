@@ -205,6 +205,7 @@ func protocolRequestFromInput(input canvasGenerationInput) protocol.GenerationRe
 			"audioVoice":   input.Config.AudioVoice,
 			"audioFormat":  input.Config.AudioFormat,
 			"count":        input.Config.Count,
+			"transparentBackground": input.Config.TransparentBackground,
 		},
 	}
 	for _, message := range input.TextHistory {
