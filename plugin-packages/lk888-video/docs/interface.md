@@ -375,7 +375,64 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         ]
                       },
-                      "else": null
+                      "else": {
+                        "$if": {
+                          "condition": {
+                            "$eq": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.model"
+                                  }
+                                }
+                              },
+                              "minimax-h3-max"
+                            ]
+                          },
+                          "then": {
+                            "$coalesce": [
+                              {
+                                "$ref": "request.providerOptions.lk888-video.mode"
+                              },
+                              {
+                                "$if": {
+                                  "condition": {
+                                    "$gt": [
+                                      {
+                                        "$len": {
+                                          "$filter": {
+                                            "from": {
+                                              "$sortByOrder": {
+                                                "$ref": "request.images"
+                                              }
+                                            },
+                                            "as": "media",
+                                            "where": {
+                                              "$in": [
+                                                {
+                                                  "$ref": "media.role"
+                                                },
+                                                [
+                                                  "first_frame",
+                                                  "last_frame"
+                                                ]
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      },
+                                      0
+                                    ]
+                                  },
+                                  "then": "shouweizhen",
+                                  "else": "wensheng"
+                                }
+                              }
+                            ]
+                          },
+                          "else": null
+                        }
+                      }
                     }
                   }
                 }
@@ -383,7 +440,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "images": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -391,7 +448,10 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "minimax-h3"
+                      [
+                        "minimax-h3",
+                        "minimax-h3-max"
+                      ]
                     ]
                   },
                   "then": {
@@ -571,7 +631,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "reference_urls": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -579,7 +639,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -603,7 +668,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "file_url": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -611,7 +676,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -625,7 +695,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "link_url": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -633,7 +703,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -647,7 +722,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "version": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -655,7 +730,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -713,7 +793,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                   "else": {
                     "$if": {
                       "condition": {
-                        "$eq": [
+                        "$in": [
                           {
                             "$lower": {
                               "$trim": {
@@ -721,7 +801,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                               }
                             }
                           },
-                          "wan3.0-video-cankaosheng"
+                          [
+                            "wan3.0",
+                            "wan3.0-video",
+                            "wan3.0-video-cankaosheng",
+                            "wan3.0-video-shouweizhen"
+                          ]
                         ]
                       },
                       "then": {
@@ -776,8 +861,9 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                         }
                       },
                       [
+                        "kling-v3-video",
                         "minimax-h3",
-                        "kling-v3-video"
+                        "minimax-h3-max"
                       ]
                     ]
                   },
@@ -849,7 +935,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "ratio": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -857,7 +943,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -997,7 +1088,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                               }
                             }
                           },
-                          "wan3.0-video-cankaosheng"
+                          "minimax-h3-max"
                         ]
                       },
                       "then": {
@@ -1014,41 +1105,93 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                     }
                                   },
                                   [
+                                    "768p",
+                                    "768",
+                                    "hd",
+                                    "medium",
+                                    "2k",
                                     "1080p",
                                     "1080",
-                                    "2k",
-                                    "4k",
                                     "high"
                                   ]
                                 ]
                               },
-                              "then": "1080P"
-                            },
-                            {
-                              "when": {
-                                "$in": [
-                                  {
-                                    "$lower": {
-                                      "$trim": {
-                                        "$ref": "request.resolution"
-                                      }
-                                    }
-                                  },
-                                  [
-                                    "720p",
-                                    "720",
-                                    "hd",
-                                    "medium"
-                                  ]
-                                ]
-                              },
-                              "then": "720P"
+                              "then": "768P"
                             }
                           ],
                           "default": "480P"
                         }
                       },
-                      "else": null
+                      "else": {
+                        "$if": {
+                          "condition": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.model"
+                                  }
+                                }
+                              },
+                              [
+                                "wan3.0",
+                                "wan3.0-video",
+                                "wan3.0-video-cankaosheng",
+                                "wan3.0-video-shouweizhen"
+                              ]
+                            ]
+                          },
+                          "then": {
+                            "$switch": {
+                              "cases": [
+                                {
+                                  "when": {
+                                    "$in": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.resolution"
+                                          }
+                                        }
+                                      },
+                                      [
+                                        "1080p",
+                                        "1080",
+                                        "2k",
+                                        "4k",
+                                        "high"
+                                      ]
+                                    ]
+                                  },
+                                  "then": "1080P"
+                                },
+                                {
+                                  "when": {
+                                    "$in": [
+                                      {
+                                        "$lower": {
+                                          "$trim": {
+                                            "$ref": "request.resolution"
+                                          }
+                                        }
+                                      },
+                                      [
+                                        "720p",
+                                        "720",
+                                        "hd",
+                                        "medium"
+                                      ]
+                                    ]
+                                  },
+                                  "then": "720P"
+                                }
+                              ],
+                              "default": "480P"
+                            }
+                          },
+                          "else": null
+                        }
+                      }
                     }
                   }
                 }
@@ -1056,7 +1199,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "audio": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -1064,7 +1207,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {
@@ -1076,7 +1224,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
               "prompt_extend": {
                 "$if": {
                   "condition": {
-                    "$eq": [
+                    "$in": [
                       {
                         "$lower": {
                           "$trim": {
@@ -1084,7 +1232,12 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "wan3.0-video-cankaosheng"
+                      [
+                        "wan3.0",
+                        "wan3.0-video",
+                        "wan3.0-video-cankaosheng",
+                        "wan3.0-video-shouweizhen"
+                      ]
                     ]
                   },
                   "then": {

@@ -239,472 +239,474 @@
                 }
               },
               "size": {
-                "$if": {
-                  "condition": {
-                    "$in": [
-                      {
-                        "$lower": {
-                          "$trim": {
-                            "$ref": "request.model"
-                          }
-                        }
-                      },
-                      [
-                        "tt-image-2"
-                      ]
-                    ]
-                  },
-                  "then": {
-                    "$if": {
-                      "condition": {
+                "$switch": {
+                  "cases": [
+                    {
+                      "when": {
                         "$in": [
                           {
                             "$lower": {
                               "$trim": {
-                                "$ref": "request.aspectRatio"
+                                "$ref": "request.model"
                               }
                             }
                           },
                           [
-                            "",
-                            "auto"
+                            "tt-image-2"
                           ]
                         ]
                       },
-                      "then": "auto",
-                      "else": {
+                      "then": {
                         "$if": {
                           "condition": {
-                            "$eq": [
+                            "$in": [
                               {
-                                "$len": {
-                                  "$split": [
-                                    {
-                                      "$ref": "request.aspectRatio"
-                                    },
-                                    "x"
-                                  ]
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.aspectRatio"
+                                  }
                                 }
                               },
-                              2
+                              [
+                                "",
+                                "auto"
+                              ]
                             ]
                           },
-                          "then": {
-                            "$ref": "request.aspectRatio"
-                          },
+                          "then": "auto",
                           "else": {
-                            "$switch": {
-                              "cases": [
-                                {
-                                  "when": {
-                                    "$in": [
-                                      {
-                                        "$lower": {
-                                          "$trim": {
-                                            "$coalesce": [
-                                              {
-                                                "$ref": "request.quality"
-                                              },
-                                              {
-                                                "$ref": "request.resolution"
-                                              }
-                                            ]
-                                          }
-                                        }
-                                      },
-                                      [
-                                        "2k",
-                                        "medium",
-                                        "hd"
+                            "$if": {
+                              "condition": {
+                                "$eq": [
+                                  {
+                                    "$len": {
+                                      "$split": [
+                                        {
+                                          "$ref": "request.aspectRatio"
+                                        },
+                                        "x"
                                       ]
-                                    ]
-                                  },
-                                  "then": {
-                                    "$switch": {
-                                      "cases": [
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "1:1"
-                                            ]
-                                          },
-                                          "then": "2048x2048"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "2:3"
-                                            ]
-                                          },
-                                          "then": "2048x3072"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "3:2"
-                                            ]
-                                          },
-                                          "then": "3072x2048"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "3:4"
-                                            ]
-                                          },
-                                          "then": "1920x2560"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "4:3"
-                                            ]
-                                          },
-                                          "then": "2560x1920"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "9:16"
-                                            ]
-                                          },
-                                          "then": "1440x2560"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "16:9"
-                                            ]
-                                          },
-                                          "then": "2560x1440"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "4:5"
-                                            ]
-                                          },
-                                          "then": "2048x2560"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "5:4"
-                                            ]
-                                          },
-                                          "then": "2560x2048"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "21:9"
-                                            ]
-                                          },
-                                          "then": "2560x1280"
-                                        }
-                                      ],
-                                      "default": "auto"
                                     }
-                                  }
-                                },
-                                {
-                                  "when": {
-                                    "$in": [
-                                      {
-                                        "$lower": {
-                                          "$trim": {
-                                            "$coalesce": [
-                                              {
-                                                "$ref": "request.quality"
-                                              },
-                                              {
-                                                "$ref": "request.resolution"
-                                              }
-                                            ]
-                                          }
-                                        }
-                                      },
-                                      [
-                                        "4k",
-                                        "high"
-                                      ]
-                                    ]
                                   },
-                                  "then": {
-                                    "$switch": {
-                                      "cases": [
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "1:1"
-                                            ]
-                                          },
-                                          "then": "2880x2880"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "2:3"
-                                            ]
-                                          },
-                                          "then": "2304x3456"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "3:2"
-                                            ]
-                                          },
-                                          "then": "3456x2304"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "3:4"
-                                            ]
-                                          },
-                                          "then": "2400x3200"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "4:3"
-                                            ]
-                                          },
-                                          "then": "3200x2400"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "9:16"
-                                            ]
-                                          },
-                                          "then": "2160x3840"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "16:9"
-                                            ]
-                                          },
-                                          "then": "3840x2160"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "4:5"
-                                            ]
-                                          },
-                                          "then": "2560x3200"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "5:4"
-                                            ]
-                                          },
-                                          "then": "3200x2560"
-                                        },
-                                        {
-                                          "when": {
-                                            "$eq": [
-                                              {
-                                                "$ref": "request.aspectRatio"
-                                              },
-                                              "21:9"
-                                            ]
-                                          },
-                                          "then": "3840x1920"
-                                        }
-                                      ],
-                                      "default": "auto"
-                                    }
-                                  }
-                                }
-                              ],
-                              "default": {
+                                  2
+                                ]
+                              },
+                              "then": {
+                                "$ref": "request.aspectRatio"
+                              },
+                              "else": {
                                 "$switch": {
                                   "cases": [
                                     {
                                       "when": {
-                                        "$eq": [
+                                        "$in": [
                                           {
-                                            "$ref": "request.aspectRatio"
+                                            "$lower": {
+                                              "$trim": {
+                                                "$coalesce": [
+                                                  {
+                                                    "$ref": "request.quality"
+                                                  },
+                                                  {
+                                                    "$ref": "request.resolution"
+                                                  }
+                                                ]
+                                              }
+                                            }
                                           },
-                                          "1:1"
+                                          [
+                                            "2k",
+                                            "medium",
+                                            "hd"
+                                          ]
                                         ]
                                       },
-                                      "then": "1024x1024"
+                                      "then": {
+                                        "$switch": {
+                                          "cases": [
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "1:1"
+                                                ]
+                                              },
+                                              "then": "2048x2048"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "2:3"
+                                                ]
+                                              },
+                                              "then": "2048x3072"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "3:2"
+                                                ]
+                                              },
+                                              "then": "3072x2048"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "3:4"
+                                                ]
+                                              },
+                                              "then": "1920x2560"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "4:3"
+                                                ]
+                                              },
+                                              "then": "2560x1920"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "9:16"
+                                                ]
+                                              },
+                                              "then": "1440x2560"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "16:9"
+                                                ]
+                                              },
+                                              "then": "2560x1440"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "4:5"
+                                                ]
+                                              },
+                                              "then": "2048x2560"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "5:4"
+                                                ]
+                                              },
+                                              "then": "2560x2048"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "21:9"
+                                                ]
+                                              },
+                                              "then": "2560x1280"
+                                            }
+                                          ],
+                                          "default": "auto"
+                                        }
+                                      }
                                     },
                                     {
                                       "when": {
-                                        "$eq": [
+                                        "$in": [
                                           {
-                                            "$ref": "request.aspectRatio"
+                                            "$lower": {
+                                              "$trim": {
+                                                "$coalesce": [
+                                                  {
+                                                    "$ref": "request.quality"
+                                                  },
+                                                  {
+                                                    "$ref": "request.resolution"
+                                                  }
+                                                ]
+                                              }
+                                            }
                                           },
-                                          "2:3"
+                                          [
+                                            "4k",
+                                            "high"
+                                          ]
                                         ]
                                       },
-                                      "then": "1024x1536"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "3:2"
-                                        ]
-                                      },
-                                      "then": "1536x1024"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "3:4"
-                                        ]
-                                      },
-                                      "then": "960x1280"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "4:3"
-                                        ]
-                                      },
-                                      "then": "1280x960"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "9:16"
-                                        ]
-                                      },
-                                      "then": "1088x1920"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "16:9"
-                                        ]
-                                      },
-                                      "then": "1920x1088"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "4:5"
-                                        ]
-                                      },
-                                      "then": "1024x1280"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "5:4"
-                                        ]
-                                      },
-                                      "then": "1280x1024"
-                                    },
-                                    {
-                                      "when": {
-                                        "$eq": [
-                                          {
-                                            "$ref": "request.aspectRatio"
-                                          },
-                                          "21:9"
-                                        ]
-                                      },
-                                      "then": "1920x960"
+                                      "then": {
+                                        "$switch": {
+                                          "cases": [
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "1:1"
+                                                ]
+                                              },
+                                              "then": "2880x2880"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "2:3"
+                                                ]
+                                              },
+                                              "then": "2304x3456"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "3:2"
+                                                ]
+                                              },
+                                              "then": "3456x2304"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "3:4"
+                                                ]
+                                              },
+                                              "then": "2400x3200"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "4:3"
+                                                ]
+                                              },
+                                              "then": "3200x2400"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "9:16"
+                                                ]
+                                              },
+                                              "then": "2160x3840"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "16:9"
+                                                ]
+                                              },
+                                              "then": "3840x2160"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "4:5"
+                                                ]
+                                              },
+                                              "then": "2560x3200"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "5:4"
+                                                ]
+                                              },
+                                              "then": "3200x2560"
+                                            },
+                                            {
+                                              "when": {
+                                                "$eq": [
+                                                  {
+                                                    "$ref": "request.aspectRatio"
+                                                  },
+                                                  "21:9"
+                                                ]
+                                              },
+                                              "then": "3840x1920"
+                                            }
+                                          ],
+                                          "default": "auto"
+                                        }
+                                      }
                                     }
                                   ],
-                                  "default": "auto"
+                                  "default": {
+                                    "$switch": {
+                                      "cases": [
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "1:1"
+                                            ]
+                                          },
+                                          "then": "1024x1024"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "2:3"
+                                            ]
+                                          },
+                                          "then": "1024x1536"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "3:2"
+                                            ]
+                                          },
+                                          "then": "1536x1024"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "3:4"
+                                            ]
+                                          },
+                                          "then": "960x1280"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "4:3"
+                                            ]
+                                          },
+                                          "then": "1280x960"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "9:16"
+                                            ]
+                                          },
+                                          "then": "1088x1920"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "16:9"
+                                            ]
+                                          },
+                                          "then": "1920x1088"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "4:5"
+                                            ]
+                                          },
+                                          "then": "1024x1280"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "5:4"
+                                            ]
+                                          },
+                                          "then": "1280x1024"
+                                        },
+                                        {
+                                          "when": {
+                                            "$eq": [
+                                              {
+                                                "$ref": "request.aspectRatio"
+                                              },
+                                              "21:9"
+                                            ]
+                                          },
+                                          "then": "1920x960"
+                                        }
+                                      ],
+                                      "default": "auto"
+                                    }
+                                  }
                                 }
                               }
                             }
                           }
                         }
                       }
-                    }
-                  },
-                  "else": {
-                    "$if": {
-                      "condition": {
+                    },
+                    {
+                      "when": {
                         "$in": [
                           {
                             "$lower": {
@@ -754,10 +756,119 @@
                             "default": "1K"
                           }
                         }
+                      }
+                    },
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.model"
+                              }
+                            }
+                          },
+                          [
+                            "qwen-image"
+                          ]
+                        ]
                       },
-                      "else": null
+                      "then": {
+                        "$if": {
+                          "condition": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.aspectRatio"
+                                  }
+                                }
+                              },
+                              [
+                                "",
+                                "auto"
+                              ]
+                            ]
+                          },
+                          "then": "1:1",
+                          "else": {
+                            "$if": {
+                              "condition": {
+                                "$eq": [
+                                  {
+                                    "$len": {
+                                      "$split": [
+                                        {
+                                          "$ref": "request.aspectRatio"
+                                        },
+                                        "x"
+                                      ]
+                                    }
+                                  },
+                                  2
+                                ]
+                              },
+                              "then": "1:1",
+                              "else": {
+                                "$ref": "request.aspectRatio"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.model"
+                              }
+                            }
+                          },
+                          [
+                            "doubao-seedream-5-0-260128"
+                          ]
+                        ]
+                      },
+                      "then": {
+                        "$omitEmpty": {
+                          "$switch": {
+                            "cases": [
+                              {
+                                "when": {
+                                  "$in": [
+                                    {
+                                      "$lower": {
+                                        "$trim": {
+                                          "$coalesce": [
+                                            {
+                                              "$ref": "request.quality"
+                                            },
+                                            {
+                                              "$ref": "request.resolution"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    [
+                                      "3k",
+                                      "high"
+                                    ]
+                                  ]
+                                },
+                                "then": "3K"
+                              }
+                            ],
+                            "default": "2K"
+                          }
+                        }
+                      }
                     }
-                  }
+                  ],
+                  "default": null
                 }
               },
               "quality": {
@@ -796,7 +907,8 @@
                         }
                       },
                       [
-                        "banana-pro"
+                        "banana-pro",
+                        "banana-2"
                       ]
                     ]
                   },
@@ -858,13 +970,39 @@
                         }
                       },
                       [
-                        "banana-pro"
+                        "banana-pro",
+                        "banana-2"
                       ]
                     ]
                   },
                   "then": {
                     "$switch": {
                       "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$coalesce": [
+                                      {
+                                        "$ref": "request.quality"
+                                      },
+                                      {
+                                        "$ref": "request.resolution"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              [
+                                "0.5k",
+                                "low"
+                              ]
+                            ]
+                          },
+                          "then": "0.5K"
+                        },
                         {
                           "when": {
                             "$in": [
@@ -935,7 +1073,9 @@
                         }
                       },
                       [
-                        "doubao-seedream-5-0-pro-260628"
+                        "doubao-seedream-5-0-pro-260628",
+                        "doubao-seedream-5-0-260128",
+                        "tt-image-2.5"
                       ]
                     ]
                   },
@@ -982,6 +1122,156 @@
                           }
                         }
                       }
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "resolution": {
+                "$if": {
+                  "condition": {
+                    "$in": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      [
+                        "tt-image-2.5"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$omitEmpty": {
+                      "$switch": {
+                        "cases": [
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$coalesce": [
+                                        {
+                                          "$ref": "request.quality"
+                                        },
+                                        {
+                                          "$ref": "request.resolution"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                [
+                                  "4k",
+                                  "high"
+                                ]
+                              ]
+                            },
+                            "then": "4K"
+                          },
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$coalesce": [
+                                        {
+                                          "$ref": "request.quality"
+                                        },
+                                        {
+                                          "$ref": "request.resolution"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                [
+                                  "2k",
+                                  "medium",
+                                  "hd"
+                                ]
+                              ]
+                            },
+                            "then": "2K"
+                          },
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$coalesce": [
+                                        {
+                                          "$ref": "request.quality"
+                                        },
+                                        {
+                                          "$ref": "request.resolution"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                [
+                                  "1k"
+                                ]
+                              ]
+                            },
+                            "then": "1K"
+                          }
+                        ],
+                        "default": null
+                      }
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "version": {
+                "$if": {
+                  "condition": {
+                    "$in": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      [
+                        "tt-image-2.5"
+                      ]
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$toString": {
+                                      "$ref": "request.providerOptions.lk888-image.version"
+                                    }
+                                  }
+                                }
+                              },
+                              [
+                                "sunburst",
+                                "enhanced",
+                                "增强版"
+                              ]
+                            ]
+                          },
+                          "then": "sunburst"
+                        }
+                      ],
+                      "default": "flare"
                     }
                   },
                   "else": null
