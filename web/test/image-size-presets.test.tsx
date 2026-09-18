@@ -237,4 +237,28 @@ describe("统一图片分辨率与宽高比", () => {
         const video = renderToStaticMarkup(<ModelCapabilityEditor capability="video" section="protocol" />);
         expect(video).not.toContain("admin-image-protocol-grid");
     });
+
+    test("只声明比例的模型露出全部宽高比，不显示假分辨率", () => {
+        const profile = defaultImageCapabilityConfig();
+        profile.quality = { supported: false, values: [], default: "auto" };
+        profile.size = { parameter: "aspect_ratio", values: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"], default: "1:1", allowCustom: false };
+        const picker = renderToStaticMarkup(<ImageSizePicker profile={profile} size="1:1" onChange={() => {}} />);
+        expect(picker).toContain(">16:9<");
+        expect(picker).toContain(">9:16<");
+        expect(picker).toContain(">4:5<");
+        expect(picker).toContain(">21:9<");
+        expect(picker).not.toMatch(/<button[^>]*>1K/);
+        expect(picker).toContain("当前协议未配置独立分辨率");
+    });
+
+    test("质量含 2K/3K 时分辨率选择器同时露出两档", () => {
+        const profile = defaultImageCapabilityConfig();
+        profile.quality = { supported: true, values: ["2k", "3k"], default: "2k" };
+        profile.size = { parameter: "aspect_ratio", values: ["1:1", "16:9"], default: "1:1", allowCustom: false };
+        expect(imageQualityForTier(profile, "3k")).toBe("3k");
+        const picker = renderToStaticMarkup(<ImageSizePicker profile={profile} size="1:1" quality="2k" onChange={() => {}} />);
+        expect(picker).toMatch(/<button[^>]*>2K/);
+        expect(picker).toMatch(/<button[^>]*>3K/);
+        expect(imagePresetForRatio("3k", "1:1").size).toBe("2560x2560");
+    });
 });

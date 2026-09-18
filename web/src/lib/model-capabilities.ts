@@ -1019,7 +1019,7 @@ export function normalizeImageValue(profile: ImageCapabilityConfig, value: { siz
             : value.quality && profile.quality.values.includes(value.quality)
                 ? value.quality
                 : profile.quality.default || "auto"
-        : requestedQuality === "1k" || requestedQuality === "2k" || requestedQuality === "4k"
+        : requestedQuality === "1k" || requestedQuality === "2k" || requestedQuality === "3k" || requestedQuality === "4k"
             ? requestedQuality
             : presetTier || profile.quality.default || "auto";
     const count = String(Math.max(1, Math.min(profile.maxOutputs, Math.floor(Math.abs(Number(value.count)) || 1))));

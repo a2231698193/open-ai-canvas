@@ -725,8 +725,8 @@ func validateImageCapabilityConfig(value *ImageCapabilityConfig) error {
 	}
 	seenPresets := make(map[string]bool)
 	for _, preset := range value.Size.Presets {
-		if preset.Tier != "1k" && preset.Tier != "2k" && preset.Tier != "4k" {
-			return BadAuthRequest("图片分辨率档位仅支持 1K、2K、4K")
+		if preset.Tier != "1k" && preset.Tier != "2k" && preset.Tier != "3k" && preset.Tier != "4k" {
+			return BadAuthRequest("图片分辨率档位仅支持 1K、2K、3K、4K")
 		}
 		parts := strings.Split(preset.Ratio, ":")
 		if len(parts) != 2 {
@@ -1072,6 +1072,8 @@ func imageResolutionTier(quality string) string {
 		return "1k"
 	case "2k", "medium":
 		return "2k"
+	case "3k":
+		return "3k"
 	case "4k", "high":
 		return "4k"
 	default:

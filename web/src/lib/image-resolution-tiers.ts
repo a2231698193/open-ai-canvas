@@ -1,4 +1,4 @@
-export type ImageResolutionTier = "1k" | "2k" | "4k";
+export type ImageResolutionTier = "1k" | "2k" | "3k" | "4k";
 
 export type ImageResolutionOption = {
     size: string;
@@ -10,7 +10,7 @@ export type ImageResolutionOption = {
 
 export type ImageResolutionChoice = "auto" | ImageResolutionTier;
 
-const tierOrder: ImageResolutionTier[] = ["1k", "2k", "4k"];
+const tierOrder: ImageResolutionTier[] = ["1k", "2k", "3k", "4k"];
 const ratioOrder = ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "16:9", "9:16", "2:1", "1:2", "21:9"];
 
 export function supportsImageResolutionPresets(size: { parameter: string; values: string[]; allowCustom?: boolean }) {
@@ -61,7 +61,7 @@ function parseImageResolutionOption(value: string): ImageResolutionOption | null
     const height = Number(match[2]);
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return null;
     const pixels = width * height;
-    const tier: ImageResolutionTier | null = pixels <= 2_000_000 ? "1k" : pixels <= 4_300_000 ? "2k" : pixels <= 8_294_400 ? "4k" : null;
+    const tier: ImageResolutionTier | null = pixels <= 2_000_000 ? "1k" : pixels <= 4_300_000 ? "2k" : pixels <= 6_800_000 ? "3k" : pixels <= 8_294_400 ? "4k" : null;
     if (!tier) return null;
     let a = width, b = height;
     while (b) [a, b] = [b, a % b];

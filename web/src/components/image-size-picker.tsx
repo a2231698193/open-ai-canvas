@@ -116,9 +116,10 @@ export function ImageSizePicker({ profile, size, quality, onChange }: { profile:
         }
     };
     if (profile.size.parameter === "none") return null;
+    const showResolutionTiers = visibleTiers.length > 1 || imageResolutionUsesQuality(profile) || Boolean(profile.size.presets?.length);
     return (
         <div className="image-size-picker">
-            {visibleTiers.length ? (
+            {showResolutionTiers ? (
                 <>
                     <div className="image-size-label">分辨率</div>
                     <div className="image-size-tiers">

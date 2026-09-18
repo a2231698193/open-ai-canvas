@@ -1,5 +1,7 @@
 import { ImageSizePicker } from "./image-size-picker";
+import { Lk888MjOptionsPanel } from "./lk888-mj-options-panel";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
+import { isLk888MjProtocol } from "@/lib/lk888-mj-options";
 import { type ReactNode } from "react";
 import { ConfigProvider } from "antd";
 import { Switch } from "@/components/ui/base/switch";
@@ -67,6 +69,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const activeSize = normalized.size;
     const activeQualityOptions = profile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value });
     const priceTiers = imageModelPriceTiers(config);
+    const protocol = resolveModelChannel(config, config.model || config.imageModel).modelCosts?.find((item) => item.model === modelOptionName(config.model || config.imageModel))?.protocol || resolveModelChannel(config, config.model || config.imageModel).interfaceType;
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -106,6 +109,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                     </span>
                 </div> : null}
                 {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} onChange={(size, nextQuality) => applyImageSizeSelection(onConfigChange, size, nextQuality)} /> : null}
+                {isLk888MjProtocol(protocol) ? <Lk888MjOptionsPanel compact /> : null}
                 {showCount && effectiveMaxCount > 1 ? (
                     <div className="space-y-2">
                         <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>

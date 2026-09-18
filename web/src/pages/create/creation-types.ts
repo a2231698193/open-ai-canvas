@@ -53,6 +53,7 @@ export const qualityOptions = [
     // grok2api / xAI Imagine：quality 映射 resolution
     { value: "1k", label: "1K", description: "标准清晰度" },
     { value: "2k", label: "2K", description: "更高清晰度" },
+    { value: "3k", label: "3K", description: "即梦 3K" },
 ];
 export const resolutionOptions = VIDEO_RESOLUTION_OPTIONS.map((value) => ({ value: String(value), label: videoResolutionLabel(value) }));
 export const countOptions = ["1", "2", "3", "4"];

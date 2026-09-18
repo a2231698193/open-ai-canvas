@@ -8,6 +8,8 @@ import { resolveGenerationWorkflowExecution, type GenerationWorkflowExecution } 
 import { isArkPlanBaseUrl } from "@/lib/seedance-video";
 import { resolveVideoOperation } from "@/lib/model-selection";
 import { logicalModelIDForConfig, modelOptionName, resolveModelChannel, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import { isLk888MjProtocol, lk888MjProviderPayload } from "@/lib/lk888-mj-options";
+import { useLk888MjOptionsStore } from "@/stores/use-lk888-mj-options-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { buildBackendToolRequests, type ResponseFunctionTool, type ResponseInputMessage, type ToolChoice, type ToolResponseResult } from "@/services/api/image";
@@ -315,14 +317,15 @@ function generationMetadata(config: AiConfig, metadata?: Record<string, unknown>
     const modelCost = channel.modelCosts?.find((item) => item.model === model);
     const protocol = modelCost?.protocol || channel.interfaceType;
     const defaults = modelCost?.defaultOptions;
-    if (!protocol || !defaults || !Object.keys(defaults).length) return metadata;
+    const mjOptions = isLk888MjProtocol(protocol) ? lk888MjProviderPayload(useLk888MjOptionsStore.getState().options) : undefined;
+    if (!protocol || ((!defaults || !Object.keys(defaults).length) && !mjOptions)) return metadata;
     const existing = metadata?.providerOptions && typeof metadata.providerOptions === "object" && !Array.isArray(metadata.providerOptions)
         ? metadata.providerOptions as Record<string, unknown>
         : {};
     const namespace = existing[protocol] && typeof existing[protocol] === "object" && !Array.isArray(existing[protocol])
         ? existing[protocol] as Record<string, unknown>
         : {};
-    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...namespace } } };
+    return { ...metadata, providerOptions: { ...existing, [protocol]: { ...defaults, ...mjOptions, ...namespace } } };
 }
 
 async function prepareBackendMediaReference(media: ReferenceVideo | ReferenceAudio) {
