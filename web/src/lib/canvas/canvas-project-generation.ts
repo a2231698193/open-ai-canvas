@@ -255,6 +255,21 @@ export function nodeReferenceImage(node: CanvasNodeData): ReferenceImage | null 
     };
 }
 
+export function nodeReferenceVideo(node: CanvasNodeData): ReferenceVideo | null {
+    if (node.type !== CanvasNodeType.Video || (!node.metadata?.content && !node.metadata?.storageKey)) return null;
+    return {
+        id: node.id,
+        name: `${node.title || node.id}.mp4`,
+        type: node.metadata.mimeType || "video/mp4",
+        url: node.metadata.content || "",
+        storageKey: node.metadata.storageKey,
+        bytes: node.metadata.bytes,
+        width: node.metadata.naturalWidth,
+        height: node.metadata.naturalHeight,
+        durationMs: node.metadata.durationMs,
+    };
+}
+
 export function buildAudioGenerationMetadata(config: AiConfig): CanvasNodeMetadata {
     return {
         ...generationWorkflowMetadata(config),

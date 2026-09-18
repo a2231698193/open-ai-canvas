@@ -22,3 +22,18 @@ test("lk888-seedance includes adaptive ratio", () => {
         resolutions: ["480p", "720p"],
     });
 });
+
+test("lk888-video video-enhance is video-to-video with 2K-to-8K output", () => {
+    expect(defaultModelCapabilityConfig("lk888-video", "video-enhance").video).toMatchObject({
+        defaultResolution: "1080p",
+        resolutions: ["720p", "1080p", "2k", "4k", "8k"],
+        operations: ["video_to_video"],
+        defaultOperation: "video_to_video",
+        references: {
+            minImages: 0,
+            maxImages: 0,
+            maxVideos: 1,
+            maxVideoDurationSeconds: 600,
+        },
+    });
+});

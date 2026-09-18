@@ -8,6 +8,7 @@ import type { CanvasImageSplitParams } from "@/components/canvas/canvas-node-spl
 import type { CanvasImageUpscaleParams } from "@/components/canvas/canvas-node-upscale-dialog";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
 import type { CanvasVideoSegmentParams } from "@/components/canvas/canvas-video-segment-dialog";
+import { findVideoEnhanceModel, videoEnhanceDurationError, videoEnhanceDurationSeconds, videoEnhanceProviderOptions, type VideoEnhanceParams } from "@/lib/canvas/canvas-video-enhance";
 import { buildLightingLabel, type CanvasImageLightingOptions } from "@/components/canvas/canvas-node-lighting-dialog";
 import type { CanvasImageEmotionPayload } from "@/components/canvas/canvas-node-emotion-panel";
 import type { PanoramaGenerateConfig } from "@/components/canvas/canvas-panorama-config-modal";
@@ -26,8 +27,10 @@ import {
     buildGenerationConfig,
     buildImageGenerationMetadata,
     nodeReferenceImage,
+    nodeReferenceVideo,
     isGenerationCanceled,
     runBackendCanvasGenerationTask,
+    runCanvasGenerationTaskToConsumer,
 } from "@/lib/canvas/canvas-project-generation";
 import { fitNodeSize, VIDEO_NODE_MAX_SIZE } from "@/lib/canvas/canvas-node-size";
 import { compositeEmotionImage, emotionGenerationSize, emotionProviderMask, normalizeEmotionPromptForProvider, resolveEmotionEditPlan } from "@/lib/canvas/canvas-emotion";
@@ -79,6 +82,7 @@ type UseCanvasMediaToolsOptions = {
     startGenerationRequest: (targetNodeId: string, originNodeId: string, runningId?: string, controller?: AbortController) => AbortController;
     finishGenerationRequest: (targetNodeId: string, controller: AbortController) => void;
     bindGenerationTask: (targetNodeId: string, task: GenerationTask) => void;
+    applyGenerationTaskResult: (targetNodeId: string, task: GenerationTask) => Promise<void>;
 };
 
 const NODE_STATUS_LOADING = "loading" as const;
@@ -105,6 +109,7 @@ export function useCanvasMediaTools({
     startGenerationRequest,
     finishGenerationRequest,
     bindGenerationTask,
+    applyGenerationTaskResult,
 }: UseCanvasMediaToolsOptions) {
     const { message } = App.useApp();
     const effectiveConfig = useEffectiveConfig();
@@ -819,6 +824,93 @@ export function useCanvasMediaTools({
         await persistMediaNodes([child]);
     }, [persistMediaNodes, setConnections, setDialogNodeId, setNodes, setSelectedNodeIds]);
 
+    const enhanceVideoNode = useCallback(async (node: CanvasNodeData, params: VideoEnhanceParams) => {
+        const source = nodeReferenceVideo(node);
+        if (!source) return;
+        const durationError = videoEnhanceDurationError(node.metadata?.durationMs);
+        if (durationError) {
+            message.warning(durationError);
+            return;
+        }
+        const model = findVideoEnhanceModel(effectiveConfig);
+        if (!model) {
+            message.warning("后台尚未配置「视频超分」模型，请在云桥渠道添加 video-enhance");
+            return;
+        }
+        const seconds = videoEnhanceDurationSeconds(node.metadata?.durationMs);
+        const generationConfig = {
+            ...buildGenerationConfig(effectiveConfig, node, "video"),
+            model,
+            vquality: params.resolution,
+            videoSeconds: String(seconds),
+            count: "1",
+        };
+        if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+            navigateToSettings({ continueCreation: true });
+            return;
+        }
+        const childId = nanoid();
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+        const prompt = "视频超分";
+        const providerOptions = { "lk888-video": videoEnhanceProviderOptions(params) };
+        setRunningNodeId(childId);
+        setNodes((current) => [...current, {
+            id: childId,
+            type: CanvasNodeType.Video,
+            title: `超分 · ${node.title || "视频"}`,
+            position: { x: node.position.x + node.width + 96, y: node.position.y },
+            width: node.width || spec.width,
+            height: node.height || spec.height,
+            metadata: {
+                ...canvasGenerationPromptMetadata(prompt, prompt),
+                status: NODE_STATUS_LOADING,
+                generationMode: "video",
+                model,
+                size: generationConfig.size,
+                seconds: generationConfig.videoSeconds,
+                vquality: params.resolution,
+                videoEditOperation: "video_to_video",
+                references: [source.storageKey || source.url].filter((url): url is string => Boolean(url)),
+            },
+        }]);
+        setConnections((current) => [...current, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
+        setSelectedNodeIds(new Set([childId]));
+        setSelectedConnectionId(null);
+        setDialogNodeId(childId);
+        const controller = startGenerationRequest(childId, node.id, childId);
+        try {
+            await runCanvasGenerationTaskToConsumer(
+                {
+                    projectId,
+                    nodeId: childId,
+                    mode: "video",
+                    prompt,
+                    config: generationConfig,
+                    referenceVideos: [source],
+                    signal: controller.signal,
+                    metadata: {
+                        sourceNodeId: node.id,
+                        edit: "video-enhance",
+                        videoEditOperation: "video_to_video",
+                        providerOptions,
+                    },
+                },
+                {
+                    bindTask: (task) => bindGenerationTask(childId, task),
+                    consumeTask: (task) => applyGenerationTaskResult(childId, task),
+                },
+            );
+        } catch (error) {
+            if (isGenerationCanceled(error)) return;
+            const details = generationErrorMessage(error);
+            message.error(details);
+            setNodes((current) => current.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails: details } } : item)));
+        } finally {
+            finishGenerationRequest(childId, controller);
+            setRunningNodeId(null);
+        }
+    }, [applyGenerationTaskResult, bindGenerationTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, projectId, setConnections, setDialogNodeId, setNodes, setRunningNodeId, setSelectedConnectionId, setSelectedNodeIds, startGenerationRequest]);
+
     const generateAngleNode = useCallback(async (node: CanvasNodeData, params: CanvasImageAngleParams) => {
         if (!node.metadata?.content) return;
         const generationConfig = { ...buildGenerationConfig(effectiveConfig, node, "image"), count: "1" };
@@ -968,6 +1060,7 @@ export function useCanvasMediaTools({
         cropNodeId,
         closeFrameDialog,
         closeSegmentDialog,
+        enhanceVideoNode,
         extractAudioFromVideo,
         extractVideoFrames,
         extractingVideoFramesNodeId,

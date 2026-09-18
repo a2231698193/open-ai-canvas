@@ -20,16 +20,16 @@
 
 | 统一字段 | 类型 | 必填 | 上游映射 | 说明 |
 | --- | --- | --- | --- | --- |
-| `model` | string | 是 | `model` | `minimax-h3` / `kling-v3-video` / `wan3.0-video-cankaosheng`。 |
+| `model` | string | 是 | `model` | `minimax-h3` / `kling-v3-video` / `wan3.0-video-cankaosheng` / `video-enhance`。 |
 | `prompt` | string | 是 | `prompt` | 视频提示词。 |
 | `images` | media[] | 否 | `params.images` / `params.image_url` / `params.reference_urls` | MiniMax 首尾帧进 `images`，参考图进 `image_url`；可灵 `images` 最多 2 张；万相走 `reference_urls`。 |
-| `videos` | media[] | 否 | `params.video_url` | 仅 MiniMax 参考生。 |
+| `videos` | media[] | 否 | `params.video_url` | MiniMax 参考生或 `video-enhance` 超分源视频。 |
 | `audios` | media[] | 否 | `params.audio_url` | 仅 MiniMax 参考生。 |
-| `duration` | integer | 否 | `params.duration` | 字符串秒。可灵映射 5/10/15；万相 0 秒为 `auto`。 |
+| `duration` | integer | 否 | `params.duration` | 字符串秒。可灵映射 5/10/15；万相 0 秒为 `auto`；`video-enhance` 不发送。 |
 | `aspectRatio` | string | 否 | `params.aspect_ratio` / `params.ratio` | MiniMax / 可灵用 `aspect_ratio`；万相用 `ratio`。 |
-| `resolution` | string | 否 | `params.resolution` / `params.mode` | MiniMax `768P/1080P/2K/4K`；万相 `480P/720P/1080P`；可灵 1080p/4k 映射 `mode=pro`。 |
+| `resolution` | string | 否 | `params.resolution` / `params.mode` | MiniMax `768P/1080P/2K/4K`；万相 `480P/720P/1080P`；可灵 1080p/4k 映射 `mode=pro`；`video-enhance` 用 `720p/1080p/2k/4k/8k`。 |
 | `generateAudio` | boolean | 否 | `params.audio` | 仅万相。 |
-| `providerOptions` | object | 否 | `params.mode` / `params.version` / `params.file_url` / `params.link_url` / `params.prompt_extend` | 命名空间 `lk888-video`。 |
+| `providerOptions` | object | 否 | `params.mode` / `params.version` / `params.file_url` / `params.link_url` / `params.prompt_extend` / `params.fps` / `params.tool_version` / `params.scene` / `params.enhance_style` | 命名空间 `lk888-video`。 |
 
 ## 上游请求模板逐字段清单
 
@@ -43,18 +43,22 @@
 | `create.body.params.mode` | MiniMax：`shouweizhen` / `cankaosheng`；可灵：`std` / `pro` |
 | `create.body.params.images` | MiniMax 首尾帧；可灵全部图片 |
 | `create.body.params.image_url` | MiniMax `reference_image` |
-| `create.body.params.video_url` | MiniMax 参考视频 |
+| `create.body.params.video_url` | MiniMax 参考视频或 `video-enhance` 源视频 |
 | `create.body.params.audio_url` | MiniMax 参考音频 |
 | `create.body.params.reference_urls` | 万相参考图 |
 | `create.body.params.file_url` | `providerOptions.lk888-video.file_url` |
 | `create.body.params.link_url` | `providerOptions.lk888-video.link_url` |
 | `create.body.params.version` | 万相 `standard` / `prime`，默认 `standard` |
-| `create.body.params.duration` | 字符串秒或万相 `auto` |
+| `create.body.params.duration` | 字符串秒或万相 `auto`；`video-enhance` 不发送 |
 | `create.body.params.aspect_ratio` | MiniMax / 可灵 |
 | `create.body.params.ratio` | 万相 |
-| `create.body.params.resolution` | MiniMax / 万相 |
+| `create.body.params.resolution` | MiniMax / 万相 / `video-enhance` |
 | `create.body.params.audio` | 万相 `request.generateAudio` |
 | `create.body.params.prompt_extend` | `providerOptions.lk888-video.prompt_extend` |
+| `create.body.params.fps` | `video-enhance`：`keep` / `60` / `120` |
+| `create.body.params.tool_version` | `video-enhance`：`standard` / `professional` |
+| `create.body.params.scene` | `video-enhance` 标准版可选场景 |
+| `create.body.params.enhance_style` | `video-enhance` 可选 `natural` / `hd` |
 | `poll.method` | `"GET"` |
 | `poll.path` | `"/v1/media/status"` |
 | `poll.query.task_id` | `taskId` |
@@ -66,6 +70,10 @@
 - `lk888-video.file_url`：万相文档 URL。
 - `lk888-video.link_url`：万相网页链接。
 - `lk888-video.prompt_extend`：万相提示词优化。
+- `lk888-video.fps`：`video-enhance` 帧率，`keep` / `60` / `120`。
+- `lk888-video.tool_version`：`video-enhance` 版本，`standard` / `professional`。
+- `lk888-video.scene`：`video-enhance` 标准版场景。
+- `lk888-video.enhance_style`：`video-enhance` 增强风格。
 
 动态模型或工作流允许使用文档声明的完整 `parameters/input/extra_body` 对象；该对象是协议本身的开放 schema，不会被宿主裁剪。
 
@@ -85,7 +93,7 @@
 
 ## 兼容边界
 
-MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audio_url`，不要把参考图塞进首尾帧。可灵 `images` 1 张=首帧、2 张=首尾帧。万相文档和网页链接二选一，走扩展键。Seedance 不在本包，见 `lk888-seedance`。
+MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audio_url`，不要把参考图塞进首尾帧。可灵 `images` 1 张=首帧、2 张=首尾帧。万相文档和网页链接二选一，走扩展键。`video-enhance` 只接受 1 个源视频，不发送 duration。Seedance 不在本包，见 `lk888-seedance`。
 
 <!-- YINGCE_MANIFEST_CONTRACT_START -->
 ## Manifest 完整接口定义
@@ -99,7 +107,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
   "name": "问鼎 LK888 Video",
   "version": "1.0.0",
   "author": "问鼎数据 / 影策",
-  "description": "问鼎数据视频异步任务协议，覆盖 minimax-h3、kling-v3-video、wan3.0-video-cankaosheng。",
+  "description": "问鼎数据视频异步任务协议，覆盖 minimax-h3、kling-v3-video、wan3.0-video-cankaosheng、video-enhance。",
   "permissions": [
     "generation.run",
     "media.read"
@@ -141,7 +149,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
             "type": "string",
             "required": true,
             "mapping": "model",
-            "description": "视频模型 ID：minimax-h3、kling-v3-video、wan3.0-video-cankaosheng。"
+            "description": "视频模型 ID：minimax-h3、kling-v3-video、wan3.0-video-cankaosheng、video-enhance。"
           },
           {
             "name": "prompt",
@@ -162,7 +170,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
             "type": "media[]",
             "required": false,
             "mapping": "params.video_url",
-            "description": "MiniMax 参考生的参考视频。"
+            "description": "MiniMax 参考生或 video-enhance 超分的源视频。"
           },
           {
             "name": "audios",
@@ -190,7 +198,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
             "type": "string",
             "required": false,
             "mapping": "params.resolution / params.mode",
-            "description": "分辨率档位。可灵 1080p/4k 映射 mode=pro。"
+            "description": "分辨率档位。可灵 1080p/4k 映射 mode=pro；video-enhance 使用 720p/1080p/2k/4k/8k。"
           },
           {
             "name": "generateAudio",
@@ -203,8 +211,8 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
             "name": "providerOptions",
             "type": "object",
             "required": false,
-            "mapping": "params.mode / params.version / params.file_url / params.link_url / params.prompt_extend",
-            "description": "命名空间 lk888-video 的扩展字段。"
+            "mapping": "params.mode / params.version / params.file_url / params.link_url / params.prompt_extend / params.fps / params.tool_version / params.scene / params.enhance_style",
+            "description": "命名空间 lk888-video 的扩展字段。video-enhance 使用 fps、tool_version、scene、enhance_style。"
           }
         ],
         "create": {
@@ -575,25 +583,73 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "minimax-h3"
+                      "video-enhance"
                     ]
                   },
                   "then": {
                     "$omitEmpty": {
-                      "$map": {
-                        "from": {
-                          "$sortByOrder": {
-                            "$ref": "request.videos"
+                      "$if": {
+                        "condition": {
+                          "$gt": [
+                            {
+                              "$len": {
+                                "$ref": "request.videos"
+                              }
+                            },
+                            0
+                          ]
+                        },
+                        "then": {
+                          "$first": {
+                            "$map": {
+                              "from": {
+                                "$sortByOrder": {
+                                  "$ref": "request.videos"
+                                }
+                              },
+                              "as": "media",
+                              "in": {
+                                "$ref": "media.value"
+                              }
+                            }
                           }
                         },
-                        "as": "media",
-                        "in": {
-                          "$ref": "media.value"
-                        }
+                        "else": null
                       }
                     }
                   },
-                  "else": null
+                  "else": {
+                    "$if": {
+                      "condition": {
+                        "$eq": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.model"
+                              }
+                            }
+                          },
+                          "minimax-h3"
+                        ]
+                      },
+                      "then": {
+                        "$omitEmpty": {
+                          "$map": {
+                            "from": {
+                              "$sortByOrder": {
+                                "$ref": "request.videos"
+                              }
+                            },
+                            "as": "media",
+                            "in": {
+                              "$ref": "media.value"
+                            }
+                          }
+                        }
+                      },
+                      "else": null
+                    }
+                  }
                 }
               },
               "audio_url": {
@@ -760,40 +816,14 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "kling-v3-video"
+                      "video-enhance"
                     ]
                   },
-                  "then": {
-                    "$if": {
-                      "condition": {
-                        "$gte": [
-                          {
-                            "$ref": "request.duration"
-                          },
-                          15
-                        ]
-                      },
-                      "then": "15",
-                      "else": {
-                        "$if": {
-                          "condition": {
-                            "$gte": [
-                              {
-                                "$ref": "request.duration"
-                              },
-                              10
-                            ]
-                          },
-                          "then": "10",
-                          "else": "5"
-                        }
-                      }
-                    }
-                  },
+                  "then": null,
                   "else": {
                     "$if": {
                       "condition": {
-                        "$in": [
+                        "$eq": [
                           {
                             "$lower": {
                               "$trim": {
@@ -801,48 +831,91 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                               }
                             }
                           },
-                          [
-                            "wan3.0",
-                            "wan3.0-video",
-                            "wan3.0-video-cankaosheng",
-                            "wan3.0-video-shouweizhen"
-                          ]
+                          "kling-v3-video"
                         ]
                       },
                       "then": {
                         "$if": {
                           "condition": {
-                            "$gt": [
+                            "$gte": [
                               {
                                 "$ref": "request.duration"
                               },
-                              0
+                              15
                             ]
                           },
-                          "then": {
-                            "$toString": {
-                              "$ref": "request.duration"
+                          "then": "15",
+                          "else": {
+                            "$if": {
+                              "condition": {
+                                "$gte": [
+                                  {
+                                    "$ref": "request.duration"
+                                  },
+                                  10
+                                ]
+                              },
+                              "then": "10",
+                              "else": "5"
                             }
-                          },
-                          "else": "auto"
+                          }
                         }
                       },
                       "else": {
                         "$if": {
                           "condition": {
-                            "$gt": [
+                            "$in": [
                               {
-                                "$ref": "request.duration"
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.model"
+                                  }
+                                }
                               },
-                              0
+                              [
+                                "wan3.0",
+                                "wan3.0-video",
+                                "wan3.0-video-cankaosheng",
+                                "wan3.0-video-shouweizhen"
+                              ]
                             ]
                           },
                           "then": {
-                            "$toString": {
-                              "$ref": "request.duration"
+                            "$if": {
+                              "condition": {
+                                "$gt": [
+                                  {
+                                    "$ref": "request.duration"
+                                  },
+                                  0
+                                ]
+                              },
+                              "then": {
+                                "$toString": {
+                                  "$ref": "request.duration"
+                                }
+                              },
+                              "else": "auto"
                             }
                           },
-                          "else": "5"
+                          "else": {
+                            "$if": {
+                              "condition": {
+                                "$gt": [
+                                  {
+                                    "$ref": "request.duration"
+                                  },
+                                  0
+                                ]
+                              },
+                              "then": {
+                                "$toString": {
+                                  "$ref": "request.duration"
+                                }
+                              },
+                              "else": "5"
+                            }
+                          }
                         }
                       }
                     }
@@ -1010,7 +1083,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                           }
                         }
                       },
-                      "minimax-h3"
+                      "video-enhance"
                     ]
                   },
                   "then": {
@@ -1027,13 +1100,33 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                 }
                               },
                               [
-                                "4k",
-                                "2160",
-                                "2160p"
+                                "8k",
+                                "4320",
+                                "4320p"
                               ]
                             ]
                           },
-                          "then": "4K"
+                          "then": "8k"
+                        },
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.resolution"
+                                  }
+                                }
+                              },
+                              [
+                                "4k",
+                                "2160",
+                                "2160p",
+                                "high"
+                              ]
+                            ]
+                          },
+                          "then": "4k"
                         },
                         {
                           "when": {
@@ -1052,7 +1145,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                               ]
                             ]
                           },
-                          "then": "2K"
+                          "then": "2k"
                         },
                         {
                           "when": {
@@ -1065,16 +1158,16 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                 }
                               },
                               [
-                                "1080p",
-                                "1080",
-                                "high"
+                                "720p",
+                                "720",
+                                "low"
                               ]
                             ]
                           },
-                          "then": "1080P"
+                          "then": "720p"
                         }
                       ],
-                      "default": "768P"
+                      "default": "1080p"
                     }
                   },
                   "else": {
@@ -1088,7 +1181,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                               }
                             }
                           },
-                          "minimax-h3-max"
+                          "minimax-h3"
                         ]
                       },
                       "then": {
@@ -1105,27 +1198,60 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                     }
                                   },
                                   [
-                                    "768p",
-                                    "768",
-                                    "hd",
-                                    "medium",
+                                    "4k",
+                                    "2160",
+                                    "2160p"
+                                  ]
+                                ]
+                              },
+                              "then": "4K"
+                            },
+                            {
+                              "when": {
+                                "$in": [
+                                  {
+                                    "$lower": {
+                                      "$trim": {
+                                        "$ref": "request.resolution"
+                                      }
+                                    }
+                                  },
+                                  [
                                     "2k",
+                                    "1440",
+                                    "1440p"
+                                  ]
+                                ]
+                              },
+                              "then": "2K"
+                            },
+                            {
+                              "when": {
+                                "$in": [
+                                  {
+                                    "$lower": {
+                                      "$trim": {
+                                        "$ref": "request.resolution"
+                                      }
+                                    }
+                                  },
+                                  [
                                     "1080p",
                                     "1080",
                                     "high"
                                   ]
                                 ]
                               },
-                              "then": "768P"
+                              "then": "1080P"
                             }
                           ],
-                          "default": "480P"
+                          "default": "768P"
                         }
                       },
                       "else": {
                         "$if": {
                           "condition": {
-                            "$in": [
+                            "$eq": [
                               {
                                 "$lower": {
                                   "$trim": {
@@ -1133,12 +1259,7 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                   }
                                 }
                               },
-                              [
-                                "wan3.0",
-                                "wan3.0-video",
-                                "wan3.0-video-cankaosheng",
-                                "wan3.0-video-shouweizhen"
-                              ]
+                              "minimax-h3-max"
                             ]
                           },
                           "then": {
@@ -1155,41 +1276,93 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                                         }
                                       },
                                       [
+                                        "768p",
+                                        "768",
+                                        "hd",
+                                        "medium",
+                                        "2k",
                                         "1080p",
                                         "1080",
-                                        "2k",
-                                        "4k",
                                         "high"
                                       ]
                                     ]
                                   },
-                                  "then": "1080P"
-                                },
-                                {
-                                  "when": {
-                                    "$in": [
-                                      {
-                                        "$lower": {
-                                          "$trim": {
-                                            "$ref": "request.resolution"
-                                          }
-                                        }
-                                      },
-                                      [
-                                        "720p",
-                                        "720",
-                                        "hd",
-                                        "medium"
-                                      ]
-                                    ]
-                                  },
-                                  "then": "720P"
+                                  "then": "768P"
                                 }
                               ],
                               "default": "480P"
                             }
                           },
-                          "else": null
+                          "else": {
+                            "$if": {
+                              "condition": {
+                                "$in": [
+                                  {
+                                    "$lower": {
+                                      "$trim": {
+                                        "$ref": "request.model"
+                                      }
+                                    }
+                                  },
+                                  [
+                                    "wan3.0",
+                                    "wan3.0-video",
+                                    "wan3.0-video-cankaosheng",
+                                    "wan3.0-video-shouweizhen"
+                                  ]
+                                ]
+                              },
+                              "then": {
+                                "$switch": {
+                                  "cases": [
+                                    {
+                                      "when": {
+                                        "$in": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.resolution"
+                                              }
+                                            }
+                                          },
+                                          [
+                                            "1080p",
+                                            "1080",
+                                            "2k",
+                                            "4k",
+                                            "high"
+                                          ]
+                                        ]
+                                      },
+                                      "then": "1080P"
+                                    },
+                                    {
+                                      "when": {
+                                        "$in": [
+                                          {
+                                            "$lower": {
+                                              "$trim": {
+                                                "$ref": "request.resolution"
+                                              }
+                                            }
+                                          },
+                                          [
+                                            "720p",
+                                            "720",
+                                            "hd",
+                                            "medium"
+                                          ]
+                                        ]
+                                      },
+                                      "then": "720P"
+                                    }
+                                  ],
+                                  "default": "480P"
+                                }
+                              },
+                              "else": null
+                            }
+                          }
                         }
                       }
                     }
@@ -1247,6 +1420,225 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
                   },
                   "else": null
                 }
+              },
+              "fps": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "video-enhance"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$toString": {
+                                      "$ref": "request.providerOptions.lk888-video.fps"
+                                    }
+                                  }
+                                }
+                              },
+                              [
+                                "60",
+                                "60fps"
+                              ]
+                            ]
+                          },
+                          "then": "60"
+                        },
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$toString": {
+                                      "$ref": "request.providerOptions.lk888-video.fps"
+                                    }
+                                  }
+                                }
+                              },
+                              [
+                                "120",
+                                "120fps"
+                              ]
+                            ]
+                          },
+                          "then": "120"
+                        }
+                      ],
+                      "default": "keep"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "tool_version": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "video-enhance"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$toString": {
+                                      "$ref": "request.providerOptions.lk888-video.tool_version"
+                                    }
+                                  }
+                                }
+                              },
+                              [
+                                "professional",
+                                "pro",
+                                "专业版"
+                              ]
+                            ]
+                          },
+                          "then": "professional"
+                        }
+                      ],
+                      "default": "standard"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "scene": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "video-enhance"
+                    ]
+                  },
+                  "then": {
+                    "$omitEmpty": {
+                      "$switch": {
+                        "cases": [
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$toString": {
+                                        "$ref": "request.providerOptions.lk888-video.scene"
+                                      }
+                                    }
+                                  }
+                                },
+                                [
+                                  "aigc",
+                                  "short_series",
+                                  "ugc",
+                                  "old_film"
+                                ]
+                              ]
+                            },
+                            "then": {
+                              "$lower": {
+                                "$trim": {
+                                  "$toString": {
+                                    "$ref": "request.providerOptions.lk888-video.scene"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "default": null
+                      }
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "enhance_style": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "video-enhance"
+                    ]
+                  },
+                  "then": {
+                    "$omitEmpty": {
+                      "$switch": {
+                        "cases": [
+                          {
+                            "when": {
+                              "$in": [
+                                {
+                                  "$lower": {
+                                    "$trim": {
+                                      "$toString": {
+                                        "$ref": "request.providerOptions.lk888-video.enhance_style"
+                                      }
+                                    }
+                                  }
+                                },
+                                [
+                                  "natural",
+                                  "hd"
+                                ]
+                              ]
+                            },
+                            "then": {
+                              "$lower": {
+                                "$trim": {
+                                  "$toString": {
+                                    "$ref": "request.providerOptions.lk888-video.enhance_style"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "default": null
+                      }
+                    }
+                  },
+                  "else": null
+                }
               }
             }
           }
@@ -1294,7 +1686,8 @@ MiniMax 有首尾帧时走 `images`，参考生走 `image_url`/`video_url`/`audi
             "error"
           ],
           "resultEphemeral": true
-        }
+        },
+        "description": "问鼎数据视频异步任务协议，覆盖 minimax-h3、kling-v3-video、wan3.0-video-cankaosheng。"
       }
     ]
   },

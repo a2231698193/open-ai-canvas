@@ -11,7 +11,7 @@ import { getNodeResourceKind } from "@/lib/canvas/node-registry";
 import { mediaConversionSourceFingerprint } from "@/lib/media-conversion/contracts";
 import { resolveCanvasDrawingReference } from "@/lib/canvas/canvas-drawing-reference";
 import { compileCharacterReferencePrompt } from "@/lib/canvas/canvas-character-reference";
-import { nodeReferenceImage } from "@/lib/canvas/canvas-project-generation";
+import { nodeReferenceImage, nodeReferenceVideo } from "@/lib/canvas/canvas-project-generation";
 import { isCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import { audioFileExtension } from "@/lib/character-voice-formats";
 import type { ModelReferenceLimits } from "@/lib/model-selection";
@@ -670,18 +670,7 @@ function readReferenceImage(node: CanvasNodeData, nodes: CanvasNodeData[], conne
 }
 
 function readReferenceVideo(node: CanvasNodeData): ReferenceVideo | null {
-    if (node.type !== CanvasNodeType.Video || (!node.metadata?.content && !node.metadata?.storageKey)) return null;
-    return {
-        id: node.id,
-        name: `${node.title || node.id}.mp4`,
-        type: node.metadata.mimeType || "video/mp4",
-        url: node.metadata.content || "",
-        storageKey: node.metadata.storageKey,
-        bytes: node.metadata.bytes,
-        width: node.metadata.naturalWidth,
-        height: node.metadata.naturalHeight,
-        durationMs: node.metadata.durationMs,
-    };
+    return nodeReferenceVideo(node);
 }
 
 function readReferenceAudio(node: CanvasNodeData): ReferenceAudio | null {

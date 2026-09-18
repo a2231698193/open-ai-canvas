@@ -827,6 +827,7 @@ function InfiniteCanvasPage() {
         cropNodeId,
         closeFrameDialog,
         closeSegmentDialog,
+        enhanceVideoNode,
         extractAudioFromVideo,
         extractVideoFrames,
         extractingVideoFramesNodeId,
@@ -882,6 +883,7 @@ function InfiniteCanvasPage() {
         startGenerationRequest,
         finishGenerationRequest,
         bindGenerationTask,
+        applyGenerationTaskResult,
     });
 
     const handleNodesDeleted = useCallback(
@@ -3066,14 +3068,20 @@ function InfiniteCanvasPage() {
                             annotationNode={annotationNode}
                             maskEditNode={maskEditNode}
                             upscaleNode={upscaleNode}
+                            videoEnhanceNode={superResolveNode}
                             onCloseCrop={() => setCropNodeId(null)}
                             onCloseAnnotation={() => setAnnotationNodeId(null)}
                             onCloseMaskEdit={() => setMaskEditNodeId(null)}
                             onCloseUpscale={() => setUpscaleNodeId(null)}
+                            onCloseVideoEnhance={() => setSuperResolveNodeId(null)}
                             onCrop={(node, crop) => void cropImageNode(node, crop)}
                             onAnnotate={(node, dataUrl) => void saveAnnotatedImageNode(node, dataUrl)}
                             onMaskEdit={(node, payload) => void maskEditImageNode(node, payload)}
                             onUpscale={(node, params) => void upscaleImageNode(node, params)}
+                            onVideoEnhance={(node, params) => {
+                                setSuperResolveNodeId(null);
+                                void enhanceVideoNode(node, params);
+                            }}
                             config={effectiveConfig}
                         />
 

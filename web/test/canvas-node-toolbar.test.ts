@@ -32,6 +32,7 @@ describe("canvas node toolbar model", () => {
         const ctx = createNodeContext({ id: "video", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: {} });
         const emptyTools = resolveToolbarTools("node-hover", ctx, null);
         expect(emptyTools.some((tool) => tool.id === "extractAudio")).toBe(false);
+        expect(emptyTools.some((tool) => tool.id === "videoEnhance")).toBe(false);
         expect(resolveNodeToolbarPlacement(emptyTools.find((tool) => tool.id === "uploadVideo")!, ctx).group).toBe("primary");
         ctx.nodeMetadata = { content: "video.mp4" };
         ctx.extractingAudio = true;
@@ -57,7 +58,7 @@ describe("canvas node toolbar model", () => {
         const groups = new Map(tools.map((tool) => [tool.id, resolveNodeToolbarPlacement(tool, ctx).group]));
 
         expect([...groups].filter(([, group]) => group === "primary").map(([id]) => id)).toEqual(["trimRegenerate", "subtitles"]);
-        expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio"]);
+        expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio", "videoEnhance"]);
         expect(groups.get("download")).toBe("utility");
         expect(groups.get("timeline")).toBe("workspace");
         expect(groups.get("uploadVideo")).toBe("more");
@@ -77,6 +78,7 @@ describe("canvas node toolbar model", () => {
         expect(displayLabel("timeline")).toBe("进入剪辑");
         expect(displayLabel("extractFrames")).toBe("提取画面");
         expect(displayLabel("extractAudio")).toBe("提取音频");
+        expect(displayLabel("videoEnhance")).toBe("超分");
     });
 
     test("image-only tools carry presentation metadata instead of relying on component ID lists", () => {

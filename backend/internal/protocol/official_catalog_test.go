@@ -1148,6 +1148,22 @@ func TestLK888VideoProfile(t *testing.T) {
 		t.Fatalf("wan params = %#v", wanParams)
 	}
 
+	enhance, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "video-enhance", Prompt: "", Resolution: "4k", Duration: 12,
+		Videos: []MediaReference{{URL: "https://cdn.example/source.mp4", Role: "reference_video"}},
+		ProviderOptions: map[string]map[string]any{"lk888-video": {"fps": "60", "tool_version": "professional", "scene": "aigc", "enhance_style": "natural"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enhanceParams, _ := manifestTestBody(t, enhance)["params"].(map[string]any)
+	if enhance.Path != "/v1/media/generate" || enhanceParams["video_url"] != "https://cdn.example/source.mp4" || enhanceParams["resolution"] != "4k" || enhanceParams["fps"] != "60" || enhanceParams["tool_version"] != "professional" || enhanceParams["scene"] != "aigc" || enhanceParams["enhance_style"] != "natural" {
+		t.Fatalf("video-enhance params = %#v", enhanceParams)
+	}
+	if _, ok := enhanceParams["duration"]; ok {
+		t.Fatalf("video-enhance must not send duration: %#v", enhanceParams)
+	}
+
 	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":123456}}`))
 	if err != nil || created.TaskID != "123456" {
 		t.Fatalf("lk888 video create response = %#v, err = %v", created, err)

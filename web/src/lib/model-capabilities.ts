@@ -447,6 +447,21 @@ function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) 
             video.generateAudio = { supported: true, default: false };
             video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
             break;
+        case "video-enhance":
+            video.references.minImages = 0;
+            video.references.maxImages = 0;
+            video.references.maxVideos = 1;
+            video.references.maxVideoBytes = 2 * 1024 * 1024 * 1024;
+            video.references.maxVideoDurationSeconds = 600;
+            video.references.maxAudios = 0;
+            video.duration = { selection: "range", min: 1, max: 600, step: 1, default: 1 };
+            video.ratios = [];
+            video.defaultRatio = "";
+            video.resolutions = ["720p", "1080p", "2k", "4k", "8k"];
+            video.defaultResolution = "1080p";
+            video.operations = ["video_to_video"];
+            video.defaultOperation = "video_to_video";
+            break;
     }
 }
 

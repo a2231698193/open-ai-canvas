@@ -71,7 +71,7 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
                 ) : null}
             </Modal>
 
-            <Modal title="AI 超分" open={Boolean(superResolveNode?.metadata?.content)} centered footer={null} onCancel={onCloseSuperResolve}>
+            <Modal title="AI 超分" open={Boolean(superResolveNode?.metadata?.content && superResolveNode.type === CanvasNodeType.Image)} centered footer={null} onCancel={onCloseSuperResolve}>
                 <div className="py-8 text-center text-base font-medium">暂未实现</div>
             </Modal>
 
