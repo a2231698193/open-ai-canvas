@@ -191,6 +191,31 @@ func TestSKUSelectorTreatsAnyVideoReferenceAsVideoToVideo(t *testing.T) {
 	}
 }
 
+func TestSKUSelectorMatchesVideoEnhanceFpsAndVersion(t *testing.T) {
+	intent := ModelRequestIntentFromTaskInput(map[string]any{
+		"mode":            "video",
+		"referenceVideos": []any{map[string]any{"url": "https://example.com/source.mp4"}},
+		"config":          map[string]any{"model": "video-enhance", "vquality": "4k"},
+		"metadata": map[string]any{
+			"providerOptions": map[string]any{
+				"lk888-video": map[string]any{"fps": "60", "tool_version": "professional"},
+			},
+		},
+	}, "canvas_video", "video_to_video")
+	selector := skuSelectorForIntent(intent)
+	if selector["operation"] != "video_to_video" || selector["vquality"] != "2160p" || selector["fps"] != "60" || selector["tool_version"] != "professional" {
+		t.Fatalf("selector = %#v", selector)
+	}
+	modelWithTiers := model.ChannelModel{PriceTiers: []model.ChannelModelPriceTier{
+		{SelectorJSON: `{"operation":"video_to_video","vquality":"2160p","fps":"keep","tool_version":"standard"}`, Enabled: true, PriceConfigured: true},
+		{SelectorJSON: `{"operation":"video_to_video","vquality":"2160p","fps":"60","tool_version":"professional"}`, Enabled: true, PriceConfigured: true},
+	}}
+	matched := channelModelPriceTierForIntent(modelWithTiers, intent)
+	if matched == nil || matched.SelectorJSON != `{"operation":"video_to_video","vquality":"2160p","fps":"60","tool_version":"professional"}` {
+		t.Fatalf("matched tier = %#v", matched)
+	}
+}
+
 func TestSKUSelectorTreatsAnyImageReferenceCountAsImageToVideo(t *testing.T) {
 	intent := ModelRequestIntentFromTaskInput(map[string]any{
 		"mode": "video",

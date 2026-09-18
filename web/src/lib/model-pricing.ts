@@ -114,6 +114,10 @@ function priceSelectorForRequest(capability: ModelCapability | undefined, config
         if (resolution !== "*") requested.vquality = resolution;
         const seconds = Math.max(0, Math.floor(Number(config.videoSeconds) || 0));
         if (seconds > 0) requested.videoSeconds = String(seconds);
+        const fps = String(requirements?.options?.fps ?? "").trim();
+        if (fps) requested.fps = fps === "60" || fps === "60fps" ? "60" : fps === "120" || fps === "120fps" ? "120" : "keep";
+        const toolVersion = String(requirements?.options?.tool_version ?? requirements?.options?.toolVersion ?? "").trim().toLowerCase();
+        if (toolVersion) requested.tool_version = toolVersion === "professional" || toolVersion === "pro" || toolVersion === "专业版" ? "professional" : "standard";
     }
     if (capability === "image") {
         requested.operation = imagePriceOperation(requirements);

@@ -103,7 +103,55 @@ func ModelRequestIntentFromTaskInput(input map[string]any, taskType string, oper
 			}
 		}
 	}
+	applyVideoEnhanceIntentOptions(intent.Options, input)
 	return intent
+}
+
+func applyVideoEnhanceIntentOptions(options map[string]any, input map[string]any) {
+	modelName := ""
+	if config, ok := input["config"].(map[string]any); ok {
+		modelName = strings.ToLower(strings.TrimSpace(fmt.Sprint(config["model"])))
+	}
+	fps, version := "", ""
+	if metadata, ok := input["metadata"].(map[string]any); ok {
+		if providerOptions, ok := metadata["providerOptions"].(map[string]any); ok {
+			if namespace, ok := providerOptions["lk888-video"].(map[string]any); ok {
+				fps = strings.TrimSpace(fmt.Sprint(namespace["fps"]))
+				version = strings.TrimSpace(fmt.Sprint(namespace["tool_version"]))
+			}
+		}
+	}
+	if modelName != "video-enhance" && fps == "" && version == "" {
+		return
+	}
+	if fps == "" || fps == "<nil>" {
+		fps = "keep"
+	}
+	if version == "" || version == "<nil>" {
+		version = "standard"
+	}
+	options["fps"] = normalizeVideoEnhanceFPS(fps)
+	options["tool_version"] = normalizeVideoEnhanceVersion(version)
+}
+
+func normalizeVideoEnhanceFPS(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "60", "60fps":
+		return "60"
+	case "120", "120fps":
+		return "120"
+	default:
+		return "keep"
+	}
+}
+
+func normalizeVideoEnhanceVersion(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "professional", "pro", "专业版":
+		return "professional"
+	default:
+		return "standard"
+	}
 }
 
 func normalizeModelRequestOption(name string, value any) any {
@@ -762,6 +810,12 @@ func skuSelectorForIntent(intent ModelRequestIntent) map[string]string {
 		}
 		if value, ok := intent.Options["videoGenerateAudio"].(bool); ok {
 			selector["videoGenerateAudio"] = strconv.FormatBool(value)
+		}
+		if value := normalizeVideoEnhanceFPS(fmt.Sprint(intent.Options["fps"])); strings.TrimSpace(fmt.Sprint(intent.Options["fps"])) != "" && fmt.Sprint(intent.Options["fps"]) != "<nil>" {
+			selector["fps"] = value
+		}
+		if value := normalizeVideoEnhanceVersion(fmt.Sprint(intent.Options["tool_version"])); strings.TrimSpace(fmt.Sprint(intent.Options["tool_version"])) != "" && fmt.Sprint(intent.Options["tool_version"]) != "<nil>" {
+			selector["tool_version"] = value
 		}
 	case "image":
 		if intent.Inputs["image"] > 0 {
