@@ -91,6 +91,7 @@ func Models() []any {
 		&model.UserPromptCustomization{},
 		&model.Announcement{},
 		&model.UserAnnouncementRead{},
+		&model.BannerAnnouncement{},
 		&model.Task{},
 		&model.CreationRun{},
 		&model.CreationSubmission{},

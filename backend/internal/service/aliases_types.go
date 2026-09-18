@@ -107,6 +107,7 @@ type (
 	ConfirmProjectAssetCandidateRequest    = app.ConfirmProjectAssetCandidateRequest
 	CreateAdminUserRequest                 = app.CreateAdminUserRequest
 	CreateAnnouncementRequest              = app.CreateAnnouncementRequest
+	CreateBannerAnnouncementRequest        = app.CreateBannerAnnouncementRequest
 	CreateAssetCandidatesRequest           = app.CreateAssetCandidatesRequest
 	CreateAssetFolderRequest               = app.CreateAssetFolderRequest
 	CreateAssetVersionRequest              = app.CreateAssetVersionRequest
@@ -302,6 +303,7 @@ type (
 	TimelineTranscriptionCreateRequest     = app.TimelineTranscriptionCreateRequest
 	TopupProductRequest                    = app.TopupProductRequest
 	UpdateAnnouncementRequest              = app.UpdateAnnouncementRequest
+	UpdateBannerAnnouncementRequest        = app.UpdateBannerAnnouncementRequest
 	UpdateAssetFolderRequest               = app.UpdateAssetFolderRequest
 	UpdateManager                          = app.UpdateManager
 	UpdatePaymentProviderConfigRequest     = app.UpdatePaymentProviderConfigRequest
