@@ -216,6 +216,53 @@ func TestSKUSelectorMatchesVideoEnhanceFpsAndVersion(t *testing.T) {
 	}
 }
 
+func TestVideoEnhanceRequestDoesNotCarryGlobalVideoOptions(t *testing.T) {
+	config := DefaultModelCapabilityConfigForModel("lk888-video", "video-enhance")
+	spec, err := CapabilitySpecFromModelCapabilityConfig(config, "video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := spec.Options["size"]; ok {
+		t.Fatalf("video-enhance must not declare size: %#v", spec.Options)
+	}
+	if _, ok := spec.Options["videoGenerateAudio"]; ok {
+		t.Fatalf("video-enhance must not declare videoGenerateAudio: %#v", spec.Options)
+	}
+	if _, ok := spec.Options["fps"]; !ok {
+		t.Fatalf("video-enhance missing fps: %#v", spec.Options)
+	}
+	nextConfig := map[string]any{
+		"model":              "video-enhance",
+		"size":               "16:9",
+		"vquality":           "1080p",
+		"videoSeconds":       "8",
+		"videoGenerateAudio": "true",
+		"videoWatermark":     "false",
+	}
+	applyChannelCapabilityDefaults(nextConfig, "video", config)
+	if _, ok := nextConfig["size"]; ok {
+		t.Fatalf("size should be dropped: %#v", nextConfig)
+	}
+	if _, ok := nextConfig["videoGenerateAudio"]; ok {
+		t.Fatalf("videoGenerateAudio should be dropped: %#v", nextConfig)
+	}
+	input := map[string]any{
+		"mode":              "video",
+		"config":            nextConfig,
+		"capabilityOptions": capabilityOptionsFromConfig("video", nextConfig, spec.Options),
+		"referenceVideos":   []any{map[string]any{"url": "https://example.com/source.mp4"}},
+		"metadata": map[string]any{
+			"providerOptions": map[string]any{
+				"lk888-video": map[string]any{"fps": "keep", "tool_version": "standard"},
+			},
+		},
+	}
+	intent := ModelRequestIntentFromTaskInput(input, "canvas_video", "video_to_video")
+	if match := MatchCapability(spec, intent); !match.Matched {
+		t.Fatalf("video-enhance request rejected: %v; options=%#v", match.Reasons, intent.Options)
+	}
+}
+
 func TestSKUSelectorTreatsAnyImageReferenceCountAsImageToVideo(t *testing.T) {
 	intent := ModelRequestIntentFromTaskInput(map[string]any{
 		"mode": "video",

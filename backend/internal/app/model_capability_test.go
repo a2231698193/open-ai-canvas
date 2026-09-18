@@ -179,6 +179,10 @@ func TestLK888VideoCapabilitiesUseModelLimits(t *testing.T) {
 	if wan.DefaultRatio != "adaptive" || fmt.Sprint(wan.Resolutions) != fmt.Sprint([]string{"480P", "720P", "1080P"}) || wan.Duration.Max != 30 || !wan.GenerateAudio.Supported {
 		t.Fatalf("lk888 Wan capability = %#v", wan)
 	}
+	enhance := DefaultModelCapabilityConfigForModel("lk888-video", "video-enhance").Video
+	if enhance.DefaultOperation != "video_to_video" || fmt.Sprint(enhance.Resolutions) != fmt.Sprint([]string{"720p", "1080p", "2k", "4k", "8k"}) || enhance.References.MaxVideos != 1 || len(enhance.Ratios) != 0 {
+		t.Fatalf("lk888 video-enhance capability = %#v", enhance)
+	}
 }
 
 func TestLK888SeedanceCapabilitiesIncludeAdaptiveRatio(t *testing.T) {

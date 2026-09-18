@@ -481,10 +481,23 @@ func applyChannelCapabilityDefaults(config map[string]any, capability string, pr
 		if videoDurationSupported(profile.Video) {
 			setDefault("videoSeconds", profile.Video.Duration.Default)
 		}
-		setDefault("size", profile.Video.DefaultRatio)
+		if strings.TrimSpace(profile.Video.DefaultRatio) != "" {
+			setDefault("size", profile.Video.DefaultRatio)
+		}
 		setDefault("vquality", profile.Video.DefaultResolution)
-		setDefault("videoGenerateAudio", profile.Video.GenerateAudio.Default)
-		setDefault("videoWatermark", profile.Video.Watermark.Default)
+		if profile.Video.GenerateAudio.Supported {
+			setDefault("videoGenerateAudio", profile.Video.GenerateAudio.Default)
+		} else {
+			delete(config, "videoGenerateAudio")
+		}
+		if profile.Video.Watermark.Supported {
+			setDefault("videoWatermark", profile.Video.Watermark.Default)
+		} else {
+			delete(config, "videoWatermark")
+		}
+		if strings.TrimSpace(profile.Video.DefaultRatio) == "" {
+			delete(config, "size")
+		}
 	}
 }
 

@@ -844,6 +844,9 @@ export function useCanvasMediaTools({
             vquality: params.resolution,
             videoSeconds: String(seconds),
             count: "1",
+            size: "",
+            videoGenerateAudio: "false",
+            videoWatermark: "false",
         };
         if (!isAiConfigReady(generationConfig, generationConfig.model)) {
             navigateToSettings({ continueCreation: true });

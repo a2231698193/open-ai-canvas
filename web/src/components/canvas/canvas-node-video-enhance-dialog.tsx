@@ -66,7 +66,7 @@ export function CanvasNodeVideoEnhanceDialog({
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3">
                         <span className="opacity-60">时长</span>
-                        <span className="font-medium">{hasKnownDuration ? `${seconds} 秒` : "未知，按实际上游时长计费"}</span>
+                        <span className="font-medium">{hasKnownDuration ? `${seconds} 秒` : "未知，按实际时长计费"}</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3">
                         <span className="opacity-60">模型</span>
@@ -163,4 +163,3 @@ export function CanvasNodeVideoEnhanceDialog({
         </Modal>
     );
 }
-

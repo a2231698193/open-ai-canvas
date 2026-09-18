@@ -346,6 +346,22 @@ func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {
 		video.Resolutions = []string{"480P", "720P", "1080P"}
 		video.DefaultResolution = "720P"
 		video.GenerateAudio = VideoBooleanConfig{Supported: true, Default: false}
+	case "video-enhance":
+		video.Operations = []string{"video_to_video"}
+		video.DefaultOperation = "video_to_video"
+		video.References.MinImages = 0
+		video.References.MaxImages = 0
+		video.References.MaxVideos = 1
+		video.References.MaxVideoBytes = 2 * 1024 * 1024 * 1024
+		video.References.MaxVideoDuration = 600
+		video.References.MaxAudios = 0
+		video.Duration = VideoDurationConfig{Selection: "range", Min: 1, Max: 600, Step: 1, Default: 1}
+		video.Ratios = nil
+		video.DefaultRatio = ""
+		video.Resolutions = []string{"720p", "1080p", "2k", "4k", "8k"}
+		video.DefaultResolution = "1080p"
+		video.GenerateAudio = VideoBooleanConfig{Supported: false, Default: false}
+		video.Watermark = VideoBooleanConfig{Supported: false, Default: false}
 	}
 }
 
@@ -608,19 +624,21 @@ func CapabilitySpecFromModelCapabilityConfig(config *ModelCapabilityConfig, capa
 		} else {
 			spec.Options["videoSeconds"] = numericRange(float64(video.Duration.Min), float64(video.Duration.Max), float64(video.Duration.Step))
 		}
-		spec.Options["size"] = anyValues(video.Ratios)
+		if len(video.Ratios) > 0 {
+			spec.Options["size"] = anyValues(video.Ratios)
+		}
 		if len(video.Resolutions) > 0 {
 			spec.Options["vquality"] = anyValues(video.Resolutions)
 		}
 		if video.GenerateAudio.Supported {
 			spec.Options["videoGenerateAudio"] = boolValues(true)
-		} else {
-			spec.Options["videoGenerateAudio"] = boolValues(false)
 		}
 		if video.Watermark.Supported {
 			spec.Options["videoWatermark"] = boolValues(true)
-		} else {
-			spec.Options["videoWatermark"] = boolValues(false)
+		}
+		if containsCapabilityString(video.Operations, "video_to_video") && video.References.MaxVideos > 0 && len(video.Ratios) == 0 {
+			spec.Options["fps"] = anyValues([]string{"keep", "60", "120"})
+			spec.Options["tool_version"] = anyValues([]string{"standard", "professional"})
 		}
 	default:
 		return spec, BadAuthRequest("未知模型能力类型")
@@ -978,7 +996,7 @@ func validateVideoTask(profile *VideoCapabilityConfig, input canvasGenerationInp
 	if err != nil || !videoDurationAllowed(profile.Duration, seconds) {
 		return BadAuthRequest("视频时长不在当前模型支持范围内")
 	}
-	if input.Config.Size != "" && !videoRatioAllowed(profile.Ratios, input.Config.Size) {
+	if input.Config.Size != "" && len(profile.Ratios) > 0 && !videoRatioAllowed(profile.Ratios, input.Config.Size) {
 		return BadAuthRequest("画面比例不在当前模型支持范围内")
 	}
 	if len(profile.Resolutions) > 0 && !isAutomaticVideoResolution(input.Config.VQuality) && videoResolutionNameRequest(profile, input.Config.VQuality) == "" {

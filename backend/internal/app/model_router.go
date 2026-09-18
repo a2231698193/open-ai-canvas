@@ -384,6 +384,10 @@ func capabilityOptionLabel(name string) string {
 		return "同步音频"
 	case "videoWatermark":
 		return "水印设置"
+	case "fps":
+		return "输出帧率"
+	case "tool_version":
+		return "处理版本"
 	case "audioVoice":
 		return "音色"
 	case "audioFormat":
@@ -510,7 +514,7 @@ func isCapabilityOptionFor(capability string, name string) bool {
 	case "image":
 		return name == "size" || name == "quality" || name == "transparentBackground" || name == "count"
 	case "video":
-		return name == "size" || name == "videoSeconds" || name == "vquality" || name == "videoGenerateAudio" || name == "videoWatermark"
+		return name == "size" || name == "videoSeconds" || name == "vquality" || name == "videoGenerateAudio" || name == "videoWatermark" || name == "fps" || name == "tool_version"
 	case "audio":
 		return name == "audioVoice" || name == "audioFormat" || name == "audioSpeed" || name == "audioInstructions"
 	case "text":
