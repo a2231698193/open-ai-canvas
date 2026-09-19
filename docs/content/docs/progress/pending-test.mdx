@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 系统渠道模型保存（2026-09-20）
+
+部分外层网关会拦截后台编辑模型使用的 PATCH 请求，并返回没有业务正文的 HTTP 400。模型更新现改走与新增、导入和连接测试一致的 POST 路径；后端保留 PATCH 兼容已有调用方。通用 400 提示不再错误提及对象存储。
+
+- [x] `cd web && bun test test/api-request.test.ts test/admin-ui-regressions.test.ts`
+- [x] `cd backend && go test ./internal/handler -run TestFinanceRoutesExposeChannelModelMutations`
+- [ ] 后台进入系统渠道，编辑已有模型并保存，确认提示成功且刷新后配置保持；新增模型仍可正常保存。
+- [ ] 通过旧 PATCH 调用更新模型，确认兼容路由仍可用；提交非法参数时应显示后端具体校验原因。
+
 ## 历史 S3 资源拖垮界面（2026-09-19）
 
 迁移到国内 OSS 后，旧 S3 对象仍经国内源站代理整文件回源，打开画布会占满同源连接，点击其他操作要等图片全部下完。现在图片预览直连签名地址/CDN，Blob 代理只留给下载和编辑。

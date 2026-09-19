@@ -8,16 +8,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestFinanceRoutesExposeChannelModelBatchDelete(t *testing.T) {
+func TestFinanceRoutesExposeChannelModelMutations(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	RegisterFinanceRoutes(router.Group("/api"), &service.Service{})
 
-	const wanted = "POST /api/admin/channels/:id/models/batch-delete"
+	wanted := map[string]bool{
+		"POST /api/admin/channels/:id/models/batch-delete": false,
+		"PATCH /api/admin/channels/:id/models/:modelId":    false,
+		"POST /api/admin/channels/:id/models/:modelId":     false,
+	}
 	for _, route := range router.Routes() {
-		if route.Method+" "+route.Path == wanted {
-			return
+		key := route.Method + " " + route.Path
+		if _, exists := wanted[key]; exists {
+			wanted[key] = true
 		}
 	}
-	t.Fatalf("route %s is not registered", wanted)
+	for route, registered := range wanted {
+		if !registered {
+			t.Fatalf("route %s is not registered", route)
+		}
+	}
 }

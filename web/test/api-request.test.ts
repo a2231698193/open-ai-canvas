@@ -112,8 +112,9 @@ describe("backend API request error semantics", () => {
         })).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
-        expect(thrown.message).toContain("请求无效（HTTP 400）");
+        expect(thrown.message).toBe("请求无效（HTTP 400），接口未返回具体原因，请检查填写内容后重试");
         expect(thrown.message).not.toContain("Request failed with status code");
+        expect(thrown.message).not.toContain("对象存储");
     });
 
     test("extracts OSS XML Code and Message from a 400 body", async () => {

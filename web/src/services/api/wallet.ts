@@ -305,7 +305,7 @@ export function createAdminChannelModel(channelId: string, input: ChannelModelMu
 }
 
 export function updateAdminChannelModel(channelId: string, id: string, input: ChannelModelMutation) {
-    return http.patch<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input);
+    return http.post<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input);
 }
 
 export function updateAdminChannelModelSort(channelId: string, id: string, sortOrder: number) {

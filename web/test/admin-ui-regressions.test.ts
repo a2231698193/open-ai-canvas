@@ -115,6 +115,13 @@ test("channel model manager supports bounded atomic batch deletion", async () =>
     expect(component).toContain("批量删除");
 });
 
+test("channel model updates use the gateway-compatible save route", async () => {
+    const apiSource = await Bun.file(new URL("../src/services/api/wallet.ts", import.meta.url)).text();
+
+    expect(apiSource).toContain("return http.post<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input);");
+    expect(apiSource).not.toContain("return http.patch<{ model: ChannelModel }>(`/admin/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(id)}`, input);");
+});
+
 test("analytics keeps fixed range presets distinct and uses enabled channel models for pricing", async () => {
     const source = compactSource(await Bun.file(new URL("../src/pages/admin/components/analytics-panel.tsx", import.meta.url)).text());
 

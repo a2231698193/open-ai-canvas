@@ -296,9 +296,11 @@ func RegisterFinanceRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"deleted": deleted})
 	})
-	r.PATCH("/admin/channels/:id/models/:modelId", func(c *gin.Context) {
+	updateChannelModel := func(c *gin.Context) {
 		saveChannelModel(c, svc, c.Param("modelId"))
-	})
+	}
+	r.PATCH("/admin/channels/:id/models/:modelId", updateChannelModel)
+	r.POST("/admin/channels/:id/models/:modelId", updateChannelModel)
 	r.PATCH("/admin/channels/:id/models/:modelId/sort", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {
