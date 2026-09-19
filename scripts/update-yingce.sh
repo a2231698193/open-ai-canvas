@@ -53,9 +53,13 @@ require_clean_worktree() {
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "$INSTALL_DIR 存在本地代码改动，请先处理后再更新"
 }
 
+host_pg_dump_works() {
+    command -v pg_dump >/dev/null 2>&1 && pg_dump --version >/dev/null 2>&1
+}
+
 backup_postgres() {
     local dest="$1"
-    local url user db
+    local url user db image
     url="$(env_value DATABASE_URL)"
     [[ -n "$url" ]] || fail ".env 缺少 DATABASE_URL"
     if uses_compose_postgres && [[ -n "$(compose ps -q postgres 2>/dev/null)" ]]; then
@@ -63,12 +67,12 @@ backup_postgres() {
         db="$(env_value POSTGRES_DB)"
         [[ -n "$user" && -n "$db" ]] || fail ".env 缺少 POSTGRES_USER 或 POSTGRES_DB"
         compose exec -T postgres pg_dump -U "$user" -d "$db" -Fc >"$dest"
-    elif command -v pg_dump >/dev/null 2>&1; then
+    elif host_pg_dump_works; then
         pg_dump --dbname="$url" -Fc >"$dest"
     else
-        local image
         image="$(env_value POSTGRES_IMAGE)"
         image="${image:-docker.m.daocloud.io/library/postgres:17-alpine}"
+        printf '主机没有可用的 pg_dump，改用镜像 %s 备份外部数据库。\n' "$image"
         docker run --rm --network host "$image" pg_dump --dbname="$url" -Fc >"$dest"
     fi
     [[ -s "$dest" ]] || fail "PostgreSQL 备份为空"
