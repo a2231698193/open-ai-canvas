@@ -59,6 +59,17 @@ describe("large canvas media rendering", () => {
         expect(canvasNodeContentSource).toContain("node.type === CanvasNodeType.Image ? resourceFileUrl(resourceId)");
     });
 
+    test("mention previews use resource URLs instead of CORS blob downloads", () => {
+        const mentionResolverSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/use-resolved-canvas-resource-references.ts"), "utf8");
+        const imageStorageSource = readFileSync(resolve(import.meta.dir, "../src/services/image-storage.ts"), "utf8");
+        const resourcesSource = readFileSync(resolve(import.meta.dir, "../src/services/api/resources.ts"), "utf8");
+        expect(mentionResolverSource).not.toContain("cacheMiss: true");
+        expect(imageStorageSource).toContain("预览走同源 /file 再 302 到 CDN");
+        expect(imageStorageSource).not.toContain("cacheResourceObjectUrl(storageKey)");
+        expect(resourcesSource).toContain("if (!options?.allowProxyFallback) return null;");
+        expect(resourcesSource).not.toContain("if (!options?.allowProxyFallback) throw error;");
+    });
+
     test("does not eagerly load or resize LibTV thumbnails", () => {
         expect(canvasNodeContentSource).toContain('loading="lazy"');
         expect(canvasNodeContentSource).not.toContain('importedFromLibTV ? "eager"');

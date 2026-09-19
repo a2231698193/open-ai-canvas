@@ -841,3 +841,24 @@ html:not(.dark) .creation-home .creation-chat-composer .creation-model-picker.ca
 .creation-model-picker-surface .canvas-model-picker-option:nth-child(3n) > span:first-child > span:first-child { color: #d57b16; }
 .creation-model-picker-surface .canvas-model-picker-option:nth-child(4n) > span:first-child > span:first-child { color: #25845d; }
 .creation-model-picker-surface .canvas-model-picker-option .text-amber-600 { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; background: color-mix(in srgb, #e28a17 12%, var(--workspace-surface-strong)); color: #c66d00 !important; padding: 5px 8px; font-size: 11px; font-weight: 700; }
+
+.canvas-model-picker-option {
+    transition: background-color 160ms ease !important;
+}
+
+.canvas-model-picker-option.is-previewed:not(:disabled) {
+    background: color-mix(in srgb, var(--workspace-accent) 8%, var(--workspace-surface-strong)) !important;
+}
+
+.canvas-model-picker-description {
+    height: 16px;
+    line-height: 16px;
+    margin-top: 5px !important;
+    visibility: hidden;
+    opacity: 0;
+}
+
+.canvas-model-picker-description.is-visible {
+    visibility: visible;
+    opacity: 1;
+}

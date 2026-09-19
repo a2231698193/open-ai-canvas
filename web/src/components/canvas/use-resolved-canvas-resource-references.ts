@@ -85,7 +85,7 @@ function resolveReferencePreview(reference: CanvasResourceReference, identity: s
         return pending;
     }
     const storageKey = reference.kind === "video" ? reference.previewStorageKey : reference.storageKey;
-    const pending = resolveImageUrl(storageKey, reference.previewUrl || "", { cacheMiss: true })
+    const pending = resolveImageUrl(storageKey, reference.previewUrl || "")
         .catch(() => reference.previewUrl || "")
         .then((url) => {
             if (!url) previewPromiseCache.delete(identity);

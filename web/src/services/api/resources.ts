@@ -351,7 +351,7 @@ export async function getResourceBlob(storageKey: string, options?: { allowProxy
         if (response.ok) return response.blob();
         if (!options?.allowProxyFallback || response.status === 401 || response.status === 403 || response.status === 404) return null;
     } catch (error) {
-        if (!options?.allowProxyFallback) throw error;
+        if (!options?.allowProxyFallback) return null;
     }
     if (!options?.allowProxyFallback) return null;
     const response = await fetch(resourceProxyFileUrl(id), { credentials: "include" });
