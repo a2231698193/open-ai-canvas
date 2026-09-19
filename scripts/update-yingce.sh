@@ -26,7 +26,39 @@ require_root() {
 }
 
 env_value() {
-    sed -n "s/^${1}=//p" .env | tail -n 1
+    local value
+    value="$(sed -n "s/^${1}=//p" .env | tail -n 1)"
+    value="${value%$'\r'}"
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    printf '%s' "$value"
+}
+
+install_update_command() {
+    local src="${1:-$INSTALL_DIR/scripts/update-yingce.sh}"
+    [[ -f "$src" ]] || return 0
+    install -m 0755 "$src" /usr/local/sbin/update-yingce
+}
+
+reexec_if_remote_script_changed() {
+    [[ "${UPDATE_YINGCE_REEXEC:-}" == "1" ]] && return 0
+    local next
+    next="$(mktemp)"
+    git fetch --prune "$REMOTE" >/dev/null
+    if ! git show "${REMOTE}/${BRANCH}:scripts/update-yingce.sh" >"$next" 2>/dev/null; then
+        rm -f "$next"
+        return 0
+    fi
+    if cmp -s "$next" "$0"; then
+        rm -f "$next"
+        return 0
+    fi
+    install_update_command "$next"
+    rm -f "$next"
+    printf '已同步 /usr/local/sbin/update-yingce，改用新脚本继续。\n'
+    UPDATE_YINGCE_REEXEC=1 exec /usr/local/sbin/update-yingce "$@"
 }
 
 database_url_host() {
@@ -141,6 +173,7 @@ main() {
     cd "$INSTALL_DIR"
     [[ -f .env ]] || fail "未找到 $INSTALL_DIR/.env"
     [[ -f "$COMPOSE_FILE" && -f "$BUILD_COMPOSE_FILE" ]] || fail "未找到部署 Compose 文件"
+    reexec_if_remote_script_changed "$@"
     require_clean_worktree
 
     local old_commit old_short stamp backup_dir port
@@ -163,6 +196,7 @@ main() {
     step "快进更新到 ${REMOTE}/${BRANCH}"
     git fetch --prune "$REMOTE"
     git merge --ff-only "${REMOTE}/${BRANCH}"
+    install_update_command
     require_clean_worktree
 
     local new_commit
