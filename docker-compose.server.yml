@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: open-ai-canvas-postgres
-    image: postgres:17-alpine
+    image: ${POSTGRES_IMAGE:-docker.m.daocloud.io/library/postgres:17-alpine}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-open_ai_canvas}
       POSTGRES_USER: ${POSTGRES_USER:-open_ai_canvas}
@@ -17,7 +17,7 @@ services:
 
   redis:
     container_name: open-ai-canvas-redis
-    image: redis:7.4-alpine
+    image: ${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7.4-alpine}
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - ${CANVAS_REDIS_DATA_PATH:-./redis-data}:/data
@@ -35,6 +35,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
+        GO_IMAGE: ${GO_IMAGE:-docker.m.daocloud.io/library/golang:1.25-alpine}
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
     command: ["migrate-schema", "up"]
@@ -53,6 +55,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
+        GO_IMAGE: ${GO_IMAGE:-docker.m.daocloud.io/library/golang:1.25-alpine}
+        ALPINE_IMAGE: ${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
     environment:
@@ -88,6 +92,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BUN_IMAGE: ${BUN_IMAGE:-docker.m.daocloud.io/oven/bun:1.3.13}
+        NGINX_IMAGE: ${NGINX_IMAGE:-docker.m.daocloud.io/library/nginx:1.27-alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     ports:
       - "127.0.0.1:5173:3000"
     depends_on:

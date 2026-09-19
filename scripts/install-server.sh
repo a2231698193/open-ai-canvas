@@ -108,6 +108,15 @@ CANVAS_REGISTRATION_ENABLED=false
 CANVAS_ALLOW_PRIVATE_UPSTREAMS=false
 CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS=
 CANVAS_CORS_ORIGINS=
+GOPROXY=https://goproxy.cn,direct
+ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
+NPM_REGISTRY=https://registry.npmmirror.com
+GO_IMAGE=docker.m.daocloud.io/library/golang:1.25-alpine
+ALPINE_IMAGE=docker.m.daocloud.io/library/alpine:3.22
+BUN_IMAGE=docker.m.daocloud.io/oven/bun:1.3.13
+NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
+POSTGRES_IMAGE=docker.m.daocloud.io/library/postgres:17-alpine
+REDIS_IMAGE=docker.m.daocloud.io/library/redis:7.4-alpine
 EOF
 }
 

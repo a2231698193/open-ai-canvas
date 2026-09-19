@@ -50,7 +50,9 @@ backup_postgres() {
 backup_backend_data() {
     local dest="$1"
     local data_path
+    local ALPINE_IMAGE
     data_path="$(env_value CANVAS_DATA_PATH)"
+    ALPINE_IMAGE="$(env_value ALPINE_IMAGE)"
     if [[ -n "$data_path" ]]; then
         [[ -d "$data_path" ]] || fail "CANVAS_DATA_PATH 不是目录：$data_path"
         tar -C "$data_path" -czf "$dest" .
@@ -63,7 +65,7 @@ backup_backend_data() {
     local volume
     volume="$(docker volume ls -q --filter name=backend-data | awk 'NR==1{print}')"
     [[ -n "$volume" ]] || fail "找不到后端数据卷，无法备份"
-    docker run --rm -v "$volume:/data:ro" alpine:3.22 tar czf - -C /data . >"$dest"
+    docker run --rm -v "$volume:/data:ro" "${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}" tar czf - -C /data . >"$dest"
 }
 
 tag_rollback_images() {

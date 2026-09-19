@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS payment-package-build
+ARG GO_IMAGE=golang:1.25-alpine
+ARG ALPINE_IMAGE=alpine:3.22
+
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS payment-package-build
 
 ARG ALPINE_MIRROR=
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -12,7 +15,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /src
@@ -29,16 +32,22 @@ RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
       ./plugin-packages/build-packages.sh --payments-only; \
     sh ./plugin-packages/verify-payment-packages.sh "$TARGETOS" "$TARGETARCH"
 
-FROM alpine:3.22 AS payment-package-smoke
+FROM ${ALPINE_IMAGE} AS payment-package-smoke
 
+ARG ALPINE_MIRROR=
 ARG TARGETOS
 ARG TARGETARCH
-RUN apk add --no-cache unzip
+RUN --mount=type=cache,target=/var/cache/apk \
+    set -eu; \
+    if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories; \
+    fi; \
+    apk add --cache-dir /var/cache/apk unzip
 COPY --from=payment-package-build /src/plugin-packages /app/plugin-packages
 RUN PAYMENT_PLUGIN_SMOKE_TEST=1 \
     sh /app/plugin-packages/verify-payment-packages.sh "$TARGETOS" "$TARGETARCH"
 
-FROM golang:1.25-alpine AS backend-build
+FROM ${GO_IMAGE} AS backend-build
 
 ARG ALPINE_MIRROR=
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -48,7 +57,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
     fi; \
     apk add --cache-dir /var/cache/apk build-base
 
-ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /src/backend
@@ -67,9 +76,15 @@ RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
     CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="$ldflags" -o /out/migrate-sqlite-postgres ./cmd/migrate-sqlite-postgres; \
     CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="$ldflags" -o /out/import-apimart-video-pricing ./cmd/import-apimart-video-pricing
 
-FROM alpine:3.22
+FROM ${ALPINE_IMAGE}
 
-RUN apk add --no-cache ca-certificates tzdata wget \
+ARG ALPINE_MIRROR=
+RUN --mount=type=cache,target=/var/cache/apk \
+    set -eu; \
+    if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories; \
+    fi; \
+    apk add --cache-dir /var/cache/apk ca-certificates tzdata wget \
     && addgroup -S app \
     && adduser -S app -G app
 
