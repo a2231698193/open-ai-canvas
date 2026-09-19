@@ -9,6 +9,7 @@
 - 生产目录：`/data/open-ai-canvas`
 - 生产域名：`https://linggan.mhuanet.com`
 - 生产更新脚本：`/usr/local/sbin/update-yingce`
+- PostgreSQL 在宿主机，不走 Compose 容器。`.env` 的 `DATABASE_URL` 不能使用主机名 `postgres`；容器内可用 `host.docker.internal` 或宿主机内网 IP。更新脚本检测到后会跳过 Docker Postgres。
 
 ## 1. 将官方更新同步到 Fork
 

@@ -1,0 +1,25 @@
+# 宿主机或外部 PostgreSQL：不启动 compose 里的 postgres 容器。
+# DATABASE_URL 应指向容器能访问的地址，例如 host.docker.internal、172.17.0.1 或内网 IP，不要用 @postgres。
+services:
+  postgres:
+    profiles: ["bundled-postgres"]
+  migrate:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
+      redis:
+        condition: service_healthy
+  backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_started
+        required: false
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

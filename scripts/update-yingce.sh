@@ -8,6 +8,7 @@ REMOTE="${REMOTE:-origin}"
 BRANCH="${BRANCH:-main}"
 COMPOSE_FILE="docker-compose.deploy.yml"
 BUILD_COMPOSE_FILE="docker-compose.build.yml"
+EXTERNAL_POSTGRES_COMPOSE_FILE="docker-compose.external-postgres.yml"
 
 step() {
     printf '\n==> %s\n' "$1"
@@ -24,12 +25,28 @@ require_root() {
     fi
 }
 
-compose() {
-    docker compose --env-file .env -f "$COMPOSE_FILE" -f "$BUILD_COMPOSE_FILE" "$@"
-}
-
 env_value() {
     sed -n "s/^${1}=//p" .env | tail -n 1
+}
+
+database_url_host() {
+    local url host
+    url="$(env_value DATABASE_URL)"
+    url="${url#*@}"
+    host="${url%%[:/?]*}"
+    printf '%s' "$host"
+}
+
+uses_compose_postgres() {
+    [[ "$(database_url_host)" == "postgres" ]]
+}
+
+compose() {
+    local files=(--env-file .env -f "$COMPOSE_FILE" -f "$BUILD_COMPOSE_FILE")
+    if ! uses_compose_postgres && [[ -f "$EXTERNAL_POSTGRES_COMPOSE_FILE" ]]; then
+        files+=(-f "$EXTERNAL_POSTGRES_COMPOSE_FILE")
+    fi
+    docker compose "${files[@]}" "$@"
 }
 
 require_clean_worktree() {
@@ -38,12 +55,22 @@ require_clean_worktree() {
 
 backup_postgres() {
     local dest="$1"
-    local user db
-    user="$(env_value POSTGRES_USER)"
-    db="$(env_value POSTGRES_DB)"
-    [[ -n "$user" && -n "$db" ]] || fail ".env 缺少 POSTGRES_USER 或 POSTGRES_DB"
-    [[ -n "$(compose ps -q postgres 2>/dev/null)" ]] || fail "PostgreSQL 容器未运行，无法备份数据库"
-    compose exec -T postgres pg_dump -U "$user" -d "$db" -Fc >"$dest"
+    local url user db
+    url="$(env_value DATABASE_URL)"
+    [[ -n "$url" ]] || fail ".env 缺少 DATABASE_URL"
+    if uses_compose_postgres && [[ -n "$(compose ps -q postgres 2>/dev/null)" ]]; then
+        user="$(env_value POSTGRES_USER)"
+        db="$(env_value POSTGRES_DB)"
+        [[ -n "$user" && -n "$db" ]] || fail ".env 缺少 POSTGRES_USER 或 POSTGRES_DB"
+        compose exec -T postgres pg_dump -U "$user" -d "$db" -Fc >"$dest"
+    elif command -v pg_dump >/dev/null 2>&1; then
+        pg_dump --dbname="$url" -Fc >"$dest"
+    else
+        local image
+        image="$(env_value POSTGRES_IMAGE)"
+        image="${image:-docker.m.daocloud.io/library/postgres:17-alpine}"
+        docker run --rm --network host "$image" pg_dump --dbname="$url" -Fc >"$dest"
+    fi
     [[ -s "$dest" ]] || fail "PostgreSQL 备份为空"
 }
 
@@ -139,7 +166,15 @@ main() {
     COMPOSE_PARALLEL_LIMIT=1 compose build web
 
     step "迁移数据库并重启服务"
-    compose up -d --remove-orphans --wait --wait-timeout 600
+    if uses_compose_postgres; then
+        compose up -d --remove-orphans --wait --wait-timeout 600
+    else
+        compose stop postgres >/dev/null 2>&1 || true
+        compose rm -f postgres >/dev/null 2>&1 || true
+        compose up -d redis --wait --wait-timeout 120
+        compose run --rm --no-deps migrate
+        compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 backend web
+    fi
     wait_health "$port"
 
     printf '\n更新完成。\n'
