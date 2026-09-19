@@ -118,6 +118,7 @@ NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
 POSTGRES_IMAGE=docker.m.daocloud.io/library/postgres:17-alpine
 REDIS_IMAGE=docker.m.daocloud.io/library/redis:7.4-alpine
 EOF
+    umask 022
 }
 
 start_services() {

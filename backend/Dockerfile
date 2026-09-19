@@ -99,6 +99,7 @@ COPY --from=backend-build /out/migrate-schema /usr/local/bin/migrate-schema
 COPY --from=backend-build /out/migrate-sqlite-postgres /usr/local/bin/migrate-sqlite-postgres
 COPY --from=backend-build /out/import-apimart-video-pricing /usr/local/bin/import-apimart-video-pricing
 COPY --from=payment-package-smoke /app/plugin-packages /app/plugin-packages
+RUN chmod -R a+rX /app/plugin-packages
 
 USER app
 EXPOSE 8080
