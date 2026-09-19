@@ -1,0 +1,16 @@
+/* 连接加号必须用未分层样式控制显隐。合并后 utilities 层的 opacity-0 会被后续全局 button 规则盖掉，导致加号常驻。 */
+[data-canvas-connection-rail] {
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+[data-canvas-connection-rail][data-visible="true"] {
+    opacity: 1;
+}
+
+.script-column-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    font-size: 12px;
+}

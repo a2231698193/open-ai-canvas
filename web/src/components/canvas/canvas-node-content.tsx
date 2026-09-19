@@ -198,7 +198,7 @@ function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNodeConte
     const elapsed = useTaskElapsed(node.metadata?.taskCreatedAt);
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2.5 px-5 text-center" style={{ color: theme.node.activeStroke }}>
-            {submissionUncertain ? <AlertCircle className="size-10" /> : <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />}
+            {submissionUncertain ? <AlertCircle className="size-10" style={{ color: "var(--status-error)" }} /> : <LoaderCircle className="size-10 animate-spin" style={{ color: "var(--status-loading)" }} />}
             <span className="text-[var(--fs-tiny)] font-semibold">{stageLabel}</span>
             {taskId ? (
                 <div className="flex w-full max-w-[210px] flex-col items-center gap-1.5">
