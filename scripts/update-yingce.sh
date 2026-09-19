@@ -110,8 +110,15 @@ tag_rollback_images() {
 }
 
 wait_health() {
-    local port="$1"
-    local url="http://127.0.0.1:${port}/api/health/ready"
+    local bind="${1:-3000}"
+    local host="127.0.0.1"
+    local port="$bind"
+    if [[ "$bind" == *:* ]]; then
+        host="${bind%:*}"
+        port="${bind##*:}"
+        [[ -n "$host" ]] || host="127.0.0.1"
+    fi
+    local url="http://${host}:${port}/api/health/ready"
     local attempt
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         if curl -fsS "$url" >/dev/null; then
