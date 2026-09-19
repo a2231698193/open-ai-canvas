@@ -164,6 +164,7 @@ describe("site appearance and editable skin library", () => {
         expect(globalStyles).toContain(":where(.ant-tooltip-container, .ant-tooltip-inner)");
         expect(globalStyles).toContain("color: var(--popover-foreground) !important");
         expect(adminTokens).toContain("--admin-status-warning");
+        expect(adminStyles).toContain("var(--admin-status-warning)");
         expect(adminStyles).toContain("border-radius: var(--menu-radius);");
     });
 });
