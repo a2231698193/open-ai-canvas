@@ -7012,6 +7012,11 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
         box-shadow: none;
     }
 
+    .aceternity-dock-command-badge {
+        background: var(--dock-command-active);
+        color: var(--dock-command-active-text);
+    }
+
     .aceternity-dock-separator {
         background: color-mix(in srgb, currentColor 13%, transparent);
     }
@@ -7026,21 +7031,25 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     }
 
     .aceternity-dock-switch-option {
-        color: #ffffff;
+        color: color-mix(in srgb, var(--dock-switch-thumb) 78%, var(--dock-switch-track));
         background: transparent;
-        opacity: 0.62;
-        transition:
-            color var(--motion-instant) ease-out,
-            opacity var(--motion-instant) ease-out;
+        transition: color var(--motion-instant) ease-out;
     }
 
     .aceternity-dock-switch-option:hover:not([aria-checked="true"]) {
-        opacity: 0.88;
+        color: var(--dock-switch-thumb);
     }
 
     .aceternity-dock-switch-option[aria-checked="true"] {
         color: var(--dock-switch-thumb-text, #000000);
-        opacity: 1;
+    }
+
+    .aceternity-dock-switch.is-labeled .aceternity-dock-switch-option {
+        min-width: 0;
+    }
+
+    .aceternity-dock-switch.is-labeled .aceternity-dock-switch-option[aria-checked="true"] {
+        color: var(--dock-switch-thumb-text, #000000);
     }
 
     .aceternity-dock-switch-option > span svg {
@@ -7054,7 +7063,7 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     .aceternity-dock-switch-option[aria-checked="true"] > span svg {
         color: var(--dock-switch-thumb-text, #000000);
         stroke: currentColor;
-        stroke-width: 2.6px;
+        stroke-width: 2px;
     }
 
     .aceternity-dock-switch-option:focus-visible {

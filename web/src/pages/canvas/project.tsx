@@ -19,6 +19,7 @@ import { nanoid } from "nanoid";
 import { canvasAppearanceBaseTheme, canvasAppearanceForTheme, DEFAULT_CANVAS_BACKGROUND_MODE, normalizeCanvasAppearance, resolveCanvasAppearance, writeCanvasAppearanceDefault, type CanvasAppearance } from "@/lib/canvas/canvas-appearance";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { persistCanvasMediaPerformanceMode, readCanvasMediaPerformanceMode } from "@/lib/canvas/canvas-performance-mode";
+import { filterCanvasDisplayConnections, persistCanvasHideNodeConnections, readCanvasHideNodeConnections } from "@/lib/canvas/canvas-connection-visibility";
 import { summarizeCanvasContext } from "@/lib/canvas/canvas-context-summary";
 import { refreshCanvasCharacterReferenceNodes } from "@/lib/canvas/canvas-character-reference";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -304,6 +305,7 @@ function InfiniteCanvasPage() {
     const [showImageInfo, setShowImageInfo] = useState(false);
     const [canvasTool, setCanvasTool] = useState<CanvasToolMode>("box-select");
     const [mediaPerformanceMode, setMediaPerformanceMode] = useState<CanvasMediaPerformanceMode>(readCanvasMediaPerformanceMode);
+    const [hideNodeConnections, setHideNodeConnections] = useState(readCanvasHideNodeConnections);
     const [projectLoaded, setProjectLoaded] = useState(false);
     const workspaceMode: CanvasWorkspaceMode = "professional";
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -347,6 +349,10 @@ function InfiniteCanvasPage() {
     useEffect(() => {
         persistCanvasMediaPerformanceMode(mediaPerformanceMode);
     }, [mediaPerformanceMode]);
+
+    useEffect(() => {
+        persistCanvasHideNodeConnections(hideNodeConnections);
+    }, [hideNodeConnections]);
 
     useEffect(() => {
         didInitialCenterRef.current = false;
@@ -1436,6 +1442,17 @@ function InfiniteCanvasPage() {
         scriptEditorNodeId,
         dialogNodeId,
     });
+
+    const visibleDisplayConnections = useMemo(
+        () => filterCanvasDisplayConnections(displayConnections, {
+            enabled: hideNodeConnections,
+            hoveredNodeId,
+            selectedNodeIds,
+            activeNodeId,
+            selectedConnectionId,
+        }),
+        [activeNodeId, displayConnections, hideNodeConnections, hoveredNodeId, selectedConnectionId, selectedNodeIds],
+    );
     useEffect(() => {
         setNodes((current) => {
             let changed = false;
@@ -2515,7 +2532,7 @@ function InfiniteCanvasPage() {
                                             containerRef={containerRef}
                                             viewport={viewport}
                                             theme={theme}
-                                            displayConnections={displayConnections}
+                                            displayConnections={visibleDisplayConnections}
                                             selectedConnectionId={selectedConnectionId}
                                             relatedConnectionIds={relatedHighlight.connectionIds}
                                             scriptScrollTopById={scriptScrollTopById}
@@ -2549,7 +2566,7 @@ function InfiniteCanvasPage() {
                                                 projectId={projectId}
                                                 viewportScale={viewport.k}
                                                 connectionLayerBounds={connectionLayerBounds}
-                                                displayConnections={displayConnections}
+                                                displayConnections={visibleDisplayConnections}
                                                 selectedConnectionId={selectedConnectionId}
                                                 relatedConnectionIds={relatedHighlight.connectionIds}
                                                 scriptScrollTopById={scriptScrollTopById}
@@ -2892,6 +2909,8 @@ function InfiniteCanvasPage() {
                                     onScaleChange={setZoomScale}
                                     onFitContent={fitCanvasContent}
                                     onAutoArrange={autoArrangeCanvasNodes}
+                                    hideNodeConnections={hideNodeConnections}
+                                    onHideNodeConnectionsChange={setHideNodeConnections}
                                     isMiniMapOpen={isMiniMapOpen}
                                     onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)}
                                     onOpenShortcuts={() => setShortcutRequestNonce((value) => value + 1)}

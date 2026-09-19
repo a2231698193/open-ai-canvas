@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { readImageMeta } from "@/lib/image-utils";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { importResourceFromUrl, isResourceUrl, resourceFileUrl, resourceIdFromStorageKey, resourceStorageKey, ResourceUploadError, uploadResourceFile } from "@/services/api/resources";
-import { getCachedResourceBlob, getCachedResourceObjectUrl, primeResourceBlobCache } from "@/services/resource-blob-cache";
+import { getCachedResourceBlob, primeResourceBlobCache } from "@/services/resource-blob-cache";
 
 export type UploadedImage = {
     url: string;
@@ -77,13 +77,11 @@ function shouldImportRemoteImage(input: string) {
     return /^https?:\/\//i.test(input) && !isResourceUrl(input);
 }
 
-export async function resolveImageUrl(storageKey?: string, fallback = "", options?: { cacheMiss?: boolean }) {
+export async function resolveImageUrl(storageKey?: string, fallback = "", _options?: { cacheMiss?: boolean }) {
     if (!storageKey) return fallback;
     const resourceId = resourceIdFromStorageKey(storageKey);
     if (resourceId) {
-        const cached = await getCachedResourceObjectUrl(storageKey).catch(() => "");
-        if (cached) return cached;
-        // 预览走同源 /file 再 307 到 CDN。<img> 不需要 CORS；读取 Blob 时再显式请求代理回退。
+        // 远程资源展示不返回 blob: URL，确保节点、素材库和弹窗都使用云端稳定地址。
         return resourceFileUrl(resourceId);
     }
     const cached = objectUrls.get(storageKey);

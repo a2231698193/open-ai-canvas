@@ -55,8 +55,10 @@ describe("large canvas media rendering", () => {
     });
 
     test("paints canvas images from resource URLs instead of origin blob downloads", () => {
-        expect(canvasNodeContentSource).toContain("打开画布时不要把全部原图经同源代理灌进 Blob");
-        expect(canvasNodeContentSource).toContain("node.type === CanvasNodeType.Image ? resourceFileUrl(resourceId)");
+        const resourceResolver = canvasNodeContentSource.match(/function useNodeResourceUrl[\s\S]*?\n}\n\nfunction useNearViewport/)?.[0] || "";
+        expect(resourceResolver).toContain("resourceFileUrl(resourceId)");
+        expect(resourceResolver).not.toContain("cacheResourceObjectUrl");
+        expect(resourceResolver).not.toContain("getCachedResourceObjectUrl");
     });
 
     test("does not eagerly load or resize LibTV thumbnails", () => {
