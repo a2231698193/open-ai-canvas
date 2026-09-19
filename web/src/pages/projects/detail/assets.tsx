@@ -44,7 +44,7 @@ import { saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { useAssetStore, type Asset, type AssetCategory, type AssetStatus, type EntityAsset, type ImageAsset } from "@/stores/use-asset-store";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { CanvasNodeType, type CanvasFolderStyle, type CanvasFolderTheme, type CanvasNodeData } from "@/types/canvas";
-import { saveAs } from "file-saver";
+import { downloadNamedFile } from "@/lib/download-file";
 
 import { ProjectCharacterCard } from "./project-character-card";
 import { linkSelectedProjectAssets } from "./project-asset-linking";
@@ -373,17 +373,18 @@ export default function ProjectAssetsView({ detail, refreshProject }: ProjectDet
     };
     const downloadPreviewAsset = (asset: ProjectAsset) => {
         const personal = personalAssets.find((item) => item.id === asset.id);
+        const fail = (error: unknown) => message.error(error instanceof Error ? error.message : "下载失败");
         if (personal && (personal.kind === "image" || personal.kind === "video" || personal.kind === "audio" || personal.kind === "model")) {
             const url = personal.kind === "image" ? personal.data.dataUrl : personal.data.url;
             const extension = personal.kind === "model" ? personal.data.fileName.split(".").pop() || "glb" : personal.data.mimeType.split("/")[1] || "bin";
-            saveAs(url, `${asset.title || "asset"}.${extension}`);
+            void downloadNamedFile(url, `${asset.title || "asset"}.${extension}`, personal.data.storageKey).catch(fail);
             return;
         }
         const cover = asset.character?.representations.find((item) => item.role === "turnaround_sheet") || asset.character?.representations.find((item) => item.role === "primary") || asset.character?.representations[0];
-        if (cover) saveAs(resourceFileUrl(cover.resourceId), `${asset.title || "character"}.png`);
+        if (cover) void downloadNamedFile(resourceFileUrl(cover.resourceId), `${asset.title || "character"}.png`).catch(fail);
         else {
             const remoteUrl = projectAssetRemoteUrl(asset);
-            if (remoteUrl) saveAs(remoteUrl, `${asset.title || "asset"}.${projectAssetFileExtension(asset.mediaType)}`);
+            if (remoteUrl) void downloadNamedFile(remoteUrl, `${asset.title || "asset"}.${projectAssetFileExtension(asset.mediaType)}`, asset.storageKey).catch(fail);
             else message.warning("当前资产没有可下载的媒体文件");
         }
     };

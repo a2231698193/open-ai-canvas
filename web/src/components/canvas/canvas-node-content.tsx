@@ -13,7 +13,9 @@ import { buildLibTVImagePreviewUrl, buildLibTVVideoSourceUrl } from "@/lib/canva
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
-import { resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
+import { getResourceBlob, resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
+import { isBareResourceFileUrl } from "@/lib/resource-locator";
+import { restoreOneTextNode } from "@/lib/canvas/restore-text-resource-nodes";
 import type { GenerationTask } from "@/services/api/task-center";
 import { cacheResourceObjectUrl, getCachedResourceObjectUrl, peekCachedResourceObjectUrl, scheduleResourceBlobCache } from "@/services/resource-blob-cache";
 import { resolveMediaUrl } from "@/services/file-storage";
@@ -309,6 +311,26 @@ function UnknownNodeContent({ theme }: Pick<CanvasNodeContentProps, "theme">) {
 }
 
 function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, onContentChange, onStopEditing }: CanvasNodeContentProps) {
+    const restoredNode = restoreOneTextNode(node);
+    const displayContent = restoredNode.metadata?.content || "";
+    useEffect(() => {
+        const current = node.metadata?.content || "";
+        if (displayContent && displayContent !== current) {
+            onContentChange(node.id, displayContent);
+            return;
+        }
+        if (!isBareResourceFileUrl(current) || !node.metadata?.storageKey) return;
+        let cancelled = false;
+        void getResourceBlob(node.metadata.storageKey).then(async (blob) => {
+            if (!blob || cancelled) return;
+            const mime = blob.type || node.metadata?.mimeType || "";
+            if (mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/")) return;
+            const text = await blob.text();
+            if (!text || isBareResourceFileUrl(text) || cancelled) return;
+            onContentChange(node.id, text);
+        });
+        return () => { cancelled = true; };
+    }, [displayContent, node.id, node.metadata?.content, node.metadata?.mimeType, node.metadata?.storageKey, onContentChange]);
     const fontSize = node.metadata?.fontSize || 14;
     const textStyle = { fontSize: `${fontSize}px`, lineHeight: `${Math.round(fontSize * 1.65)}px`, color: theme.node.text, boxSizing: "border-box" } as CSSProperties;
     const richTextHTML = useMemo(() => canvasRichTextHTML(node.metadata?.richText), [node.metadata?.richText]);
@@ -320,7 +342,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                     ref={textareaRef}
                     className="thin-scrollbar m-0 block h-full w-full resize-none appearance-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent px-4 pb-4 pt-0 font-mono outline-none select-text"
                     style={textStyle}
-                    value={node.metadata?.content || ""}
+                    value={displayContent}
                     references={mentionReferences}
                     highlightLabels={false}
                     onChange={(value) => onContentChange(node.id, value)}
@@ -341,7 +363,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                 />
             ) : (
                 <div className="thin-scrollbar block h-full w-full select-text overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-4 pb-4 pt-0 font-mono" style={textStyle} onWheel={(event) => event.stopPropagation()}>
-                    {node.metadata?.content || <span style={{ color: theme.node.placeholder }}>双击编辑文字</span>}
+                    {displayContent || <span style={{ color: theme.node.placeholder }}>双击编辑文字</span>}
                 </div>
             )}
         </div>
@@ -678,11 +700,22 @@ function useNodeResourceUrl(node: CanvasNodeData, eager: boolean) {
             setLoading(false);
             return;
         }
-        if (!url && eager && isHttpUrl) {
-            setUrl(fallback);
+        const displayUrl = (node.type === CanvasNodeType.Image ? resourceFileUrl(resourceId) : "") || fallback;
+        if (eager && displayUrl) {
+            setUrl(displayUrl);
             setLoading(false);
         } else if (!url) {
             setLoading(eager);
+        }
+        // 图片预览走直链/CDN/签名地址。打开画布时不要把全部原图经同源代理灌进 Blob，
+        // 否则历史 S3 会把国内源站带宽占满，连点击都会卡住。
+        if (node.type === CanvasNodeType.Image) {
+            if (!eager) {
+                void getCachedResourceObjectUrl(storageKey).then((cached) => {
+                    if (!cancelled && cached) setUrl(cached);
+                });
+            }
+            return () => { cancelled = true; };
         }
         // 只有进入视口或被激活的节点才下载远程媒体；缓存层会复用已有 Blob URL 和 in-flight 请求。
         const resolve = eager ? cacheResourceObjectUrl(storageKey) : getCachedResourceObjectUrl(storageKey);
@@ -695,7 +728,7 @@ function useNodeResourceUrl(node: CanvasNodeData, eager: boolean) {
             if (!cancelled) setLoading(false);
         });
         return () => { cancelled = true; };
-    }, [eager, fallback, isHttpUrl, isLazyVisual, isRemoteResource, storageKey]);
+    }, [eager, fallback, isHttpUrl, isLazyVisual, isRemoteResource, node.type, resourceId, storageKey]);
 
     return { url, loading };
 }

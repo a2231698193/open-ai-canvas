@@ -285,14 +285,30 @@ function resourceCacheKey(id: string) {
     return `${getActiveUserScope()}:${id}`;
 }
 
-export function resourceFileUrl(id: string) {
+export function resourceIdFromFileUrl(url?: string) {
+    if (!url) return "";
+    const match = url.match(/\/resources\/([^/?#]+)\/file(?:[/?#]|$)/i);
+    if (!match?.[1]) return "";
+    try {
+        return decodeURIComponent(match[1]);
+    } catch {
+        return match[1];
+    }
+}
+
+export function resourceFileUrl(id: string, options?: { download?: boolean; fileName?: string; proxy?: boolean }) {
     const base = String(apiBaseURL).replace(/\/+$/, "");
-    return `${base}/resources/${encodeURIComponent(id)}/file`;
+    const url = `${base}/resources/${encodeURIComponent(id)}/file`;
+    const params = new URLSearchParams();
+    if (options?.download) params.set("download", "1");
+    if (options?.proxy) params.set("proxy", "1");
+    if (options?.download && options.fileName) params.set("filename", options.fileName);
+    const query = params.toString();
+    return query ? `${url}?${query}` : url;
 }
 
 function resourceProxyFileUrl(id: string) {
-    const base = String(apiBaseURL).replace(/\/+$/, "");
-    return `${base}/resources/${encodeURIComponent(id)}/file?proxy=1`;
+    return resourceFileUrl(id, { proxy: true });
 }
 
 export function resolveResourceUrl(storageKey?: string, fallback = "") {

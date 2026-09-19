@@ -122,6 +122,10 @@ CSV 使用中文表头、UTF-8 BOM、CRLF；金额按整数分精确转换为两
 
 `POST /api/admin/channels/:id/duplicate` 需要管理员权限，会复制指定系统渠道的连接配置、加密凭证、请求头、模型和价格档，生成新的渠道与模型 ID；复制渠道名称自动追加“ - 副本”。原渠道及其前台供应线路不受影响。
 
+## 资源文件
+
+`GET /resources/:id/file` 默认按存储配置把浏览器重定向到 CDN 或对象存储，用于预览。`download=1` 改为同源代理，并设置 `Content-Disposition: attachment`；可选 `filename` 作为保存名。配置了 CDN 时，预览仍走 CDN，只有点击下载才走后端代理，避免浏览器把跨域图片直接打开。
+
 ## 信封
 
 成功：

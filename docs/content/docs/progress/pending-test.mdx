@@ -5,6 +5,32 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 历史 S3 资源拖垮界面（2026-09-19）
+
+迁移到国内 OSS 后，旧 S3 对象仍经国内源站代理整文件回源，打开画布会占满同源连接，点击其他操作要等图片全部下完。现在图片预览直连签名地址/CDN，Blob 代理只留给下载和编辑。
+
+- [x] `cd web && bun test test/canvas-media-performance.test.ts`
+- [x] `cd backend && go test ./internal/app -run TestPrepareResourceDeliverySignsPublicHTTPS3InsteadOfProxy`
+- [ ] 打开含大量历史 S3 图片的画布，未加载完时仍可点选、拖动和打开菜单。
+- [ ] 新 OSS/CDN 图片仍能显示；点下载仍保存文件。
+
+## 画布文本上传变成资源地址（2026-09-19）
+
+上传 TXT/Markdown 到画布后，云端同步曾把节点 `content` 改写成 `/api/resources/:id/file`。退出再进入就只看到地址。现在同步只改写图片/视频等媒体定位符；已损坏节点会从仍保留的 prompt 还原正文。
+
+- [x] `cd web && bun test test/resource-locator.test.ts test/restore-text-resource-nodes.test.ts`
+- [ ] 画布上传一段 TXT，保存后退出再进入，节点应显示原文而不是资源路径。
+- [ ] 已出现地址的旧文本节点，重新打开画布后应自动还原为原文。
+
+## 对象存储下图片下载（2026-09-19）
+
+配置阿里云 OSS / CDN 后，画布、素材库和创作结果的「下载」原先会 307 到 CDN。浏览器把跨域图片当成预览打开，而不是保存文件。现在 `GET /api/resources/:id/file?download=1` 走同源代理并带附件头。
+
+- [x] `cd web && bun test test/download-file.test.ts`
+- [x] `cd backend && go test ./internal/handler -run TestAttachmentDisposition`
+- [ ] 画布图片节点点下载，应弹出保存文件，而不是在当前页或新标签打开图片。
+- [ ] 素材库和创作页生成结果的下载同样保存文件；预览仍可直连 CDN。
+
 ## 阿里云 OSS 配置错误可见性（2026-09-19）
 
 配置阿里云 OSS 时，HTTP 400 若没有业务 `msg`，页面会只显示 Axios 的 `Request failed with status code 400`。现在前端会优先展示后端 `msg` / 对象存储 XML `Code`，没有正文时改为「请求无效，请检查填写内容后重试」。阿里云连接测试失败也会带上 `InvalidBucketName` 等错误码对应的中文原因，不再吞掉具体原因。

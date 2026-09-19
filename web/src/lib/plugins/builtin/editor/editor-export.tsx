@@ -202,7 +202,7 @@ export function EditorExport() {
                         <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-[11px] text-[var(--director-dock-fg)]/80">
                             <span className="truncate">{state.result.fileName ?? "timeline.mp4"}</span>
                             <a
-                                href={resourceFileUrl(state.result.resourceId)}
+                                href={resourceFileUrl(state.result.resourceId, { download: true, fileName: state.result.fileName ?? "timeline.mp4" })}
                                 download={state.result.fileName ?? "timeline.mp4"}
                                 className="flex shrink-0 items-center gap-1 text-[var(--director-accent)] hover:underline"
                             >

@@ -676,6 +676,40 @@ func TestHistoricalUserResourceWithoutStorageSettingIDKeepsItsProviderCDN(t *tes
 	}
 }
 
+func TestPrepareResourceDeliverySignsPublicHTTPS3InsteadOfProxy(t *testing.T) {
+	svc := newResourceTestService(t)
+	settingJSON, _ := json.Marshal(ossSettingValue{
+		Enabled: true, Provider: s3Provider, Region: "us-east-1",
+		Endpoint: "https://s3.us-east-1.amazonaws.com", Bucket: "old-bucket",
+		AccessKeyID: "access-id", AccessKeySecret: "secret-value",
+	})
+	if err := svc.repo.SaveSystemSetting(&model.SystemSetting{Key: ossSettingKey, ValueJSON: string(settingJSON)}); err != nil {
+		t.Fatal(err)
+	}
+	resource := model.Resource{
+		ID: "resource-s3-direct", UserID: "user-1", Kind: "image", Status: model.ResourceStatusReady,
+		Provider: s3Provider, Endpoint: "https://s3.us-east-1.amazonaws.com", Bucket: "old-bucket",
+		ObjectKey: "users/user-1/image/old.png", MimeType: "image/png",
+	}
+	if err := svc.repo.CreateResource(&resource); err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := svc.PrepareResourceDelivery("user-1", resource.ID, ResourceDeliveryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delivery.RedirectURL == "" || !strings.Contains(delivery.RedirectURL, "old.png") {
+		t.Fatalf("PrepareResourceDelivery(public S3) = %#v, want signed redirect", delivery)
+	}
+	proxy, err := svc.PrepareResourceDelivery("user-1", resource.ID, ResourceDeliveryOptions{ForceProxy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxy.RedirectURL != "" {
+		t.Fatalf("ForceProxy should stay on origin, got %q", proxy.RedirectURL)
+	}
+}
+
 func TestPrepareResourceDeliveryKeepsForcedOriginDirectWithoutCDN(t *testing.T) {
 	svc := newResourceTestService(t)
 	settingJSON, _ := json.Marshal(ossSettingValue{

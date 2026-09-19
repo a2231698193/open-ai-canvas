@@ -723,6 +723,18 @@ paths:
           name: id
           required: true
           schema: { type: string }
+        - in: query
+          name: download
+          schema: { type: string, enum: ["1"] }
+          description: 同源代理并带 Content-Disposition attachment，供浏览器真正下载而不是打开图片
+        - in: query
+          name: filename
+          schema: { type: string }
+          description: 仅 download=1 时生效的附件文件名
+        - in: query
+          name: proxy
+          schema: { type: string, enum: ["1"] }
+          description: 强制走后端代理，不 307 到 CDN
       responses:
         "200":
           description: 文件流

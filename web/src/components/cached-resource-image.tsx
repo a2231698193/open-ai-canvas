@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ImgHTMLAttributes, type ReactNode } from "react";
 
-import { resourceIdFromStorageKey } from "@/services/api/resources";
-import { cacheResourceObjectUrl } from "@/services/resource-blob-cache";
+import { resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
 import { resolveImageUrl } from "@/services/image-storage";
 
 type CachedResourceImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
@@ -13,8 +12,8 @@ type CachedResourceImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 };
 
 /**
- * 资源图片优先读取按用户隔离的本地 Blob 缓存，避免刷新后再次从对象存储下载。
- * 本地 image: 类型的 storageKey 也会自动从 LocalForage 恢复有效的 Object URL。
+ * 远程资源图片直接使用 /api/resources/:id/file（CDN 或签名直连）。
+ * 本地 image: 类型的 storageKey 仍从 LocalForage 恢复 Object URL。
  */
 export function CachedResourceImage({ storageKey, src = "", fallback = null, loadingFallback = fallback, eager = false, onError, ...props }: CachedResourceImageProps) {
     const remoteResource = Boolean(resourceIdFromStorageKey(storageKey));
@@ -58,22 +57,11 @@ export function CachedResourceImage({ storageKey, src = "", fallback = null, loa
                     cancelled = true;
                 };
             }
-            setCachedSrc("");
-            const resolve = cacheResourceObjectUrl(storageKey);
-            void resolve
-                .then((url) => {
-                    if (!cancelled) {
-                        setCachedSrc(url || src);
-                        setCacheFailed(!url && !src);
-                    }
-                })
-                .catch(() => {
-                    if (!cancelled) {
-                        // 缓存读取失败时仍允许原始地址加载，真正的解码失败再显示占位。
-                        setCacheFailed(!src);
-                        setCachedSrc(src);
-                    }
-                });
+            // 列表/卡片直接走资源 URL，由浏览器和 CDN/签名地址加载。
+            // 不要在进视口时把原图经后端代理下载成 Blob，否则历史 S3 会堵死同源接口。
+            const preview = src || resourceFileUrl(resourceIdFromStorageKey(storageKey));
+            setCachedSrc(preview);
+            setCacheFailed(!preview);
             return () => {
                 cancelled = true;
             };

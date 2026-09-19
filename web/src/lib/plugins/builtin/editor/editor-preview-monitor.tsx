@@ -439,7 +439,7 @@ export function EditorPreviewMonitor() {
                         <span className="truncate">{mediaErrorHint}</span>
                         {mediaResourceId && (
                             <a
-                                href={resourceFileUrl(mediaResourceId)}
+                                href={resourceFileUrl(mediaResourceId, { download: true })}
                                 download
                                 title="下载原片，用本地播放器观看"
                                 className="grid size-4 shrink-0 place-items-center rounded hover:bg-[var(--director-danger)]/15"

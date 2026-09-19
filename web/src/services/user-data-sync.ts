@@ -6,7 +6,8 @@ import { canvasContentHash, sameCanvasContent } from "@/lib/canvas/canvas-conten
 import { getActiveUserScope } from "@/lib/user-scope";
 import { preserveCanvasSyncDraft, readCanvasSyncDrafts } from "@/services/canvas-sync-drafts";
 import { appQueryClient } from "@/lib/query-client";
-import { resourceFileUrl, resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
+import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
+import { rewriteStoredResourceLocators } from "@/lib/resource-locator";
 import { parseAssetRecordList } from "@/lib/asset-record";
 import { assetForRemoteSync } from "@/lib/asset-remote-sync";
 import type { Asset } from "@/stores/use-asset-store";
@@ -806,16 +807,7 @@ async function ensureRemoteResourceReferences<T>(value: T, uploaded = new Map<st
 }
 
 function applyResourceReference(payload: Record<string, unknown>, storageKey: string) {
-    const resourceId = resourceIdFromStorageKey(storageKey);
-    if (!resourceId) {
-        throw new Error(`远端资源引用无效：${storageKey}`);
-    }
-    const url = resourceFileUrl(resourceId);
-    payload.storageKey = storageKey;
-    for (const key of ["content", "dataUrl", "url", "coverUrl"]) {
-        if (typeof payload[key] === "string") payload[key] = url;
-    }
-    return payload;
+    return rewriteStoredResourceLocators(payload, storageKey);
 }
 
 function inlineMediaDataUrl(payload: Record<string, unknown>) {

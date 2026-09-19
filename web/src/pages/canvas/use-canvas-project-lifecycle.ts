@@ -8,6 +8,7 @@ import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { removeCanvasDrawing } from "@/lib/canvas/canvas-drawing-storage";
 import { normalizeCanvasNodeTimestamps } from "@/lib/canvas/canvas-node-timestamps";
 import { hydrateAssistantImages, resetInterruptedGeneration } from "@/lib/canvas/canvas-project-generation";
+import { restorePersistedTextNodeContent } from "@/lib/canvas/restore-text-resource-nodes";
 import { listAddedSkills, type Skill } from "@/services/api/skills";
 import { createCanvasProjectWithRemoteSync, deleteCanvasProjectsWithRemoteSync, forceOverwriteRemoteCanvasSync, loadCanvasProjectForEditing, saveRemoteUserDataNow, subscribeAgentCanvasRefresh } from "@/services/user-data-sync";
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
@@ -121,7 +122,7 @@ export function useCanvasProjectLifecycle({
             const restoredAppearance = targetProject.appearance
                 ? normalizeCanvasAppearance(targetProject.appearance, fallbackTheme)
                 : canvasAppearanceForTheme(fallbackTheme);
-            const initialNodes = normalizeCanvasNodeTimestamps(resetInterruptedGeneration(targetProject.nodes), {
+            const initialNodes = normalizeCanvasNodeTimestamps(resetInterruptedGeneration(restorePersistedTextNodeContent(targetProject.nodes)), {
                 createdAt: targetProject.createdAt,
                 updatedAt: targetProject.updatedAt,
             });
@@ -242,9 +243,10 @@ export function useCanvasProjectLifecycle({
             const baseline = previous ? mergeAgentCanvasEditor(previous, project, observed.nodes, observed.connections) : project;
             observedContentRef.current = { ...observed, nodes: baseline.nodes, connections: baseline.connections };
         }
-        nodesRef.current = merged.nodes;
+        const restoredNodes = restorePersistedTextNodeContent(merged.nodes);
+        nodesRef.current = restoredNodes;
         connectionsRef.current = merged.connections;
-        setNodes(merged.nodes);
+        setNodes(restoredNodes);
         setConnections(merged.connections);
         const previousIds = new Set(previous?.nodes.map((node) => node.id));
         const created = project.nodes.filter((node) => !previousIds.has(node.id));

@@ -121,10 +121,17 @@ func (s *Service) prepareResourceDelivery(userID string, resource *model.Resourc
 		if err != nil {
 			return nil, err
 		}
-		// S3 兼容 Endpoint 可能是私网服务；浏览器默认始终使用同源代理。
-		// 只有明确的服务端上游需求才签发可公开访问的短时地址。
+		// 私网/HTTP S3 不能让浏览器直连，仍走同源代理。
+		// 公网 HTTPS S3 预览改为签名 307，避免国内源站把历史对象整文件回源。
 		if setting.Provider == s3Provider && !options.ForceDirect {
-			return &ResourceDelivery{Resource: resource}, nil
+			if !publicHTTPSStorageEndpoint(setting.Endpoint) {
+				return &ResourceDelivery{Resource: resource}, nil
+			}
+			redirectURL, err := signedOSSObjectURL(setting, resource.ObjectKey, time.Now().Add(directResourceURLTTL))
+			if err != nil {
+				return nil, err
+			}
+			return &ResourceDelivery{Resource: resource, RedirectURL: redirectURL}, nil
 		}
 		if setting.Provider == qiniuKodoProvider && setting.CDNBaseURL != "" {
 			// 七牛私有空间即使配置了绑定域名，也不能匿名访问；必须使用

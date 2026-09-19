@@ -2,7 +2,7 @@ import { App, Button, Input, Modal, Select } from "antd";
 import { IconButton } from "@/pages/admin/ui/controls";
 import type { ColumnsType } from "antd/es/table";
 import { Download, Eye, Play, Search } from "lucide-react";
-import { saveAs } from "file-saver";
+import { downloadNamedFile } from "@/lib/download-file";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -305,7 +305,7 @@ function MediaResult({ log, onPreview }: { log: ApiCallLog; onPreview: (url: str
 }
 
 function downloadMedia(url: string, kind: "image" | "video") {
-    saveAs(url, `api-call-${kind}.${kind === "video" ? "mp4" : "png"}`);
+    void downloadNamedFile(url, `api-call-${kind}.${kind === "video" ? "mp4" : "png"}`);
 }
 
 function CallStatus({ log }: { log: ApiCallLog }) {

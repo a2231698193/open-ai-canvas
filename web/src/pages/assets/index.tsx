@@ -12,7 +12,7 @@ import { WorkspaceState } from "@/components/layout/workspace-state";
 import { AssetMediaPreview } from "@/components/asset-media-preview";
 import { AssetLibraryCard, AssetLibraryCardMedia } from "@/components/assets/asset-library-card";
 import { Switch } from "@/components/ui/base/switch";
-import { saveAs } from "file-saver";
+import { downloadNamedFile } from "@/lib/download-file";
 import { cn } from "@/lib/utils";
 
 import { useCopyText } from "@/hooks/use-copy-text";
@@ -399,7 +399,8 @@ export default function AssetsPage() {
         if (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio" && asset.kind !== "model") return;
         const url = asset.kind === "image" ? asset.data.dataUrl : asset.data.url;
         const extension = asset.kind === "model" ? asset.data.fileName.split(".").pop() || "glb" : asset.data.mimeType.split("/")[1] || "png";
-        saveAs(url, `${asset.title || "asset"}.${extension}`);
+        void downloadNamedFile(url, `${asset.title || "asset"}.${extension}`, asset.data.storageKey)
+            .catch((error) => message.error(error instanceof Error ? error.message : "下载失败"));
     };
 
     const exportAllAssets = async () => {

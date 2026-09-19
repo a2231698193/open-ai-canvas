@@ -289,17 +289,23 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
+		wantDownload := c.Query("download") == "1"
 		delivery, err := svc.PrepareResourceDelivery(user.ID, c.Param("id"), service.ResourceDeliveryOptions{
 			ForceDirect: c.Query("direct") == "1",
-			ForceProxy:  c.Query("proxy") == "1",
+			// 下载必须走同源代理：CDN 307 后浏览器会忽略 download，把图片直接打开。
+			ForceProxy: c.Query("proxy") == "1" || wantDownload,
 		})
 		if err != nil {
 			failService(c, err)
 			return
 		}
 		if delivery.RedirectURL != "" {
-			// CDN 或对象存储直连地址允许安全短期缓存
-			c.Header("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600")
+			// 无查询的 CDN 地址可长缓存；带签名的 S3/OSS 地址有效期短，不能把 307 缓存到过期之后。
+			if strings.Contains(delivery.RedirectURL, "?") {
+				c.Header("Cache-Control", "private, max-age=120")
+			} else {
+				c.Header("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600")
+			}
 			c.Header("Referrer-Policy", "no-referrer")
 			c.Header("X-Content-Type-Options", "nosniff")
 			c.Redirect(http.StatusTemporaryRedirect, delivery.RedirectURL)
@@ -318,7 +324,10 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 		// 资源 ID 内容不可变（上传永远生成新 ID，不会原地覆盖）：图片可以放心交给浏览器
 		// 磁盘强缓存 30 天，大画布二次打开零请求直读磁盘缓存。视频/音频涉及转码副本
 		// 就绪与 Range 语义，保持逐次条件请求（304）。
-		if strings.HasPrefix(resource.MimeType, "image/") {
+		if wantDownload {
+			c.Header("Cache-Control", "private, no-store")
+			c.Header("Content-Disposition", attachmentDisposition(c.Query("filename")))
+		} else if strings.HasPrefix(resource.MimeType, "image/") {
 			c.Header("Cache-Control", "private, max-age=2592000, stale-while-revalidate=86400")
 		} else {
 			c.Header("Cache-Control", "private, no-cache")
@@ -327,10 +336,12 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 		c.Header("Accept-Ranges", "bytes")
 		c.Header("X-Content-Type-Options", "nosniff")
 		if resource.Kind == "file" {
-			c.Header("Content-Disposition", "attachment")
+			if !wantDownload {
+				c.Header("Content-Disposition", "attachment")
+			}
 			c.Header("Content-Security-Policy", "sandbox")
 		}
-		if ifNoneMatch(c.GetHeader("If-None-Match"), serveETag) {
+		if !wantDownload && ifNoneMatch(c.GetHeader("If-None-Match"), serveETag) {
 			c.Status(http.StatusNotModified)
 			return
 		}
