@@ -526,11 +526,6 @@ func normalizeChannelModelTierSelector(capability string, input ChannelModelPric
 		switch key {
 		case "operation":
 			value = strings.ToLower(value)
-		case "videoGenerateAudio":
-			if !strings.EqualFold(value, "true") && !strings.EqualFold(value, "false") {
-				return nil, "", 0, BadAuthRequest("视频价格档音频开关必须是 true 或 false")
-			}
-			value = strings.ToLower(value)
 		case "quality", "size":
 			value = strings.ToLower(value)
 			if value == "auto" || value == "any" {
