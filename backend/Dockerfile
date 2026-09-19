@@ -2,12 +2,18 @@
 
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS payment-package-build
 
+ARG ALPINE_MIRROR=
+RUN --mount=type=cache,target=/var/cache/apk \
+    set -eu; \
+    if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories; \
+    fi; \
+    apk add --cache-dir /var/cache/apk nodejs unzip zip
+
 ARG TARGETOS
 ARG TARGETARCH
 ARG GOPROXY=https://proxy.golang.org,direct
 ENV GOPROXY=$GOPROXY
-
-RUN apk add --no-cache nodejs unzip zip
 
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./backend/
@@ -34,19 +40,25 @@ RUN PAYMENT_PLUGIN_SMOKE_TEST=1 \
 
 FROM golang:1.25-alpine AS backend-build
 
-ARG GOPROXY=https://proxy.golang.org,direct
-ARG BUILD_VERSION
-ARG BUILD_COMMIT=unknown
-ARG BUILD_TIME=unknown
-ENV GOPROXY=$GOPROXY
+ARG ALPINE_MIRROR=
+RUN --mount=type=cache,target=/var/cache/apk \
+    set -eu; \
+    if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories; \
+    fi; \
+    apk add --cache-dir /var/cache/apk build-base
 
-RUN apk add --no-cache build-base
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=$GOPROXY
 
 WORKDIR /src/backend
 COPY VERSION /src/VERSION
 COPY backend/go.mod backend/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY backend ./
+ARG BUILD_VERSION
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
 RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
     version="${BUILD_VERSION:-$(tr -d '\r\n' </src/VERSION)}"; \
     ldflags="-s -w -X infinite-canvas/backend/internal/buildinfo.Version=${version} -X infinite-canvas/backend/internal/buildinfo.Commit=${BUILD_COMMIT} -X infinite-canvas/backend/internal/buildinfo.BuildTime=${BUILD_TIME}"; \

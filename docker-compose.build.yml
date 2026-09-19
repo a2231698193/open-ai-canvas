@@ -5,7 +5,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
 
   backend:
     image: open-ai-canvas-backend:server
@@ -13,7 +14,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
 
   web:
     image: open-ai-canvas-web:server
