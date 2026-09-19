@@ -186,10 +186,12 @@ main() {
 
     step "备份当前版本 ${old_short}"
     install -d -m 0700 "$backup_dir"
-    umask 077
-    cp -a .env "${backup_dir}/env"
-    backup_postgres "${backup_dir}/postgres.dump"
-    backup_backend_data "${backup_dir}/backend-data.tar.gz"
+    (
+        umask 077
+        cp -a .env "${backup_dir}/env"
+        backup_postgres "${backup_dir}/postgres.dump"
+        backup_backend_data "${backup_dir}/backend-data.tar.gz"
+    )
     tag_rollback_images "$old_short"
     printf '备份目录：%s\n' "$backup_dir"
 

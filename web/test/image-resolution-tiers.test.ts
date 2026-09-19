@@ -29,12 +29,13 @@ describe("image resolution tiers", () => {
         profile.size = { parameter: "size", values: [], default: "auto", allowCustom: true };
         expect(() => resolveImageRequestSize(profile, undefined, "1920x1080")).toThrow("16 的倍数");
     });
-    test("将 Xiaobaishu 的精确尺寸整理为 1K、2K、4K 各十种比例", () => {
+    test("将 Xiaobaishu 的精确尺寸整理为 1K、2K、3K、4K 档位", () => {
         const options = buildImageResolutionOptions(sizes);
 
         expect(options.filter((item) => item.tier === "1k")).toHaveLength(10);
         expect(options.filter((item) => item.tier === "2k")).toHaveLength(10);
-        expect(options.filter((item) => item.tier === "4k")).toHaveLength(10);
+        expect(options.filter((item) => item.tier === "3k")).toHaveLength(1);
+        expect(options.filter((item) => item.tier === "4k")).toHaveLength(9);
         expect(imageResolutionOption(options, "1536x2752")).toMatchObject({ tier: "2k", ratio: "9:16" });
     });
 
@@ -48,7 +49,7 @@ describe("image resolution tiers", () => {
     test("保留自动尺寸并在摘要中显示中文标签", () => {
         const values = ["auto", ...sizes];
 
-        expect(imageResolutionChoices(values)).toEqual(["auto", "1k", "2k", "4k"]);
+        expect(imageResolutionChoices(values)).toEqual(["auto", "1k", "2k", "3k", "4k"]);
         expect(buildImageResolutionOptions(values)).toHaveLength(30);
         expect(formatImageResolutionSize("auto", [])).toBe("自动");
     });
@@ -57,11 +58,11 @@ describe("image resolution tiers", () => {
         expect(supportsImageResolutionPresets({ parameter: "size", values: ["auto", ...sizes], allowCustom: true })).toBe(true);
     });
 
-    test("默认图片能力为 OpenAI 兼容模型提供完整 1K、2K、4K 档位", () => {
+    test("默认图片能力为 OpenAI 兼容模型提供完整 1K、2K、3K、4K 档位", () => {
         const profile = defaultImageCapabilityConfig("openai-image", "gpt-image-2-4K");
 
         expect(supportsImageResolutionPresets(profile.size)).toBe(true);
-        expect(imageResolutionChoices(profile.size.values)).toEqual(["auto", "1k", "2k", "4k"]);
+        expect(imageResolutionChoices(profile.size.values)).toEqual(["auto", "1k", "2k", "3k", "4k"]);
         expect(buildImageResolutionOptions(profile.size.values)).toHaveLength(30);
     });
 

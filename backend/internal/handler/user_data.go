@@ -302,7 +302,7 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 		if delivery.RedirectURL != "" {
 			// 无查询的 CDN 地址可长缓存；带签名的 S3/OSS 地址有效期短，不能把 307 缓存到过期之后。
 			if strings.Contains(delivery.RedirectURL, "?") {
-				c.Header("Cache-Control", "private, max-age=120")
+				c.Header("Cache-Control", "private, max-age=240")
 			} else {
 				c.Header("Cache-Control", "private, max-age=86400, stale-while-revalidate=3600")
 			}

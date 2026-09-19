@@ -7,10 +7,11 @@ import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { resolveCanvasGenerationModel } from "@/lib/canvas/canvas-project-generation";
 import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
+import { canonicalGenerationMetadata } from "@/lib/canvas/generation-contract";
 import { clampPromptEditorModalSize, PROMPT_EDITOR_VIEWPORT_MARGIN } from "@/lib/canvas/canvas-prompt-editor-size";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { modelQuoteRequest } from "@/lib/model-pricing";
+import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
 import { normalizeVideoDuration, normalizeVideoResolution } from "@/lib/video-generation-options";
 import { modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefaults, defaultImageParamsForModel, type ModelRequirements } from "@/lib/model-selection";
 import { navigateToSettings } from "@/lib/settings-navigation";
@@ -31,7 +32,7 @@ import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins
 import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
-import { quoteLogicalModel } from "@/services/api/logical-models";
+import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -79,6 +80,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const promptOptimizerEnabled = usePluginStore((state) => state.pluginStates[PROMPT_OPTIMIZER_PLUGIN_ID]?.effectiveEnabled ?? Boolean(state.installations.find((item) => item.manifest.id === PROMPT_OPTIMIZER_PLUGIN_ID)?.enabled));
     const simpleMode = workspaceMode === "simple";
     const mode = defaultMode(node.type);
+    node = { ...node, metadata: canonicalGenerationMetadata(node, mode) };
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const savedPrompt = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
@@ -107,17 +109,17 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             characterCount: activeReferences.filter((item) => item.kind === "character").length,
         },
         videoOperation: node.metadata?.videoEditOperation,
-        videoSeconds: mode === "video" ? node.metadata?.seconds || globalConfig.videoSeconds : undefined,
+        videoSeconds: mode === "video" ? node.metadata?.seconds ?? globalConfig.videoSeconds : undefined,
         options: modelRequestOptions({
             ...globalConfig,
             size: node.metadata?.size || globalConfig.size,
             quality: node.metadata?.quality || globalConfig.quality,
             count: String(node.metadata?.count || globalConfig.count),
             transparentBackground: node.metadata?.transparentBackground || globalConfig.transparentBackground,
-            videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds,
+            videoSeconds: node.metadata?.seconds ?? globalConfig.videoSeconds,
             vquality: node.metadata?.vquality || globalConfig.vquality,
-            videoGenerateAudio: node.metadata?.generateAudio || globalConfig.videoGenerateAudio,
-            videoWatermark: node.metadata?.watermark || globalConfig.videoWatermark,
+            videoGenerateAudio: node.metadata?.generateAudio ?? globalConfig.videoGenerateAudio,
+            videoWatermark: node.metadata?.watermark ?? globalConfig.videoWatermark,
             audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice,
             audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat,
             audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed,
@@ -147,8 +149,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     });
     const quoteRequest = modelQuoteRequest(config, config.model, mode, resolvedRequirements);
     const quoteRequestKey = JSON.stringify(quoteRequest || null);
-    const [quotedCredits, setQuotedCredits] = useState<number | null>(null);
-    const credits = quotedCredits ?? configuredCredits;
+    const [routeQuote, setRouteQuote] = useState<LogicalModelQuote | null>(null);
+    const credits = routeQuote ? routeQuote.amountMicrocredits / 1_000_000 : configuredCredits;
     const activeReferenceCount = activeReferences.length;
     const videoFrameOptions = resolvedMentionReferences.filter((item) => item.active && item.kind === "image").map((item) => ({ nodeId: item.nodeId, label: item.label, title: item.title, previewUrl: item.previewUrl }));
     const hasVideoPromptTools = mode === "video" && !simpleMode && videoFrameOptions.length > 0;
@@ -211,15 +213,15 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
 
     useEffect(() => {
         if (!creditsEnabled || !quoteRequest) {
-            setQuotedCredits(null);
+            setRouteQuote(null);
             return;
         }
         const controller = new AbortController();
-        setQuotedCredits(null);
-        quoteLogicalModel(quoteRequest.logicalModelID, quoteRequest.intent, controller.signal)
-            .then(({ quote }) => setQuotedCredits(quote.amountMicrocredits / 1_000_000))
+        setRouteQuote(null);
+        quoteModel(quoteRequest, controller.signal)
+            .then(({ quote }) => setRouteQuote(quote))
             .catch(() => {
-                if (!controller.signal.aborted) setQuotedCredits(null);
+                if (!controller.signal.aborted) setRouteQuote(null);
             });
         return () => controller.abort();
         // quoteRequestKey captures the full normalized request without retriggering on object identity.
@@ -338,7 +340,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const renderSubmitButton = (expanded: boolean) => {
         const showCost = creditsEnabled && credits !== null;
         const formattedCredits = credits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
-        const actionLabel = isRunning ? "生成中" : showCost ? `预计消耗 ${formattedCredits} 积分，生成` : "生成";
+        const actionLabel = isRunning ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，生成` : "生成";
         return (
             <Button
                 type="text"
@@ -353,12 +355,12 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                 }
                 onClick={() => (expanded ? submitExpandedPrompt() : submit())}
                 aria-label={actionLabel}
-                title={actionLabel}
+                title={routeQuote ? modelQuoteDescription(routeQuote) : actionLabel}
             >
                 {showCost ? (
                     <span className="canvas-node-composer-submit-cost">
                         <CreditSymbol />
-                        <span>{formattedCredits}</span>
+                        <span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span>
                     </span>
                 ) : null}
                 <span className="canvas-node-composer-submit-action" aria-hidden>
@@ -1035,6 +1037,7 @@ function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {
 }
 
 export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode, requirements: ModelRequirements): AiConfig {
+    node = { ...node, metadata: canonicalGenerationMetadata(node, mode) };
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : mode === "audio" ? globalConfig.audioModel : globalConfig.textModel;
     const fallbackModel = mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     const preferredModel = resolveCanvasGenerationModel(globalConfig, node.metadata?.model, mode) || resolveCanvasGenerationModel(globalConfig, defaultModel, mode) || fallbackModel;
@@ -1075,7 +1078,7 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
         quality: defaults.quality ?? globalConfig.quality ?? defaultConfig.quality,
         size: defaults.size ?? globalConfig.size ?? defaultConfig.size,
         transparentBackground: defaults.transparentBackground ?? "false",
-        videoSeconds: defaults.videoSeconds || normalizeVideoDuration(globalConfig.videoSeconds || defaultConfig.videoSeconds),
+        videoSeconds: defaults.videoSeconds ?? normalizeVideoDuration(globalConfig.videoSeconds ?? defaultConfig.videoSeconds),
         vquality: defaults.vquality ?? normalizeVideoResolution(globalConfig.vquality || defaultConfig.vquality),
         videoGenerateAudio: defaults.videoGenerateAudio ?? globalConfig.videoGenerateAudio ?? defaultConfig.videoGenerateAudio,
         videoWatermark: defaults.videoWatermark ?? globalConfig.videoWatermark ?? defaultConfig.videoWatermark,

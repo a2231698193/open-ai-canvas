@@ -812,8 +812,8 @@ func skuSelectorForIntent(intent ModelRequestIntent) map[string]string {
 		if seconds, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(intent.Options["videoSeconds"]))); err == nil && seconds > 0 {
 			selector["videoSeconds"] = strconv.Itoa(seconds)
 		}
-		if value, ok := intent.Options["videoGenerateAudio"].(bool); ok {
-			selector["videoGenerateAudio"] = strconv.FormatBool(value)
+		if audio := normalizedScalar(intent.Options["videoGenerateAudio"]); audio == "true" || audio == "false" {
+			selector["videoGenerateAudio"] = audio
 		}
 		if value := normalizeVideoEnhanceFPS(fmt.Sprint(intent.Options["fps"])); strings.TrimSpace(fmt.Sprint(intent.Options["fps"])) != "" && fmt.Sprint(intent.Options["fps"]) != "<nil>" {
 			selector["fps"] = value
@@ -1263,9 +1263,20 @@ func (s *Service) switchTaskToNextRoute(task *model.Task, attempts []model.Route
 		replacement.Model = logicalModel.Code
 	}
 	previousRouteID := task.RouteID
-	if err := s.repo.SwitchTaskLogicalRoute(task.ID, previousRouteID, selected.Route.ID, string(encoded), task.BillingOrderID, selected.ChannelModel.ChannelID, selected.ChannelModel.ID, replacement); err != nil {
+	var costOrder model.BillingOrder
+	if replacement != nil {
+		costOrder.BillingCostSnapshot = replacement.BillingCostSnapshot
+	} else if task.BillingOrderID != "" {
+		config, _ := nextInput["config"].(map[string]any)
+		capability := selected.ChannelModel.Capability
+		snapshotCreditCost(&costOrder, channelModelPriceTierForIntent(selected.ChannelModel, intent), billingQuantity(capability, config["videoSeconds"]), estimateTaskBillingTokens(nextInput, capability))
+	}
+	if err := s.repo.SwitchTaskLogicalRoute(task.ID, previousRouteID, selected.Route.ID, string(encoded), task.BillingOrderID, selected.ChannelModel.ChannelID, selected.ChannelModel.ID, replacement, costOrder.BillingCostSnapshot); err != nil {
 		if errors.Is(err, repository.ErrInsufficientCredits) {
 			return nil, BadAuthRequest("模型服务价格发生变化，当前积分余额不足")
+		}
+		if errors.Is(err, repository.ErrBillingChargeLimit) {
+			return nil, creationConflict("备用线路报价超过已批准费用上限，未切换线路；请重新确认生成报价")
 		}
 		return nil, err
 	}

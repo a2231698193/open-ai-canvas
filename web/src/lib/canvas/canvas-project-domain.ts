@@ -10,9 +10,11 @@ import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { canvasNodeMentionToken, canvasResourceMentionToken, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { batchReferenceHandleY } from "@/lib/canvas/canvas-batch-table";
+import { reconcileImageBatchRoot } from "@/lib/canvas/canvas-image-batch-retry";
 import { scopedLocalStorage } from "@/lib/user-scope";
 import { storyboardRowsFromTextResult } from "@/lib/canvas/storyboard-task-contract";
 import type { GenerationTask } from "@/services/api/task-center";
+import { synchronizeGenerationSpec } from "@/lib/canvas/generation-contract";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ConnectionHandle, type Position, type StoryboardColumn, type StoryboardRow } from "@/types/canvas";
 
 export function createCanvasNode(type: CanvasNodeTypeId, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
@@ -199,7 +201,7 @@ const NODE_MODEL_GENERATION_PARAMS: ReadonlyArray<keyof CanvasNodeMetadata> = [
 export function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<CanvasNodeMetadata>) {
     const safePatch = patch || {};
     const nextPatch = resetGenerationParamsOnModelSwitch(node, safePatch);
-    const next = { ...node, metadata: { ...node.metadata, ...nextPatch } };
+    const next = synchronizeGenerationSpec(node, nextPatch);
     const spec = node.type === CanvasNodeType.Video ? NODE_DEFAULT_SIZE[CanvasNodeType.Video] : NODE_DEFAULT_SIZE[CanvasNodeType.Image];
     const size = typeof safePatch.size === "string" && !node.metadata?.content ? nodeSizeFromRatio(safePatch.size, spec.width, spec.height) : null;
     return size && (node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Video) ? { ...next, ...size, position: { x: node.position.x + node.width / 2 - size.width / 2, y: node.position.y + node.height / 2 - size.height / 2 } } : next;
@@ -447,7 +449,7 @@ export function removeCanvasNodes(nodes: CanvasNodeData[], requestedIds: Set<str
         if (requestedIds.has(node.id)) node.metadata?.batchChildIds?.forEach((childId) => removedIds.add(childId));
     });
     const remainingNodes = nodes.filter((node) => !removedIds.has(node.id));
-    const nextNodes = remainingNodes.map((node) => {
+    const cleanedNodes = remainingNodes.map((node) => {
         const detached = node.parentId && removedIds.has(node.parentId) ? { ...node, parentId: undefined } : node;
         const storyboard = detached.metadata?.storyboard;
         const cleaned = storyboard
@@ -475,6 +477,7 @@ export function removeCanvasNodes(nodes: CanvasNodeData[], requestedIds: Set<str
         const batchRoot = { ...cleaned, metadata: { ...cleaned.metadata, batchChildIds: childIds, primaryImageId } };
         return primaryNode ? applyBatchPrimaryImage(batchRoot, primaryNode) : batchRoot;
     });
+    const nextNodes = cleanedNodes.map((node) => reconcileImageBatchRoot(node, cleanedNodes));
     return { removedIds, nodes: nextNodes };
 }
 

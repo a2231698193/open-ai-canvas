@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { readImageMeta } from "@/lib/image-utils";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { importResourceFromUrl, isResourceUrl, resourceFileUrl, resourceIdFromStorageKey, resourceStorageKey, ResourceUploadError, uploadResourceFile } from "@/services/api/resources";
-import { cacheResourceObjectUrl, getCachedResourceBlob, getCachedResourceObjectUrl, primeResourceBlobCache } from "@/services/resource-blob-cache";
+import { getCachedResourceBlob, getCachedResourceObjectUrl, primeResourceBlobCache } from "@/services/resource-blob-cache";
 
 export type UploadedImage = {
     url: string;
@@ -83,10 +83,7 @@ export async function resolveImageUrl(storageKey?: string, fallback = "", option
     if (resourceId) {
         const cached = await getCachedResourceObjectUrl(storageKey).catch(() => "");
         if (cached) return cached;
-        if (options?.cacheMiss) {
-            const populated = await cacheResourceObjectUrl(storageKey).catch(() => "");
-            if (populated) return populated;
-        }
+        // 预览走同源 /file 再 307 到 CDN。<img> 不需要 CORS；读取 Blob 时再显式请求代理回退。
         return resourceFileUrl(resourceId);
     }
     const cached = objectUrls.get(storageKey);
