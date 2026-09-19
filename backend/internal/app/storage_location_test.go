@@ -142,3 +142,17 @@ func TestTencentCOSConnectionTestReturnsActionableAuthError(t *testing.T) {
 		t.Fatalf("public error leaked upstream detail: %q", appErr.Message)
 	}
 }
+
+func TestAliyunOSSConnectionTestReturnsActionableBucketError(t *testing.T) {
+	err := storageConnectionTestError(aliyunOSSProvider, "写入", newObjectStorageHTTPError(aliyunOSSProvider, "写入", http.StatusBadRequest, []byte(`<Error><Code>InvalidBucketName</Code><Message>The specified bucket is not valid.</Message><RequestId>request-id</RequestId></Error>`)))
+	var appErr *AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("error type = %T, error = %v", err, err)
+	}
+	if appErr.Status != http.StatusBadRequest || !strings.Contains(appErr.Message, "阿里云 OSS 写入测试失败") || !strings.Contains(appErr.Message, "InvalidBucketName") {
+		t.Fatalf("AppError = %#v", appErr)
+	}
+	if strings.Contains(appErr.Message, "specified bucket") {
+		t.Fatalf("public error leaked upstream detail: %q", appErr.Message)
+	}
+}

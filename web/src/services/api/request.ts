@@ -68,23 +68,29 @@ function unwrapTransportError(error: unknown): never {
     if (axios.isCancel(error) || (axios.isAxiosError(error) && error.code === axios.AxiosError.ERR_CANCELED)) {
         throw new DOMException("请求已取消", "AbortError");
     }
-    if (axios.isAxiosError<BackendEnvelope<unknown>>(error)) {
-        const status = error.response?.status;
-        const code = error.response?.data?.code;
-        throw new ApiError(error.response?.data?.msg || transportFailureMessage(status, error.message), {
+    const response = failedHttpResponse(error);
+    if (response) {
+        const status = response.status;
+        const envelope = backendErrorEnvelope(response.data);
+        throw new ApiError(readBackendErrorMessage(response.data) || transportFailureMessage(status), {
             status,
-            code,
-            reason: error.response?.data?.reason,
-            retryable: isRetryableStatus(status) || isRetryableStatus(code),
-            retryAfterMs: retryAfterMilliseconds(error.response?.headers),
+            code: envelope?.code,
+            reason: envelope?.reason,
+            retryable: isRetryableStatus(status) || isRetryableStatus(envelope?.code),
+            retryAfterMs: retryAfterMilliseconds(response.headers),
             cause: error,
         });
+    }
+    if (error instanceof Error && isGenericTransportMessage(error.message)) {
+        throw new ApiError("请求失败", { cause: error });
     }
     throw error;
 }
 
-function transportFailureMessage(status?: number, fallback?: string) {
+function transportFailureMessage(status?: number) {
     switch (status) {
+        case 400:
+            return "请求无效，请检查填写内容后重试";
         case 502:
             return "后端服务暂时不可用，请稍后重试";
         case 503:
@@ -92,8 +98,77 @@ function transportFailureMessage(status?: number, fallback?: string) {
         case 504:
             return "服务响应超时，请稍后重试";
         default:
-            return fallback || "请求失败";
+            return "请求失败";
     }
+}
+
+function failedHttpResponse(error: unknown): { status?: number; data?: unknown; headers?: unknown } | undefined {
+    if (!error || typeof error !== "object" || !("response" in error)) return undefined;
+    const response = (error as { response?: { status?: number; data?: unknown; headers?: unknown } }).response;
+    if (!response || typeof response !== "object" || typeof response.status !== "number") return undefined;
+    return response;
+}
+
+function backendErrorEnvelope(data: unknown): { code?: number; reason?: string } | undefined {
+    if (!data || typeof data !== "object") return undefined;
+    const record = data as { code?: unknown; reason?: unknown };
+    const code = typeof record.code === "number" ? record.code : undefined;
+    const reason = typeof record.reason === "string" ? record.reason : undefined;
+    if (code === undefined && reason === undefined) return undefined;
+    return { code, reason };
+}
+
+function readBackendErrorMessage(data: unknown): string {
+    if (data == null) return "";
+    if (typeof data === "string") {
+        const text = data.trim();
+        if (!text) return "";
+        if (text.startsWith("{") || text.startsWith("[")) {
+            try {
+                return readBackendErrorMessage(JSON.parse(text));
+            } catch {
+                // 非 JSON 的花括号文本继续按 XML / 普通正文处理。
+            }
+        }
+        if (/<(?:Error|Code|Message)\b/i.test(text)) return readXmlStorageErrorMessage(text);
+        return usableErrorText(text);
+    }
+    if (typeof data !== "object") return "";
+    const record = data as Record<string, unknown>;
+    for (const key of ["msg", "message", "detail"] as const) {
+        const value = usableErrorText(typeof record[key] === "string" ? record[key] : "");
+        if (value) return value;
+    }
+    if (typeof record.error === "string") {
+        const value = usableErrorText(record.error);
+        if (value) return value;
+    }
+    if (record.error && typeof record.error === "object") {
+        const nested = readBackendErrorMessage(record.error);
+        if (nested) return nested;
+    }
+    return "";
+}
+
+function readXmlStorageErrorMessage(text: string) {
+    const code = text.match(/<Code>([^<]+)<\/Code>/i)?.[1]?.trim() || "";
+    const message = text.match(/<Message>([^<]+)<\/Message>/i)?.[1]?.trim() || "";
+    if (/signature|canonical|authorization|OSSAccessKeyId/i.test(message)) {
+        return code ? `对象存储返回 ${code}` : "";
+    }
+    if (code && message) return `${message}（${code}）`;
+    if (code) return `对象存储返回 ${code}`;
+    return usableErrorText(message);
+}
+
+function usableErrorText(value: string) {
+    const text = value.trim();
+    if (!text || isGenericTransportMessage(text) || text.startsWith("<")) return "";
+    return text.length <= 240 ? text : "";
+}
+
+function isGenericTransportMessage(value: string) {
+    return /^(?:Request failed with status code \d{3}|Bad Request|Unauthorized|Forbidden|Not Found|Request Entity Too Large|Too Many Requests|Bad Gateway|Service Unavailable|Gateway Timeout|Internal Server Error|error code:\s*\d+)$/i.test(value.trim());
 }
 
 function isRetryableStatus(status?: number) {

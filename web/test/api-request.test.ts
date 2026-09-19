@@ -88,6 +88,48 @@ describe("backend API request error semantics", () => {
 
         expect(thrown).toMatchObject({ name: "AbortError", message: "请求已取消" });
     });
+
+    test("uses backend msg for HTTP 400 instead of the Axios status sentence", async () => {
+        const thrown = await request(Promise.reject({
+            isAxiosError: true,
+            message: "Request failed with status code 400",
+            response: {
+                status: 400,
+                data: { code: 400, data: null, msg: "请填写阿里云 OSS Endpoint", reason: "bad_request" },
+                headers: {},
+            },
+        })).catch((error) => error);
+
+        expect(thrown).toBeInstanceOf(ApiError);
+        expect(thrown).toMatchObject({ status: 400, code: 400, reason: "bad_request", message: "请填写阿里云 OSS Endpoint", retryable: false });
+    });
+
+    test("does not surface a bare Axios 400 status sentence", async () => {
+        const thrown = await request(Promise.reject({
+            isAxiosError: true,
+            message: "Request failed with status code 400",
+            response: { status: 400, data: "", headers: {} },
+        })).catch((error) => error);
+
+        expect(thrown).toBeInstanceOf(ApiError);
+        expect(thrown.message).toBe("请求无效，请检查填写内容后重试");
+        expect(thrown.message).not.toContain("Request failed with status code");
+    });
+
+    test("extracts OSS XML Code and Message from a 400 body", async () => {
+        const thrown = await request(Promise.reject({
+            isAxiosError: true,
+            message: "Request failed with status code 400",
+            response: {
+                status: 400,
+                data: '<?xml version="1.0"?><Error><Code>InvalidBucketName</Code><Message>The specified bucket is not valid.</Message></Error>',
+                headers: {},
+            },
+        })).catch((error) => error);
+
+        expect(thrown).toBeInstanceOf(ApiError);
+        expect(thrown.message).toBe("The specified bucket is not valid.（InvalidBucketName）");
+    });
 });
 
 describe("backend API list query params", () => {

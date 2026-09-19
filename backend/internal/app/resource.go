@@ -1155,7 +1155,7 @@ func putAliyunOSSObject(setting ossSettingValue, objectKey string, mimeType stri
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("OSS 上传失败：%s %s", resp.Status, strings.TrimSpace(string(detail)))
+		return "", newObjectStorageHTTPError(aliyunOSSProvider, "写入", resp.StatusCode, detail)
 	}
 	return strings.Trim(resp.Header.Get("ETag"), `"`), nil
 }
@@ -1200,7 +1200,7 @@ func getAliyunOSSObjectRange(setting ossSettingValue, objectKey string, rangeHea
 	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
 		defer resp.Body.Close()
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("OSS 读取失败：%s %s", resp.Status, strings.TrimSpace(string(detail)))
+		return nil, newObjectStorageHTTPError(aliyunOSSProvider, "读取", resp.StatusCode, detail)
 	}
 	return &ossObjectStream{body: resp.Body, statusCode: resp.StatusCode, contentLength: resp.ContentLength, contentRange: resp.Header.Get("Content-Range"), acceptRanges: firstNonEmpty(resp.Header.Get("Accept-Ranges"), "bytes")}, nil
 }

@@ -195,6 +195,11 @@ func storageConnectionTestError(provider string, operation string, cause error) 
 		}
 	}
 
+	var storageErr *objectStorageError
+	if errors.As(cause, &storageErr) {
+		return WrapAppError(objectStorageErrorStatus(storageErr.StatusCode), fmt.Sprintf("%s %s测试失败：%s", providerName, operation, storageErr.Error()), cause)
+	}
+
 	return WrapAppError(http.StatusBadGateway, fmt.Sprintf("%s %s测试失败，请检查 Endpoint、Bucket、访问密钥和存储桶权限", providerName, operation), cause)
 }
 

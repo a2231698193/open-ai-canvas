@@ -105,8 +105,10 @@ export function UserOSSSettingsForm() {
             setTestStale(false);
             result.ok ? message.success(result.message || "连接测试通过") : message.error(result.message || "连接测试失败");
         } catch (error) {
-            setTestResult({ ok: false, message: error instanceof Error ? error.message : "连接测试失败" });
+            const errorMessage = error instanceof Error ? error.message : "连接测试失败";
+            setTestResult({ ok: false, message: errorMessage });
             setTestStale(false);
+            message.error(errorMessage);
         } finally {
             setTesting(false);
         }

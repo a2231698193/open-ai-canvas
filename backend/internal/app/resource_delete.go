@@ -329,7 +329,7 @@ func deleteAliyunOSSObject(setting ossSettingValue, objectKey string) error {
 	defer resp.Body.Close()
 	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && resp.StatusCode != http.StatusNotFound {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("删除阿里云 OSS 对象失败：%s %s", resp.Status, strings.TrimSpace(string(detail)))
+		return newObjectStorageHTTPError(aliyunOSSProvider, "删除", resp.StatusCode, detail)
 	}
 	return nil
 }

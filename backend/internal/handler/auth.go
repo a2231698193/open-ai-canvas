@@ -555,7 +555,7 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 		var req service.OSSSettingRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			fail(c, http.StatusBadRequest, err)
+			fail(c, http.StatusBadRequest, errors.New("对象存储配置请求格式无效"))
 			return
 		}
 		setting, err := svc.UpdateOSSSetting(user, req)
@@ -577,7 +577,7 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 		var req service.OSSSettingRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			fail(c, http.StatusBadRequest, err)
+			fail(c, http.StatusBadRequest, errors.New("对象存储配置请求格式无效"))
 			return
 		}
 		result, err := svc.TestAdminOSSSetting(user, req)

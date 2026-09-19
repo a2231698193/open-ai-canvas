@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 阿里云 OSS 配置错误可见性（2026-09-19）
+
+配置阿里云 OSS 时，HTTP 400 若没有业务 `msg`，页面会只显示 Axios 的 `Request failed with status code 400`。现在前端会优先展示后端 `msg` / 对象存储 XML `Code`，没有正文时改为「请求无效，请检查填写内容后重试」。阿里云连接测试失败也会带上 `InvalidBucketName` 等错误码对应的中文原因，不再吞掉具体原因。
+
+- [x] `cd web && bun test test/api-request.test.ts`
+- [x] `cd backend && go test ./internal/app -run 'TestParseObjectStorageXMLError|TestSanitizeObjectStorageMessageDropsSignatureMaterial|TestObjectStorageHTTPErrorUsesPublicHint|TestAliyunOSSConnectionTestReturnsActionableBucketError|TestTencentCOSConnectionTestReturnsActionableAuthError'`
+- [ ] 后台存储设置：填写错误 Bucket 名称后点「测试连接」，应看到包含 `InvalidBucketName` 或「Bucket 名称无效」的中文失败原因，而不是 `Request failed with status code 400`。
+- [ ] 测试通过后再保存，保存失败时页面提示应是后端具体原因；成功保存后新上传仍走该 Bucket。
+
 ## 画布视频超分（2026-09-18）
 
 已有内容的视频节点工具条在「提取素材」旁边出现「高清」。点开后可选 720P/1080P/2K/4K/8K、原帧率/60/120、标准版/专业版，结果落到新视频节点并连回原片。待登录后：
