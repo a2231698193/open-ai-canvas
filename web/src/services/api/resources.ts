@@ -106,7 +106,7 @@ export function getUserOSSSetting() {
 }
 
 export function updateUserOSSSetting(input: UserOSSSettingInput) {
-    return http.patch<{ setting: UserOSSSetting }>("/settings/oss", input);
+    return http.post<{ setting: UserOSSSetting }>("/settings/oss", input);
 }
 
 export function testUserOSSConnection(input: OSSConnectionTestInput) {

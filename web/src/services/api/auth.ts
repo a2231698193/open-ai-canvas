@@ -524,7 +524,7 @@ export function getAdminOSSSetting() {
 }
 
 export function updateAdminOSSSetting(input: Partial<AdminOSSSetting>) {
-    return http.patch<{ setting: AdminOSSSetting }>("/admin/settings/oss", input);
+    return http.post<{ setting: AdminOSSSetting }>("/admin/settings/oss", input);
 }
 
 export function testAdminOSSConnection(input: OSSConnectionTestInput) {

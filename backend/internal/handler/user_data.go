@@ -96,7 +96,7 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"setting": setting})
 	})
-	r.PATCH("/settings/oss", func(c *gin.Context) {
+	saveUserOSS := func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {
 			failService(c, err)
@@ -114,7 +114,10 @@ func RegisterUserDataRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		ok(c, gin.H{"setting": setting})
-	})
+	}
+	r.PATCH("/settings/oss", saveUserOSS)
+	r.PUT("/settings/oss", saveUserOSS)
+	r.POST("/settings/oss", saveUserOSS)
 	r.POST("/settings/oss/test", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

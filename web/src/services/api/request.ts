@@ -90,7 +90,7 @@ function unwrapTransportError(error: unknown): never {
 function transportFailureMessage(status?: number) {
     switch (status) {
         case 400:
-            return "请求无效，请检查填写内容后重试";
+            return "请求无效（HTTP 400），接口未返回具体原因。保存对象存储时可能被网关拦截，请重试或检查 Endpoint/Bucket/CDN 填写是否完整";
         case 502:
             return "后端服务暂时不可用，请稍后重试";
         case 503:

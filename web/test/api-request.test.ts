@@ -112,7 +112,7 @@ describe("backend API request error semantics", () => {
         })).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
-        expect(thrown.message).toBe("请求无效，请检查填写内容后重试");
+        expect(thrown.message).toContain("请求无效（HTTP 400）");
         expect(thrown.message).not.toContain("Request failed with status code");
     });
 

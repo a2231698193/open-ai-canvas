@@ -546,7 +546,7 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"setting": setting})
 	})
-	r.PATCH("/admin/settings/oss", func(c *gin.Context) {
+	saveAdminOSS := func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {
 			failService(c, err)
@@ -564,7 +564,10 @@ func RegisterAdminRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		ok(c, gin.H{"setting": setting})
-	})
+	}
+	r.PATCH("/admin/settings/oss", saveAdminOSS)
+	r.PUT("/admin/settings/oss", saveAdminOSS)
+	r.POST("/admin/settings/oss", saveAdminOSS)
 	r.POST("/admin/settings/oss/test", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {
