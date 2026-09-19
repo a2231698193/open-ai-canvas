@@ -61,6 +61,23 @@ git log --oneline --decorate HEAD..origin/main
 
 ## 3. 执行生产更新
 
+首次安装或脚本丢失时，在服务器执行：
+
+```bash
+cd /data/open-ai-canvas
+git fetch origin --prune
+git show origin/main:scripts/update-yingce.sh | sudo tee /usr/local/sbin/update-yingce >/dev/null
+sudo chmod 755 /usr/local/sbin/update-yingce
+```
+
+仓库里已有该文件时，也可以：
+
+```bash
+sudo install -m 0755 /data/open-ai-canvas/scripts/update-yingce.sh /usr/local/sbin/update-yingce
+```
+
+然后更新：
+
 ```bash
 sudo /usr/local/sbin/update-yingce
 ```
