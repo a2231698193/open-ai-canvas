@@ -29,6 +29,8 @@ services:
   migrate:
     image: ghcr.io/ddcat-ai/open-ai-canvas-backend:${CANVAS_IMAGE_TAG:-latest}
     command: ["migrate-schema", "up"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       CANVAS_BACKEND_DATA_DIR: /data
       CANVAS_DATABASE_DRIVER: postgres
@@ -39,6 +41,8 @@ services:
 
   backend:
     image: ghcr.io/ddcat-ai/open-ai-canvas-backend:${CANVAS_IMAGE_TAG:-latest}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       CANVAS_BACKEND_ADDR: ":8080"
       CANVAS_BACKEND_DATA_DIR: /data
