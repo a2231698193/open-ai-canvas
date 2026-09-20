@@ -153,7 +153,10 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 			})
 		case "update_node":
 			if len(op.Patch) == 0 {
-				return nil, BadAuthRequest("更新节点必须提供 patch")
+				// 漏字段是模型照 schema 就能自己修好的参数错误：当成工具结果回给它重试，
+				// 而不是判整轮失败（用户只在失败提示里看到一句"必须提供 patch"）。
+				// 未知操作类型仍按准入失败终止（cloud_agent_test.go 有用例断言这一行为）。
+				return nil, &cloudAgentArgumentError{BadAuthRequest("更新节点必须提供 patch")}
 			}
 			if index < 0 {
 				return nil, BadAuthRequest("只能更新现有且受 Agent 支持的节点")
