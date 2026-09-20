@@ -45,6 +45,7 @@ import type { Skill } from "@/services/api/skills";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
 import { resolveResourceUrl } from "@/services/api/resources";
 import { modelOptionName, resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
+import { VIDEO_GENERATION_MODE_OPTIONS, type VideoGenerationMode } from "@/lib/video-generation-mode";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
@@ -336,6 +337,12 @@ type ComposerProps = {
     model: string;
     modelRequirements: ModelRequirements;
     videoProfile: VideoCapabilityConfig;
+    videoMode: VideoGenerationMode;
+    setVideoMode: (value: VideoGenerationMode) => void;
+    videoStartFrameAttachmentId?: string;
+    setVideoStartFrameAttachmentId: (value?: string) => void;
+    videoEndFrameAttachmentId?: string;
+    setVideoEndFrameAttachmentId: (value?: string) => void;
     imageProfile: ImageCapabilityConfig;
     config: AiConfig;
     onModelChange: (value: string) => void;
@@ -434,15 +441,35 @@ export function CreationComposer(props: ComposerProps) {
             ? "描述画面、人物、场景、构图与风格"
             : "描述镜头内容、运动、光线与节奏";
     const emptyPlaceholder = "输入你的镜头、画面或故事。也可以添加参考图开始创作";
-    const imageReferencesSupported = props.imageProfile.references.maxImages > 0;
-    const referencesSupported = props.mode === "image" ? imageReferencesSupported : props.mode !== "video" || props.videoProfile.operations.includes("image_to_video");
-    const canAddMoreReferences = referencesSupported && props.attachments.length < props.maxReferences;
-    const addReferenceLabel = interactionBusy ? (props.referenceReplacementBusy ? "正在替换参考图" : "生成中暂不能添加参考内容") : canAddMoreReferences ? "添加更多参考内容" : `已达到当前模型的参考内容上限（${props.maxReferences} 个）`;
     const referenceCounts = useMemo(() => props.attachments.reduce((counts, attachment) => {
         const kind = creationAttachmentKind(attachment);
         counts[kind] += 1;
         return counts;
     }, { image: 0, video: 0, audio: 0, file: 0 }), [props.attachments]);
+    const imageReferencesSupported = props.imageProfile.references.maxImages > 0;
+    const referencesSupported = props.mode === "image"
+        ? imageReferencesSupported
+        : props.mode !== "video" || props.videoMode !== "text";
+    const canAddMoreReferences = referencesSupported && (props.mode === "video"
+        ? props.videoMode === "image" || props.videoMode === "keyframes"
+            ? true
+            : referenceCounts.image < props.videoProfile.references.maxImages
+                    || referenceCounts.video < props.videoProfile.references.maxVideos
+                    || referenceCounts.audio < props.videoProfile.references.maxAudios
+        : props.attachments.length < props.maxReferences);
+    const addReferenceLabel = interactionBusy
+        ? props.referenceReplacementBusy ? "正在替换参考图" : "生成中暂不能添加参考内容"
+        : canAddMoreReferences ? "添加更多参考内容" : props.mode === "video" && props.videoMode === "text" ? "文生视频不使用参考素材" : "已达到当前模型的参考素材上限";
+    const imageAttachments = useMemo(() => props.attachments.filter(isImageAttachment), [props.attachments]);
+    const activeVideoAttachmentIds = useMemo(() => {
+        if (props.mode !== "video") return new Set(props.attachments.map((item) => item.id));
+        if (props.videoMode === "reference") return new Set(props.attachments.filter((item) => creationAttachmentKind(item) !== "file").map((item) => item.id));
+        if (props.videoMode === "text") return new Set<string>();
+        const start = imageAttachments.find((item) => item.id === props.videoStartFrameAttachmentId) || imageAttachments[0];
+        if (props.videoMode === "image") return new Set(start ? [start.id] : []);
+        const end = imageAttachments.find((item) => item.id === props.videoEndFrameAttachmentId && item.id !== start?.id) || imageAttachments.find((item) => item.id !== start?.id);
+        return new Set([start?.id, end?.id].filter((value): value is string => Boolean(value)));
+    }, [imageAttachments, props.attachments, props.mode, props.videoEndFrameAttachmentId, props.videoMode, props.videoStartFrameAttachmentId]);
     const visibleAttachments = useMemo(() => referenceFilter === "all"
         ? props.attachments
         : props.attachments.filter((attachment) => creationAttachmentKind(attachment) === referenceFilter), [props.attachments, referenceFilter]);
@@ -545,6 +572,14 @@ export function CreationComposer(props: ComposerProps) {
             <div className="creation-chat-editor">
                 <CanvasResourceMentionTextarea ref={props.composerFocusRef} value={props.prompt} references={props.references} mentionMenuWidth={400} sendOnEnter onFocus={props.onPromptFocus} onChange={props.setPrompt} onSubmit={props.onSubmit} containerClassName="creation-chat-mention-container" className="creation-chat-mention-editor creation-scrollbar" style={{ color: "var(--creation-text)" }} placeholder={props.placeholderOverride || (props.variant === "empty" ? emptyPlaceholder : placeholder)} aria-label="创作提示词，可使用 @ 引用当前参考内容或技能；回车发送，Shift+回车换行" spellCheck disabled={interactionBusy} activeDropReferenceId={dropTargetReferenceId} onReferenceFilesDrop={(reference, files) => { const target = props.references.find((item) => item.id === reference.id); if (target?.attachmentId) props.onReplaceReferenceFiles(target.attachmentId, files); }} />
                 {props.attachments.length || referencesSupported ? <div className={`creation-reference-panel${trackState.isExpanded ? " is-expanded" : ""}`} aria-busy={interactionBusy}>
+                    {props.mode === "video" && props.videoMode !== "reference" && props.videoMode !== "text" ? <VideoFrameAssignments
+                        mode={props.videoMode}
+                        images={imageAttachments}
+                        startId={props.videoStartFrameAttachmentId}
+                        endId={props.videoEndFrameAttachmentId}
+                        onStartChange={props.setVideoStartFrameAttachmentId}
+                        onEndChange={props.setVideoEndFrameAttachmentId}
+                    /> : null}
                     {trackState.isExpanded ? <div className="creation-reference-panel-header">
                         <div className="creation-reference-filter-tabs" role="group" aria-label="筛选参考内容">
                             {([
@@ -580,7 +615,7 @@ export function CreationComposer(props: ComposerProps) {
                                     value={item}
                                     layout="position"
                                     drag={trackState.isExpanded && canDragReferences && !interactionBusy}
-                                    className="creation-reference-stack-card"
+                                    className={`creation-reference-stack-card${props.mode === "video" && !activeVideoAttachmentIds.has(item.id) ? " is-inactive" : ""}`}
                                     onPointerDown={beginCardDrag}
                                     onPointerMove={moveCardDrag}
                                     onPointerUp={endCardDrag}
@@ -599,6 +634,7 @@ export function CreationComposer(props: ComposerProps) {
                                     }}
                                 >
                                     <CreationAttachmentThumbnail item={item} onPreview={previewAttachment} onRemove={props.onRemoveAttachment} />
+                                    {props.mode === "video" && !activeVideoAttachmentIds.has(item.id) ? <span className="creation-reference-inactive-label">当前模式不使用</span> : null}
                                 </Reorder.Item>)}
                                 {!visibleAttachments.length && props.attachments.length ? <li className="creation-reference-filter-empty">该类型暂无参考内容</li> : null}
                                 {referencesSupported ? <li className="creation-reference-add-slot"><Tooltip title={addReferenceLabel}><button type="button" className="creation-reference-add-button" onClick={props.onOpenLibrary} disabled={interactionBusy || !canAddMoreReferences} aria-label={addReferenceLabel}><Plus aria-hidden="true" /><span>参考内容</span></button></Tooltip></li> : null}
@@ -632,6 +668,7 @@ export function CreationComposer(props: ComposerProps) {
                     </button>
                 </Tooltip> : null}
 				<ModelPicker config={props.config} value={props.model} onChange={props.onModelChange} capability={props.mode} requirements={props.modelRequirements} className="creation-model-picker" placeholder={`选择${modeLabels[props.mode]}模型`} showSelectedPrice={false} showOptionPrices variant="creation" />
+                {props.mode === "video" ? <VideoModeMenu value={props.videoMode} onChange={props.setVideoMode} /> : null}
                 {props.mode === "video" || (props.mode === "image" && imageSettingsSupported) ? <GenerationSettingsMenu {...props} /> : null}
                 {props.mode === "video" ? <DurationMenu profile={props.videoProfile} seconds={props.seconds} onChange={props.setSeconds} /> : null}
                 {props.mode === "text" ? <>
@@ -680,6 +717,48 @@ export function CreationComposer(props: ComposerProps) {
             {composer}
         </CanvasPromptOptimizerDrawer></Suspense>
     );
+}
+
+function VideoModeMenu({ value, onChange }: { value: VideoGenerationMode; onChange: (value: VideoGenerationMode) => void }) {
+    const [open, setOpen] = useState(false);
+    const selected = VIDEO_GENERATION_MODE_OPTIONS.find((item) => item.value === value) || VIDEO_GENERATION_MODE_OPTIONS[0];
+    return <Popover
+        open={open}
+        onOpenChange={setOpen}
+        trigger="click"
+        placement="bottom"
+        arrow={false}
+        classNames={{ root: "creation-control-popover", container: "creation-control-popover-surface", content: "creation-control-popover-content" }}
+        content={<div className="creation-video-mode-menu" role="radiogroup" aria-label="视频生成模式">
+            {VIDEO_GENERATION_MODE_OPTIONS.map((option) => <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={option.value === value}
+                className={option.value === value ? "is-selected" : undefined}
+                onClick={() => { onChange(option.value); setOpen(false); }}
+            ><strong>{option.label}</strong><small>{option.description}</small></button>)}
+        </div>}
+    >
+        <button type="button" className="creation-chat-control" aria-label={`视频生成模式：${selected.label}`} aria-expanded={open}><Film /><span>{selected.label}</span><ChevronDown className={open ? "is-open" : ""} /></button>
+    </Popover>;
+}
+
+function VideoFrameAssignments({ mode, images, startId, endId, onStartChange, onEndChange }: {
+    mode: "image" | "keyframes";
+    images: CreationAttachment[];
+    startId?: string;
+    endId?: string;
+    onStartChange: (value?: string) => void;
+    onEndChange: (value?: string) => void;
+}) {
+    const options = images.map((item) => ({ value: item.id, label: item.name }));
+    const resolvedStart = options.some((item) => item.value === startId) ? startId : options[0]?.value;
+    const resolvedEnd = options.some((item) => item.value === endId && item.value !== resolvedStart) ? endId : options.find((item) => item.value !== resolvedStart)?.value;
+    return <div className="creation-video-frame-assignments" aria-label={mode === "keyframes" ? "首尾帧设置" : "首帧设置"}>
+        <label><span>首帧</span><select value={resolvedStart || ""} onChange={(event) => onStartChange(event.target.value || undefined)}><option value="">请选择图片</option>{options.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        {mode === "keyframes" ? <label><span>尾帧</span><select value={resolvedEnd || ""} onChange={(event) => onEndChange(event.target.value || undefined)}><option value="">请选择另一张图片</option>{options.filter((item) => item.value !== resolvedStart).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label> : null}
+    </div>;
 }
 
 export function CreationModeTabs({ mode, onModeChange, agentActive = false, onAgentSelect, orientation = "horizontal" }: { mode: CreationMode; onModeChange: (mode: CreationMode) => void; agentActive?: boolean; onAgentSelect?: () => void; orientation?: "horizontal" | "vertical" }) {

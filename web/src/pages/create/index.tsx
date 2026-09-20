@@ -12,7 +12,8 @@ import { getActiveUserScope } from "@/lib/user-scope";
 import { continueCreationConversationOnCanvas } from "@/services/creation-canvas-conversation";
 import { useExternalAssetSources } from "@/hooks/use-external-asset-sources";
 import { modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue, videoDurationAllowed, videoDurationOptions } from "@/lib/model-capabilities";
-import { inferVideoOperation, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
+import { modelCompatibilityError, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
+import { videoModeImageRoles, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
 import type { BackendGenerationResult } from "@/services/api/generation-task";
 import type { Skill } from "@/services/api/skills";
 import type { GenerationTask } from "@/services/api/task-center";
@@ -28,7 +29,7 @@ import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins
 import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreationAttachmentLimit, removeCreationReferenceTokens, replaceCreationAttachmentReference, selectedCreationReferences, type CreationReference } from "./creation-references";
-import { creationAttachmentFromAsset, creationAttachmentFromAudio, creationAttachmentFromAudioAsset, creationAttachmentFromDocument, creationAttachmentFromExternalAsset, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentFromVideoAsset, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
+import { activeVideoCreationAttachments, creationAttachmentFromAsset, creationAttachmentFromAudio, creationAttachmentFromAudioAsset, creationAttachmentFromDocument, creationAttachmentFromExternalAsset, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentFromVideoAsset, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
 import { defaultCreationMode, modeLabels, type CreationConversation, type CreationMessage, type CreationMode, type CreationRetryContext, type CreationSettings, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
 import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages } from "./creation-conversations";
 import { CreationComposer, CreationEmptySuggest, CreationFeaturedWorks, CreationHistoryDrawer, CreationMessageView, CreationModeTabs, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
@@ -96,6 +97,9 @@ export default function CreatePage() {
     const [seconds, setSeconds] = useState("6");
     const [quality, setQuality] = useState("auto");
     const [videoQuality, setVideoQuality] = useState(config.vquality || "720");
+    const [videoMode, setVideoMode] = useState<VideoGenerationMode>(() => initialComposerPreferences.video?.mode || "text");
+    const [videoStartFrameAttachmentId, setVideoStartFrameAttachmentId] = useState<string>();
+    const [videoEndFrameAttachmentId, setVideoEndFrameAttachmentId] = useState<string>();
     const [count, setCount] = useState(String(Math.max(1, Math.min(4, Number(config.count) || 1))));
     const [textStreaming, setTextStreaming] = useState(() => readComposerPref(TEXT_STREAMING_PREF_KEY, true));
     const [textThinking, setTextThinking] = useState(() => readComposerPref(TEXT_THINKING_PREF_KEY, false));
@@ -128,15 +132,21 @@ export default function CreatePage() {
     );
     const preferredModel = mode === "text" ? config.textModel : mode === "image" ? config.imageModel : config.videoModel;
     const hasPrompt = Boolean(prompt.trim());
+    const activeVideoAttachments = useMemo(
+        () => activeVideoCreationAttachments(attachments, videoMode, videoStartFrameAttachmentId, videoEndFrameAttachmentId),
+        [attachments, videoEndFrameAttachmentId, videoMode, videoStartFrameAttachmentId],
+    );
     const modelRequirements = useMemo<ModelRequirements>(() => ({
         capability: mode,
         input: {
             textCount: hasPrompt ? 1 : 0,
-            imageCount: attachments.filter(isImageAttachment).length,
-            videoCount: attachments.filter(isVideoAttachment).length,
-            audioCount: attachments.filter((attachment) => creationAttachmentKind(attachment) === "audio").length,
+            imageCount: mode === "video" ? activeVideoAttachments.referenceImages.length : attachments.filter(isImageAttachment).length,
+            videoCount: mode === "video" ? activeVideoAttachments.referenceVideos.length : attachments.filter(isVideoAttachment).length,
+            audioCount: mode === "video" ? activeVideoAttachments.referenceAudios.length : attachments.filter((attachment) => creationAttachmentKind(attachment) === "audio").length,
             characterCount: 0,
         },
+        videoMode: mode === "video" ? videoMode : undefined,
+        videoImageRoles: mode === "video" ? videoModeImageRoles(videoMode).filter((role) => role !== "reference_image" || activeVideoAttachments.referenceImages.length > 0) : undefined,
         videoSeconds: mode === "video" ? seconds : undefined,
         imageSize: mode === "image" ? ratio : undefined,
 		options: mode === "image"
@@ -144,11 +154,13 @@ export default function CreatePage() {
 			: mode === "video"
 				? { size: ratio, videoSeconds: Number(seconds), vquality: videoQuality, videoGenerateAudio: config.videoGenerateAudio === "true", videoWatermark: config.videoWatermark === "true" }
 				: {},
-	}), [attachments, config.transparentBackground, config.videoGenerateAudio, config.videoWatermark, count, hasPrompt, mode, quality, ratio, seconds, videoQuality]);
+	}), [activeVideoAttachments, attachments, config.transparentBackground, config.videoGenerateAudio, config.videoWatermark, count, hasPrompt, mode, quality, ratio, seconds, videoMode, videoQuality]);
     const selectedModel = resolveCompatibleModel(config, preferredModel, modelRequirements) || preferredModel;
     const imageProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).image!, [config, selectedModel]);
     const videoProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).video!, [config, selectedModel]);
-    const maxReferences = mode === "video" ? videoProfile.operations.includes("image_to_video") ? videoProfile.references.maxImages : 0 : mode === "image" ? imageProfile.references.maxImages : 6;
+    const maxReferences = mode === "video"
+        ? videoMode === "text" ? 0 : videoMode === "image" ? 1 : videoMode === "keyframes" ? 2 : videoProfile.references.maxImages + videoProfile.references.maxVideos + videoProfile.references.maxAudios
+        : mode === "image" ? imageProfile.references.maxImages : 6;
     const referenceImageSize = useMemo(() => {
         const imageAttachments = attachments.filter(isImageAttachment);
         if (imageAttachments.length !== 1) return undefined;
@@ -191,6 +203,7 @@ export default function CreatePage() {
             if (saved.video.ratio) setRatio(saved.video.ratio);
             if (saved.video.seconds) setSeconds(saved.video.seconds);
             if (saved.video.videoQuality) setVideoQuality(saved.video.videoQuality);
+            if (saved.video.mode) setVideoMode(saved.video.mode);
         }
         setComposerPreferencesInitialized(true);
     }, [composerPreferencesHydrated, composerPreferencesInitialized]);
@@ -221,16 +234,15 @@ export default function CreatePage() {
         setSeconds(normalized.seconds);
         setRatio(normalized.ratio);
         setVideoQuality(normalized.resolution.replace(/p$/i, ""));
-        const maxReferences = videoProfile.operations.includes("image_to_video") ? videoProfile.references.maxImages : 0;
-        if (attachments.length > maxReferences) setAttachments((current) => current.slice(0, maxReferences));
     }, [composerPreferencesHydrated, composerPreferencesInitialized, mode, selectedModel, videoProfile]);
 
     useEffect(() => {
+        if (mode === "video") return;
         const reconciled = reconcileCreationAttachmentLimit(attachments, mentionReferences, maxReferences);
         if (reconciled.attachments === attachments) return;
         setAttachments(reconciled.attachments);
         if (reconciled.removedReferences.length) setPrompt((current) => removeCreationReferenceTokens(current, reconciled.removedReferences));
-    }, [attachments, maxReferences, mentionReferences]);
+    }, [attachments, maxReferences, mentionReferences, mode]);
 
     useEffect(() => {
         let cancelled = false;
@@ -375,17 +387,34 @@ export default function CreatePage() {
         setVideoQuality(value);
         if (mode === "video") rememberVideoSettings({ videoQuality: value });
     };
+    const setComposerVideoMode = (value: VideoGenerationMode) => {
+        setVideoMode(value);
+        rememberVideoSettings({ mode: value });
+    };
     const setComposerCount = (value: string) => {
         setCount(value);
         if (mode === "image") rememberImageSettings({ count: value });
     };
 
+    const attachmentCounts = useMemo(() => splitCreationAttachments(attachments), [attachments]);
+    const videoAssetDisabledReason = useCallback((kind: "image" | "video" | "audio") => {
+        if (mode !== "video") return undefined;
+        if (videoMode === "text") return "文生视频不使用参考素材";
+        if (videoMode !== "reference") return kind === "image" ? undefined : "当前视频模式仅支持图片";
+        const current = kind === "image" ? attachmentCounts.referenceImages.length : kind === "video" ? attachmentCounts.referenceVideos.length : attachmentCounts.referenceAudios.length;
+        const limit = kind === "image" ? videoProfile.references.maxImages : kind === "video" ? videoProfile.references.maxVideos : videoProfile.references.maxAudios;
+        return current >= limit ? `当前模型最多支持 ${limit} ${kind === "image" ? "张图片" : kind === "video" ? "个视频" : "个音频"}` : undefined;
+    }, [attachmentCounts.referenceAudios.length, attachmentCounts.referenceImages.length, attachmentCounts.referenceVideos.length, mode, videoMode, videoProfile.references.maxAudios, videoProfile.references.maxImages, videoProfile.references.maxVideos]);
     const externalLibraryItems = useMemo<AssetLibraryPickerItem[]>(
         () => externalAssetSources.items.map((item) => ({
             ...item,
-            disabledReason: mode === "image" && item.external?.item.kind !== "image" ? "图片创作仅支持参考图" : undefined,
+            disabledReason: mode === "image" && item.external?.item.kind !== "image"
+                ? "图片创作仅支持参考图"
+                : item.external?.item.kind === "image" || item.external?.item.kind === "video" || item.external?.item.kind === "audio"
+                    ? videoAssetDisabledReason(item.external.item.kind)
+                    : undefined,
         })),
-        [externalAssetSources.items, mode],
+        [externalAssetSources.items, mode, videoAssetDisabledReason],
     );
     const libraryItems = useMemo<AssetLibraryPickerItem[]>(() => [
         ...assets
@@ -397,10 +426,12 @@ export default function CreatePage() {
                 kindLabel: asset.kind === "video" ? "视频" : asset.kind === "audio" ? "音频" : "图片",
                 asset,
                 searchText: (asset.tags || []).join(" "),
-                disabledReason: mode === "image" && asset.kind !== "image" ? "图片创作仅支持参考图" : undefined,
+                disabledReason: mode === "image" && asset.kind !== "image"
+                    ? "图片创作仅支持参考图"
+                    : videoAssetDisabledReason(asset.kind),
             })),
         ...externalLibraryItems,
-    ], [assets, externalLibraryItems, mode]);
+    ], [assets, externalLibraryItems, mode, videoAssetDisabledReason]);
     const uploadCreationAsset = async (file: File) => {
         const { uploadImage, uploadMediaFile } = await loadCreationRuntime();
         if (file.type.startsWith("video/")) {
@@ -428,7 +459,7 @@ export default function CreatePage() {
         };
     };
     const uploadLibraryAssets = async (files: FileList | File[]) => {
-        const next = Array.from(files).filter((file) => creationFileAccepted(mode, file));
+        const next = Array.from(files).filter((file) => creationFileAccepted(mode, file, videoMode));
         if (!next.length) return [];
         const settled = await Promise.allSettled(next.map(async (file) => {
             const { asset } = await uploadCreationAsset(file);
@@ -449,9 +480,27 @@ export default function CreatePage() {
             if (asset?.kind === "audio" && mode !== "image") return [creationAttachmentFromAudioAsset(asset)];
             const external = libraryItems.find((item) => item.id === id)?.external;
             return external ? [creationAttachmentFromExternalAsset(external)] : [];
+        }).filter((attachment) => {
+            if (mode === "image") return creationAttachmentKind(attachment) === "image";
+            if (mode !== "video") return true;
+            if (videoMode === "text") return false;
+            return videoMode === "reference" || creationAttachmentKind(attachment) === "image";
         });
         if (!next.length) return;
-        setAttachments((current) => [...current.filter((item) => !next.some((candidate) => candidate.id === item.id)), ...next].slice(0, maxReferences));
+        const merged = [...attachments.filter((item) => !next.some((candidate) => candidate.id === item.id)), ...next];
+        if (mode === "video") {
+            if (videoMode === "text") return;
+            const selected = splitCreationAttachments(merged);
+            if (videoMode === "reference" && (
+                selected.referenceImages.length > videoProfile.references.maxImages
+                || selected.referenceVideos.length > videoProfile.references.maxVideos
+                || selected.referenceAudios.length > videoProfile.references.maxAudios
+            )) {
+                toast.warning("所选素材超过当前视频模式或模型的参考上限，请减少选择后重试");
+                return;
+            }
+        }
+        setAttachments(merged);
         setLibraryOpen(false);
     };
 
@@ -552,23 +601,48 @@ export default function CreatePage() {
             releaseSubmitGate();
             return;
         }
-        if (attachments.length > maxReferences) {
-            toast.warning("参考内容正在按当前模型能力调整，请稍后重试");
+        const compatibilityError = modelCompatibilityError(config, selectedModel, modelRequirements);
+        if (compatibilityError) {
+            toast.error(`当前模型不支持这组输入和参数：${compatibilityError}`);
             releaseRetryLock();
             releaseSubmitGate();
             return;
         }
-        const settings = { ratio, seconds, quality, videoQuality, count };
+        if (mode === "video" && videoMode === "image" && activeVideoAttachments.referenceImages.length !== 1) {
+            toast.warning("图生视频需要选择一张首帧图片");
+            releaseRetryLock();
+            releaseSubmitGate();
+            return;
+        }
+        if (mode === "video" && videoMode === "keyframes" && activeVideoAttachments.referenceImages.length !== 2) {
+            toast.warning("首尾帧参考需要选择两张不同的图片");
+            releaseRetryLock();
+            releaseSubmitGate();
+            return;
+        }
+        if (mode === "video" && videoMode === "reference" && !activeVideoAttachments.referenceImages.length && !activeVideoAttachments.referenceVideos.length && !activeVideoAttachments.referenceAudios.length) {
+            toast.warning("全能参考至少需要一项图片、视频或音频素材");
+            releaseRetryLock();
+            releaseSubmitGate();
+            return;
+        }
+        if (mode === "video" && videoMode === "reference" && (
+            activeVideoAttachments.referenceImages.length > videoProfile.references.maxImages
+            || activeVideoAttachments.referenceVideos.length > videoProfile.references.maxVideos
+            || activeVideoAttachments.referenceAudios.length > videoProfile.references.maxAudios
+        )) {
+            toast.warning("全能参考素材数量超过当前模型上限，请减少后重试");
+            releaseRetryLock();
+            releaseSubmitGate();
+            return;
+        }
+        const activeStartFrameId = activeVideoAttachments.referenceImages[0]?.id;
+        const activeEndFrameId = videoMode === "keyframes" ? activeVideoAttachments.referenceImages[1]?.id : undefined;
+        const settings = { ratio, seconds, quality, videoQuality, count, ...(mode === "video" ? { videoMode, videoStartFrameAttachmentId: activeStartFrameId, videoEndFrameAttachmentId: activeEndFrameId } : {}) };
         const references = selectedCreationReferences(text, mentionReferences);
         // 后端对图片和视频使用不同的参考字段；这里先拆分，避免媒体类型在写入任务时被误判。
-        const { referenceImages, referenceVideos, referenceAudios } = splitCreationAttachments(attachments);
-        const videoOperation = inferVideoOperation({
-            textCount: text ? 1 : 0,
-            imageCount: referenceImages.length,
-            videoCount: referenceVideos.length,
-            audioCount: referenceAudios.length,
-            characterCount: 0,
-        });
+        const { referenceImages, referenceVideos, referenceAudios } = mode === "video" ? activeVideoAttachments : splitCreationAttachments(attachments);
+        const videoOperation = videoModeOperation(videoMode);
         const skillReferences = references.flatMap((reference) => (reference.skill ? [reference.skill] : []));
         let runtime: CreationRuntime;
         try {
@@ -714,7 +788,7 @@ export default function CreatePage() {
                     referenceVideos,
                     referenceAudios,
                     signal: requestLifecycle.signal,
-                    metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, videoEditOperation: videoOperation, ...referenceMetadata },
+                    metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, videoMode, videoEditOperation: videoOperation, videoStartFrameNodeId: activeStartFrameId, videoEndFrameNodeId: activeEndFrameId, ...referenceMetadata },
                     onTaskUpdate: bindTask,
                     ...retryContext,
                 }));
@@ -870,8 +944,11 @@ export default function CreatePage() {
         setQuality(nextSettings.quality);
         setVideoQuality(nextSettings.videoQuality);
         setCount(nextSettings.count);
+        if (nextSettings.videoMode) setVideoMode(nextSettings.videoMode);
+        setVideoStartFrameAttachmentId(nextSettings.videoStartFrameAttachmentId);
+        setVideoEndFrameAttachmentId(nextSettings.videoEndFrameAttachmentId);
         if (nextMode === "image") rememberImageSettings({ ratio: nextSettings.ratio, quality: nextSettings.quality, count: nextSettings.count });
-        if (nextMode === "video") rememberVideoSettings({ ratio: nextSettings.ratio, seconds: nextSettings.seconds, videoQuality: nextSettings.videoQuality });
+        if (nextMode === "video") rememberVideoSettings({ ratio: nextSettings.ratio, seconds: nextSettings.seconds, videoQuality: nextSettings.videoQuality, mode: nextSettings.videoMode });
     };
 
     const retryFailedMessage = async (item: CreationMessage, index: number) => {
@@ -957,6 +1034,12 @@ export default function CreatePage() {
         modelRequirements,
         imageProfile,
         videoProfile,
+        videoMode,
+        setVideoMode: setComposerVideoMode,
+        videoStartFrameAttachmentId,
+        setVideoStartFrameAttachmentId,
+        videoEndFrameAttachmentId,
+        setVideoEndFrameAttachmentId,
         config,
         onModelChange: (value: string) => updateConfig(mode === "text" ? "textModel" : mode === "image" ? "imageModel" : "videoModel", value),
         ratio,
@@ -1042,7 +1125,7 @@ export default function CreatePage() {
             categoryLabels={{ ...creationAssetCategoryLabels, ...externalAssetSources.categoryLabels }}
             folders={externalAssetSources.folders}
             initialSelectedIds={attachments.flatMap((item) => item.id.startsWith("asset:") ? [item.id.slice(6)] : item.id.startsWith("external:") ? [item.id] : [])}
-            upload={{ accept: creationUploadAccept(mode), description: mode === "text" ? "支持图片、视频、音频和常用文档；媒体会保存到素材库" : `支持图片${mode === "video" ? "、视频和音频" : ""}，上传后保存到素材库`, onUpload: uploadLibraryAssets, external: { accept: "image/*", description: "写入当前 Eagle 文件夹；Eagle 当前支持图片文件", onUpload: (files, folderId) => externalAssetSources.uploadExternalFiles(files, folderId) } }}
+            upload={{ accept: creationUploadAccept(mode, videoMode), description: mode === "text" ? "支持图片、视频、音频和常用文档；媒体会保存到素材库" : mode === "video" && videoMode === "reference" ? "支持图片、视频和音频，上传后保存到素材库" : "支持图片，上传后保存到素材库", onUpload: uploadLibraryAssets, external: { accept: "image/*", description: "写入当前 Eagle 文件夹；Eagle 当前支持图片文件", onUpload: (files, folderId) => externalAssetSources.uploadExternalFiles(files, folderId) } }}
             onClose={() => setLibraryOpen(false)}
             onConfirm={handleLibrarySelect}
         /></Suspense> : null}

@@ -98,16 +98,17 @@ type VideoCapabilityConfig struct {
 }
 
 type VideoReferenceConfig struct {
-	PromptMaxChars   int   `json:"promptMaxChars"`
-	MinImages        int   `json:"minImages"`
-	MaxImages        int   `json:"maxImages"`
-	MaxImageBytes    int64 `json:"maxImageBytes"`
-	MaxVideos        int   `json:"maxVideos"`
-	MaxVideoBytes    int64 `json:"maxVideoBytes"`
-	MaxVideoDuration int   `json:"maxVideoDurationSeconds"`
-	MaxAudios        int   `json:"maxAudios"`
-	MaxAudioBytes    int64 `json:"maxAudioBytes"`
-	MaxAudioDuration int   `json:"maxAudioDurationSeconds"`
+	PromptMaxChars   int      `json:"promptMaxChars"`
+	MinImages        int      `json:"minImages"`
+	MaxImages        int      `json:"maxImages"`
+	MaxImageBytes    int64    `json:"maxImageBytes"`
+	MaxVideos        int      `json:"maxVideos"`
+	MaxVideoBytes    int64    `json:"maxVideoBytes"`
+	MaxVideoDuration int      `json:"maxVideoDurationSeconds"`
+	MaxAudios        int      `json:"maxAudios"`
+	MaxAudioBytes    int64    `json:"maxAudioBytes"`
+	MaxAudioDuration int      `json:"maxAudioDurationSeconds"`
+	ImageRoles       []string `json:"imageRoles"`
 }
 
 // DefaultVideoPromptMaxChars 是普通视频模型提示词字符数的默认上限。
@@ -224,7 +225,7 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 	streaming := true
 	text := &TextCapabilityConfig{Streaming: &streaming, ContextWindowTokens: 128000, MaxOutputTokens: 16384, References: TextReferenceConfig{PromptMaxChars: 32000}}
 	video := &VideoCapabilityConfig{
-		References:        VideoReferenceConfig{PromptMaxChars: DefaultVideoPromptMaxChars, MinImages: 0, MaxImages: 9, MaxImageBytes: 30 * 1024 * 1024, MaxVideos: 0, MaxVideoBytes: 0, MaxVideoDuration: 0, MaxAudios: 0, MaxAudioBytes: 0, MaxAudioDuration: 0},
+		References:        VideoReferenceConfig{PromptMaxChars: DefaultVideoPromptMaxChars, MinImages: 0, MaxImages: 9, MaxImageBytes: 30 * 1024 * 1024, MaxVideos: 0, MaxVideoBytes: 0, MaxVideoDuration: 0, MaxAudios: 0, MaxAudioBytes: 0, MaxAudioDuration: 0, ImageRoles: []string{"first_frame"}},
 		Duration:          VideoDurationConfig{Selection: "range", Min: 1, Max: 15, Step: 1, Default: 6},
 		Ratios:            []string{"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"},
 		DefaultRatio:      "16:9",
@@ -244,6 +245,7 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 		video.Resolutions = []string{"720p", "1080p"}
 	case model.ChannelInterfaceVolcengineArkVideo, model.ChannelInterfaceVolcengineArkAgentPlanVideo:
 		video.Operations = append(video.Operations, "reference_to_video", "audio_to_video")
+		video.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 		video.References.MaxVideos, video.References.MaxAudios = 3, 3
 		video.References.MaxVideoBytes, video.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
 		video.References.MaxVideoDuration, video.References.MaxAudioDuration = 15, 15
@@ -271,6 +273,7 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 		video.DefaultResolution = "1080p"
 	case model.ChannelInterfaceMiniMaxVideo:
 		video.Operations = append(video.Operations, "reference_to_video")
+		video.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 		video.References.MaxImages = 9
 		video.References.MaxImageBytes = 30 * 1024 * 1024
 		video.References.MaxVideos = 3
@@ -300,6 +303,7 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 func applyLK888SeedanceCapability(video *VideoCapabilityConfig, modelName string) {
 	key := strings.ToLower(strings.TrimSpace(modelName))
 	video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+	video.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 	video.References.MaxImages, video.References.MaxVideos, video.References.MaxAudios = 9, 3, 3
 	video.References.MaxVideoBytes, video.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
 	video.References.MaxVideoDuration, video.References.MaxAudioDuration = 15, 15
@@ -317,6 +321,7 @@ func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {
 	switch strings.ToLower(strings.TrimSpace(modelName)) {
 	case "minimax-h3":
 		video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		video.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 		video.References.MaxImages = 9
 		video.References.MaxImageBytes = 30 * 1024 * 1024
 		video.References.MaxVideos = 3
@@ -332,6 +337,7 @@ func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {
 		video.DefaultResolution = "768P"
 	case "kling-v3-video":
 		video.Operations = []string{"text_to_video", "image_to_video"}
+		video.References.ImageRoles = []string{"first_frame", "last_frame"}
 		video.References.MaxImages = 2
 		video.References.MaxVideos = 0
 		video.References.MaxAudios = 0
@@ -342,6 +348,7 @@ func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {
 		video.DefaultResolution = "720p"
 	case "wan3.0-video-cankaosheng":
 		video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		video.References.ImageRoles = []string{"first_frame", "reference_image"}
 		video.References.MaxImages = 10
 		video.References.MaxVideos = 0
 		video.References.MaxAudios = 0
@@ -448,6 +455,12 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 		return nil, BadAuthRequest("请配置视频模型能力参数")
 	}
 	value := &ModelCapabilityConfig{Version: 1, Video: applyModelSpecificVideoCapability(input.Video, protocol, modelName)}
+	if len(value.Video.References.ImageRoles) == 0 {
+		value.Video.References.ImageRoles = []string{"first_frame"}
+		if containsCapabilityString(value.Video.Operations, "reference_to_video") {
+			value.Video.References.ImageRoles = append(value.Video.References.ImageRoles, "reference_image")
+		}
+	}
 	if value.Video.References.PromptMaxChars <= 0 || value.Video.References.PromptMaxChars == 1000 {
 		value.Video.References.PromptMaxChars = DefaultVideoPromptMaxChars
 	}
@@ -482,6 +495,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.Resolutions, value.DefaultResolution = []string{"768P", "2K"}, "2K"
 		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
 		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		value.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 	case "seedance-1-5-pro":
 		value.References.MaxImages = 2
 		value.Duration = VideoDurationConfig{Selection: "range", Min: 4, Max: 12, Step: 1, Default: 5}
@@ -489,6 +503,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.Resolutions, value.DefaultResolution = []string{"480p", "720p", "1080p"}, "720p"
 		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
 		value.Operations = []string{"text_to_video", "image_to_video"}
+		value.References.ImageRoles = []string{"first_frame", "last_frame"}
 	case "seedance-2.0", "seedance-2.0-mini":
 		value.References.MaxImages, value.References.MaxVideos, value.References.MaxAudios = 9, 3, 3
 		value.References.MaxVideoBytes, value.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
@@ -502,6 +517,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.DefaultResolution = "720p"
 		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
 		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		value.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 	case "seedance-2.5":
 		value.References.MaxImages, value.References.MaxVideos, value.References.MaxAudios = 30, 10, 10
 		value.References.MaxVideoBytes, value.References.MaxAudioBytes = 200*1024*1024, 15*1024*1024
@@ -513,6 +529,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: true}
 		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
 		value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video", "audio_to_video"}
+		value.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 	case "kling-3.0-turbo":
 		value.References.PromptMaxChars = 3072
 		value.References.MaxImages = 1
@@ -521,6 +538,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.Resolutions, value.DefaultResolution = []string{"720p", "1080p"}, "720p"
 		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
 		value.Operations = []string{"text_to_video", "image_to_video"}
+		value.References.ImageRoles = []string{"first_frame"}
 	case "kling-v3":
 		value.References.MaxImages = 2
 		value.Duration = VideoDurationConfig{Selection: "range", Min: 3, Max: 15, Step: 1, Default: 5}
@@ -528,6 +546,7 @@ func applyAPIMartVideoCapability(profile *VideoCapabilityConfig, modelName strin
 		value.GenerateAudio = VideoBooleanConfig{Supported: true, Default: false}
 		value.Watermark = VideoBooleanConfig{Supported: true, Default: false}
 		value.Operations = []string{"text_to_video", "image_to_video"}
+		value.References.ImageRoles = []string{"first_frame", "last_frame"}
 	}
 	return &value
 }
@@ -567,6 +586,7 @@ func applyModelSpecificVideoCapability(profile *VideoCapabilityConfig, protocol 
 	value.GenerateAudio = VideoBooleanConfig{Supported: false, Default: false}
 	value.Watermark = VideoBooleanConfig{Supported: false, Default: false}
 	value.Operations = []string{"text_to_video", "image_to_video", "reference_to_video", "audio_to_video"}
+	value.References.ImageRoles = []string{"first_frame", "last_frame", "reference_image"}
 	value.DefaultOperation = "text_to_video"
 	return &value
 }
@@ -626,6 +646,7 @@ func CapabilitySpecFromModelCapabilityConfig(config *ModelCapabilityConfig, capa
 		}
 		video := config.Video
 		spec.Operations = append([]string(nil), video.Operations...)
+		spec.ImageRoles = append([]string(nil), video.References.ImageRoles...)
 		addInputConstraint(spec.Inputs, "image", video.References.MinImages, video.References.MaxImages)
 		addInputConstraint(spec.Inputs, "video", 0, video.References.MaxVideos)
 		addInputConstraint(spec.Inputs, "audio", 0, video.References.MaxAudios)
@@ -835,6 +856,21 @@ func validateVideoCapabilityConfig(value *VideoCapabilityConfig) error {
 	if value.References.MaxImageBytes < 0 || value.References.MaxVideoBytes < 0 || value.References.MaxAudioBytes < 0 || value.References.MaxVideoDuration < 0 || value.References.MaxAudioDuration < 0 {
 		return BadAuthRequest("引用素材限制不能小于 0")
 	}
+	allowedImageRoles := map[string]bool{"first_frame": true, "last_frame": true, "reference_image": true}
+	seenImageRoles := map[string]bool{}
+	for _, role := range value.References.ImageRoles {
+		role = strings.TrimSpace(role)
+		if !allowedImageRoles[role] {
+			return BadAuthRequest("视频图片角色无效：" + role)
+		}
+		if seenImageRoles[role] {
+			return BadAuthRequest("视频图片角色不能重复：" + role)
+		}
+		seenImageRoles[role] = true
+	}
+	if value.References.MaxImages > 0 && len(value.References.ImageRoles) == 0 {
+		return BadAuthRequest("支持参考图片时必须声明图片角色")
+	}
 	if err := validateVideoDuration(value.Duration); err != nil {
 		return err
 	}
@@ -986,10 +1022,13 @@ func validateVideoTask(profile *VideoCapabilityConfig, input canvasGenerationInp
 		return BadAuthRequest("参考素材数量超过当前模型限制")
 	}
 	if model.IsVolcengineArkVideoProtocol(model.ChannelInterfaceType(input.Config.InterfaceType)) && len(input.ReferenceAudios) > 0 && len(input.ReferenceImages) == 0 && len(input.ReferenceVideos) == 0 {
-		return BadAuthRequest("火山方舟全模态参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频")
+		return BadAuthRequest("火山方舟全能参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频")
 	}
 	if len(input.ReferenceImages) < profile.References.MinImages {
 		return BadAuthRequest(fmt.Sprintf("当前视频模型至少需要 %d 张参考图", profile.References.MinImages))
+	}
+	if err := validateVideoReferenceMode(profile, input); err != nil {
+		return err
 	}
 	for _, media := range input.ReferenceImages {
 		if profile.References.MaxImageBytes > 0 && media.Bytes > profile.References.MaxImageBytes {
@@ -1032,6 +1071,63 @@ func validateVideoTask(profile *VideoCapabilityConfig, input canvasGenerationInp
 	}
 	if !containsCapabilityString(profile.Operations, operation) {
 		return BadAuthRequest("当前视频模型不支持该生成模式")
+	}
+	return nil
+}
+
+func validateVideoReferenceMode(profile *VideoCapabilityConfig, input canvasGenerationInput) error {
+	mode := metadataString(input.Metadata, "videoMode")
+	startFrameID := metadataString(input.Metadata, "videoStartFrameNodeId")
+	endFrameID := metadataString(input.Metadata, "videoEndFrameNodeId")
+	if mode == "" && startFrameID == "" && endFrameID == "" {
+		return nil
+	}
+	requiredRoles := []string{}
+	switch mode {
+	case "text":
+		if len(input.ReferenceImages)+len(input.ReferenceVideos)+len(input.ReferenceAudios) > 0 {
+			return BadAuthRequest("文生视频不能携带参考素材")
+		}
+	case "image":
+		if len(input.ReferenceImages) != 1 || len(input.ReferenceVideos)+len(input.ReferenceAudios) > 0 {
+			return BadAuthRequest("图生视频需要且只能使用一张首帧图片")
+		}
+		requiredRoles = []string{"first_frame"}
+	case "keyframes":
+		if len(input.ReferenceImages) != 2 || len(input.ReferenceVideos)+len(input.ReferenceAudios) > 0 {
+			return BadAuthRequest("首尾帧参考需要且只能使用两张图片")
+		}
+		if startFrameID == "" || endFrameID == "" || startFrameID == endFrameID {
+			return BadAuthRequest("首尾帧参考必须指定两张不同的首帧和尾帧图片")
+		}
+		requiredRoles = []string{"first_frame", "last_frame"}
+	case "reference":
+		if len(input.ReferenceImages)+len(input.ReferenceVideos)+len(input.ReferenceAudios) == 0 {
+			return BadAuthRequest("全能参考至少需要一项图片、视频或音频素材")
+		}
+		if len(input.ReferenceImages) > 0 {
+			requiredRoles = []string{"reference_image"}
+		}
+	case "":
+		if startFrameID != "" {
+			requiredRoles = append(requiredRoles, "first_frame")
+		}
+		if endFrameID != "" {
+			requiredRoles = append(requiredRoles, "last_frame")
+		}
+	default:
+		return BadAuthRequest("未知的视频生成模式")
+	}
+	for _, role := range requiredRoles {
+		if !containsCapabilityString(profile.References.ImageRoles, role) {
+			if role == "last_frame" {
+				return BadAuthRequest("当前视频模型不支持尾帧参考")
+			}
+			if role == "reference_image" {
+				return BadAuthRequest("当前视频模型不支持全能参考图")
+			}
+			return BadAuthRequest("当前视频模型不支持首帧参考")
+		}
 	}
 	return nil
 }

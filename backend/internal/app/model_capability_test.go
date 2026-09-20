@@ -263,6 +263,31 @@ func TestDefaultVolcengineArkVideoCapabilitySupportsFullModalReference(t *testin
 	if profile.Video.References.MaxImages != 9 || profile.Video.References.MaxVideos != 3 || profile.Video.References.MaxAudios != 3 {
 		t.Fatalf("reference limits = %#v", profile.Video.References)
 	}
+	for _, role := range []string{"first_frame", "last_frame", "reference_image"} {
+		if !containsCapabilityString(profile.Video.References.ImageRoles, role) {
+			t.Fatalf("image roles = %v, want %s", profile.Video.References.ImageRoles, role)
+		}
+	}
+}
+
+func TestValidateVideoReferenceModeRequiresDistinctSupportedKeyframes(t *testing.T) {
+	profile := DefaultModelCapabilityConfigForModel("novita-video", "example").Video
+	input := canvasGenerationInput{
+		Prompt:          "transition",
+		ReferenceImages: []providerMedia{{ID: "first"}, {ID: "last"}},
+		Metadata:        map[string]interface{}{"videoMode": "keyframes", "videoEditOperation": "image_to_video", "videoStartFrameNodeId": "first", "videoEndFrameNodeId": "last"},
+	}
+	if err := validateVideoReferenceMode(profile, input); err == nil || !strings.Contains(err.Error(), "尾帧") {
+		t.Fatalf("start-only profile error = %v", err)
+	}
+	profile.References.ImageRoles = []string{"first_frame", "last_frame"}
+	if err := validateVideoReferenceMode(profile, input); err != nil {
+		t.Fatalf("keyframe profile error = %v", err)
+	}
+	input.Metadata["videoEndFrameNodeId"] = "first"
+	if err := validateVideoReferenceMode(profile, input); err == nil || !strings.Contains(err.Error(), "两张不同") {
+		t.Fatalf("duplicate frame error = %v", err)
+	}
 }
 
 func TestValidateVolcengineArkFullModalReferenceRejectsTextAndAudioOnly(t *testing.T) {

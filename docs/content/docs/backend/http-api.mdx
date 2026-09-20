@@ -32,7 +32,7 @@ description: 信封、错误码与 OpenAPI
 | `POST /model-catalog/quote` | `{ channelId, modelKey, intent }`，仅允许启用的系统渠道与可用模型，复用任务准入、默认参数和价格档选择 |
 | `POST /models/:id/quote` | 直接提交 `intent`，按前台逻辑模型当前可用线路和价格策略报价 |
 
-`intent` 包含 `capability`（`text/image/video/audio`）、`operation`、`inputs`（素材类型到数量的映射）和 `options`（请求规格）。素材数量必须为 0–128 的整数，再按模型能力限制校验。视频规格包括 `vquality`、`size`、`videoSeconds`、布尔值 `videoGenerateAudio`，显式 `false` 必须保留。
+`intent` 包含 `capability`（`text/image/video/audio`）、`operation`、`inputs`（素材类型到数量的映射）、`options`（请求规格）和可选的 `imageRoles`。视频图片角色使用 `first_frame`、`last_frame`、`reference_image`；报价和逻辑模型路由会同时校验 operation、实际素材数量与角色，避免把首尾帧请求交给只支持首帧的线路。没有参考图的纯视频或纯音频全能参考不携带图片角色。素材数量必须为 0–128 的整数，再按模型能力限制校验。视频规格包括 `vquality`、`size`、`videoSeconds`、布尔值 `videoGenerateAudio`，显式 `false` 必须保留。
 
 报价包含 `logicalModelId`（系统渠道直连为空）、`billingMode`、`quantity`、`amountMicrocredits`、`estimated`。视频 Token 报价另有 `videoTokenEstimate`：`formulaTokens`、`reservedTokens`、`outputWidth`、`outputHeight`、`framesPerSecond`、`outputSeconds`、`referenceSeconds`、`referenceDurationEstimated`、`dimensionsEstimated`、`reservationMarginPercent`。
 

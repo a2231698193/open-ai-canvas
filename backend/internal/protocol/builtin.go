@@ -301,10 +301,10 @@ func arkVideosAdapter() Adapter {
 	info.Parameters = videoParams()
 	return videoAdapter(info, func(r GenerationRequest) (RequestSpec, error) {
 		if len(r.Images) > 9 || len(r.Videos) > 3 || len(r.Audios) > 3 {
-			return RequestSpec{}, fmt.Errorf("火山方舟全模态参考最多支持 9 张图片、3 个视频和 3 个音频")
+			return RequestSpec{}, fmt.Errorf("火山方舟全能参考最多支持 9 张图片、3 个视频和 3 个音频")
 		}
 		if len(r.Audios) > 0 && len(r.Images) == 0 && len(r.Videos) == 0 {
-			return RequestSpec{}, fmt.Errorf("火山方舟全模态参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频")
+			return RequestSpec{}, fmt.Errorf("火山方舟全能参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频")
 		}
 		content := []any{map[string]any{"type": "text", "text": r.Prompt}}
 		for _, image := range r.Images {

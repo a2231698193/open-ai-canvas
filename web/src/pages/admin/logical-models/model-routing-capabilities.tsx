@@ -58,6 +58,11 @@ const optionDefinitions: Record<CapabilityKind, Array<{ name: string; label: str
         { name: "audioInstructions", label: "朗读指令" },
     ],
 };
+const videoImageRoleOptions: Array<{ value: NonNullable<CapabilitySpec["imageRoles"]>[number]; label: string }> = [
+    { value: "first_frame", label: "首帧" },
+    { value: "last_frame", label: "尾帧" },
+    { value: "reference_image", label: "通用参考图" },
+];
 
 export function capabilityLabel(value: CapabilityKind) {
     return { text: "文本", image: "图片", video: "视频", audio: "音频" }[value];
@@ -117,6 +122,7 @@ export function capabilitySpecFromChannelModel(item?: ChannelModel): CapabilityS
             version: 1,
             capability,
             operations: video.operations,
+            imageRoles: video.references.imageRoles,
             inputs: compactInputs({
                 image: { min: video.references.minImages, max: video.references.maxImages },
                 video: { min: 0, max: video.references.maxVideos },
@@ -139,6 +145,7 @@ export function mergeCapabilitySpecs(capability: CapabilityKind, specs: Capabili
     if (matching.length === 0) return emptyCapabilitySpec(capability);
     const result = emptyCapabilitySpec(capability);
     result.operations = Array.from(new Set(matching.flatMap((item) => item.operations || [])));
+    result.imageRoles = Array.from(new Set(matching.flatMap((item) => item.imageRoles || []))) as CapabilitySpec["imageRoles"];
     for (const definition of inputDefinitions[capability]) {
         const declared = matching.some((item) => item.inputs?.[definition.name]);
         if (declared) {
@@ -219,6 +226,9 @@ export function capabilitySourceError(capability: CapabilityKind, sourceSpecs: C
     if (currentOperations.some((operation) => !matching.some((item) => !(item.operations || []).length || item.operations?.includes(operation)))) {
         return "当前生成方式已不受供应线路支持";
     }
+    if ((current.imageRoles || []).some((role) => !matching.some((item) => item.imageRoles?.includes(role)))) {
+        return "当前图片角色已不受供应线路支持";
+    }
     for (const [name, constraint] of Object.entries(current.inputs || {})) {
         if (!inputConstraintCovered(constraint, name, matching)) return `当前${inputLabel(capability, name)}范围存在供应线路无法覆盖的数量`;
     }
@@ -260,6 +270,19 @@ export function CapabilityScopeEditor({ capability, sourceSpecs, value, onChange
                         options={source.operations.map((operation) => ({ value: operation, label: operationLabel(operation) }))}
                         placeholder="选择创作端可用的生成方式"
                         onChange={(operations) => update({ operations })}
+                    />
+                </CapabilityBlock>
+            ) : null}
+
+            {capability === "video" && source.imageRoles?.length ? (
+                <CapabilityBlock title="图片角色">
+                    <Select
+                        className="w-full"
+                        mode="multiple"
+                        value={current.imageRoles || []}
+                        options={videoImageRoleOptions.filter((option) => source.imageRoles?.includes(option.value))}
+                        placeholder="选择创作端可用的图片角色"
+                        onChange={(imageRoles) => update({ imageRoles })}
                     />
                 </CapabilityBlock>
             ) : null}
@@ -455,6 +478,7 @@ export function CapabilitySummary({ spec }: { spec: CapabilitySpec }) {
         labels.push(option.values ? `${definition.label} ${option.values.map(scalarLabel).join("/")}` : `${definition.label} ${option.min}-${option.max}${definition.unit || ""}`);
     }
     if (spec.operations?.length) labels.unshift(spec.operations.map(operationLabel).join("/"));
+    if (spec.imageRoles?.length) labels.push(spec.imageRoles.map((role) => videoImageRoleOptions.find((item) => item.value === role)?.label || role).join("/"));
     if (!labels.length) return <span className="text-xs text-foreground/45">基础能力</span>;
     return (
         <div className="flex min-w-0 max-w-full flex-wrap gap-1">
@@ -657,7 +681,7 @@ export function operationLabel(value: string) {
         {
             text_to_video: "文生视频",
             image_to_video: "图生视频",
-            reference_to_video: "全模态参考",
+            reference_to_video: "全能参考",
             extend: "视频续写",
             inpaint: "局部修改",
             replace_element: "元素替换",

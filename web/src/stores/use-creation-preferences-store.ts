@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { scopedLocalStorage } from "@/lib/user-scope";
+import { normalizeVideoGenerationMode, type VideoGenerationMode } from "@/lib/video-generation-mode";
 
 export type CreationModePreference = "text" | "image" | "video";
 
@@ -15,6 +16,7 @@ export type CreationVideoPreferences = {
     ratio?: string;
     seconds?: string;
     videoQuality?: string;
+    mode?: VideoGenerationMode;
 };
 
 export type CreationComposerPreferences = {
@@ -55,6 +57,7 @@ function normalizeVideoPreferences(value: unknown): CreationVideoPreferences | u
         ...(nonEmptyString(raw.ratio) ? { ratio: raw.ratio } : {}),
         ...(nonEmptyString(raw.seconds) ? { seconds: raw.seconds } : {}),
         ...(nonEmptyString(raw.videoQuality) ? { videoQuality: raw.videoQuality } : {}),
+        ...(normalizeVideoGenerationMode(raw.mode) ? { mode: normalizeVideoGenerationMode(raw.mode) } : {}),
     };
     return Object.keys(preferences).length ? preferences : undefined;
 }

@@ -39,6 +39,7 @@ type CapabilitySpec struct {
 	Inputs     map[string]InputConstraint  `json:"inputs,omitempty"`
 	Options    map[string]OptionConstraint `json:"options,omitempty"`
 	ImageSize  *CapabilityImageSize        `json:"imageSize,omitempty"`
+	ImageRoles []string                    `json:"imageRoles,omitempty"`
 }
 
 type InputConstraint struct {
@@ -58,6 +59,7 @@ type ModelRequestIntent struct {
 	Operation  string         `json:"operation,omitempty"`
 	Inputs     map[string]int `json:"inputs,omitempty"`
 	Options    map[string]any `json:"options,omitempty"`
+	ImageRoles []string       `json:"imageRoles,omitempty"`
 }
 
 // ModelRequestIntentFromTaskInput 从统一任务输入推导路由意图；它只统计实际输入和显式参数，不假设任何固定图片数或视频时长。
@@ -104,7 +106,34 @@ func ModelRequestIntentFromTaskInput(input map[string]any, taskType string, oper
 		}
 	}
 	applyVideoEnhanceIntentOptions(intent.Options, input)
+	if capability == "video" {
+		intent.ImageRoles = videoImageRolesFromTaskInput(input, intent.Operation, intent.Inputs["image"])
+	}
 	return intent
+}
+
+func videoImageRolesFromTaskInput(input map[string]any, operation string, imageCount int) []string {
+	metadata, _ := input["metadata"].(map[string]any)
+	mode := metadataString(metadata, "videoMode")
+	if mode == "text" {
+		return nil
+	}
+	if (mode == "reference" || strings.TrimSpace(operation) == "reference_to_video") && imageCount > 0 {
+		return []string{"reference_image"}
+	}
+	if mode == "keyframes" || metadataString(metadata, "videoEndFrameNodeId") != "" {
+		return []string{"first_frame", "last_frame"}
+	}
+	if mode == "image" || metadataString(metadata, "videoStartFrameNodeId") != "" {
+		return []string{"first_frame"}
+	}
+	if imageCount >= 2 {
+		return []string{"first_frame", "last_frame"}
+	}
+	if imageCount == 1 {
+		return []string{"first_frame"}
+	}
+	return nil
 }
 
 func applyVideoEnhanceIntentOptions(options map[string]any, input map[string]any) {
@@ -257,6 +286,7 @@ func NormalizeCapabilitySpec(spec CapabilitySpec) (CapabilitySpec, error) {
 		}
 	}
 	spec.Operations = operations
+	spec.ImageRoles = normalizeCapabilityValues(spec.ImageRoles)
 	normalizedInputs := make(map[string]InputConstraint, len(spec.Inputs))
 	for rawName, constraint := range spec.Inputs {
 		name := normalizeCapabilityValue(rawName)
@@ -317,6 +347,11 @@ func MatchCapability(spec CapabilitySpec, intent ModelRequestIntent) CapabilityM
 	if operation := normalizeCapabilityValue(intent.Operation); operation != "" && len(spec.Operations) > 0 && !containsNormalized(spec.Operations, operation) {
 		reasons = append(reasons, "不支持操作 "+intent.Operation)
 	}
+	for _, role := range intent.ImageRoles {
+		if !containsNormalized(spec.ImageRoles, normalizeCapabilityValue(role)) {
+			reasons = append(reasons, "不支持图片角色 "+role)
+		}
+	}
 	for inputType, count := range intent.Inputs {
 		if count < 0 {
 			reasons = append(reasons, "输入数量不能小于 0")
@@ -349,6 +384,19 @@ func MatchCapability(spec CapabilitySpec, intent ModelRequestIntent) CapabilityM
 		}
 	}
 	return CapabilityMatch{Matched: len(reasons) == 0, Reasons: reasons}
+}
+
+func normalizeCapabilityValues(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		normalized := normalizeCapabilityValue(value)
+		if normalized != "" && !seen[normalized] {
+			seen[normalized] = true
+			result = append(result, normalized)
+		}
+	}
+	return result
 }
 
 func capabilityInputLabel(name string) string {

@@ -164,6 +164,81 @@
 .app-user-overlays .creation-parameter-menu,
 .app-product-overlays .creation-parameter-menu { padding: 12px !important; }
 
+.app-user-overlays .creation-video-mode-menu,
+.app-product-overlays .creation-video-mode-menu {
+    display: grid;
+    width: min(360px, calc(100vw - 32px));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px;
+}
+.app-user-overlays .creation-video-mode-menu button,
+.app-product-overlays .creation-video-mode-menu button {
+    display: flex;
+    min-width: 0;
+    min-height: 54px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 3px;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--user-ink);
+    padding: 8px 10px;
+    text-align: left;
+    transition: background var(--user-motion), border-color var(--user-motion);
+}
+.app-user-overlays .creation-video-mode-menu button:hover,
+.app-product-overlays .creation-video-mode-menu button:hover { background: var(--user-surface-hover); }
+.app-user-overlays .creation-video-mode-menu button.is-selected,
+.app-product-overlays .creation-video-mode-menu button.is-selected { border-color: var(--user-border-strong); background: var(--user-control-pressed); }
+.app-user-overlays .creation-video-mode-menu strong,
+.app-product-overlays .creation-video-mode-menu strong { font-size: var(--fs-label); font-weight: 600; }
+.app-user-overlays .creation-video-mode-menu small,
+.app-product-overlays .creation-video-mode-menu small { overflow: hidden; color: var(--user-ink-muted); font-size: var(--fs-tiny); text-overflow: ellipsis; white-space: nowrap; }
+
+.app-user-workspace .creation-video-frame-assignments {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.app-user-workspace .creation-video-frame-assignments label {
+    display: flex;
+    min-width: 160px;
+    flex: 1 1 180px;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--creation-border);
+    border-radius: var(--r-md);
+    background: var(--creation-surface-muted);
+    padding: 5px 8px;
+}
+.app-user-workspace .creation-video-frame-assignments label > span { flex: 0 0 auto; color: var(--creation-muted); font-size: var(--fs-tiny); }
+.app-user-workspace .creation-video-frame-assignments select { min-width: 0; flex: 1 1 auto; border: 0; outline: 0; background: transparent; color: var(--creation-text); font: inherit; font-size: var(--fs-label); }
+.app-user-workspace .creation-reference-stack-card.is-inactive .creation-reference-card-content { opacity: .42; filter: saturate(.45); }
+.app-user-workspace .creation-reference-inactive-label {
+    position: absolute;
+    inset: auto 2px 2px;
+    z-index: 2;
+    overflow: hidden;
+    border-radius: var(--r-xs);
+    background: color-mix(in srgb, var(--color-neutral-950) 80%, transparent);
+    color: var(--color-neutral-0);
+    font-size: 8px;
+    line-height: 16px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+    .app-user-overlays .creation-video-mode-menu,
+    .app-product-overlays .creation-video-mode-menu { grid-template-columns: 1fr; }
+}
+
 .app-user-overlays .creation-parameter-section h3,
 .app-user-overlays .creation-duration-heading > span,
 .app-product-overlays .creation-parameter-section h3,

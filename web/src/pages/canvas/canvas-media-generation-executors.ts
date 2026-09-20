@@ -5,7 +5,7 @@ import { canGenerateMediaInPlace } from "@/lib/canvas/canvas-generation-layout";
 import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { nextCanvasVersionLabel } from "@/lib/canvas/canvas-layout";
-import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, runCanvasGenerationTaskToConsumer } from "@/lib/canvas/canvas-project-generation";
+import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, runCanvasGenerationTaskToConsumer, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -42,7 +42,8 @@ export async function executeVideoGeneration({
     const videoId = reuseSourceNode ? nodeId : nanoid();
     const versionRootId = isExistingVideoNode && sourceNode ? sourceNode.metadata?.versionOfNodeId || sourceNode.id : undefined;
     const parent = sourceNode?.position || { x: 0, y: 0 };
-    const videoGenerationMetadata = buildVideoGenerationMetadata(sourceNode, generationContext, generationConfig);
+    const activeGenerationContext = videoGenerationContextForMode(sourceNode, generationContext, generationConfig);
+    const videoGenerationMetadata = buildVideoGenerationMetadata(sourceNode, activeGenerationContext, generationConfig);
     const videoNode: CanvasNodeData = {
         id: videoId,
         type: CanvasNodeType.Video,
@@ -64,7 +65,7 @@ export async function executeVideoGeneration({
             vquality: generationConfig.vquality,
             generateAudio: generationConfig.videoGenerateAudio,
             watermark: generationConfig.videoWatermark,
-            references: generationReferenceUrls(generationContext),
+            references: generationReferenceUrls(activeGenerationContext),
             ...videoGenerationMetadata,
             ...styleMetadata,
             ...skillMetadata,
@@ -104,15 +105,15 @@ export async function executeVideoGeneration({
                 mode: "video",
                 prompt: effectivePrompt,
                 config: generationConfig,
-                referenceImages: generationContext.referenceImages,
-                referenceVideos: generationContext.referenceVideos,
-                referenceAudios: generationContext.referenceAudios,
+                referenceImages: activeGenerationContext.referenceImages,
+                referenceVideos: activeGenerationContext.referenceVideos,
+                referenceAudios: activeGenerationContext.referenceAudios,
                 signal: controller.signal,
                 metadata: {
                     sourceNodeId: nodeId,
                     ...taskContext,
-                    resolvedCharacterVersions: generationContext.resolvedCharacterVersions,
-                    resolvedCharacterVoices: generationContext.resolvedCharacterVoices,
+                    resolvedCharacterVersions: activeGenerationContext.resolvedCharacterVersions,
+                    resolvedCharacterVoices: activeGenerationContext.resolvedCharacterVoices,
                     promptTemplateOperation: sourceNode?.metadata?.promptTemplateOperation,
                     promptTemplateVariables: sourceNode?.metadata?.promptTemplateVariables,
                     ...videoGenerationMetadata,

@@ -21,6 +21,7 @@ import {
     runCanvasGenerationTaskToConsumer,
     sourceNodeReferenceImages,
     supportsVideoReferenceAudio,
+    videoGenerationContextForMode,
 } from "@/lib/canvas/canvas-project-generation";
 import { isCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import { buildPortraitTexturePrompt } from "@/lib/canvas/canvas-portrait-texture";
@@ -205,7 +206,7 @@ export function useCanvasGenerationRetry({
                 return;
             }
             const videoReferenceImages = context?.referenceImages.length ? context.referenceImages : storedVideoImages;
-            const videoContext =
+            const rawVideoContext =
                 node.type === CanvasNodeType.Video
                     ? {
                           prompt,
@@ -218,6 +219,7 @@ export function useCanvasGenerationRetry({
                           audioCount: context?.referenceAudios.length || 0,
                       }
                     : undefined;
+            const videoContext = rawVideoContext ? videoGenerationContextForMode(node, rawVideoContext, generationConfig) : undefined;
 
             setRunningNodeId(node.id);
             setNodes((current) => current.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, generationErrorCode: undefined, resourceReloadAvailable: undefined, failedPromptFingerprint: undefined } } : item)));

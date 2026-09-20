@@ -222,16 +222,17 @@ type VideoCapabilityConfig struct {
 }
 
 type VideoReferenceConfig struct {
-	PromptMaxChars   int   `json:"promptMaxChars"`
-	MinImages        int   `json:"minImages"`
-	MaxImages        int   `json:"maxImages"`
-	MaxImageBytes    int64 `json:"maxImageBytes"`
-	MaxVideos        int   `json:"maxVideos"`
-	MaxVideoBytes    int64 `json:"maxVideoBytes"`
-	MaxVideoDuration int   `json:"maxVideoDurationSeconds"`
-	MaxAudios        int   `json:"maxAudios"`
-	MaxAudioBytes    int64 `json:"maxAudioBytes"`
-	MaxAudioDuration int   `json:"maxAudioDurationSeconds"`
+	PromptMaxChars   int      `json:"promptMaxChars"`
+	MinImages        int      `json:"minImages"`
+	MaxImages        int      `json:"maxImages"`
+	MaxImageBytes    int64    `json:"maxImageBytes"`
+	MaxVideos        int      `json:"maxVideos"`
+	MaxVideoBytes    int64    `json:"maxVideoBytes"`
+	MaxVideoDuration int      `json:"maxVideoDurationSeconds"`
+	MaxAudios        int      `json:"maxAudios"`
+	MaxAudioBytes    int64    `json:"maxAudioBytes"`
+	MaxAudioDuration int      `json:"maxAudioDurationSeconds"`
+	ImageRoles       []string `json:"imageRoles"`
 }
 
 type VideoDurationConfig struct {

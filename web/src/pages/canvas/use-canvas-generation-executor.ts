@@ -4,7 +4,7 @@ import { App } from "antd";
 
 import { buildNodeGenerationContext, hydrateNodeGenerationContext } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
-import { buildGenerationConfig, isGenerationCanceled } from "@/lib/canvas/canvas-project-generation";
+import { buildGenerationConfig, isGenerationCanceled, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
 import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
 import { isGenerationTaskCapacityError } from "@/lib/canvas/canvas-generation-batch";
 import { buildPortraitTexturePrompt } from "@/lib/canvas/canvas-portrait-texture";
@@ -20,6 +20,7 @@ import type { GenerationTask } from "@/services/api/task-center";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import type { Asset } from "@/stores/use-asset-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
+import { videoGenerationModeFromMetadata, videoModeImageRoles, videoModeInputSummary } from "@/lib/video-generation-mode";
 
 import { executeImageGeneration } from "./canvas-image-generation-executor";
 import { executeAudioGeneration, executeVideoGeneration } from "./canvas-media-generation-executors";
@@ -159,12 +160,13 @@ export function useCanvasGenerationExecutor({
                             assets,
                             promptOnly,
                         );
-                        const requirements = generationModelRequirements(mode, baseContext, sourceNode, generationConfig, true);
+                        const projectedBaseContext = mode === "video" && !usesWorkflowProvider ? videoGenerationContextForMode(sourceNode, baseContext, generationConfig) : baseContext;
+                        const requirements = generationModelRequirements(mode, projectedBaseContext, sourceNode, generationConfig, true);
                         generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, requirements);
                         const compatibilityError = usesWorkflowProvider ? "" : modelCompatibilityError(generationConfig, generationConfig.model, requirements);
                         if (compatibilityError) throw new Error(`当前模型无法支持这组输入和参数：${compatibilityError}`);
                         const referenceLimits = usesWorkflowProvider ? undefined : modelGroupReferenceLimits(effectiveConfig, generationConfig.model, mode, requirements);
-                        rawGenerationContext = await hydrateNodeGenerationContext(baseContext, projectId, domainProjectId, mode, mode === "video" && Boolean(referenceLimits?.maxAudios), !promptOnly, referenceLimits);
+                        rawGenerationContext = await hydrateNodeGenerationContext(projectedBaseContext, projectId, domainProjectId, mode, mode === "video" && Boolean(referenceLimits?.maxAudios), !promptOnly, referenceLimits);
                         const hydratedRequirements = generationModelRequirements(mode, rawGenerationContext, sourceNode, generationConfig);
                         generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, hydratedRequirements);
                         const hydratedCompatibilityError = usesWorkflowProvider ? "" : modelCompatibilityError(generationConfig, generationConfig.model, hydratedRequirements);
@@ -202,7 +204,8 @@ export function useCanvasGenerationExecutor({
                         message.error(promptLengthError);
                         return;
                     }
-                    const generationContext = { ...rawGenerationContext, prompt: effectivePrompt };
+                    const hydratedContext = { ...rawGenerationContext, prompt: effectivePrompt };
+                    const generationContext = mode === "video" && !usesWorkflowProvider ? videoGenerationContextForMode(sourceNode, hydratedContext, generationConfig) : hydratedContext;
                     if (mode === "audio" && generationContext.characterReferences.length) {
                         if (generationContext.characterReferences.length !== 1) {
                             message.error("角色配音一次只能引用一个角色卡");
@@ -400,16 +403,20 @@ function generationModelRequirements(
     config: ReturnType<typeof useEffectiveConfig>,
     includeCharacterMinimum = false,
 ): ModelRequirements {
+    const inputSummary = {
+        textCount: input.textCount,
+        imageCount: input.imageCount,
+        videoCount: input.videoCount,
+        audioCount: input.audioCount,
+        characterCount: includeCharacterMinimum ? input.characterReferences.length : 0,
+    };
+    const videoMode = mode === "video" ? videoGenerationModeFromMetadata(sourceNode?.metadata, inputSummary) : undefined;
     return {
         capability: mode,
-        input: {
-            textCount: input.textCount,
-            imageCount: input.imageCount,
-            videoCount: input.videoCount,
-            audioCount: input.audioCount,
-            characterCount: includeCharacterMinimum ? input.characterReferences.length : 0,
-        },
+        input: videoMode ? videoModeInputSummary(videoMode, inputSummary) : inputSummary,
         videoOperation: sourceNode?.metadata?.videoEditOperation,
+        videoMode,
+        videoImageRoles: videoMode ? videoModeImageRoles(videoMode) : undefined,
         videoSeconds: config.videoSeconds,
         options: config.taskWorkflowProvider === "model" ? modelRequestOptions(config, mode) : undefined,
     };

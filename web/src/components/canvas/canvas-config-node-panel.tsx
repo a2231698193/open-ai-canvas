@@ -10,6 +10,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { normalizeVideoDuration, normalizeVideoResolution } from "@/lib/video-generation-options";
 import { defaultModelCapabilityConfig, modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue, workflowFieldChoiceValues, workflowFieldCurrentValue, workflowFieldKey, workflowFieldNumberBounds, workflowFieldRandomKey, workflowFieldSubmissionValue, workflowFieldValueError, workflowImageCapabilityConfig, workflowOutputSizeValue, workflowParameterFields, workflowVideoCapabilityConfig, workflowVideoFieldsFromJson, type WorkflowVideoFieldLike } from "@/lib/model-capabilities";
 import { defaultImageParamsForModel, modelCompatibilityError, modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefaults, type ModelRequirements } from "@/lib/model-selection";
+import { videoGenerationModeFromMetadata, videoModeImageRoles, videoModeInputSummary } from "@/lib/video-generation-mode";
 import { resolveCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import { canonicalGenerationMetadata } from "@/lib/canvas/generation-contract";
 import type { CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
@@ -37,20 +38,6 @@ type WorkflowSelectOption = {
     options?: WorkflowSelectOption[];
 };
 
-const videoOperationOptions: Array<{ label: string; value: CanvasVideoEditOperation }> = [
-    { label: "文生视频", value: "text_to_video" },
-    { label: "图生视频", value: "image_to_video" },
-    { label: "全模态参考", value: "reference_to_video" },
-    { label: "视频生视频", value: "video_to_video" },
-    { label: "视频续写", value: "extend" },
-    { label: "局部修改", value: "inpaint" },
-    { label: "元素替换", value: "replace_element" },
-    { label: "运镜调整", value: "camera_motion" },
-    { label: "风格迁移", value: "style_transfer" },
-    { label: "音频生视频", value: "audio_to_video" },
-    { label: "版本对比", value: "compare_versions" },
-];
-
 function capabilityLabel(capability: RunningHubCapability) {
     return capability === "video" ? "视频" : capability === "audio" ? "音频" : "图片";
 }
@@ -72,11 +59,15 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
     const simpleMode = workspaceMode === "simple";
     const resolvedProvider = resolveCanvasWorkflowProvider(node.metadata);
     const workflowProvider = resolvedProvider;
+    const videoMode = videoGenerationModeFromMetadata(node.metadata, inputSummary);
+    const effectiveInputSummary = mode === "video" && workflowProvider === "model" ? videoModeInputSummary(videoMode, inputSummary) : inputSummary;
     const workflowCapability: RunningHubCapability = mode === "video" ? "video" : mode === "audio" ? "audio" : "image";
     const requirements: ModelRequirements = {
         capability: mode,
-        input: inputSummary,
+        input: effectiveInputSummary,
         videoOperation: node.metadata?.videoEditOperation,
+        videoMode: mode === "video" && workflowProvider === "model" ? videoMode : undefined,
+        videoImageRoles: mode === "video" && workflowProvider === "model" ? videoModeImageRoles(videoMode) : undefined,
         videoSeconds: mode === "video" ? node.metadata?.seconds ?? globalConfig.videoSeconds : undefined,
         options: modelRequestOptions({
             ...globalConfig,

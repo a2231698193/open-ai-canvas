@@ -1,8 +1,9 @@
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Image as ImageIcon } from "lucide-react";
+import { Check, ChevronDown, Film, Image as ImageIcon } from "lucide-react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
+import { VIDEO_GENERATION_MODE_OPTIONS, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 
@@ -35,6 +36,13 @@ const CONTROL_TEXT_STYLE: CSSProperties = { fontFamily: "inherit", fontSize: 11,
 
 export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChange, referenceMode = "frames", referenceSummary }: CanvasVideoPromptToolsProps) {
     const theme = canvasThemes[useActiveTheme()];
+    const videoMode = videoGenerationModeFromMetadata(metadata, referenceSummary ? {
+        textCount: 0,
+        imageCount: referenceSummary.imageCount,
+        videoCount: referenceSummary.videoCount,
+        audioCount: referenceSummary.audioCount,
+        characterCount: 0,
+    } : undefined);
     const startFrame = metadata?.videoStartFrameNodeId || EMPTY_FRAME_VALUE;
     const endFrame = metadata?.videoEndFrameNodeId || EMPTY_FRAME_VALUE;
 
@@ -44,13 +52,7 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
     };
 
     if (referenceMode === "all") {
-        const summary = referenceSummary
-            ? [
-                  referenceSummary.imageCount ? `${referenceSummary.imageCount} 图` : "",
-                  referenceSummary.videoCount ? `${referenceSummary.videoCount} 视频` : "",
-                  referenceSummary.audioCount ? `${referenceSummary.audioCount} 音频` : "",
-              ].filter(Boolean).join(" · ")
-            : "";
+        const summary = referenceSummaryLabel(referenceSummary);
         return (
             <div
                 className="flex min-h-8 min-w-0 items-center gap-2 rounded-md px-2 py-1.5"
@@ -67,24 +69,53 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
         );
     }
 
-    if (!frameOptions.length) return null;
+    const modeItems = VIDEO_GENERATION_MODE_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+    const modeLabel = VIDEO_GENERATION_MODE_OPTIONS.find((option) => option.value === videoMode)?.label || VIDEO_GENERATION_MODE_OPTIONS[0].label;
+    const summary = referenceSummaryLabel(referenceSummary);
+    const setMode = (mode: string) => {
+        const nextMode = mode as VideoGenerationMode;
+        onMetadataChange({ videoMode: nextMode, videoEditOperation: videoModeOperation(nextMode) });
+    };
 
     return (
         <div
-            className="grid min-w-0 grid-cols-2 items-center gap-1"
+            className="grid min-w-0 gap-1"
             data-canvas-no-zoom
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
-            <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
-            <FrameMenu label="尾帧" value={endFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoEndFrameNodeId", value)} />
+            <CompactMenuButton theme={theme} title="视频生成模式" label={modeLabel} icon={<Film className="size-3.5 shrink-0 opacity-90" />} value={videoMode} items={modeItems} menuWidth={180} maxMenuHeight={160} onSelect={setMode} />
+            {videoMode === "image" ? (
+                <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
+            ) : null}
+            {videoMode === "keyframes" ? (
+                <div className="grid min-w-0 grid-cols-2 items-center gap-1">
+                    <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
+                    <FrameMenu label="尾帧" value={endFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoEndFrameNodeId", value)} />
+                </div>
+            ) : null}
+            {videoMode === "text" || videoMode === "reference" ? (
+                <div className="min-w-0 truncate px-1.5 py-1 text-[var(--fs-micro)] opacity-60">
+                    {videoMode === "text" ? "本次只使用提示词，不发送已连接媒体" : summary || "尚未连接媒体"}
+                </div>
+            ) : null}
         </div>
     );
 }
 
+function referenceSummaryLabel(referenceSummary?: { imageCount: number; videoCount: number; audioCount: number }) {
+    return referenceSummary
+        ? [
+              referenceSummary.imageCount ? `${referenceSummary.imageCount} 图` : "",
+              referenceSummary.videoCount ? `${referenceSummary.videoCount} 视频` : "",
+              referenceSummary.audioCount ? `${referenceSummary.audioCount} 音频` : "",
+          ].filter(Boolean).join(" · ")
+        : "";
+}
+
 function FrameMenu({ label, value, options, theme, onChange }: { label: string; value: string; options: VideoFrameOption[]; theme: CanvasTheme; onChange: (value: string) => void }) {
     const selected = options.find((item) => item.nodeId === value);
-    const items = [{ value: EMPTY_FRAME_VALUE, label: "不指定" }, ...options.map((option) => ({ value: option.nodeId, label: `${option.label} · ${option.title}`, previewUrl: option.previewUrl }))];
+    const items = [{ value: EMPTY_FRAME_VALUE, label: options.length ? "不指定" : "尚未连接图片" }, ...options.map((option) => ({ value: option.nodeId, label: `${option.label} · ${option.title}`, previewUrl: option.previewUrl }))];
     return (
         <CompactMenuButton
             theme={theme}

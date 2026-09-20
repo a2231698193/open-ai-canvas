@@ -6,6 +6,7 @@ import type { ExternalAssetPickerReference } from "@/lib/plugins/plugin-types";
 import type { Asset, AudioAsset, ImageAsset, NewAsset } from "@/stores/use-asset-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
+import type { VideoGenerationMode } from "@/lib/video-generation-mode";
 
 export type CreationDocumentAttachment = {
     id: string;
@@ -28,15 +29,19 @@ export type CreationAssetIdentity = {
     resultIndex?: number;
 };
 
-export function creationUploadAccept(mode: CreationMode) {
-    if (mode === "video") return "image/*,video/*,audio/*";
+export function creationUploadAccept(mode: CreationMode, videoMode?: VideoGenerationMode) {
+    if (mode === "video") return !videoMode || videoMode === "reference" ? "image/*,video/*,audio/*" : videoMode === "text" ? "" : "image/*";
     if (mode === "text") return `image/*,video/*,audio/*,${textDocumentExtensions.join(",")}`;
     return "image/*";
 }
 
-export function creationFileAccepted(mode: CreationMode, file: Pick<File, "type" | "name">) {
+export function creationFileAccepted(mode: CreationMode, file: Pick<File, "type" | "name">, videoMode?: VideoGenerationMode) {
+    if (mode === "video") {
+        if (videoMode === "text") return false;
+        if (file.type.startsWith("image/")) return true;
+        return (!videoMode || videoMode === "reference") && (file.type.startsWith("video/") || file.type.startsWith("audio/"));
+    }
     if (file.type.startsWith("image/")) return true;
-    if (mode === "video") return file.type.startsWith("video/") || file.type.startsWith("audio/");
     if (mode !== "text") return false;
     const name = file.name.toLowerCase();
     return file.type.startsWith("video/") || file.type.startsWith("audio/") || file.type.startsWith("text/") || textDocumentExtensions.some((extension) => name.endsWith(extension));
@@ -55,6 +60,22 @@ export function splitCreationAttachments(attachments: CreationAttachment[]) {
         referenceVideos: attachments.filter((attachment): attachment is CreationAttachment & ReferenceVideo => creationAttachmentKind(attachment) === "video"),
         referenceAudios: attachments.filter((attachment): attachment is CreationAttachment & ReferenceAudio => creationAttachmentKind(attachment) === "audio"),
     };
+}
+
+export function activeVideoCreationAttachments(
+    attachments: CreationAttachment[],
+    mode: VideoGenerationMode,
+    startFrameId?: string,
+    endFrameId?: string,
+) {
+    const split = splitCreationAttachments(attachments);
+    if (mode === "text") return { referenceImages: [], referenceVideos: [], referenceAudios: [] };
+    if (mode === "reference") return split;
+    const startFrame = split.referenceImages.find((item) => item.id === startFrameId) || split.referenceImages[0];
+    if (mode === "image") return { referenceImages: startFrame ? [startFrame] : [], referenceVideos: [], referenceAudios: [] };
+    const endFrame = split.referenceImages.find((item) => item.id === endFrameId && item.id !== startFrame?.id)
+        || split.referenceImages.find((item) => item.id !== startFrame?.id);
+    return { referenceImages: [startFrame, endFrame].filter((item): item is NonNullable<typeof item> => Boolean(item)), referenceVideos: [], referenceAudios: [] };
 }
 
 export function creationAttachmentPreview(attachment: CreationAttachment): { kind: CreationAttachmentKind; url: string } {

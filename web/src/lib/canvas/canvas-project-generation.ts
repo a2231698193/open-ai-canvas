@@ -18,6 +18,7 @@ import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, typ
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 import { generationSpecMetadata, readNodeGenerationSpec, resolveGenerationSelection } from "@/lib/canvas/generation-contract";
+import { videoGenerationModeFromMetadata, videoModeOperation } from "@/lib/video-generation-mode";
 
 export async function runBackendCanvasGenerationTask(
     {
@@ -67,7 +68,21 @@ export async function runBackendCanvasGenerationTask(
             referenceAudios,
             mask,
             signal,
-            metadata: { nodeId, ...(mode === "video" && !metadata?.videoEditOperation ? { videoEditOperation: "image_to_video" } : {}), ...metadata },
+            metadata: {
+                nodeId,
+                ...(mode === "video" && !metadata?.videoEditOperation
+                    ? {
+                          videoEditOperation: videoModeOperation(videoGenerationModeFromMetadata(metadata, {
+                              textCount: prompt.trim() ? 1 : 0,
+                              imageCount: referenceImages.length,
+                              videoCount: referenceVideos.length,
+                              audioCount: referenceAudios.length,
+                              characterCount: 0,
+                          })),
+                      }
+                    : {}),
+                ...metadata,
+            },
             onTaskUpdate: onTaskCreated,
             clientOperationId,
             retryOf,
@@ -323,6 +338,63 @@ export function generationReferenceUrls(context: { referenceImages: ReferenceIma
     ];
 }
 
+type VideoGenerationContext = {
+    referenceImages: ReferenceImage[];
+    referenceVideos: ReferenceVideo[];
+    referenceAudios: ReferenceAudio[];
+    imageCount?: number;
+    videoCount?: number;
+    audioCount?: number;
+    characterReferences?: unknown[];
+    resolvedCharacterVersions?: unknown[];
+    resolvedCharacterVoices?: unknown[];
+};
+
+export function videoGenerationContextForMode<T extends VideoGenerationContext>(node: CanvasNodeData | undefined, context: T, config?: AiConfig): T {
+    const workflowVideo = node?.type === CanvasNodeType.Config && (config?.taskWorkflowProvider === "runninghub" || isCanvasWorkflowProvider(node.metadata));
+    if (workflowVideo) return context;
+
+    const mode = videoGenerationModeFromMetadata(node?.metadata, {
+        textCount: 0,
+        imageCount: context.referenceImages.length,
+        videoCount: context.referenceVideos.length,
+        audioCount: context.referenceAudios.length,
+        characterCount: 0,
+    });
+    let referenceImages: ReferenceImage[] = [];
+    let referenceVideos: ReferenceVideo[] = [];
+    let referenceAudios: ReferenceAudio[] = [];
+    if (mode === "image" || mode === "keyframes") {
+        const startFrame = context.referenceImages.find((image) => image.id === node?.metadata?.videoStartFrameNodeId) || context.referenceImages[0];
+        if (!startFrame) throw new Error(mode === "keyframes" ? "首尾帧参考需要连接两张不同的图片" : "图生视频需要连接一张首帧图片");
+        referenceImages = [startFrame];
+        if (mode === "keyframes") {
+            const endFrame = context.referenceImages.find((image) => image.id === node?.metadata?.videoEndFrameNodeId && image.id !== startFrame.id)
+                || context.referenceImages.find((image) => image.id !== startFrame.id);
+            if (!endFrame) throw new Error("首尾帧参考需要连接两张不同的图片");
+            referenceImages.push(endFrame);
+        }
+    } else if (mode === "reference") {
+        referenceImages = context.referenceImages;
+        referenceVideos = context.referenceVideos;
+        referenceAudios = context.referenceAudios;
+        if (!referenceImages.length && !referenceVideos.length && !referenceAudios.length) throw new Error("全能参考至少需要连接一项图片、视频或音频素材");
+    }
+
+    return {
+        ...context,
+        referenceImages,
+        referenceVideos,
+        referenceAudios,
+        ...(typeof context.imageCount === "number" ? { imageCount: referenceImages.length } : {}),
+        ...(typeof context.videoCount === "number" ? { videoCount: referenceVideos.length } : {}),
+        ...(typeof context.audioCount === "number" ? { audioCount: referenceAudios.length } : {}),
+        ...(mode === "text" && context.characterReferences ? { characterReferences: [] } : {}),
+        ...(mode === "text" && context.resolvedCharacterVersions ? { resolvedCharacterVersions: [] } : {}),
+        ...(mode === "text" && context.resolvedCharacterVoices ? { resolvedCharacterVoices: [] } : {}),
+    };
+}
+
 function resolveVideoEditOperation(
     node: CanvasNodeData | undefined,
     context?: {
@@ -331,6 +403,8 @@ function resolveVideoEditOperation(
         referenceAudios: ReferenceAudio[];
     },
 ): CanvasVideoEditOperation {
+    const mode = videoGenerationModeFromMetadata(node?.metadata);
+    if (node?.metadata?.videoMode) return videoModeOperation(mode) as CanvasVideoEditOperation;
     const storedOperation = node?.metadata?.videoEditOperation;
     const input = {
         textCount: 0,
@@ -354,12 +428,21 @@ export function buildVideoGenerationMetadata(
     const metadata = node?.metadata;
     const referenceImageIds = new Set((context?.referenceImages || []).map((image) => image.id));
     // 工作流视频把已连接媒体交给字段映射处理，不再把历史首尾帧选择当成硬约束。
-    // 工作流视频把已连接媒体交给字段映射处理，不再把历史首尾帧选择当成硬约束。
     const workflowVideo = node?.type === CanvasNodeType.Config && (config?.taskWorkflowProvider === "runninghub" || isCanvasWorkflowProvider(metadata));
-    const startFrame = workflowVideo ? undefined : requireConnectedVideoFrame(metadata?.videoStartFrameNodeId, "首帧", referenceImageIds);
-    const endFrame = workflowVideo ? undefined : requireConnectedVideoFrame(metadata?.videoEndFrameNodeId, "尾帧", referenceImageIds);
+    const mode = videoGenerationModeFromMetadata(metadata, {
+        textCount: 0,
+        imageCount: context?.referenceImages.length || 0,
+        videoCount: context?.referenceVideos.length || 0,
+        audioCount: context?.referenceAudios.length || 0,
+        characterCount: 0,
+    });
+    const startFrameCandidate = metadata?.videoStartFrameNodeId || ((mode === "image" || mode === "keyframes") ? context?.referenceImages[0]?.id : undefined);
+    const endFrameCandidate = metadata?.videoEndFrameNodeId || (mode === "keyframes" ? context?.referenceImages[1]?.id : undefined);
+    const startFrame = workflowVideo || mode === "text" || mode === "reference" ? undefined : requireConnectedVideoFrame(startFrameCandidate, "首帧", referenceImageIds);
+    const endFrame = workflowVideo || mode !== "keyframes" ? undefined : requireConnectedVideoFrame(endFrameCandidate, "尾帧", referenceImageIds);
     return {
         ...(config ? generationWorkflowMetadata(config) : {}),
+        videoMode: workflowVideo ? metadata?.videoMode : mode,
         videoEditOperation: resolveVideoEditOperation(node, context),
         videoCameraMoveId: metadata?.videoCameraMoveId,
         videoCameraMovePrompt: metadata?.videoCameraMovePrompt,

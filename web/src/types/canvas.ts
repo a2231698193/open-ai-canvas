@@ -64,6 +64,7 @@ export type CanvasGenerationBatchItemStatus = "waiting" | "submitting" | "queued
 export type CanvasImageGenerationType = "generation" | "edit";
 export type CanvasWorkflowKind = "free" | "script" | "story_input" | "character" | "scene" | "storyboard" | "shot" | "final" | "styleboard" | "reference_set" | "reference_video" | "action_board";
 export type CanvasVideoEditOperation = "text_to_video" | "image_to_video" | "reference_to_video" | "video_to_video" | "extend" | "inpaint" | "replace_element" | "camera_motion" | "style_transfer" | "audio_to_video" | "compare_versions" | "concat";
+export type CanvasVideoGenerationMode = "text" | "image" | "keyframes" | "reference";
 export type CanvasSkillCategory = "writing" | "storyboard" | "image" | "video" | "utility";
 export type CanvasSkillOutputMode = "text" | "json" | "image_prompt" | "workflow";
 export type StoryboardColumn =
@@ -363,6 +364,7 @@ export type CanvasNodeMetadata = {
     };
     sessionId?: string;
     videoEditOperation?: CanvasVideoEditOperation;
+    videoMode?: CanvasVideoGenerationMode;
     arkPrivateAssetUpload?: string;
     videoCameraMoveId?: string;
     videoCameraMovePrompt?: string;

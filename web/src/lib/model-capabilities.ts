@@ -74,6 +74,7 @@ export type VideoCapabilityConfig = {
         maxAudios: number;
         maxAudioBytes: number;
         maxAudioDurationSeconds: number;
+        imageRoles: Array<"first_frame" | "last_frame" | "reference_image">;
     };
     duration: {
         selection: "range" | "enum";
@@ -156,6 +157,7 @@ export function normalizeModelCapabilityConfig(config: ModelCapabilityConfig): M
                   references: {
                       ...config.video.references,
                       promptMaxChars: normalizeVideoPromptMaxChars(config.video.references.promptMaxChars),
+                      imageRoles: normalizeCapabilityStrings(config.video.references.imageRoles || ["first_frame"]) as VideoCapabilityConfig["references"]["imageRoles"],
                   },
               }
             : undefined,
@@ -336,6 +338,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
             maxAudios: 0,
             maxAudioBytes: 0,
             maxAudioDurationSeconds: 0,
+            imageRoles: ["first_frame"],
         },
         duration: { selection: "range", min: 1, max: 15, step: 1, default: 6 },
         ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
@@ -368,6 +371,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
     if (protocol === "volcengine-ark-video" || protocol === "volcengine-ark-agent-plan-video") {
         video.watermark = { supported: true, default: false };
         video.operations.push("reference_to_video", "audio_to_video");
+        video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
     }
     if (protocol === "novita-video") {
         video.references.maxImages = 1;
@@ -392,6 +396,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.defaultResolution = "768P";
         video.watermark = { supported: true, default: false };
         video.operations.push("reference_to_video");
+        video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
     }
     if (protocol === "agnes-video" && ["agnes-video-2.5", "agnes-video-2.5-flash"].includes(model.trim().toLowerCase())) {
         const flash = model.trim().toLowerCase() === "agnes-video-2.5-flash";
@@ -404,6 +409,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.resolutions = flash ? ["720P"] : ["720P", "960P", "2K"];
         video.defaultResolution = "720P";
         video.operations.push("reference_to_video", "audio_to_video");
+        video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
     }
     if (protocol === "lk888-video") applyLK888VideoCapability(video, model);
     if (protocol === "lk888-seedance" || protocol === "lk888-seedance-anmiao") applyLK888SeedanceCapability(video, model);
@@ -425,6 +431,7 @@ function applyLK888SeedanceCapability(video: VideoCapabilityConfig, model: strin
     video.resolutions = key.includes("fast") || key.includes("mini") ? ["480p", "720p"] : ["480p", "720p", "1080p", "4k"];
     video.defaultResolution = "720p";
     video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+    video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
 }
 
 function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) {
@@ -444,6 +451,7 @@ function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) 
             video.resolutions = ["768P", "1080P", "2K", "4K"];
             video.defaultResolution = "768P";
             video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+            video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
             break;
         case "kling-v3-video":
             video.references.maxImages = 2;
@@ -455,6 +463,7 @@ function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) 
             video.resolutions = ["720p", "1080p"];
             video.defaultResolution = "720p";
             video.operations = ["text_to_video", "image_to_video"];
+            video.references.imageRoles = ["first_frame", "last_frame"];
             break;
         case "wan3.0-video-cankaosheng":
             video.references.maxImages = 10;
@@ -467,6 +476,7 @@ function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) 
             video.defaultResolution = "720P";
             video.generateAudio = { supported: true, default: false };
             video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+            video.references.imageRoles = ["first_frame", "reference_image"];
             break;
         case "video-enhance":
             video.references.minImages = 0;

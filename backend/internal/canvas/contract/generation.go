@@ -281,7 +281,7 @@ func NodeGenerationProjection(metadata map[string]any) (map[string]any, error) {
 		"generationSpec": {}, "prompt": {}, "composerContent": {}, "model": {},
 		"logicalModelId": {}, "channelId": {}, "channelModelKey": {},
 		"videoStartFrameNodeId": {}, "videoEndFrameNodeId": {},
-		"videoEditOperation": {}, "referenceNodeIds": {},
+		"videoMode": {}, "videoEditOperation": {}, "referenceNodeIds": {},
 	}
 	typ := reflect.TypeOf(Options{})
 	for i := 0; i < typ.NumField(); i++ {

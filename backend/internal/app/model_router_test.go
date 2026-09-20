@@ -72,6 +72,40 @@ func TestModelRequestIntentNormalizesVideoResolution(t *testing.T) {
 	}
 }
 
+func TestVideoImageRolesParticipateInLogicalRouting(t *testing.T) {
+	intent := ModelRequestIntentFromTaskInput(map[string]any{
+		"mode": "video",
+		"referenceImages": []any{
+			map[string]any{"id": "first"},
+			map[string]any{"id": "last"},
+		},
+		"metadata": map[string]any{"videoMode": "keyframes", "videoStartFrameNodeId": "first", "videoEndFrameNodeId": "last"},
+	}, "canvas_video", "image_to_video")
+	if fmt.Sprint(intent.ImageRoles) != fmt.Sprint([]string{"first_frame", "last_frame"}) {
+		t.Fatalf("image roles = %v", intent.ImageRoles)
+	}
+	startOnly := CapabilitySpec{Version: 1, Capability: "video", Operations: []string{"image_to_video"}, ImageRoles: []string{"first_frame"}, Inputs: map[string]InputConstraint{"image": {Min: 0, Max: 2}}}
+	if match := MatchCapability(startOnly, intent); match.Matched {
+		t.Fatalf("start-only route unexpectedly matched keyframes: %v", match.Reasons)
+	}
+	keyframes := startOnly
+	keyframes.ImageRoles = []string{"first_frame", "last_frame"}
+	if match := MatchCapability(keyframes, intent); !match.Matched {
+		t.Fatalf("keyframe route rejected request: %v", match.Reasons)
+	}
+}
+
+func TestReferenceVideoWithoutImagesDoesNotRequestImageRole(t *testing.T) {
+	intent := ModelRequestIntentFromTaskInput(map[string]any{
+		"mode":            "video",
+		"referenceVideos": []any{map[string]any{"id": "clip"}},
+		"metadata":        map[string]any{"videoMode": "reference"},
+	}, "canvas_video", "reference_to_video")
+	if len(intent.ImageRoles) != 0 {
+		t.Fatalf("image roles = %v, want none", intent.ImageRoles)
+	}
+}
+
 func TestSKUSelectorMatchesLK888MiniMax768PriceTier(t *testing.T) {
 	input := map[string]any{
 		"mode":              "video",

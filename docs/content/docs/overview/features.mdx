@@ -5,6 +5,19 @@ description: 当前项目已实现的核心工作台能力与使用入口
 
 # 功能清单
 
+## 视频生成模式
+
+创作页视频模块和模型来源的画布视频节点统一提供四种互斥模式：文生视频只发送提示词；图生视频使用一张首帧；首尾帧参考要求两张不同图片；全能参考可按模型能力使用图片、视频和音频。模式由用户显式选择，不再被附件数量自动覆盖；打开没有模式字段的历史记录时仍会按旧 operation 与帧字段恢复。
+
+切换模式会保留创作页附件和画布连线，当前模式不使用的素材只标记为未启用。模型筛选、逻辑模型路由与后端最终校验共同检查生成方式、图片角色和各媒体数量；只支持首帧的线路不能承接首尾帧任务。RunningHub 等工作流视频继续按工作流字段映射引用，不套用这四种模型模式约束。
+
+### 相关实现
+
+- `web/src/lib/video-generation-mode.ts`：产品模式、operation 与图片角色映射。
+- `web/src/pages/create/`：创作页模式、附件启停、首尾帧分配与恢复。
+- `web/src/components/canvas/canvas-video-prompt-tools.tsx`、`web/src/lib/canvas/canvas-project-generation.ts`：画布模式交互和请求引用投影。
+- `backend/internal/app/model_capability.go`、`backend/internal/app/model_router.go`：最终校验与逻辑路由。
+
 ## 画布视频超分
 
 已有内容的视频节点可从悬停工具条「高清」打开画质增强。入口在「提取素材」旁边，`video-enhance` 不出现在视频模型列表中。走问鼎 `video-enhance`，可选清晰度、帧率、版本、场景和增强风格；结果另存为新视频节点并连回原片，不覆盖源视频。源视频最长 10 分钟，输出时长与原片相同。

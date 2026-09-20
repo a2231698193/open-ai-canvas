@@ -13,13 +13,18 @@ const ratioOptions = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const operationOptions = [
     { label: "文生视频", value: "text_to_video" },
     { label: "图生视频", value: "image_to_video" },
-    { label: "全模态参考", value: "reference_to_video" },
+    { label: "全能参考", value: "reference_to_video" },
     { label: "视频续写", value: "extend" },
     { label: "局部修改", value: "inpaint" },
     { label: "元素替换", value: "replace_element" },
     { label: "运镜调整", value: "camera_motion" },
     { label: "风格迁移", value: "style_transfer" },
     { label: "音频生视频", value: "audio_to_video" },
+];
+const videoImageRoleOptions: Array<{ label: string; value: VideoCapabilityConfig["references"]["imageRoles"][number] }> = [
+    { label: "首帧", value: "first_frame" },
+    { label: "尾帧", value: "last_frame" },
+    { label: "通用参考图", value: "reference_image" },
 ];
 
 function ImageSizeHelp() {
@@ -55,6 +60,9 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
             <div className="admin-capability-reference-editor">
                 <div className="admin-capability-reference-grid">
                     <ReferenceCard title="图片引用" description="首帧、参考图与多图输入限制">
+                        <Field label="支持的图片角色">
+                            <Select mode="multiple" className="w-full" disabled={disabled} value={profile.references.imageRoles} options={videoImageRoleOptions} onChange={(imageRoles) => updateReferences({ imageRoles })} />
+                        </Field>
                         <NumberField label="最少图片引用" value={profile.references.minImages} min={0} max={profile.references.maxImages} disabled={disabled} onChange={(value) => updateReferences({ minImages: value || 0 })} />
                         <NumberField
                             label="最大图片引用"
@@ -312,6 +320,9 @@ export function ModelCapabilityEditor({ value, onChange, protocol, capability = 
             {section === "all" ? (
                 <>
                     <CapabilityGroup title="图片" description="首帧、参考图与多图输入约束">
+                        <Field label="支持的图片角色">
+                            <Select mode="multiple" className="w-full" disabled={disabled} value={profile.references.imageRoles} options={videoImageRoleOptions} onChange={(imageRoles) => updateReferences({ imageRoles })} />
+                        </Field>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                             <NumberField label="最少图片引用" value={profile.references.minImages} min={0} max={profile.references.maxImages} disabled={disabled} onChange={(value) => updateReferences({ minImages: value || 0 })} />
                             <NumberField

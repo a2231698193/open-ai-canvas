@@ -33,6 +33,7 @@ import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
+import { videoGenerationModeFromMetadata, videoModeImageRoles, videoModeInputSummary } from "@/lib/video-generation-mode";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -99,16 +100,20 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences, { projectId });
     const normalizedSavedPrompt = useMemo(() => normalizeCanvasNodeMentionTokens(savedPrompt, mentionReferences), [mentionReferences, savedPrompt]);
     const activeReferences = resolvedMentionReferences.filter((item) => item.active && item.kind !== "skill");
+    const rawInputSummary = {
+        textCount: (prompt.trim() ? 1 : 0) + activeReferences.filter((item) => item.kind === "text").length,
+        imageCount: activeReferences.filter((item) => item.kind === "image").length,
+        videoCount: activeReferences.filter((item) => item.kind === "video").length,
+        audioCount: activeReferences.filter((item) => item.kind === "audio").length,
+        characterCount: activeReferences.filter((item) => item.kind === "character").length,
+    };
+    const videoMode = videoGenerationModeFromMetadata(node.metadata, rawInputSummary);
     const requirements: ModelRequirements = {
         capability: mode,
-        input: {
-            textCount: (prompt.trim() ? 1 : 0) + activeReferences.filter((item) => item.kind === "text").length,
-            imageCount: activeReferences.filter((item) => item.kind === "image").length,
-            videoCount: activeReferences.filter((item) => item.kind === "video").length,
-            audioCount: activeReferences.filter((item) => item.kind === "audio").length,
-            characterCount: activeReferences.filter((item) => item.kind === "character").length,
-        },
+        input: mode === "video" ? videoModeInputSummary(videoMode, rawInputSummary) : rawInputSummary,
         videoOperation: node.metadata?.videoEditOperation,
+        videoMode: mode === "video" ? videoMode : undefined,
+        videoImageRoles: mode === "video" ? videoModeImageRoles(videoMode) : undefined,
         videoSeconds: mode === "video" ? node.metadata?.seconds ?? globalConfig.videoSeconds : undefined,
         options: modelRequestOptions({
             ...globalConfig,
@@ -153,7 +158,12 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const credits = routeQuote ? routeQuote.amountMicrocredits / 1_000_000 : configuredCredits;
     const activeReferenceCount = activeReferences.length;
     const videoFrameOptions = resolvedMentionReferences.filter((item) => item.active && item.kind === "image").map((item) => ({ nodeId: item.nodeId, label: item.label, title: item.title, previewUrl: item.previewUrl }));
-    const hasVideoPromptTools = mode === "video" && !simpleMode && videoFrameOptions.length > 0;
+    const hasVideoPromptTools = mode === "video" && !simpleMode;
+    const videoReferenceSummary = {
+        imageCount: activeReferences.filter((item) => item.kind === "image" || item.kind === "character").length,
+        videoCount: activeReferences.filter((item) => item.kind === "video").length,
+        audioCount: activeReferences.filter((item) => item.kind === "audio").length,
+    };
     const monochromeAccent = theme.node.activeStroke;
     const composerTokens = {
         "--canvas-composer-surface": theme.node.panel,
@@ -547,7 +557,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     </button>
                     {paramsExpanded ? (
                         <div className="pt-1">
-                            <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                            <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} referenceSummary={videoReferenceSummary} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                         </div>
                     ) : null}
                 </div>
@@ -579,7 +589,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         {renderPromptEditor(true, Boolean(expandedModalSize))}
                         {hasVideoPromptTools ? (
                             <div className="canvas-node-composer-parameters shrink-0">
-                                <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                                <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} referenceSummary={videoReferenceSummary} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                             </div>
                         ) : null}
                         <div className="shrink-0">{renderComposerControls(true)}</div>

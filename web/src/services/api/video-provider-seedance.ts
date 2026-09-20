@@ -84,7 +84,7 @@ function seedanceApiUrl(config: ResolvedAiConfig, taskId?: string) {
 
 async function buildSeedanceAgentPlanPayload(config: ResolvedAiConfig, model: string, prompt: string, references: ReferenceImage[], videoReferences: ReferenceVideo[], audioReferences: ReferenceAudio[], deps: VideoProviderDeps, options?: RequestOptions) {
     if (audioReferences.length && !references.length && !videoReferences.length) {
-        throw new Error(isVolcengineArkVideoProtocol(config.interfaceType) ? "火山方舟全模态参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频" : "Seedance 参考音频不能单独使用，请同时添加参考图或参考视频");
+        throw new Error(isVolcengineArkVideoProtocol(config.interfaceType) ? "火山方舟全能参考不支持纯音频或文本+音频，请同时添加参考图片或参考视频" : "Seedance 参考音频不能单独使用，请同时添加参考图或参考视频");
     }
     const content = isVolcengineArkVideoProtocol(config.interfaceType)
         ? await buildVolcengineArkContent(prompt, references, videoReferences, audioReferences, options)

@@ -1,6 +1,7 @@
 import { defaultImageCapabilityConfig, modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue, STANDARD_IMAGE_SIZE_VALUES, videoDurationAllowed, type ImageCapabilityConfig } from "@/lib/model-capabilities";
 import { videoResolutionComparisonKey } from "@/lib/video-generation-options";
 import { imageSizePresets } from "@/lib/image-size-presets";
+import { inferVideoGenerationMode, videoModeImageRoles, videoModeOperation, type VideoGenerationMode, type VideoImageRole } from "@/lib/video-generation-mode";
 import { modelOptionName, resolveModelChannel, selectableModelsByCapability, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
 
 export type ModelInputSummary = {
@@ -15,6 +16,8 @@ export type ModelRequirements = {
     capability?: ModelCapability;
     input?: ModelInputSummary;
     videoOperation?: string;
+    videoMode?: VideoGenerationMode;
+    videoImageRoles?: VideoImageRole[];
     videoSeconds?: string;
     imageSize?: string;
     options?: Record<string, unknown>;
@@ -87,8 +90,12 @@ export function modelCompatibilityError(config: AiConfig, model: string, require
         if (visualInputCount > profile.references.maxImages) return `最多支持 ${profile.references.maxImages} 张参考图`;
         if (input.videoCount > profile.references.maxVideos) return `最多支持 ${profile.references.maxVideos} 个参考视频`;
         if (input.audioCount > profile.references.maxAudios) return `最多支持 ${profile.references.maxAudios} 个参考音频`;
-        const operation = resolveVideoOperation(input, requirements.videoOperation);
+        const operation = requirements.videoMode ? videoModeOperation(requirements.videoMode) : resolveVideoOperation(input, requirements.videoOperation);
         if (operation !== "concat" && !profile.operations.includes(operation)) return `不支持${videoOperationLabel(operation)}`;
+        const requiredRoles = (requirements.videoImageRoles || (requirements.videoMode ? videoModeImageRoles(requirements.videoMode) : []))
+            .filter((role) => role !== "reference_image" || visualInputCount > 0);
+        const unsupportedRole = requiredRoles.find((role) => !profile.references.imageRoles.includes(role));
+        if (unsupportedRole) return unsupportedRole === "last_frame" ? "不支持尾帧参考" : unsupportedRole === "reference_image" ? "不支持全能参考图" : "不支持首帧参考";
         return "";
     }
 
@@ -142,8 +149,11 @@ function logicalModelCompatibilityError(spec: NonNullable<NonNullable<AiConfig["
         if (!constraint && count > 0) return `不支持${kind}输入`;
         if (constraint && (count < constraint.min || count > constraint.max)) return `${kind}输入需为 ${constraint.min}-${constraint.max} 个`;
     }
-    const operation = requirements.capability === "video" && input ? resolveVideoOperation(input, requirements.videoOperation) : requirements.videoOperation;
+    const operation = requirements.videoMode ? videoModeOperation(requirements.videoMode) : requirements.capability === "video" && input ? resolveVideoOperation(input, requirements.videoOperation) : requirements.videoOperation;
     if (operation && spec.operations?.length && !spec.operations.includes(operation)) return "不支持当前生成模式";
+    const requiredRoles = (requirements.videoImageRoles || (requirements.videoMode ? videoModeImageRoles(requirements.videoMode) : []))
+        .filter((role) => role !== "reference_image" || visualInputCount > 0);
+    if (requiredRoles.some((role) => !spec.imageRoles?.includes(role))) return requiredRoles.includes("last_frame") ? "不支持尾帧参考" : "不支持当前参考图角色";
     // 图片创作状态也会携带全局默认视频时长；这个字段只对视频模型有意义，
     // 不能把它拼进图片逻辑模型的能力匹配，否则图片模型会被误判为“不支持当前时长”。
     const options = {
@@ -351,7 +361,7 @@ export function modelGroupReferenceLimits(config: AiConfig, selected: string, ca
 export function inferVideoOperation(input: ModelInputSummary) {
     const visualInputCount = input.imageCount + input.characterCount;
     // 图片或角色决定图生视频主模式，音频只作为附加参考，不应把组合请求
-    // 提升为全模态参考；纯音频输入才使用独立的 audio_to_video 能力。
+    // 提升为全能参考；纯音频输入才使用独立的 audio_to_video 能力。
     if (input.videoCount > 0 || visualInputCount > 2) return "reference_to_video";
     if (visualInputCount > 0) return "image_to_video";
     if (input.audioCount > 0) return "audio_to_video";
@@ -359,15 +369,19 @@ export function inferVideoOperation(input: ModelInputSummary) {
 }
 
 export function resolveVideoOperation(input: ModelInputSummary, storedOperation?: string) {
-    if (storedOperation && !["text_to_video", "image_to_video", "audio_to_video", "extend", "reference_to_video"].includes(storedOperation)) return storedOperation;
+    if (storedOperation) return storedOperation;
     return inferVideoOperation(input);
+}
+
+export function resolveVideoGenerationMode(input: ModelInputSummary, storedMode?: VideoGenerationMode) {
+    return storedMode || inferVideoGenerationMode(input);
 }
 
 function videoOperationLabel(operation: string) {
     if (operation === "text_to_video") return "文生视频";
     if (operation === "image_to_video") return "图生视频";
     if (operation === "audio_to_video") return "音频生视频";
-    if (operation === "reference_to_video") return "全模态参考";
+    if (operation === "reference_to_video") return "全能参考";
     if (operation === "extend") return "视频续写";
     if (operation === "video_to_video") return "视频生视频";
     return "当前生成模式";

@@ -357,6 +357,8 @@ func capabilityFingerprint(spec CapabilitySpec) string {
 	copySpec := spec
 	copySpec.Operations = append([]string(nil), spec.Operations...)
 	sort.Strings(copySpec.Operations)
+	copySpec.ImageRoles = append([]string(nil), spec.ImageRoles...)
+	sort.Strings(copySpec.ImageRoles)
 	copySpec.Inputs = make(map[string]InputConstraint, len(spec.Inputs))
 	for name, constraint := range spec.Inputs {
 		copySpec.Inputs[name] = constraint
@@ -1008,6 +1010,18 @@ func validateProductSpecWithinRoutes(product CapabilitySpec, routeSpecs []Capabi
 			if !supported {
 				return BadAuthRequest("创作端生成方式不受任何供应线路支持：" + operation)
 			}
+		}
+	}
+	for _, role := range product.ImageRoles {
+		supported := false
+		for _, routeSpec := range routeSpecs {
+			if containsCapabilityString(routeSpec.ImageRoles, role) {
+				supported = true
+				break
+			}
+		}
+		if !supported {
+			return BadAuthRequest("创作端图片角色不受任何供应线路支持：" + role)
 		}
 	}
 	for name, constraint := range product.Inputs {

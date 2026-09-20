@@ -419,7 +419,7 @@ function videoOperationLabel(operation: CanvasVideoEditOperation) {
     const labels: Record<CanvasVideoEditOperation, string> = {
         text_to_video: "文生视频",
         image_to_video: "图生视频",
-        reference_to_video: "全模态参考",
+        reference_to_video: "全能参考",
         video_to_video: "视频生视频",
         extend: "视频续写",
         inpaint: "局部修改",

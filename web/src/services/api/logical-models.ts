@@ -21,6 +21,7 @@ export type CapabilitySpec = {
     inputs?: Record<string, InputConstraint>;
     options?: Record<string, OptionConstraint>;
     imageSize?: CapabilityImageSize;
+    imageRoles?: Array<"first_frame" | "last_frame" | "reference_image">;
 };
 
 export type ModelRequestIntent = {
@@ -28,6 +29,7 @@ export type ModelRequestIntent = {
     operation?: string;
     inputs?: Record<string, number>;
     options?: Record<string, unknown>;
+    imageRoles?: Array<"first_frame" | "last_frame" | "reference_image">;
 };
 
 export type PublicLogicalModel = {
