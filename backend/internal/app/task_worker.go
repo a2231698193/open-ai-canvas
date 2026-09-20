@@ -148,7 +148,7 @@ func (w *taskWorkerCoordinator) processClaimedTask(task *model.Task, globalSlot 
 		for {
 			select {
 			case <-ticker.C:
-				renewCtx, cancelRenew := context.WithTimeout(ctx, 5*time.Second)
+				renewCtx, cancelRenew := taskLeaseRenewContext(ctx)
 				var err error
 				if globalSlot != nil {
 					err = globalSlot.Renew(renewCtx)
@@ -227,10 +227,16 @@ func (w *taskWorkerCoordinator) processClaimedTask(task *model.Task, globalSlot 
 		if code, _ := ChannelSlotFailureDetails(err); code != "" {
 			channelSlotFailedBeforeRequest = true
 		}
+		// 我方执行时限到点不是"租约丢失"：续租请求可能正好被同一个时限打断，
+		// 此时必须继续走失败收尾，否则任务停在 running、租约过期后被反复重跑。
+		deadlineExpired := errors.Is(ctx.Err(), context.DeadlineExceeded)
 		select {
 		case leaseErr := <-leaseLost:
-			_ = s.log(task.UserID, task.ID, "warn", "任务租约失效，等待其他 worker 恢复", leaseErr.Error())
-			return leaseErr
+			if !deadlineExpired {
+				_ = s.log(task.UserID, task.ID, "warn", "任务租约失效，等待其他 worker 恢复", leaseErr.Error())
+				return leaseErr
+			}
+			_ = s.log(task.UserID, task.ID, "warn", "任务执行时限到点，按失败收尾（不视为租约失效）", leaseErr.Error())
 		default:
 		}
 		decryptedInput, decryptErr := s.decryptTaskInputJSON(task.InputJSON)
@@ -295,6 +301,15 @@ func taskFailureMessage(err error) string {
 		return "任务处理失败"
 	}
 	return truncateRunes(err.Error(), 2_000)
+}
+
+// taskLeaseRenewContext 给续租单独一份"不继承父 context 取消/时限"的上下文（仅 5 秒上限）。
+//
+// 续租必须比"这一条任务的执行时限"活得更久：父 context 一旦到点，派生的续租 context 会立刻
+// 被取消，续租请求带着 context.Canceled 失败并被误判成"租约失效"，任务于是停在 running，
+// 租约过期后又被其它 worker 重跑（实测一次上游调用被重跑成三次）。
+func taskLeaseRenewContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 }
 
 func taskExecutionTimeoutWithPolicy(taskType string, policy RuntimeTaskPolicy) time.Duration {
