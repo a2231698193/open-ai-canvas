@@ -92,7 +92,7 @@ export function CanvasWorkspacePanel({
     return (
         <>
             <nav className="canvas-workspace-rail" style={{ ...canvasDockStyle(theme), boxShadow: "none" }} aria-label="画布左侧菜单" data-canvas-no-zoom onWheel={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                <Link to="/" className="canvas-workspace-rail-button" aria-label="主页" title="返回主页">
+                <Link to="/create" className="canvas-workspace-rail-button" aria-label="工作台" title="返回工作台">
                     <Home />
                     <span>主页</span>
                 </Link>
