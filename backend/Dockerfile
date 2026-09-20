@@ -13,16 +13,15 @@ RUN --mount=type=cache,target=/var/cache/apk \
     fi; \
     apk add --cache-dir /var/cache/apk nodejs unzip zip
 
-ARG TARGETOS
-ARG TARGETARCH
 ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /src
-COPY backend/go.mod backend/go.sum ./backend/
-RUN --mount=type=cache,target=/go/pkg/mod cd backend && go mod download
+# 插件只下载实际依赖，不为四个小程序预取整个业务后端的模块图。
 COPY backend ./backend
 COPY plugin-packages ./plugin-packages
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
     test -n "$TARGETOS"; \
     test -n "$TARGETARCH"; \
@@ -61,10 +60,11 @@ ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /src/backend
-COPY VERSION /src/VERSION
 COPY backend/go.mod backend/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+# 模块保留在普通镜像层中，供后续编译及跨 Runner 的 GHA 层缓存复用。
+RUN go mod download
 COPY backend ./
+COPY VERSION /src/VERSION
 ARG BUILD_VERSION
 ARG BUILD_COMMIT=unknown
 ARG BUILD_TIME=unknown
