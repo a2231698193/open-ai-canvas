@@ -8485,21 +8485,6 @@
     width: 246px;
 }
 
-.admin-analytics-pricing-modal .admin-analytics-price-field,
-.admin-analytics-pricing-modal .admin-analytics-price-field .ant-form-item-control,
-.admin-analytics-pricing-modal .admin-analytics-price-field .ant-form-item-control-input,
-.admin-analytics-pricing-modal .admin-analytics-price-input,
-.admin-analytics-pricing-modal .admin-analytics-price-input input {
-    width: 100%;
-    min-width: 0;
-    pointer-events: auto;
-    user-select: text;
-}
-
-.admin-analytics-pricing-modal .admin-analytics-price-input {
-    display: block;
-}
-
 .admin-analytics-toolbar .admin-list-toolbar-actions {
     align-items: center;
 }
@@ -8588,6 +8573,33 @@
     color: var(--admin-text-muted);
     font-size: 11px;
     line-height: 16px;
+}
+
+.admin-analytics-finance-values {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+.admin-analytics-finance-values > div {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+}
+
+.admin-analytics-finance-values dt {
+    color: var(--admin-text-muted);
+    font-weight: 400;
+}
+
+.admin-analytics-finance-values dd {
+    margin: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
 }
 
 .admin-analytics-overview-grid {
@@ -8822,21 +8834,6 @@
 .admin-analytics-tabs .ant-tabs-tab {
     min-height: 42px;
     padding-block: 10px;
-}
-
-.admin-analytics-pricing-description {
-    margin-bottom: 14px;
-    border: 1px solid var(--admin-divider);
-    border-radius: 8px;
-    background: var(--admin-layer-2);
-    padding: 10px 12px;
-    color: var(--admin-text-secondary);
-    font-size: 11px;
-    line-height: 17px;
-}
-
-.admin-analytics-pricing-drawer .admin-table-frame {
-    min-height: min(620px, calc(100vh - 190px));
 }
 
 @media (min-width: 1280px) {

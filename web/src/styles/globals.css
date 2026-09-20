@@ -1310,11 +1310,6 @@
         box-shadow: none;
     }
 
-    .workspace-account-popover .ant-popover-inner {
-        border-color: color-mix(in srgb, var(--foreground) 7%, transparent) !important;
-        box-shadow: var(--elevation-overlay) !important;
-    }
-
     body.app-spatial-overlays {
         --workspace-overlay-bg: rgba(244, 244, 245, 1);
         --workspace-overlay-bg-strong: rgba(250, 250, 250, 1);
@@ -14300,11 +14295,9 @@ html:not(.dark) .creation-history-drawer-root {
     -webkit-backdrop-filter: blur(12px);
 }
 
-/* 3. 素材网格以 6 列为桌面基准；首格是新增素材，因此每页 35 项时正好组成 6×6 完整网格。 */
-.assets-library-page .assets-library-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, max(180px, calc(100% / var(--assets-grid-columns, 6) - 14px))), 1fr)); gap: 18px 14px; }
+/* 素材密度由页面传入卡片最小宽度，网格布局统一在 workspace-product.css。 */
 .assets-library-page .library-create-title { margin-top: 12px; font-size: var(--fs-body); }
 .assets-library-page .library-create-meta { margin-top: 4px; font-size: var(--fs-label); }
-@media (max-width: 899px) and (min-width: 640px) { .assets-library-page .assets-library-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); } }
 
 /* 4. 封面浮层统一：窄屏隐藏分类徽章；浅底封面（文本/音频/模型）改用自适应玻璃浮层 */
 @media (max-width: 1100px) { .assets-cover-badge.is-category { display: none; } }
@@ -17090,20 +17083,6 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     justify-content: center;
 }
 
-/* Account popover: every action gets its own row so icon and label can never collide. */
-.workspace-account-popover .ant-popover-inner {
-    width: auto;
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 16px !important;
-    background: var(--user-surface) !important;
-    box-shadow: none !important;
-}
-
-.workspace-account-popover .ant-popover-inner-content {
-    padding: 0 !important;
-}
-
 .app-user-workspace .app-workspace-sidebar-profile-popover {
     width: 100%;
     padding: 14px;
@@ -17240,15 +17219,14 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
 }
 
 .workspace-topbar-account-section {
-    padding: 11px 0 4px;
-    border-top: 1px solid var(--user-border);
+    padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
 .workspace-topbar-account-theme {
     display: flex;
     height: 40px;
     align-items: center;
-    padding: 0 8px;
+    padding: 0 var(--space-5);
     border-radius: 10px;
     color: var(--user-ink-muted);
 }
