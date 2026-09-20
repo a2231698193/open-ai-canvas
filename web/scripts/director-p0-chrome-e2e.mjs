@@ -278,14 +278,23 @@ async function connectCdp(cdpPort) {
             if (!hit || (hit !== el && !el.contains(hit))) return null;
             return { x: Math.round(x), y: Math.round(y) };
         })()`);
-        const deadline = Date.now() + 5000;
+        // 目标必须"站稳"再点：AntD 弹窗/抽屉有约 200ms 入场动画，只要求相邻两次读数相同
+        // 会在动画刚开始、坐标还没动的那一拍就下判定，真正派发鼠标事件时控件已经移位 ——
+        // 点击落到遮罩上（mask.closable=false）就完全无效（"留在导演台" 曾这样偶发失败）。
+        const deadline = Date.now() + 8000;
         let previous = null;
+        let stableSince = 0;
         let box = null;
         while (Date.now() < deadline) {
             const next = await readInteractiveBox();
             if (next && previous && next.x === previous.x && next.y === previous.y) {
-                box = next;
-                break;
+                if (!stableSince) stableSince = Date.now();
+                if (Date.now() - stableSince >= 300) {
+                    box = next;
+                    break;
+                }
+            } else {
+                stableSince = 0;
             }
             previous = next;
             await sleep(100);
