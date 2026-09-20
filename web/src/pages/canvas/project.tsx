@@ -61,6 +61,7 @@ import { CanvasPanoramaConfigModal } from "@/components/canvas/canvas-panorama-c
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
 import { Minimap } from "@/components/canvas/canvas-mini-map";
 import { CanvasNodePromptPanel, type CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
+import { handleListGenerate } from "./list-mode-generator";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { useCanvasCreateCommands } from "@/components/canvas/use-canvas-create-commands";
 import { AssetPickerModal } from "@/components/canvas/asset-picker-modal";
@@ -69,6 +70,7 @@ import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { CanvasShareModal } from "@/components/canvas/canvas-share-modal";
 import { CanvasScriptEditor, CanvasScriptNodeContent } from "@/components/canvas/canvas-script-node";
 import { CanvasBatchTableNodeContent } from "@/components/canvas/canvas-batch-table-node";
+import { BatchGenerationSettingsDialog } from "@/components/canvas/batch-generation-settings-dialog";
 import { batchReferenceColumns, promoteLegacyBatchTableSize } from "@/lib/canvas/canvas-batch-table";
 import { STORYBOARD_HEADER_HEIGHT, STORYBOARD_ROW_HEIGHT, storyboardMinNodeHeight, storyboardTableHeight } from "@/lib/canvas/canvas-storyboard-layout";
 import { CanvasDirectorNodePanel } from "@/components/canvas/director/canvas-director-node-panel";
@@ -94,7 +96,8 @@ import { CanvasLeaferGraphicsLayer } from "@/components/canvas/canvas-leafer-gra
 import { CanvasFreeformEmptyState, CanvasLinkedProjectEmptyState, CanvasShortDramaEmptyState, CanvasShortDramaGuide, CanvasStoryInputNodeContent, CanvasStylePlaceholderNodeContent } from "@/components/canvas/canvas-short-drama-entry";
 import { resolveCanvasEmptyStateKind } from "@/lib/canvas/canvas-starter";
 import { failedImageBatchChildren, markImageBatchRetrying, reconcileImageBatchRoot, restoreUnsubmittedImageBatchChild } from "@/lib/canvas/canvas-image-batch-retry";
-import { createCanvasNode, getInputSummary, isHiddenBatchChild } from "@/lib/canvas/canvas-project-domain";
+import { cinematicStoryboardColumns, createCanvasNode, getInputSummary, isHiddenBatchChild } from "@/lib/canvas/canvas-project-domain";
+import { bindStoryboardKeyframes, storyboardKeyframeTime, storyboardRowsFromBatchTable } from "@/lib/canvas/canvas-batch-storyboard";
 import { stampCanvasNodeChanges, updateCanvasNode, updateCanvasNodes } from "@/lib/canvas/canvas-node-timestamps";
 import { canvasAssetHandoffAttempt, finalizeCanvasAssetHandoff, uninsertedCanvasAssetHandoffPayloads } from "@/lib/canvas/canvas-asset-handoff";
 import { batchSourceRestriction } from "@/lib/canvas/canvas-batch-connection";
@@ -1927,7 +1930,25 @@ function InfiniteCanvasPage() {
         handleGenerateNode,
     });
 
-    const { addReferenceColumn: addBatchReferenceColumn, addRow: addBatchRow, fillRowsFromConnections, generateRows: generateBatchRows, moveReferenceCell: moveBatchReferenceCell, patchTable: patchBatchTable, removeReferenceColumn: removeBatchReferenceColumn, removeRow: removeBatchRow, reorderReferenceColumns: reorderBatchReferenceColumns, syncRowsFromConnections, updateRow: updateBatchRow } = useCanvasBatchTable({
+    const {
+        addReferenceColumn: addBatchReferenceColumn,
+        addRow: addBatchRow,
+        batchGenDialogConfig,
+        batchGenDialogConcurrency,
+        batchGenDialogOpen,
+        batchGenDialogRowCount,
+        closeBatchGenDialog,
+        confirmBatchGenDialog,
+        fillRowsFromConnections,
+        generateRows: generateBatchRows,
+        moveReferenceCell: moveBatchReferenceCell,
+        patchTable: patchBatchTable,
+        removeReferenceColumn: removeBatchReferenceColumn,
+        removeRow: removeBatchRow,
+        reorderReferenceColumns: reorderBatchReferenceColumns,
+        syncRowsFromConnections,
+        updateRow: updateBatchRow,
+    } = useCanvasBatchTable({
         nodesRef,
         connectionsRef,
         setNodes,
@@ -1986,6 +2007,58 @@ function InfiniteCanvasPage() {
             enqueueGenerationBatch,
             onStyleRequired: () => setStylePickerOpen(true),
         });
+
+    const createStoryboardFromBatchTable = useCallback(async (tableNodeId: string) => {
+        const tableNode = nodesRef.current.find((node) => node.id === tableNodeId && node.type === CanvasNodeType.BatchTable);
+        const table = tableNode?.metadata?.batchTable;
+        if (!tableNode || !table || table.contentKind !== "storyboard") return;
+        const rows = storyboardRowsFromBatchTable(table);
+        if (!rows.length) return message.warning("当前表格没有可用的分镜行");
+        const sourceIds = Array.from(new Set([
+            ...(table.storyboardSourceNodeIds || []),
+            ...connectionsRef.current.filter((connection) => connection.toNodeId === tableNodeId && connection.relation !== "batch-output").map((connection) => connection.fromNodeId),
+        ])).filter((id) => nodesRef.current.some((node) => node.id === id));
+        const sourceVideo = sourceIds.map((id) => nodesRef.current.find((node) => node.id === id)).find((node): node is CanvasNodeData => node?.type === CanvasNodeType.Video);
+        const keyframeTimesMs = rows.map(storyboardKeyframeTime).filter((value): value is number => value !== undefined);
+        const useKeyframes = Boolean(sourceVideo && keyframeTimesMs.length);
+        const scriptSpec = getNodeSpec(CanvasNodeType.Script);
+        const scriptNode = createCanvasNode(CanvasNodeType.Script, {
+            x: tableNode.position.x + tableNode.width + 160 + scriptSpec.width / 2,
+            y: tableNode.position.y + Math.max(tableNode.height, scriptSpec.height) / 2,
+        }, {
+            storyboard: { rows, visibleColumns: cinematicStoryboardColumns(), referenceNodeIds: sourceIds },
+            storyboardVideoInputMode: useKeyframes ? "keyframe" : "direct",
+            workflowKind: "storyboard",
+            workflowTitle: table.storyboardTitle || "视频脚本",
+            composerContent: table.storyboardTitle || "来自多维表格的视频分镜脚本",
+            status: "idle",
+        });
+        scriptNode.title = table.storyboardTitle || "视频脚本";
+        const nextConnections = [
+            ...connectionsRef.current,
+            ...sourceIds.map((sourceId) => ({ id: nanoid(), fromNodeId: sourceId, toNodeId: scriptNode.id, toHandleId: "storyboard:context", relation: "storyboard-asset-reference" as const })),
+        ];
+        const nextNodes = [...nodesRef.current, scriptNode];
+        nodesRef.current = nextNodes;
+        connectionsRef.current = nextConnections;
+        setNodes(nextNodes);
+        setConnections(nextConnections);
+        setSelectedNodeIds(new Set([scriptNode.id]));
+        setDialogNodeId(null);
+        if (sourceVideo && keyframeTimesMs.length) {
+            const frameNodes = await extractVideoFrames(sourceVideo, { timesMs: keyframeTimesMs });
+            if (frameNodes.length) {
+                const withFrames = nodesRef.current.map((node) => node.id === scriptNode.id ? { ...node, metadata: { ...node.metadata, storyboard: { ...node.metadata?.storyboard, rows: bindStoryboardKeyframes(node.metadata?.storyboard?.rows || rows, frameNodes, sourceVideo.id), visibleColumns: cinematicStoryboardColumns(), referenceNodeIds: sourceIds } } } : node);
+                nodesRef.current = withFrames;
+                setNodes(withFrames);
+                message.success(`已创建视频脚本并自动抽取 ${frameNodes.length} 个关键帧，点击“生成视频”继续`);
+            } else {
+                message.warning("视频脚本已创建，但关键帧抽取失败；请检查视频是否已保存或允许跨域读取");
+            }
+        } else {
+            message.success(`已创建视频脚本：${rows.length} 个镜头`);
+        }
+    }, [connectionsRef, extractVideoFrames, message, nodesRef, setConnections, setDialogNodeId, setNodes, setSelectedNodeIds]);
 
     const handleRetryNode = useCanvasGenerationRetry({
         projectId,
@@ -2137,11 +2210,26 @@ function InfiniteCanvasPage() {
                         setNodeImageSettingsOpen(open);
                         if (open) setToolbarNodeId(null);
                     }}
+                    onListGenerate={(nodeId, listPrompt) => {
+                        void handleListGenerate({
+                            sourceNodeId: nodeId,
+                            prompt: listPrompt,
+                            nodes: nodesRef.current,
+                            connections: connectionsRef.current,
+                            config: effectiveConfig,
+                            projectId,
+                            setNodes,
+                            setConnections,
+                            setRunningNodeId,
+                            setDialogNodeId,
+                        });
+                    }}
                 />
             );
         },
         [
             configInputsById,
+            effectiveConfig,
             handleConfigNodeChange,
             handleGenerateNode,
             handleNodePromptChange,
@@ -2153,6 +2241,10 @@ function InfiniteCanvasPage() {
             message,
             projectId,
             runningNodeId,
+            setConnections,
+            setDialogNodeId,
+            setNodes,
+            setRunningNodeId,
             skillMentionReferences,
             workspaceMode,
         ],
@@ -2183,6 +2275,7 @@ function InfiniteCanvasPage() {
                         onUpdateRow={(rowId, patch) => updateBatchRow(contentNode.id, rowId, patch)}
                         onFillRows={() => fillRowsFromConnections(contentNode.id)}
                         onGenerate={(rowIds) => void generateBatchRows(contentNode.id, rowIds)}
+                        onCreateStoryboard={() => createStoryboardFromBatchTable(contentNode.id)}
                         onRetryItem={(batchId, itemId) => retryFailedBatchItems(contentNode.id, batchId, itemId)}
                         onAddReferenceColumn={() => addBatchReferenceColumn(contentNode.id)}
                         onRemoveReferenceColumn={() => removeBatchReferenceColumn(contentNode.id)}
@@ -2271,6 +2364,7 @@ function InfiniteCanvasPage() {
             connections,
             createAndGenerateScriptVideos,
             createScriptActionBoards,
+            createStoryboardFromBatchTable,
             createScriptImageNodes,
             createScriptVideoNodes,
             currentProject?.directorScenes,
@@ -3233,6 +3327,15 @@ function InfiniteCanvasPage() {
                             clearConfirmOpen={clearConfirmOpen}
                             onCancelClear={() => setClearConfirmOpen(false)}
                             onConfirmClear={clearCanvas}
+                        />
+
+                        <BatchGenerationSettingsDialog
+                            open={batchGenDialogOpen}
+                            config={batchGenDialogConfig}
+                            rowCount={batchGenDialogRowCount}
+                            concurrency={batchGenDialogConcurrency}
+                            onClose={closeBatchGenDialog}
+                            onConfirm={confirmBatchGenDialog}
                         />
 
                         <AssetPickerModal open={assetPickerOpen} multiple={assetInsertScope === "canvas"} onInsert={handleLibraryAssetsInsert} onClose={closeAssetPicker} />

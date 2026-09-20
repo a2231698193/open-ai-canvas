@@ -268,9 +268,9 @@ export function useCanvasMediaTools({
         setFrameDialogNodeId(null);
     }, []);
 
-    const extractVideoFrames = useCallback(async (node: CanvasNodeData, params: CanvasVideoFrameParams) => {
+    const extractVideoFrames = useCallback(async (node: CanvasNodeData, params: CanvasVideoFrameParams): Promise<CanvasNodeData[]> => {
         const content = node.metadata?.content;
-        if (!content || extractingVideoFramesNodeIdRef.current || !params.timesMs.length) return;
+        if (!content || extractingVideoFramesNodeIdRef.current || !params.timesMs.length) return [];
         const progress = startUploadStatus("提取视频画面", "读取视频资源", params.timesMs.length + 2);
         extractingVideoFramesNodeIdRef.current = node.id;
         setExtractingVideoFramesNodeId(node.id);
@@ -307,10 +307,12 @@ export function useCanvasMediaTools({
             const failedCount = captured.failures.length + uploadFailures.length;
             progress.done(failedCount ? `已提取 ${frameNodes.length} 帧，${failedCount} 帧失败` : `已提取 ${frameNodes.length} 帧并创建图片节点`);
             if (failedCount) message.warning(`${failedCount} 个时间点提取失败，其余画面已创建`);
+            return frameNodes;
         } catch (error) {
             const details = error instanceof Error ? error.message : "视频画面提取失败";
             progress.fail(details);
             message.error(details);
+            return [];
         } finally {
             extractingVideoFramesNodeIdRef.current = null;
             setExtractingVideoFramesNodeId(null);

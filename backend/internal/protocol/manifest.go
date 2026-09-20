@@ -1088,13 +1088,14 @@ func manifestRequestValues(request GenerationRequest) map[string]any {
 	output.GenerateAudio = output.GenerateAudio || request.GenerateAudio
 	output.Watermark = output.Watermark || request.Watermark
 	outputValue, _ := requestAsManifestValue(output)
-
 	// GenerationRequest.ProviderOptions 是 map[string]map[string]any，而 manifestPathValue
 	// 只遍历 map[string]any；先做 JSON 归一化，插件的
 	// request.providerOptions.<命名空间>.<键> 才能解析到值。
 	providerOptions, err := requestAsManifestValue(request.ProviderOptions)
 	if err != nil {
 		providerOptions = request.ProviderOptions
+	} else if providerOptions == nil {
+		providerOptions = map[string]any{}
 	}
 
 	return map[string]any{
