@@ -5,13 +5,14 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { CheckboxGroup } from "@/components/ui/base/checkbox";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ChevronDown, ChevronUp, Clapperboard, Copy, Expand, Film, Grid3X3, Image as ImageIcon, ListTree, Merge, MoreHorizontal, Plus, RefreshCw, Send, Square, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronUp, Clapperboard, Copy, Expand, Film, Grid3X3, Image as ImageIcon, ListTree, Merge, MoreHorizontal, Palette, Plus, RefreshCw, Send, Square, Trash2, Video } from "lucide-react";
 
 import { CanvasResourceMentionTextarea } from "@/components/canvas/canvas-resource-mention-textarea";
 import { StoryboardAssetsCell } from "@/components/canvas/storyboard-assets-cell";
 import { ModelPicker } from "@/components/model-picker";
 import { buildGenerationConfig } from "@/lib/canvas/canvas-project-generation";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { isStoryboardStyleReady } from "@/lib/canvas/canvas-storyboard-context";
 import { pipelineStatusLabel, type CanvasStoryboardPipelineProgress, type StoryboardPipelineStage } from "@/lib/canvas/canvas-storyboard-progress";
 import { generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
 import { generationTaskShowsProgress, generationTaskStageLabel } from "@/lib/generation-task-display";
@@ -100,6 +101,7 @@ export function CanvasScriptNodeContent({
     onModelChange,
     onShotDurationChange,
     onShotCountChange,
+    onRequestStyleSetup,
     onComposerHeightChange,
     onConnectStart,
     onScrollTopChange,
@@ -130,6 +132,7 @@ export function CanvasScriptNodeContent({
     onModelChange: (model: string) => void;
     onShotDurationChange: (duration: StoryboardShotDuration) => void;
     onShotCountChange: (count: StoryboardShotCount) => void;
+    onRequestStyleSetup: () => void;
     onComposerHeightChange: (height: number) => void;
     onConnectStart: (event: ReactPointerEvent, rowId: string, handleType: "source" | "target") => void;
     onScrollTopChange: (scrollTop: number) => void;
@@ -138,6 +141,7 @@ export function CanvasScriptNodeContent({
     const theme = canvasThemes[useActiveTheme()];
     const effectiveConfig = useEffectiveConfig();
     const generationConfig = buildGenerationConfig(effectiveConfig, node, "text");
+    const styleReady = isStoryboardStyleReady(nodes);
     const simpleMode = workspaceMode === "simple";
     const rows = node.metadata?.storyboard?.rows || [];
     const [prompt, setPrompt] = useState(node.metadata?.composerContent || "");
@@ -220,7 +224,12 @@ export function CanvasScriptNodeContent({
     ];
     const submitPrompt = () => {
         const value = prompt.trim();
-        if (value && node.metadata?.status !== "loading") onGenerateScript(value);
+        if (!value || node.metadata?.status === "loading") return;
+        if (!styleReady) {
+            onRequestStyleSetup();
+            return;
+        }
+        onGenerateScript(value);
     };
     useLayoutEffect(() => {
         composerHeightChangeRef.current = onComposerHeightChange;
@@ -351,22 +360,23 @@ export function CanvasScriptNodeContent({
                         </div>
                     ))
                 ) : (
-                    <button
-                        type="button"
-                        className="grid h-full min-h-36 w-full place-items-center"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onAddRow();
-                        }}
-                    >
-                        <span className="flex flex-col items-center gap-2.5">
-                            <span className="text-sm font-bold">＋ 添加第一个镜头</span>
-                            <span className="text-[var(--fs-label)] font-medium" style={{ color: theme.node.faint }}>
-                                可先连接「故事梗概 / 项目画风」节点，或在下方输入提示词一键生成分镜表
-                            </span>
-                        </span>
-                    </button>
+                    <div className="grid h-full min-h-36 w-full place-items-center" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex flex-col items-center gap-2.5 text-center">
+                            <button type="button" className="text-sm font-bold outline-none hover:underline focus-visible:ring-2" style={{ "--tw-ring-color": theme.node.muted } as CSSProperties} onClick={onAddRow}>
+                                ＋ 添加第一个镜头
+                            </button>
+                            {styleReady ? (
+                                <span className="text-[var(--fs-label)] font-medium" style={{ color: theme.node.faint }}>
+                                    可连接「故事梗概」节点，或在下方输入提示词一键生成分镜表
+                                </span>
+                            ) : (
+                                <button type="button" className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[var(--fs-label)] font-semibold text-amber-700 outline-none transition hover:bg-amber-500/10 focus-visible:ring-2 dark:text-amber-300" style={{ "--tw-ring-color": theme.node.muted } as CSSProperties} onClick={onRequestStyleSetup}>
+                                    <Palette className="size-3.5" />
+                                    先设置项目画风，再生成分镜
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
             <div className="flex h-9 shrink-0 items-center justify-center border-b" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
@@ -425,6 +435,11 @@ export function CanvasScriptNodeContent({
                             />
                         </div>
                     </Tooltip>
+                    {!styleReady ? (
+                        <Button size="small" icon={<Palette className="size-3.5" />} onClick={onRequestStyleSetup}>
+                            设置项目画风
+                        </Button>
+                    ) : null}
                     {simpleMode ? (
                         <span className="text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
                             自动拆分 · 时长自动
@@ -460,8 +475,9 @@ export function CanvasScriptNodeContent({
                     <Button
                         shape="circle"
                         icon={<Send className="size-4" />}
-                        disabled={!prompt.trim() || node.metadata?.status === "loading"}
+                        disabled={!prompt.trim() || !styleReady || node.metadata?.status === "loading"}
                         loading={node.metadata?.status === "loading"}
+                        aria-label={styleReady ? "生成分镜" : "请先设置项目画风"}
                         style={{ background: theme.toolbar.itemHover, borderColor: theme.node.stroke, color: theme.node.text }}
                         onMouseDown={(event) => event.stopPropagation()}
                         onClick={submitPrompt}

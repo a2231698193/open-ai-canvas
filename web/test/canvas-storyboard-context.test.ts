@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { resolveStoryboardGenerationContext } from "@/lib/canvas/canvas-storyboard-context";
+import { isStoryboardStyleReady, resolveStoryboardGenerationContext, StoryboardContextError } from "@/lib/canvas/canvas-storyboard-context";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 const node = (id: string, type: CanvasNodeType, metadata: CanvasNodeData["metadata"] = {}): CanvasNodeData => ({
@@ -20,6 +20,22 @@ const styleNode = node("style", CanvasNodeType.Text, {
 });
 
 describe("storyboard generation context", () => {
+    it("exposes a typed recovery reason when project style is missing", () => {
+        expect(isStoryboardStyleReady([])).toBe(false);
+        try {
+            resolveStoryboardGenerationContext([]);
+            throw new Error("expected style validation to fail");
+        } catch (error) {
+            expect(error).toBeInstanceOf(StoryboardContextError);
+            expect((error as StoryboardContextError).reason).toBe("style_required");
+        }
+    });
+
+    it("requires both a preset and a prompt before enabling storyboard generation", () => {
+        expect(isStoryboardStyleReady([styleNode])).toBe(true);
+        expect(isStoryboardStyleReady([node("incomplete-style", CanvasNodeType.Text, { workflowKind: "styleboard", content: "只有描述" })])).toBe(false);
+    });
+
     it("ignores standalone character-design workflows without a linked asset", () => {
         const context = resolveStoryboardGenerationContext([
             styleNode,

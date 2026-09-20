@@ -1985,6 +1985,7 @@ function InfiniteCanvasPage() {
             setConnections,
             setSelectedNodeIds,
             enqueueGenerationBatch,
+            onStyleRequired: () => setStylePickerOpen(true),
         });
 
     const handleRetryNode = useCanvasGenerationRetry({
@@ -2224,6 +2225,7 @@ function InfiniteCanvasPage() {
                         onModelChange={(model) => handleConfigNodeChange(contentNode.id, { model })}
                         onShotDurationChange={(duration: StoryboardShotDuration) => handleConfigNodeChange(contentNode.id, { storyboardShotDuration: duration })}
                         onShotCountChange={(count: StoryboardShotCount) => handleConfigNodeChange(contentNode.id, { storyboardShotCount: count })}
+                        onRequestStyleSetup={() => setStylePickerOpen(true)}
                         workspaceMode={workspaceMode}
                         onComposerHeightChange={(height) => {
                             if (contentNode.metadata?.storyboardComposerHeight === height) return;
@@ -2442,7 +2444,7 @@ function InfiniteCanvasPage() {
             </a>
             <main id="canvas-main" tabIndex={-1} className="flex h-full min-h-0 overflow-hidden outline-none" style={{ background: resolvedCanvasAppearance.background, color: theme.node.text }}>
                 {!focusMode && !versions.preview && shortDramaEnabled && currentProject?.projectId ? (
-                    <CanvasProjectSidebar projectId={currentProject.projectId} detail={linkedProjectQuery.data} onAddChapter={handleProjectChapterInsert} onLocateStyle={locateProjectStyleNode} onOpenAssets={() => openProjectAssets()} />
+                    <CanvasProjectSidebar projectId={currentProject.projectId} detail={linkedProjectQuery.data} onAddChapter={handleProjectChapterInsert} onLocateStyle={locateProjectStyleNode} onChooseStyle={() => setStylePickerOpen(true)} onOpenAssets={() => openProjectAssets()} />
                 ) : null}
                 <CanvasOverlayLayerProvider>
                     <div className="canvas-editor-shell relative flex min-w-0 flex-1">

@@ -10,8 +10,8 @@ function nodeCommand(type: CanvasNodeType, rest: Omit<AddNodeMenuCommand, "id" |
 }
 
 export const addNodeMenuCommands: AddNodeMenuCommand[] = [
-    // 项目级动作不占用节点网格，创作节点保持统一排列。
-    { id: "style", label: "项目画风", icon: <Palette />, section: "project", defaultOrder: 10, applicable: (ctx) => !ctx.isProjectLinked, run: (ctx) => ctx.handlers.onChooseStyle() },
+    // 项目画风是分镜生成的前置条件，在所有画布中保持可发现；关联项目会由画风工作流写回项目设置。
+    { id: "style", label: "设置项目画风", description: "统一分镜、图片和视频的视觉风格", icon: <Palette />, section: "project", defaultOrder: 10, run: (ctx) => ctx.handlers.onChooseStyle() },
     // 创作节点
     nodeCommand(CanvasNodeType.Text, { defaultOrder: 10, run: (ctx) => ctx.handlers.onAddText() }),
     nodeCommand(CanvasNodeType.Drawing, { defaultOrder: 20, run: (ctx) => ctx.handlers.onAddDrawing() }),

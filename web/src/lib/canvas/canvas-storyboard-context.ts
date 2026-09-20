@@ -15,19 +15,35 @@ export type StoryboardGenerationContext = {
     }>;
 };
 
+export class StoryboardContextError extends Error {
+    constructor(
+        readonly reason: "style_required" | "character_version_required",
+        message: string,
+    ) {
+        super(message);
+        this.name = "StoryboardContextError";
+    }
+}
+
+export function isStoryboardStyleReady(nodes: CanvasNodeData[]) {
+    const styleNode = nodes.find((node) => node.metadata?.workflowKind === "styleboard");
+    const stylePrompt = String(styleNode?.metadata?.content || styleNode?.metadata?.prompt || "").trim();
+    return Boolean(styleNode && stylePrompt && styleNode.metadata?.stylePresetId?.trim());
+}
+
 // 分镜的两条入口共用同一强校验，避免画风或角色版本在某条旁路里被遗漏。
 export function resolveStoryboardGenerationContext(nodes: CanvasNodeData[]): StoryboardGenerationContext {
     const styleNode = nodes.find((node) => node.metadata?.workflowKind === "styleboard");
     const stylePrompt = String(styleNode?.metadata?.content || styleNode?.metadata?.prompt || "").trim();
     const stylePresetId = String(styleNode?.metadata?.stylePresetId || "").trim();
-    if (!styleNode || !stylePrompt || !stylePresetId) throw new Error("请先设置项目画风，再生成分镜");
+    if (!styleNode || !stylePrompt || !stylePresetId) throw new StoryboardContextError("style_required", "请先设置项目画风，再生成分镜");
 
     // `workflowKind=character` is also used by standalone character-design
     // image workflows. Only nodes linked to a project character asset are
     // storyboard character cards and therefore participate in this check.
     const characterNodes = nodes.filter((node) => node.metadata?.workflowKind === "character" && node.metadata?.characterAssetId?.trim());
     const invalidCharacter = characterNodes.find((node) => !node.metadata?.characterAssetId?.trim() || !node.metadata?.characterVersionId?.trim() || !(node.metadata?.characterName || node.title).trim());
-    if (invalidCharacter) throw new Error(`角色卡“${invalidCharacter.metadata?.characterName || invalidCharacter.title || "未命名角色"}”版本未同步，请刷新角色资产后再生成分镜`);
+    if (invalidCharacter) throw new StoryboardContextError("character_version_required", `角色卡“${invalidCharacter.metadata?.characterName || invalidCharacter.title || "未命名角色"}”版本未同步，请刷新角色资产后再生成分镜`);
 
     return {
         projectStyle: {
@@ -52,7 +68,7 @@ export function inspectStoryboardReadiness(nodes: CanvasNodeData[]) {
     try { generationContext = resolveStoryboardGenerationContext(nodes); }
     catch (error) { blockingReason = error instanceof Error ? error.message : "分镜上下文未就绪"; }
     const styleNode = nodes.find((node) => node.metadata?.workflowKind === "styleboard");
-    const styleReady = Boolean(styleNode?.metadata?.stylePresetId?.trim() && String(styleNode.metadata.content || styleNode.metadata.prompt || "").trim());
+    const styleReady = isStoryboardStyleReady(nodes);
     const storyboards = nodes.filter((node) => node.type === "script").map((node) => {
         const rows = node.metadata?.storyboard?.rows || [];
         const incompleteRowIds = rows.filter((row) => !Number.isFinite(row.durationSeconds) || row.durationSeconds <= 0 || !row.videoMotionPrompt?.trim()).map((row) => row.id);

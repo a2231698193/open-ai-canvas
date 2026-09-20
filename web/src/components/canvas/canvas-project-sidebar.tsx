@@ -17,10 +17,11 @@ type CanvasProjectSidebarProps = {
     detail?: ProjectDetail;
     onAddChapter: (chapter: CanvasProjectChapterPayload) => void | Promise<void>;
     onLocateStyle: () => void;
+    onChooseStyle: () => void;
     onOpenAssets: () => void;
 };
 
-export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onOpenAssets }: CanvasProjectSidebarProps) {
+export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocateStyle, onChooseStyle, onOpenAssets }: CanvasProjectSidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState("");
@@ -137,10 +138,9 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
                 </div>
                 <button
                     type="button"
-                    disabled={!style}
-                    onClick={onLocateStyle}
-                    className="canvas-project-sidebar-style-button group flex h-11 w-full items-center gap-2 rounded-md px-1.5 text-left hover:bg-surface-hover disabled:cursor-default disabled:hover:bg-transparent"
-                    title={style ? "定位画布中的项目画风节点" : "项目尚未设置画风"}
+                    onClick={style ? onLocateStyle : onChooseStyle}
+                    className="canvas-project-sidebar-style-button group flex h-11 w-full items-center gap-2 rounded-md px-1.5 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-[var(--workspace-accent)]"
+                    title={style ? "定位画布中的项目画风节点" : "设置项目画风"}
                 >
                     {style ? (
                         <img src={style.imageUrl} alt="" width={48} height={32} className="h-8 w-12 shrink-0 rounded object-cover" />
@@ -153,7 +153,7 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
                         <span className="block truncate text-xs font-medium">{style?.title || "尚未设置画风"}</span>
                         <span className="mt-0.5 block truncate text-[var(--fs-micro)] text-foreground/38">{style ? "随项目设置自动同步" : "前往项目设置选择"}</span>
                     </span>
-                    {style ? <LocateFixed className="size-3.5 shrink-0 text-foreground/25 group-hover:text-[var(--workspace-accent)]" /> : null}
+                    {style ? <LocateFixed className="size-3.5 shrink-0 text-foreground/25 group-hover:text-[var(--workspace-accent)]" /> : <Settings2 className="size-3.5 shrink-0 text-foreground/25 group-hover:text-[var(--workspace-accent)]" />}
                 </button>
             </section>
 

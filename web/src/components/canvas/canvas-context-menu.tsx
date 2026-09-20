@@ -314,6 +314,7 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
     const commands: CanvasCreateCommand[] = resolveAddNodeMenuCommands(createContext).map((command) => ({
         id: command.id,
         label: command.label,
+        description: command.description,
         icon: command.icon,
         badge: command.badge,
         section: command.section,

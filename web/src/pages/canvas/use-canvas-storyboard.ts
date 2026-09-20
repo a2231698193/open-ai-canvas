@@ -20,7 +20,7 @@ import {
 } from "@/lib/canvas/canvas-project-domain";
 import { buildNodeMentionReferences } from "@/lib/canvas/canvas-resource-references";
 import { buildStoryboardAssetCatalog } from "@/lib/canvas/canvas-storyboard-assets";
-import { resolveStoryboardGenerationContext } from "@/lib/canvas/canvas-storyboard-context";
+import { resolveStoryboardGenerationContext, StoryboardContextError } from "@/lib/canvas/canvas-storyboard-context";
 import { storyboardPlanTaskMetadata } from "@/lib/canvas/storyboard-task-contract";
 import { reconcileStoryboardTargetConnections, storyboardComposerContent, storyboardRowReferenceNodeIds } from "@/lib/canvas/canvas-storyboard-materializer";
 import { generationErrorMessage } from "@/lib/generation-error";
@@ -48,6 +48,7 @@ type UseCanvasStoryboardOptions = {
     setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
     setSelectedNodeIds: Dispatch<SetStateAction<Set<string>>>;
     enqueueGenerationBatch: (sourceNodeId: string, mode: CanvasGenerationBatchMode, targets: Array<{ rowId: string; nodeId: string }>) => string | undefined;
+    onStyleRequired: () => void;
 };
 
 const NODE_STATUS_IDLE = "idle" as const;
@@ -64,6 +65,7 @@ export function useCanvasStoryboard({
     setConnections,
     setSelectedNodeIds,
     enqueueGenerationBatch,
+    onStyleRequired,
 }: UseCanvasStoryboardOptions) {
     const { message, modal } = App.useApp();
     const effectiveConfig = useEffectiveConfig();
@@ -146,6 +148,7 @@ export function useCanvasStoryboard({
         try {
             storyboardContext = resolveStoryboardGenerationContext(nodesRef.current);
         } catch (error) {
+            if (error instanceof StoryboardContextError && error.reason === "style_required") onStyleRequired();
             message.warning(error instanceof Error ? error.message : "分镜上下文不完整");
             return;
         }
@@ -268,7 +271,7 @@ export function useCanvasStoryboard({
             }));
             storyboardRequests.current.delete(nodeId);
         }
-    }, [addedSkills, confirmGenerationSubmission, connectionsRef, effectiveConfig, isAiConfigReady, message, modal, nodesRef, projectId, replaceScriptRows, setNodes]);
+    }, [addedSkills, confirmGenerationSubmission, connectionsRef, effectiveConfig, isAiConfigReady, message, modal, nodesRef, onStyleRequired, projectId, replaceScriptRows, setNodes]);
 
     const ensureScriptImageNodes = useCallback((nodeId: string, rowIds: string[]) => {
         const scriptNode = nodesRef.current.find((node) => node.id === nodeId && node.type === CanvasNodeType.Script);

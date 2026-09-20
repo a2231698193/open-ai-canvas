@@ -9,6 +9,7 @@ import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 export type CanvasCreateCommand = {
     id: string;
     label: string;
+    description?: string;
     icon: ReactNode;
     badge?: string;
     section: "node" | "workflow" | "project" | "resource";
@@ -24,25 +25,18 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
 
     return (
         <div>
-            <header className="flex min-h-7 items-center justify-between gap-2 border-b pb-2" style={{ borderColor: theme.toolbar.border }}>
+            <header className="flex min-h-7 items-center border-b pb-2" style={{ borderColor: theme.toolbar.border }}>
                 <h2 className="font-semibold leading-none" style={{ fontSize: "var(--fs-caption)" }}>添加节点</h2>
-                {projectCommands.map((command) => (
-                    <button
-                        key={command.id}
-                        type="button"
-                        className="inline-flex h-6 min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] px-1.5 font-medium outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 dark:hover:bg-white/8 [&_svg]:size-3"
-                        style={{ color: theme.node.muted, fontSize: "var(--fs-tiny)", "--tw-ring-color": theme.node.muted } as CSSProperties}
-                        title={command.label}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={command.onClick}
-                    >
-                        {command.icon}
-                        <span className="whitespace-nowrap">{command.label}</span>
-                    </button>
-                ))}
             </header>
 
-            <MenuSection title="创作节点" color={theme.node.muted} />
+            {projectCommands.length ? (
+                <>
+                    <MenuSection title="项目设定" color={theme.node.muted} />
+                    <CanvasCreateCommandGrid commands={projectCommands} variant="project" />
+                </>
+            ) : null}
+
+            <MenuSection title="创作节点" color={theme.node.muted} spaced={projectCommands.length > 0} />
             <CanvasCreateCommandGrid commands={nodeCommands} variant="node" />
 
             {workflowCommands.length ? (
@@ -58,12 +52,12 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
     );
 }
 
-function CanvasCreateCommandGrid({ commands, variant }: { commands: CanvasCreateCommand[]; variant: "node" | "compact" | "workflow" }) {
+function CanvasCreateCommandGrid({ commands, variant }: { commands: CanvasCreateCommand[]; variant: "node" | "compact" | "workflow" | "project" }) {
     const theme = canvasThemes[useActiveTheme()];
     const reducedMotion = useReducedMotion();
 
     return (
-        <div className={cn("grid gap-1", variant === "node" ? "grid-cols-4" : variant === "workflow" ? "grid-cols-1" : "grid-cols-2")}>
+        <div className={cn("grid gap-1", variant === "node" ? "grid-cols-4" : variant === "workflow" || variant === "project" ? "grid-cols-1" : "grid-cols-2")}>
             {commands.map((command) => (
                 <motion.button
                     key={command.id}
@@ -75,7 +69,7 @@ function CanvasCreateCommandGrid({ commands, variant }: { commands: CanvasCreate
                         "group min-w-0 overflow-hidden border border-black/10 bg-white/70 outline-none transition-colors hover:border-black/20 hover:bg-black/5 focus-visible:ring-2 dark:border-white/10 dark:bg-white/[.04] dark:hover:border-white/20 dark:hover:bg-white/8",
                         variant === "node"
                             ? "flex h-[var(--canvas-create-node-height)] flex-col items-start justify-between rounded-[var(--dock-item-radius)] px-2 py-2 text-left"
-                            : variant === "workflow"
+                            : variant === "workflow" || variant === "project"
                                 ? "flex h-[var(--canvas-create-resource-height)] items-center justify-start gap-2 rounded-[var(--dock-item-radius)] px-2 text-left"
                                 : "flex h-[var(--canvas-create-resource-height)] items-center justify-center gap-1.5 rounded-[var(--dock-item-radius)] px-2 text-center",
                     )}
@@ -91,6 +85,14 @@ function CanvasCreateCommandGrid({ commands, variant }: { commands: CanvasCreate
                                 {command.badge ? <span className="shrink-0 font-medium leading-none" style={{ color: theme.node.muted, fontSize: "var(--fs-tiny)" }}>{command.badge}</span> : null}
                             </span>
                             <span className="block w-full overflow-hidden text-ellipsis whitespace-nowrap font-medium leading-none" style={{ fontSize: "var(--fs-label)" }}>{command.label}</span>
+                        </>
+                    ) : variant === "project" ? (
+                        <>
+                            <span className="grid size-7 shrink-0 place-items-center rounded-[var(--dock-item-radius)] border opacity-75 transition-opacity group-hover:opacity-100 [&_svg]:size-4" style={{ background: theme.spatial.surface, borderColor: theme.toolbar.border }}>{command.icon}</span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate font-semibold leading-none" style={{ fontSize: "var(--fs-label)" }}>{command.label}</span>
+                                {command.description ? <span className="mt-1 block truncate leading-none" style={{ color: theme.node.muted, fontSize: "var(--fs-micro)" }}>{command.description}</span> : null}
+                            </span>
                         </>
                     ) : (
                         <>

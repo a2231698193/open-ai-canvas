@@ -11,6 +11,7 @@ export function useCanvasCreateCommands(context: AddNodeMenuContext, runCommand?
     return resolveAddNodeMenuCommands({ ...context, enabledPluginIds }).map((command) => ({
         id: command.id,
         label: command.label,
+        description: command.description,
         icon: command.icon,
         badge: command.badge,
         section: command.section,

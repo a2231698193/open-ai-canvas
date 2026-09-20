@@ -28,4 +28,31 @@ describe("storyboard prompt panel boundaries", () => {
         expect(project).toContain("onOpen={() => setScriptEditorNodeId(contentNode.id)}");
         expect(project).toContain("onGenerateScript={(prompt) => void generateScriptRows(contentNode.id, prompt)}");
     });
+
+    test("missing project style exposes the existing canvas style workflow", () => {
+        const project = source("project.tsx");
+        const storyboard = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-script-node.tsx"), "utf8");
+        expect(project).toContain("onStyleRequired: () => setStylePickerOpen(true)");
+        expect(project).toContain("onRequestStyleSetup={() => setStylePickerOpen(true)}");
+        expect(storyboard).toContain("设置项目画风");
+        expect(storyboard).toContain("disabled={!prompt.trim() || !styleReady");
+    });
+
+    test("project style is a prominent setup command for every canvas", () => {
+        const menu = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-create-menu.tsx"), "utf8");
+        const commands = readFileSync(resolve(import.meta.dir, "../src/lib/canvas/tool-registry/definitions/add-node-menu-tools.tsx"), "utf8");
+        expect(menu).toContain('MenuSection title="项目设定"');
+        expect(menu).toContain('variant="project"');
+        expect(commands).toContain('label: "设置项目画风"');
+        expect(commands).toContain('description: "统一分镜、图片和视频的视觉风格"');
+        expect(commands).not.toContain('id: "style", label: "项目画风", icon: <Palette />, section: "project", defaultOrder: 10, applicable:');
+    });
+
+    test("an unset linked-project style is actionable from the project sidebar", () => {
+        const sidebar = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-project-sidebar.tsx"), "utf8");
+        const project = source("project.tsx");
+        expect(sidebar).toContain("onClick={style ? onLocateStyle : onChooseStyle}");
+        expect(sidebar).toContain('title={style ? "定位画布中的项目画风节点" : "设置项目画风"}');
+        expect(project).toContain('onChooseStyle={() => setStylePickerOpen(true)}');
+    });
 });

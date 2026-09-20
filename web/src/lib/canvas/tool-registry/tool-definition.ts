@@ -199,6 +199,7 @@ export type ToolDefinition = {
 export type AddNodeMenuCommand = {
     id: string;
     label: string;
+    description?: string;
     icon: ReactNode;
     badge?: string;
     // extension：展示与加工类扩展节点。单独一区，避免挤散 node 区调好的四列网格。
