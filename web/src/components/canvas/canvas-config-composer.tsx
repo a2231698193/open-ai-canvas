@@ -8,7 +8,7 @@ import { isCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { generationInputMentionLabel, normalizeGenerationNodeMentionTokens, type NodeGenerationInput } from "./canvas-node-generation";
-import { CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
+import { CanvasVideoModePicker, CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
 import { CanvasPresetPicker, type CanvasPromptPreset } from "./canvas-preset-picker";
 import type { CanvasGenerationMode, CanvasNodeMetadata, CanvasWorkspaceMode } from "@/types/canvas";
 
@@ -54,6 +54,11 @@ export function CanvasConfigComposer({ value, inputs, skillReferences = [], gene
     const [presetOpen, setPresetOpen] = useState(false);
     const simpleMode = workspaceMode === "simple";
     const workflowVideoReferenceMode = generationMode === "video" && isCanvasWorkflowProvider(metadata);
+    const videoReferenceSummary = {
+        imageCount: inputs.filter((input) => input.type === "image" || input.type === "character").length,
+        videoCount: inputs.filter((input) => input.type === "video").length,
+        audioCount: inputs.filter((input) => input.type === "audio").length,
+    };
     const normalizedValue = useMemo(() => normalizeGenerationNodeMentionTokens(value, inputs), [inputs, value]);
     const tokens = useMemo(() => parseComposerTokens(normalizedValue, inputs), [inputs, normalizedValue]);
     const referenceById = useMemo(() => new Map(inputs.map((input) => [input.nodeId, input])), [inputs]);
@@ -184,17 +189,20 @@ export function CanvasConfigComposer({ value, inputs, skillReferences = [], gene
             </div>
             {generationMode === "video" && onMetadataChange && !simpleMode ? (
                 <div className="mb-3 rounded-lg px-2 py-2" style={{ background: theme.node.fill }}>
-                    <CanvasVideoPromptTools
-                        metadata={metadata}
-                        frameOptions={videoFrameOptions}
-                        referenceMode={workflowVideoReferenceMode ? "all" : "frames"}
-                        referenceSummary={{
-                            imageCount: inputs.filter((input) => input.type === "image" || input.type === "character").length,
-                            videoCount: inputs.filter((input) => input.type === "video").length,
-                            audioCount: inputs.filter((input) => input.type === "audio").length,
-                        }}
-                        onMetadataChange={onMetadataChange}
-                    />
+                    {workflowVideoReferenceMode ? (
+                        <CanvasVideoPromptTools
+                            metadata={metadata}
+                            frameOptions={videoFrameOptions}
+                            referenceMode="all"
+                            referenceSummary={videoReferenceSummary}
+                            onMetadataChange={onMetadataChange}
+                        />
+                    ) : (
+                        <div className="grid min-w-0 gap-1">
+                            <CanvasVideoModePicker metadata={metadata} referenceSummary={videoReferenceSummary} onMetadataChange={onMetadataChange} />
+                            <CanvasVideoPromptTools metadata={metadata} frameOptions={videoFrameOptions} referenceSummary={videoReferenceSummary} onMetadataChange={onMetadataChange} />
+                        </div>
+                    )}
                 </div>
             ) : null}
             <div className="canvas-config-composer-editor relative rounded-lg" style={{ background: theme.node.fill }}>

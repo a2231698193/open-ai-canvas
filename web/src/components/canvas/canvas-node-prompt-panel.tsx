@@ -22,7 +22,7 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
-import { CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
+import { CanvasVideoModePicker, CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
 import { CanvasPresetPicker, type CanvasPromptPreset } from "./canvas-preset-picker";
 import { CanvasPortraitTexturePopover } from "./canvas-portrait-texture-popover";
 import { CanvasPromptOptimizerDrawer } from "./canvas-prompt-optimizer-drawer";
@@ -158,7 +158,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const credits = routeQuote ? routeQuote.amountMicrocredits / 1_000_000 : configuredCredits;
     const activeReferenceCount = activeReferences.length;
     const videoFrameOptions = resolvedMentionReferences.filter((item) => item.active && item.kind === "image").map((item) => ({ nodeId: item.nodeId, label: item.label, title: item.title, previewUrl: item.previewUrl }));
-    const hasVideoPromptTools = mode === "video" && !simpleMode;
+    const hasVideoModePicker = mode === "video" && !simpleMode;
+    const hasVideoFrameTools = hasVideoModePicker && (videoMode === "image" || videoMode === "keyframes");
     const videoReferenceSummary = {
         imageCount: activeReferences.filter((item) => item.kind === "image" || item.kind === "character").length,
         videoCount: activeReferences.filter((item) => item.kind === "video").length,
@@ -398,9 +399,10 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             </div>
         ) : (
             <div className="canvas-node-composer-footer">
-                <div className={expanded ? "min-w-0 flex-1" : "canvas-node-composer-model"}>
-                    <ModelPicker
-                        className="!h-7 !w-full !min-w-0 !text-[var(--fs-tiny)] !font-normal [&_img]:!size-3 [&_.lucide]:!size-3"
+                <div className="flex min-w-0 flex-1 items-center gap-1">
+                    <div className={expanded || hasVideoModePicker ? "min-w-0 flex-1" : "canvas-node-composer-model"}>
+                        <ModelPicker
+                            className="!h-7 !w-full !min-w-0 !text-[var(--fs-tiny)] !font-normal [&_img]:!size-3 [&_.lucide]:!size-3"
                         fullWidth
                         config={config}
                         value={config.model}
@@ -410,9 +412,15 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         onMissingConfig={() => navigateToSettings({ continueCreation: true })}
                         showSelectedPrice={false}
                         showOptionPrices={creditsEnabled}
-                        variant="creation"
-                        showConfiguredModelName
-                    />
+                            variant="creation"
+                            showConfiguredModelName
+                        />
+                    </div>
+                    {hasVideoModePicker ? (
+                        <div className="w-28 min-w-0 shrink-0 border-l pl-1" style={{ borderColor: "color-mix(in srgb, currentColor 14%, transparent)" }}>
+                            <CanvasVideoModePicker metadata={node.metadata} referenceSummary={videoReferenceSummary} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                        </div>
+                    ) : null}
                 </div>
                 <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1">
                     <ReferenceToolsPopover
@@ -540,8 +548,8 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
 
             {renderPromptEditor(false)}
 
-            {/* B区 参数区（对应 #98 决策2：默认折叠，手风琴展开）*/}
-            {hasVideoPromptTools ? (
+            {/* B区 首尾帧设置（模式选择已放到底栏）*/}
+            {hasVideoFrameTools ? (
                 <div className="canvas-node-composer-parameters overflow-hidden">
                     <button
                         type="button"
@@ -549,10 +557,10 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         style={{ color: theme.node.muted }}
                         onClick={() => setParamsExpanded(!paramsExpanded)}
                         aria-expanded={paramsExpanded}
-                        aria-label={paramsExpanded ? "收起参数" : "展开参数"}
+                        aria-label={paramsExpanded ? "收起参考帧" : "展开参考帧"}
                     >
                         <SlidersHorizontal className="size-3" strokeWidth={1.8} />
-                        <span className="flex-1 text-left">参数</span>
+                        <span className="flex-1 text-left">参考帧</span>
                         <ChevronDown className={`size-3 transition-transform duration-200 ${paramsExpanded ? "rotate-180" : ""}`} strokeWidth={1.8} />
                     </button>
                     {paramsExpanded ? (
@@ -587,7 +595,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-3">
                         <div className="shrink-0 pr-8">{renderComposerHeader(true)}</div>
                         {renderPromptEditor(true, Boolean(expandedModalSize))}
-                        {hasVideoPromptTools ? (
+                        {hasVideoFrameTools ? (
                             <div className="canvas-node-composer-parameters shrink-0">
                                 <CanvasVideoPromptTools metadata={node.metadata} frameOptions={videoFrameOptions} referenceSummary={videoReferenceSummary} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                             </div>

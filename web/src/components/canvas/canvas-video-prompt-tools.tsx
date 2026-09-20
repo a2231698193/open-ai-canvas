@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Film, Image as ImageIcon } from "lucide-react";
+import { Check, ChevronDown, Images, Image as ImageIcon } from "lucide-react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { VIDEO_GENERATION_MODE_OPTIONS, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
@@ -34,15 +34,30 @@ const MENU_MARGIN = 8;
 const MENU_ITEM_HEIGHT = 28;
 const CONTROL_TEXT_STYLE: CSSProperties = { fontFamily: "inherit", fontSize: 11, fontWeight: 400, letterSpacing: 0, lineHeight: 1 };
 
+export function CanvasVideoModePicker({ metadata, referenceSummary, onMetadataChange }: Pick<CanvasVideoPromptToolsProps, "metadata" | "referenceSummary" | "onMetadataChange">) {
+    const theme = canvasThemes[useActiveTheme()];
+    const videoMode = selectedVideoMode(metadata, referenceSummary);
+    const modeItems = VIDEO_GENERATION_MODE_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+    const modeLabel = VIDEO_GENERATION_MODE_OPTIONS.find((option) => option.value === videoMode)?.label || VIDEO_GENERATION_MODE_OPTIONS[0].label;
+    return <CompactMenuButton
+        theme={theme}
+        title="视频生成模式"
+        label={modeLabel}
+        icon={<Images className="size-3.5 shrink-0 opacity-90" />}
+        value={videoMode}
+        items={modeItems}
+        menuWidth={180}
+        maxMenuHeight={160}
+        onSelect={(mode) => {
+            const nextMode = mode as VideoGenerationMode;
+            onMetadataChange({ videoMode: nextMode, videoEditOperation: videoModeOperation(nextMode) });
+        }}
+    />;
+}
+
 export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChange, referenceMode = "frames", referenceSummary }: CanvasVideoPromptToolsProps) {
     const theme = canvasThemes[useActiveTheme()];
-    const videoMode = videoGenerationModeFromMetadata(metadata, referenceSummary ? {
-        textCount: 0,
-        imageCount: referenceSummary.imageCount,
-        videoCount: referenceSummary.videoCount,
-        audioCount: referenceSummary.audioCount,
-        characterCount: 0,
-    } : undefined);
+    const videoMode = selectedVideoMode(metadata, referenceSummary);
     const startFrame = metadata?.videoStartFrameNodeId || EMPTY_FRAME_VALUE;
     const endFrame = metadata?.videoEndFrameNodeId || EMPTY_FRAME_VALUE;
 
@@ -69,13 +84,7 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
         );
     }
 
-    const modeItems = VIDEO_GENERATION_MODE_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
-    const modeLabel = VIDEO_GENERATION_MODE_OPTIONS.find((option) => option.value === videoMode)?.label || VIDEO_GENERATION_MODE_OPTIONS[0].label;
     const summary = referenceSummaryLabel(referenceSummary);
-    const setMode = (mode: string) => {
-        const nextMode = mode as VideoGenerationMode;
-        onMetadataChange({ videoMode: nextMode, videoEditOperation: videoModeOperation(nextMode) });
-    };
 
     return (
         <div
@@ -84,7 +93,6 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
-            <CompactMenuButton theme={theme} title="视频生成模式" label={modeLabel} icon={<Film className="size-3.5 shrink-0 opacity-90" />} value={videoMode} items={modeItems} menuWidth={180} maxMenuHeight={160} onSelect={setMode} />
             {videoMode === "image" ? (
                 <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
             ) : null}
@@ -101,6 +109,16 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
             ) : null}
         </div>
     );
+}
+
+function selectedVideoMode(metadata?: CanvasNodeMetadata, referenceSummary?: { imageCount: number; videoCount: number; audioCount: number }) {
+    return videoGenerationModeFromMetadata(metadata, referenceSummary ? {
+        textCount: 0,
+        imageCount: referenceSummary.imageCount,
+        videoCount: referenceSummary.videoCount,
+        audioCount: referenceSummary.audioCount,
+        characterCount: 0,
+    } : undefined);
 }
 
 function referenceSummaryLabel(referenceSummary?: { imageCount: number; videoCount: number; audioCount: number }) {
@@ -220,6 +238,8 @@ function CompactMenuButton({
                       data-canvas-no-zoom
                       className="fixed z-[var(--z-toast)] overflow-hidden rounded-[var(--r-lg)] border p-1 backdrop-blur-xl"
                       style={menuStyle}
+                      role="menu"
+                      aria-label={title}
                       onMouseDown={(event) => event.stopPropagation()}
                       onPointerDown={(event) => event.stopPropagation()}
                       onWheel={(event) => event.stopPropagation()}
@@ -231,6 +251,8 @@ function CompactMenuButton({
                                   <button
                                       key={item.value}
                                       type="button"
+                                      role="menuitemradio"
+                                      aria-checked={selected}
                                       className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg px-2 text-left transition"
                                       style={{ ...CONTROL_TEXT_STYLE, background: selected ? theme.toolbar.itemHover : "transparent", color: selected ? theme.toolbar.activeText : theme.node.text }}
                                       onMouseEnter={(event) => {
@@ -261,9 +283,12 @@ function CompactMenuButton({
             <button
                 ref={triggerRef}
                 type="button"
-                className="inline-flex h-6 w-full min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] border-0 bg-transparent px-1.5 shadow-none transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1"
+                className="inline-flex h-7 w-full min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] border-0 bg-transparent px-1.5 shadow-none transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1"
                 style={buttonStyle}
                 title={title}
+                aria-label={`${title}：${label}`}
+                aria-haspopup="menu"
+                aria-expanded={open}
                 onClick={() => setOpen((value) => !value)}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}

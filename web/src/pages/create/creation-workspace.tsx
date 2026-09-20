@@ -14,7 +14,7 @@ import { AppModal } from "@/components/ui/product/app-modal";
 import { useWorkspaceTopBarMount } from "@/components/layout/workspace-top-bar-extension";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { Reorder, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { ArrowDown, ArrowUp, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Trash2, UserRound, WandSparkles, Waves, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, Images, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Trash2, UserRound, WandSparkles, Waves, X } from "lucide-react";
 
 import { AIMessageMarkdown } from "@/components/ai/ai-message-markdown";
 import { GenerationToolCard, type GenerationToolStatus } from "@/components/ai/generation-tool-card";
@@ -740,7 +740,7 @@ function VideoModeMenu({ value, onChange }: { value: VideoGenerationMode; onChan
             ><strong>{option.label}</strong><small>{option.description}</small></button>)}
         </div>}
     >
-        <button type="button" className="creation-chat-control" aria-label={`视频生成模式：${selected.label}`} aria-expanded={open}><Film /><span>{selected.label}</span><ChevronDown className={open ? "is-open" : ""} /></button>
+        <button type="button" className="creation-chat-control" aria-label={`视频生成模式：${selected.label}`} aria-expanded={open}><Images /><span>{selected.label}</span><ChevronDown className={open ? "is-open" : ""} /></button>
     </Popover>;
 }
 
