@@ -2,15 +2,7 @@
  * Never alias --workspace-*, --user-*, or --skin-* from the product UI.
  * Light/dark follow the page theme class; product skins are ignored. */
 
-:is(
-    [data-admin-root],
-    body.admin-overlays,
-    .admin-drawer,
-    .admin-secondary-drawer,
-    .admin-modal-root,
-    .admin-channel-modal-root,
-    .admin-mobile-navigation-menu
-) {
+:is([data-admin-root], body.admin-overlays, .admin-drawer, .admin-secondary-drawer, .admin-modal-root, .admin-channel-modal-root, .admin-mobile-navigation-menu) {
     --admin-font: ui-sans-serif, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
     --admin-font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     --admin-space: 8px;
@@ -100,17 +92,12 @@
     font-family: var(--admin-font);
     font-size: 13px;
     line-height: 1.45;
-    font-feature-settings: "ss01" 0, "cv11" 0;
+    font-feature-settings:
+        "ss01" 0,
+        "cv11" 0;
 }
 
-.dark :is(
-    [data-admin-root],
-    .admin-drawer,
-    .admin-secondary-drawer,
-    .admin-modal-root,
-    .admin-channel-modal-root,
-    .admin-mobile-navigation-menu
-),
+.dark :is([data-admin-root], .admin-drawer, .admin-secondary-drawer, .admin-modal-root, .admin-channel-modal-root, .admin-mobile-navigation-menu),
 .dark body.admin-overlays {
     --admin-canvas: #0f0f0f;
     --admin-sidebar: #0f0f0f;
