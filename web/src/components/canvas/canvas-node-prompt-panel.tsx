@@ -1,7 +1,7 @@
 import { Button, Image as AntImage, InputNumber, Modal, Popover } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ArrowLeftRight, ArrowUp, AtSign, Boxes, Camera, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -24,10 +24,14 @@ import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textare
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasVideoModePicker, CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
 import { CanvasPresetPicker, type CanvasPromptPreset } from "./canvas-preset-picker";
+import { CanvasNineGridPicker } from "./canvas-nine-grid-picker";
+import { CanvasChooseImageStylePicker } from "./canvas-choose-image-style-picker";
+import { CanvasChooseEffectPicker } from "./canvas-choose-effect-picker";
+import { CanvasChooseMotionPicker } from "./canvas-choose-motion-picker";
 import { CanvasPortraitTexturePopover } from "./canvas-portrait-texture-popover";
 import { CanvasPromptOptimizerDrawer } from "./canvas-prompt-optimizer-drawer";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode } from "@/types/canvas";
-import { autoMentionCanvasResourceReferences, canvasResourceMentionToken, normalizeCanvasNodeMentionTokens, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { applyToolMention, removeToolMentions, autoMentionCanvasResourceReferences, buildToolMentionReference, canvasResourceMentionToken, normalizeCanvasNodeMentionTokens, overwriteSameTypeToolMention, parseToolMentionTokens, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins/builtin/prompt-optimizer";
 import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
@@ -81,6 +85,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const promptOptimizerEnabled = usePluginStore((state) => state.pluginStates[PROMPT_OPTIMIZER_PLUGIN_ID]?.effectiveEnabled ?? Boolean(state.installations.find((item) => item.manifest.id === PROMPT_OPTIMIZER_PLUGIN_ID)?.enabled));
     const simpleMode = workspaceMode === "simple";
     const mode = defaultMode(node.type);
+    const showPromptTemplates = !simpleMode && mode !== "image";
     node = { ...node, metadata: canonicalGenerationMetadata(node, mode) };
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
@@ -88,6 +93,14 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const [prompt, setPrompt] = useState(savedPrompt);
     const [presetOpen, setPresetOpen] = useState(false);
     const [expandedPresetOpen, setExpandedPresetOpen] = useState(false);
+    const [nineGridOpen, setNineGridOpen] = useState(false);
+    const [expandedNineGridOpen, setExpandedNineGridOpen] = useState(false);
+    const [styleToolOpen, setStyleToolOpen] = useState(false);
+    const [expandedStyleToolOpen, setExpandedStyleToolOpen] = useState(false);
+    const [effectToolOpen, setEffectToolOpen] = useState(false);
+    const [expandedEffectToolOpen, setExpandedEffectToolOpen] = useState(false);
+    const [motionToolOpen, setMotionToolOpen] = useState(false);
+    const [expandedMotionToolOpen, setExpandedMotionToolOpen] = useState(false);
     const [expandedPromptOpen, setExpandedPromptOpen] = useState(false);
     const [expandedModalSize, setExpandedModalSize] = useState<{ width: number; height: number } | null>(null);
     const expandedModalRef = useRef<HTMLDivElement>(null);
@@ -98,8 +111,22 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const [promptOptimizerOpen, setPromptOptimizerOpen] = useState(false);
     const [autoLinkEnabled, setAutoLinkEnabled] = useState(true);
     const resolvedMentionReferences = useResolvedCanvasResourceReferences(mentionReferences, { projectId });
+    const promptToolReferences = useMemo(() => parseToolMentionTokens(prompt).map(({toolId, label, type, icon}) => buildToolMentionReference(toolId, label, type, icon)), [prompt]);
+    const textareaReferences = useMemo(() => {
+        if (!promptToolReferences.length) return resolvedMentionReferences;
+        const existingIds = new Set(resolvedMentionReferences.map((r) => r.id));
+        const extras = promptToolReferences.filter((r) => !existingIds.has(r.id));
+        return extras.length ? [...resolvedMentionReferences, ...extras] : resolvedMentionReferences;
+    }, [resolvedMentionReferences, promptToolReferences]);
+    // 当前提示词持有的九宫格工具图标，用于触发按钮回显已选工具。
+    const activeNineGridIcon = useMemo(() => parseToolMentionTokens(prompt).find((tool) => tool.type === "nine_grid")?.icon ?? "Grid3x3", [prompt]);
+    const activeStyleTool = parseToolMentionTokens(prompt).find(t => t.type === "style");
+    const activeEffectTool = parseToolMentionTokens(prompt).find(t => t.type === "effect");
+    // 当前提示词持有的运镜工具标签（可多个），用于运镜按钮回显与菜单高亮。
+    const activeMotionTools = useMemo(() => parseToolMentionTokens(prompt).filter((tool) => tool.type === "motion"), [prompt]);
+    const activeMotionTool = activeMotionTools[0];
     const normalizedSavedPrompt = useMemo(() => normalizeCanvasNodeMentionTokens(savedPrompt, mentionReferences), [mentionReferences, savedPrompt]);
-    const activeReferences = resolvedMentionReferences.filter((item) => item.active && item.kind !== "skill");
+    const activeReferences = resolvedMentionReferences.filter((item) => item.active && item.kind !== "skill" && item.kind !== "tool");
     const rawInputSummary = {
         textCount: (prompt.trim() ? 1 : 0) + activeReferences.filter((item) => item.kind === "text").length,
         imageCount: activeReferences.filter((item) => item.kind === "image").length,
@@ -244,7 +271,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const updatePrompt = (value: string) => {
         setPrompt(value);
         onPromptChange(node.id, value);
-        if (/(^|\s)\/[\p{L}\p{N}_-]*$/u.test(value)) {
+        if (showPromptTemplates && /(^|\s)\/[\p{L}\p{N}_-]*$/u.test(value)) {
             if (expandedPromptOpen) setExpandedPresetOpen(true);
             else setPresetOpen(true);
         }
@@ -258,14 +285,18 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const insertPromptReference = (reference: CanvasResourceReference) => {
         const insertText = `${canvasResourceMentionToken(reference)} `;
         const pendingMentionMatch = /@[^\s@，。！？、,.!?;:]*\s*$/.exec(prompt);
-        if (pendingMentionMatch) {
-            const prefix = prompt.slice(0, pendingMentionMatch.index).replace(/\s*$/, "");
-            updatePrompt(prefix ? `${prefix} ${insertText}` : insertText);
+        const basePrompt = pendingMentionMatch ? prompt.slice(0, pendingMentionMatch.index) : prompt;
+        // 同类型工具标签（style/nine_grid/effect）唯一：已有旧标签时原位覆盖，不再追加。
+        const overwrittenPrompt = overwriteSameTypeToolMention(basePrompt, reference);
+        if (overwrittenPrompt != null) {
+            updatePrompt(overwrittenPrompt.replace(/\s+$/, ""));
             return;
         }
-        const basePrompt = prompt.replace(/\s*$/, "");
-        updatePrompt(basePrompt ? `${basePrompt} ${insertText}` : insertText);
+        const trimmedBase = basePrompt.replace(/\s*$/, "");
+        updatePrompt(trimmedBase ? `${trimmedBase} ${insertText}` : insertText);
     };
+
+    const removeMotionToolMention = () => updatePrompt(removeToolMentions(prompt, "motion"));
 
     const submit = () => {
         const text = prompt.trim();
@@ -277,6 +308,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const submitExpandedPrompt = () => {
         if (submit()) {
             setExpandedPresetOpen(false);
+            setExpandedNineGridOpen(false);
             setExpandedPromptOpen(false);
         }
     };
@@ -305,8 +337,17 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     {activeReferenceCount > 0 ? <span className="canvas-node-composer-reference-heading">{referenceShelfHeading(activeReferences)}</span> : null}
                 </div>
             )}
-            <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
-            {!simpleMode ? <CanvasPresetPicker mode={mode} skillReferences={skillReferences} open={expanded ? expandedPresetOpen : presetOpen} onOpenChange={expanded ? setExpandedPresetOpen : setPresetOpen} onSelect={applyPreset} dense appearance="quiet" /> : null}
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+            {!simpleMode && (mode === "image" || mode === "video") ? <div className="canvas-node-tool-controls canvas-node-tool-controls-inline flex items-center gap-1" data-canvas-no-zoom data-canvas-wheel-scroll onPointerDown={e => e.stopPropagation()}>
+                {mode === "image" ? <>
+                    <CanvasChooseImageStylePicker open={expanded ? expandedStyleToolOpen : styleToolOpen} onOpenChange={expanded ? setExpandedStyleToolOpen : setStyleToolOpen} activeToolId={activeStyleTool?.toolId} activeLabel={activeStyleTool?.label} onSelect={(id,label) => updatePrompt(applyToolMention(prompt,{id,label,type:"style"},"Palette"))} onClear={() => updatePrompt(removeToolMentions(prompt,"style"))} />
+                    <CanvasNineGridPicker open={expanded ? expandedNineGridOpen : nineGridOpen} onOpenChange={expanded ? setExpandedNineGridOpen : setNineGridOpen} icon={activeNineGridIcon} onSelect={(id,label,icon) => updatePrompt(applyToolMention(prompt,{id,label,type:"nine_grid"},icon))} />
+                </> : <>
+                    <CanvasChooseEffectPicker open={expanded ? expandedEffectToolOpen : effectToolOpen} onOpenChange={expanded ? setExpandedEffectToolOpen : setEffectToolOpen} activeToolId={activeEffectTool?.toolId} activeLabel={activeEffectTool?.label} onSelect={(id,label) => updatePrompt(applyToolMention(prompt,{id,label,type:"effect"},"Sparkles"))} onClear={() => updatePrompt(removeToolMentions(prompt,"effect"))} />
+                    <CanvasChooseMotionPicker open={expanded ? expandedMotionToolOpen : motionToolOpen} onOpenChange={expanded ? setExpandedMotionToolOpen : setMotionToolOpen} activeToolIds={activeMotionTools.map(t => t.toolId)} activeLabel={activeMotionTool?.label} onSelect={(id,label) => updatePrompt(applyToolMention(prompt,{id,label,type:"motion"},"Camera"))} onClear={removeMotionToolMention} />
+                </>}
+            </div> : null}
+            {showPromptTemplates ? <CanvasPresetPicker mode={mode} skillReferences={skillReferences} open={expanded ? expandedPresetOpen : presetOpen} onOpenChange={expanded ? setExpandedPresetOpen : setPresetOpen} onSelect={applyPreset} dense appearance="quiet" /> : null}
             {canOptimizePrompt ? (
                 <Tooltip title="用 AI 润色提示词">
                     <button
@@ -497,7 +538,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     />
                     <CanvasResourceMentionTextarea
                         value={prompt}
-                        references={resolvedMentionReferences}
+                        references={textareaReferences}
                         onSelectReference={onAddReference ? (reference) => onAddReference(node.id, reference) : undefined}
                         includeAssetLibrary
                         onChange={updatePrompt}
@@ -584,6 +625,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                 destroyOnHidden
                 onCancel={() => {
                     setExpandedPresetOpen(false);
+                    setExpandedNineGridOpen(false);
                     setExpandedPromptOpen(false);
                 }}
                 styles={{
@@ -703,7 +745,7 @@ function ConnectedReferenceShelf({
     onReplaceReference?: (oldReference: CanvasResourceReference, sourceNodeId: string) => void;
     onReplaceReferenceFiles?: (oldReference: CanvasResourceReference, files: File[]) => void;
 }) {
-    const activeReferences = references.filter((item) => item.active && item.kind !== "skill");
+    const activeReferences = references.filter((item) => item.active && item.kind !== "skill" && item.kind !== "tool");
     const [imagePreview, setImagePreview] = useState<CanvasResourceReference | null>(null);
     const [draggedReferenceId, setDraggedReferenceId] = useState<string | null>(null);
     const [dropTargetReferenceId, setDropTargetReferenceId] = useState<string | null>(null);

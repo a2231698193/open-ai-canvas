@@ -1,3 +1,4 @@
+import { CanvasWorkspacePanel } from "@/components/canvas/canvas-workspace-panel";
 import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from "react";
@@ -35,7 +36,6 @@ import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasCloudAgentPanel } from "@/components/canvas/canvas-cloud-agent-panel";
 import { CanvasActiveTaskPanel } from "@/components/canvas/canvas-active-task-panel";
-import { CanvasAssetTray } from "@/components/canvas/canvas-asset-tray";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
 import { CanvasCharacterReferenceNodeContent } from "@/components/canvas/canvas-character-reference-node";
@@ -372,6 +372,7 @@ function InfiniteCanvasPage() {
     const activeChatIdRef = useRef(activeChatId);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
+    const [workspaceOpen, setWorkspaceOpen] = useState(false);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: CanvasNodeGenerationOptions) => Promise<void>) | null>(null);
 
     useEffect(() => {
@@ -732,7 +733,6 @@ function InfiniteCanvasPage() {
         closeUploadModal,
         closeAssetPicker,
         createVideoNodeFromBlob,
-        createImageAssetNode,
         fileDropActive,
         handleAssetsInsert,
         handleDrop,
@@ -849,6 +849,7 @@ function InfiniteCanvasPage() {
         extractVideoFrames,
         extractingVideoFramesNodeId,
         frameDialogNodeId,
+        generateNineGridNode,
         generateAngleNode,
         generateLightingNode,
         openPanoramaConfig,
@@ -1386,14 +1387,12 @@ function InfiniteCanvasPage() {
         annotationNode,
         batchChildCountById,
         batchMotionById,
-        canvasImageNodes,
         configInputsById,
         connectionLayerBounds,
         contextMenuNode,
         cropNode,
         displayConnections,
         frameChildrenById,
-        imageAssets,
         infoNode,
         maskEditNode,
         imageEditNode,
@@ -2443,7 +2442,15 @@ function InfiniteCanvasPage() {
                 跳转到画布主内容
             </a>
             <main id="canvas-main" tabIndex={-1} className="flex h-full min-h-0 overflow-hidden outline-none" style={{ background: resolvedCanvasAppearance.background, color: theme.node.text }}>
-                {!focusMode && !versions.preview && shortDramaEnabled && currentProject?.projectId ? (
+                {!focusMode && !versions.preview ? <CanvasWorkspacePanel key={projectId} open={workspaceOpen} onOpen={() => setWorkspaceOpen(true)} onInsertAssets={handleProjectAssetsInsert} projectId={projectId} nodes={nodes} selectedNodeIds={selectedNodeIds} onClose={() => setWorkspaceOpen(false)} onAssets={() => openCanvasAssetLibrary()} onProjectAssets={currentProject?.projectId ? () => openProjectAssets() : undefined} onCancelTask={cancelCanvasTask} onFocus={nodeId => {
+                    const target = nodeById.get(nodeId);
+                    const parent = target?.parentId ? nodeById.get(target.parentId) : null;
+                    if (parent?.metadata?.frame?.collapsed) toggleFrameCollapsed(parent.id);
+                    const batchRoot = target?.metadata?.batchRootId ? nodeById.get(target.metadata.batchRootId) : null;
+                    if (batchRoot && !batchRoot.metadata?.imageBatchExpanded) toggleBatchExpanded(batchRoot.id);
+                    const selection = new Set([nodeId]); selectedNodeIdsRef.current = selection; setSelectedNodeIds(selection); setSelectedConnectionId(null); focusCanvasNode(nodeId);
+                }} /> : null}
+                {!workspaceOpen && !focusMode && !versions.preview && shortDramaEnabled && currentProject?.projectId ? (
                     <CanvasProjectSidebar projectId={currentProject.projectId} detail={linkedProjectQuery.data} onAddChapter={handleProjectChapterInsert} onLocateStyle={locateProjectStyleNode} onChooseStyle={() => setStylePickerOpen(true)} onOpenAssets={() => openProjectAssets()} />
                 ) : null}
                 <CanvasOverlayLayerProvider>
@@ -2695,6 +2702,7 @@ function InfiniteCanvasPage() {
                                         onSaveAppearanceDefault={saveCanvasAppearanceDefault}
                                         onBackgroundModeChange={setBackgroundMode}
                                         onShowImageInfoChange={setShowImageInfo}
+                                        onOpenWorkspace={() => setWorkspaceOpen(value => !value)}
                                         onOpenMyAssets={() => {
                                             openCanvasAssetLibrary();
                                         }}
@@ -2887,6 +2895,7 @@ function InfiniteCanvasPage() {
                             extractingVideoFrames={toolbarNode?.id === extractingVideoFramesNodeId}
                             extractingAudio={segmentRunningMode === "audio"}
                             trimmingVideo={segmentRunningMode === "video"}
+                            onNineGrid={(node, id, label, icon) => void generateNineGridNode(node, id, label, icon)}
                             onReversePrompt={createImageReversePromptNodes}
                             onRetry={retryCanvasNode}
                             onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
@@ -2916,14 +2925,6 @@ function InfiniteCanvasPage() {
                                     isMiniMapOpen={isMiniMapOpen}
                                     onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)}
                                     onOpenShortcuts={() => setShortcutRequestNonce((value) => value + 1)}
-                                />
-                                <CanvasAssetTray
-                                    assetImages={imageAssets}
-                                    canvasImages={canvasImageNodes}
-                                    showLibrary={!currentProject?.projectId}
-                                    activeNodeId={selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null}
-                                    onInsertAssetImage={(asset) => void createImageAssetNode(asset)}
-                                    onFocusCanvasImage={focusCanvasImageNode}
                                 />
                             </CanvasOverlayLayerContainer>
                         ) : null}
