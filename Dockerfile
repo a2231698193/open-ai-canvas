@@ -10,11 +10,24 @@ WORKDIR /app/web
 ARG NPM_REGISTRY=
 COPY web/package.json web/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    if [ -n "$NPM_REGISTRY" ]; then \
-      bun install --frozen-lockfile --registry "$NPM_REGISTRY" --cache-dir=/root/.bun/install/cache; \
-    else \
-      bun install --frozen-lockfile --cache-dir=/root/.bun/install/cache; \
-    fi
+    set -eu; \
+    case "$NPM_REGISTRY" in \
+      ""|http://*|https://*) ;; \
+      *) echo "NPM_REGISTRY must be an http(s) URL" >&2; exit 2 ;; \
+    esac; \
+    install_web_dependencies() { \
+      if [ -n "$NPM_REGISTRY" ]; then \
+        bun install --frozen-lockfile --registry "$NPM_REGISTRY" --cache-dir="$1"; \
+      else \
+        bun install --frozen-lockfile --cache-dir="$1"; \
+      fi; \
+    }; \
+    install_web_dependencies /root/.bun/install/cache || { \
+      echo "bun install failed; retrying with an empty cache" >&2; \
+      rm -rf node_modules /tmp/bun-install-cache; \
+      mkdir -p /tmp/bun-install-cache; \
+      install_web_dependencies /tmp/bun-install-cache; \
+    }
 
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md USER_CHANGELOG.md /app/
