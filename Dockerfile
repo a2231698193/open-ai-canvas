@@ -7,30 +7,56 @@ ARG NGINX_IMAGE=nginx:1.27-alpine
 FROM --platform=$BUILDPLATFORM ${BUN_IMAGE} AS web-build
 
 # Bun 1.3.13 的流式解包在部分镜像源/缓存组合下会误报 tarball 完整性失败。
-ENV BUN_FEATURE_FLAG_DISABLE_STREAMING_INSTALL=1
+ENV BUN_FEATURE_FLAG_DISABLE_STREAMING_INSTALL=1 \
+    BUN_CONFIG_MAX_HTTP_REQUESTS=8
 
 WORKDIR /app/web
 ARG NPM_REGISTRY=
 COPY web/package.json web/bun.lock ./
-RUN --mount=type=cache,target=/root/.bun/install/cache \
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     set -eu; \
     case "$NPM_REGISTRY" in \
       ""|http://*|https://*) ;; \
       *) echo "NPM_REGISTRY must be an http(s) URL" >&2; exit 2 ;; \
     esac; \
     install_web_dependencies() { \
-      if [ -n "$NPM_REGISTRY" ]; then \
-        bun install --frozen-lockfile --registry "$NPM_REGISTRY" --cache-dir="$1"; \
+      if [ -n "$2" ]; then \
+        bun install --frozen-lockfile --network-concurrency=8 --registry "$2" --cache-dir="$1"; \
       else \
-        bun install --frozen-lockfile --cache-dir="$1"; \
+        bun install --frozen-lockfile --network-concurrency=8 --cache-dir="$1"; \
       fi; \
     }; \
-    install_web_dependencies /root/.bun/install/cache || { \
-      echo "bun install failed; retrying with an empty cache" >&2; \
-      rm -rf node_modules /tmp/bun-install-cache; \
-      mkdir -p /tmp/bun-install-cache; \
-      install_web_dependencies /tmp/bun-install-cache; \
-    }
+    attempt=1; \
+    while [ "$attempt" -le 4 ]; do \
+      registry="$NPM_REGISTRY"; \
+      case "$attempt:$NPM_REGISTRY" in \
+        3:https://registry.npmmirror.com|3:https://registry.npmmirror.com/) \
+          registry=https://registry.npmjs.org; \
+          echo "bun install: falling back to the npm registry" >&2 ;; \
+      esac; \
+      case "$registry" in \
+        https://registry.npmmirror.com|https://registry.npmmirror.com/|https://registry.npmjs.org|https://registry.npmjs.org/) \
+          lock_registry=${registry%/}; \
+          sed -i \
+            -e "s#https://registry\\.npmmirror\\.com/#$lock_registry/#g" \
+            -e "s#https://registry\\.npmjs\\.org/#$lock_registry/#g" \
+            bun.lock ;; \
+      esac; \
+      if [ "$attempt" -eq 1 ]; then \
+        cache_dir=/root/.bun/install/cache; \
+      else \
+        cache_dir="/tmp/bun-install-cache-$attempt"; \
+        rm -rf node_modules "$cache_dir"; \
+        mkdir -p "$cache_dir"; \
+      fi; \
+      if install_web_dependencies "$cache_dir" "$registry"; then \
+        exit 0; \
+      fi; \
+      echo "bun install failed (attempt $attempt/4); retrying with a fresh cache" >&2; \
+      if [ "$attempt" -lt 4 ]; then sleep "$((attempt * 2))"; fi; \
+      attempt=$((attempt + 1)); \
+    done; \
+    exit 1
 
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md USER_CHANGELOG.md /app/
