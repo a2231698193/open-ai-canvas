@@ -6,6 +6,9 @@ ARG NGINX_IMAGE=nginx:1.27-alpine
 # 构建 Vite 前端产物。
 FROM --platform=$BUILDPLATFORM ${BUN_IMAGE} AS web-build
 
+# Bun 1.3.13 的流式解包在部分镜像源/缓存组合下会误报 tarball 完整性失败。
+ENV BUN_FEATURE_FLAG_DISABLE_STREAMING_INSTALL=1
+
 WORKDIR /app/web
 ARG NPM_REGISTRY=
 COPY web/package.json web/bun.lock ./
