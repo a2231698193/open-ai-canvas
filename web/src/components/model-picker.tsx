@@ -311,7 +311,7 @@ function emptyModelLabel(config: AiConfig, capability?: ModelCapability) {
     return config.models.length ? `暂无匹配的${label}模型` : "当前没有可用模型，请联系管理员或检查模型配置";
 }
 
-function ModelLabel({
+export function ModelLabel({
     config,
     model,
     capability,
@@ -358,7 +358,8 @@ function ModelLabel({
             </span>
             {showPrice ? (
                 <span className="ml-auto shrink-0 pl-2">
-                    <ModelPrice price={modelMenuPrice(config, model, capability, !requirements, requirements)} />
+                    {/* 候选模型展示自身价目；当前参数的精确报价只在选中后的触发器显示。 */}
+                    <ModelPrice price={modelMenuPrice(config, model, capability, true, requirements)} />
                 </span>
             ) : null}
             {!creationVariant && meta.time ? (
