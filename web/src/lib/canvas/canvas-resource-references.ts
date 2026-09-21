@@ -29,6 +29,8 @@ export type CanvasResourceReference = {
     sourceType?: CanvasNodeTypeId;
     skill?: Skill;
     assetId?: string;
+    /** 画布节点绑定的素材库记录，仅用于候选去重；节点引用仍使用位置 token。 */
+    boundAssetId?: string;
     category?: AssetCategory;
     mentionToken?: string;
     /** 仅 kind === "tool" 时使用，对应后端工具 ID。 */
@@ -330,6 +332,19 @@ function compactRemovedCanvasMentionPrompt(value: string) {
         .replace(/^\n+|\n+$/g, "");
 }
 
+export function filterBoundAssetMentionReferences(canvasReferences: CanvasResourceReference[], assetReferences: CanvasResourceReference[]) {
+    const boundAssetIds = new Set(canvasReferences.filter((reference) => reference.active).map((reference) => reference.boundAssetId).filter((id): id is string => Boolean(id)));
+    return assetReferences.filter((reference) => !reference.assetId || !boundAssetIds.has(reference.assetId));
+}
+
+export function applyBoundAssetMentionTitles(canvasReferences: CanvasResourceReference[], assetReferences: CanvasResourceReference[]) {
+    const assetById = new Map(assetReferences.filter((reference) => reference.assetId).map((reference) => [reference.assetId!, reference]));
+    return canvasReferences.map((reference) => {
+        const asset = reference.boundAssetId ? assetById.get(reference.boundAssetId) : undefined;
+        return asset?.title && asset.title !== reference.title ? { ...reference, title: asset.title } : reference;
+    });
+}
+
 export function buildAssetMentionReferences(assets: Asset[]): CanvasResourceReference[] {
     return assets.flatMap((asset): CanvasResourceReference[] => {
         if (asset.kind === "model") return [];
@@ -552,6 +567,7 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 text: node.metadata?.workflowKind === "character" ? node.metadata.characterPrompt : node.type === CanvasNodeType.Text ? node.metadata?.content || node.metadata?.prompt : node.type === CanvasNodeType.Skill ? skillResourceText(node) : undefined,
                 active,
                 sourceType: node.type,
+                boundAssetId: node.metadata?.assetId,
             },
         ];
     });

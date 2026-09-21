@@ -81,6 +81,7 @@ describe("canvas resource mention editor", () => {
         expect(textExecutor.match(/canvasGenerationPromptMetadata\(prompt, effectivePrompt\)/g)?.length).toBe(2);
         expect(generationExecutor).toContain("composerContent: prompt");
         expect(generationExecutor).toContain("canvasGenerationPromptMetadata(prompt, statusPrompt)");
+        expect(generationExecutor).toMatch(/\[\s*addedSkills,\s*applyGenerationTaskResult,\s*assets,\s*bindGenerationTask,/);
     });
 
     test("anchors the mention menu to the caret instead of the textarea edge", () => {

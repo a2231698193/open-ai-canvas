@@ -7,7 +7,7 @@ import { ArrowLeft, Brush, Camera, Clapperboard, ChevronRight, Clock, Contrast, 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { ASSET_CATEGORY_LABELS } from "@/lib/asset-category";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
-import { buildAssetMentionReferences, canvasResourceMentionToken, findCanvasResourceAutoLinkMatch, type CanvasResourceAutoLinkMatch, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { applyBoundAssetMentionTitles, buildAssetMentionReferences, canvasResourceMentionToken, filterBoundAssetMentionReferences, findCanvasResourceAutoLinkMatch, type CanvasResourceAutoLinkMatch, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { useAssetStore, type AssetCategory } from "@/stores/use-asset-store";
 import { CanvasNodeType } from "@/types/canvas";
 import { useResolvedCanvasResourceReferences } from "./use-resolved-canvas-resource-references";
@@ -84,11 +84,13 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
     const canvasReferences = useResolvedCanvasResourceReferences(references);
     const rawAssetReferences = useMemo(() => includeAssetLibrary ? buildAssetMentionReferences(assets) : [], [assets, includeAssetLibrary]);
     const assetReferences = useResolvedCanvasResourceReferences(rawAssetReferences);
-    const activeCanvasReferences = useMemo(() => canvasReferences.filter((item) => item.active), [canvasReferences]);
+    const titledCanvasReferences = useMemo(() => applyBoundAssetMentionTitles(canvasReferences, assetReferences), [assetReferences, canvasReferences]);
+    const mentionAssetReferences = useMemo(() => filterBoundAssetMentionReferences(titledCanvasReferences, assetReferences), [assetReferences, titledCanvasReferences]);
+    const activeCanvasReferences = useMemo(() => titledCanvasReferences.filter((item) => item.active), [titledCanvasReferences]);
     // 工具标签只能经九宫格等面板入口插入，@ 引用菜单不再重复展示。
-    const mentionCanvasReferences = useMemo(() => canvasReferences.filter((item) => item.kind !== "tool"), [canvasReferences]);
+    const mentionCanvasReferences = useMemo(() => titledCanvasReferences.filter((item) => item.kind !== "tool"), [titledCanvasReferences]);
     const activeMentionCanvasReferences = useMemo(() => mentionCanvasReferences.filter((item) => item.active), [mentionCanvasReferences]);
-    const availableReferences = useMemo(() => [...(onSelectReference ? mentionCanvasReferences : activeMentionCanvasReferences), ...assetReferences], [onSelectReference, mentionCanvasReferences, activeMentionCanvasReferences, assetReferences]);
+    const availableReferences = useMemo(() => [...(onSelectReference ? mentionCanvasReferences : activeMentionCanvasReferences), ...mentionAssetReferences], [onSelectReference, mentionCanvasReferences, activeMentionCanvasReferences, mentionAssetReferences]);
     const candidates = useMemo(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
@@ -332,7 +334,7 @@ export const CanvasResourceMentionTextarea = forwardRef<HTMLTextAreaElement, Pro
         <MentionMenu
             anchor={menuAnchor}
             connectedReferences={activeMentionCanvasReferences}
-            assetReferences={assetReferences}
+            assetReferences={mentionAssetReferences}
             filteredReferences={candidates}
             query={mention.query}
             cursorOffset={mention.end}
@@ -858,7 +860,9 @@ function MentionMenu({ anchor, connectedReferences, assetReferences, filteredRef
 
 function MentionReferenceList({ references, activeReferenceId, onSelect }: { references: CanvasResourceReference[]; activeReferenceId?: string; onSelect: (reference: CanvasResourceReference) => void }) {
     if (!references.length) return <div className="canvas-resource-mention-empty">没有匹配的引用</div>;
-    return references.map((reference) => (
+    return references.map((reference) => {
+        const displayTitle = reference.kind !== "skill" && reference.boundAssetId && reference.title !== reference.label ? reference.title : reference.label;
+        return (
         <button
             key={reference.id}
             type="button"
@@ -877,13 +881,15 @@ function MentionReferenceList({ references, activeReferenceId, onSelect }: { ref
         >
             <ReferencePreview reference={reference} />
             <span className="canvas-resource-mention-copy">
-                <span className="canvas-resource-mention-title-row"><strong title={reference.label}>{reference.label}</strong>{reference.kind === "skill" ? <em>技能</em> : null}</span>
+                <span className="canvas-resource-mention-title-row"><strong title={displayTitle}>{displayTitle}</strong>{reference.kind === "skill" ? <em>技能</em> : null}</span>
                 {reference.kind === "skill" ? (
                     <span className="canvas-resource-mention-meta"><span>{reference.skill?.description || reference.text || "工作流技能"}</span><small>{reference.skill?.version ? `v${reference.skill.version}` : ""}{reference.skill?.fileCount ? ` · ${reference.skill.fileCount} 文件` : ""}</small></span>
-                ) : reference.text && reference.text !== reference.title ? <span className="canvas-resource-mention-meta"><span>{reference.text}</span></span> : null}
+                ) : displayTitle !== reference.label ? <span className="canvas-resource-mention-meta"><span>@{reference.label}</span></span>
+                  : reference.text && reference.text !== reference.title ? <span className="canvas-resource-mention-meta"><span>{reference.text}</span></span> : null}
             </span>
         </button>
-    ));
+        );
+    });
 }
 
 function ReferencePreview({ reference }: { reference: CanvasResourceReference }) {

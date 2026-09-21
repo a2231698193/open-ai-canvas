@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { autoMentionCanvasResourceReferences, findCanvasResourceAutoLinkMatch, type CanvasResourceReference, applyCanvasConnectionPromptSync, buildAssetMentionReferences, buildCanvasNodeMentionReferenceMap, buildNodeMentionReferences, buildOrderedCanvasResourceReferences, canvasResourceMentionToken, collectUpstreamVideoNodes, imageGenerationReferenceConnections, reorderCanvasResourceConnections, replaceCanvasMentionToken, replaceCanvasReferenceMentions } from "../src/lib/canvas/canvas-resource-references";
+import { applyBoundAssetMentionTitles, autoMentionCanvasResourceReferences, findCanvasResourceAutoLinkMatch, type CanvasResourceReference, applyCanvasConnectionPromptSync, buildAssetMentionReferences, buildCanvasNodeMentionReferenceMap, buildNodeMentionReferences, buildOrderedCanvasResourceReferences, canvasResourceMentionToken, collectUpstreamVideoNodes, filterBoundAssetMentionReferences, imageGenerationReferenceConnections, reorderCanvasResourceConnections, replaceCanvasMentionToken, replaceCanvasReferenceMentions } from "../src/lib/canvas/canvas-resource-references";
 import { canvasNodeToAsset } from "../src/lib/canvas/canvas-node-asset";
 import { buildNodeGenerationInputs } from "../src/components/canvas/canvas-node-generation";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "../src/types/canvas";
@@ -130,6 +130,23 @@ describe("collectUpstreamVideoNodes", () => {
 });
 
 describe("canvas resource mention slots", () => {
+    test("已绑定到画布节点的素材不在 @ 候选中重复展示", () => {
+        const canvasReference = { ...smartReferences[0], boundAssetId: "generation_same" };
+        const sameAsset = { ...smartReferences[0], id: "asset:generation_same", nodeId: "", assetId: "generation_same", title: "CHR–陆沉舟–4View–v1" };
+        const otherAsset = { ...smartReferences[0], id: "asset:generation_other", nodeId: "", assetId: "generation_other" };
+
+        expect(filterBoundAssetMentionReferences([canvasReference], [sameAsset, otherAsset])).toEqual([otherAsset]);
+        expect(applyBoundAssetMentionTitles([canvasReference], [sameAsset, otherAsset])).toEqual([{ ...canvasReference, title: "CHR–陆沉舟–4View–v1" }]);
+        expect(filterBoundAssetMentionReferences([{ ...canvasReference, active: false }], [sameAsset, otherAsset])).toEqual([sameAsset, otherAsset]);
+    });
+
+    test("画布引用保留生成素材绑定供候选去重", () => {
+        const image = imageNode("image-a");
+        image.metadata.assetId = "generation_same";
+
+        expect(buildOrderedCanvasResourceReferences([image])[0]?.boundAssetId).toBe("generation_same");
+    });
+
     test("素材库视频优先使用封面，没有封面时保留首帧视频回退源", () => {
         const poster = buildAssetMentionReferences([{
             id: "video-with-poster",

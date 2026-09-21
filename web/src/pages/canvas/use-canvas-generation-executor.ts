@@ -374,6 +374,7 @@ export function useCanvasGenerationExecutor({
         [
             addedSkills,
             applyGenerationTaskResult,
+            assets,
             bindGenerationTask,
             confirmDuplicateSubmission,
             domainProjectId,
