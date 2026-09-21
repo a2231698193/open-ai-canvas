@@ -27,7 +27,7 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := db.AutoMigrate(&model.Skill{}, &model.UserSkillState{}); err != nil {
+	if err := db.AutoMigrate(&model.Skill{}, &model.UserSkillState{}, &model.SkillVersion{}, &model.SkillFile{}, &model.User{}, &model.UserIdentity{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir(), nil)
@@ -55,11 +55,17 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 	if err := svc.EnsureBuiltinSkills(); err != nil {
 		t.Fatal(err)
 	}
+	if err := svc.EnsureSkillPackages(); err != nil {
+		t.Fatal(err)
+	}
 	state := model.UserSkillState{ID: "test-state", UserID: "test-user", SkillID: "16000000000001", Added: true, Liked: true}
 	if err := db.Create(&state).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.EnsureBuiltinSkills(); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureSkillPackages(); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
@@ -82,5 +88,33 @@ func TestBuiltinSeedSyncPreservesUserState(t *testing.T) {
 	}
 	if skill.OwnerID != "community-itswyatt-k" || skill.CreatedAt.Year() != 2026 {
 		t.Fatalf("invalid persisted seed: %#v", skill)
+	}
+	var persisted []model.Skill
+	if err := db.Find(&persisted).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range persisted {
+		if item.CurrentVersionID == "" || item.FileCount != 1 {
+			t.Fatalf("skill %s has no initialized package", item.ID)
+		}
+		assertSkillVersionCount(t, db, item.ID, 1)
+		version, err := svc.repo.SkillVersion(item.CurrentVersionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := svc.readSkillArchiveEntry(version, "SKILL.md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != item.Instruction {
+			t.Fatalf("skill %s package instruction was changed", item.ID)
+		}
+	}
+	list, err := svc.Skills("test-user", SkillListRequest{Scope: "public", Search: "freestyle-template-match"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.TotalCount != 1 || len(list.Skills) != 1 || list.Skills[0].SkillID != "16000000000003" {
+		t.Fatalf("community skill not visible in public search: %#v", list)
 	}
 }

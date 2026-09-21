@@ -53,6 +53,16 @@ test("grouping uses display name even when model keys differ, without merging ch
     expect(groups[0].models.map((item) => item.label)).toEqual(["秘塔（满血渠道）", "秘塔（满血渠道）"]);
 });
 
+test("catalog projection keeps promotional tags scoped to each channel model", () => {
+    const channels = systemChannelModelChannels([
+        { id: "a", name: "A", displayName: "A", models: [{ ...model("A", 100_000), tags: [{ text: "限时特价", color: "purple" }] }] },
+        { id: "b", name: "B", displayName: "B", models: [{ ...model("B", 200_000), tags: [{ text: "官方1折", color: "gold" }] }] },
+    ]);
+    const config = normalizeConfigSnapshot({ config: { ...defaultConfig, channels } }).config;
+    expect(config.channels[0].modelCosts![0].tags).toEqual([{ text: "限时特价", color: "purple" }]);
+    expect(config.channels[1].modelCosts![0].tags).toEqual([{ text: "官方1折", color: "gold" }]);
+});
+
 test("selection and quote keep the chosen channel even when another channel is cheaper", () => {
     const config = fixture();
     const value = "b::seedance-2.0";

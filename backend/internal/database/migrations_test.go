@@ -11,6 +11,16 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestCurrentSchemaVersionMatchesMigrationPlan(t *testing.T) {
+	if len(schemaMigrations) == 0 {
+		t.Fatal("migration plan is empty")
+	}
+	latest := schemaMigrations[len(schemaMigrations)-1].version
+	if CurrentSchemaVersion != latest {
+		t.Fatalf("supported schema version %d does not match latest migration %d", CurrentSchemaVersion, latest)
+	}
+}
+
 func TestMigrateSchemaRecordsAndValidatesVersion(t *testing.T) {
 	db, err := Open(Config{Driver: "sqlite", DSN: "file:migration-version?mode=memory&cache=shared"})
 	if err != nil {

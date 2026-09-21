@@ -56,6 +56,20 @@ test("candidate rows do not disguise missing prices as zero", () => {
     expect(markup).not.toContain("0 积分");
 });
 
+test("model rows preserve multiple promotional labels and colors without altering prices", () => {
+    const config = fixture();
+    config.channels[0].modelCosts![0].tags = [{ text: "限时特价", color: "purple" }, { text: "官方1折", color: "gold" }];
+    for (const theme of [canvasThemes.light, canvasThemes.dark]) {
+        const markup = renderToStaticMarkup(<ModelLabel config={config} model={config.model} capability="video" theme={theme} creationVariant showConfiguredModelName={false} showPrice showDescription />);
+        expect(markup).toContain('data-color="purple">限时特价');
+        expect(markup).toContain('data-color="gold">官方1折');
+        expect(markup).toContain("0.1-0.2 积分/秒");
+    }
+    config.channels[0].modelCosts![0].tags = [];
+    const markup = renderToStaticMarkup(<ModelLabel config={config} model={config.model} capability="video" theme={canvasThemes.light} showDescription />);
+    expect(markup).not.toContain('aria-label="模型标签"');
+});
+
 test("the selected model and request estimate still require an exact specification match", () => {
     const config = fixture();
     const render = (value: ModelRequirements) => renderToStaticMarkup(<ModelPicker config={config} value={config.model} capability="video" requirements={value} onChange={() => {}} />);

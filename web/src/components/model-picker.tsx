@@ -12,6 +12,7 @@ import { modelDisplayName, modelIcon, modelOptionName, resolveModelChannel, sele
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { ModelLogo } from "@/components/model-logo";
+import { ModelTags } from "@/components/model-tags";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
 
 type ModelPickerProps = {
@@ -336,6 +337,7 @@ export function ModelLabel({
                 <span className={cn("canvas-model-picker-description mt-1 block truncate text-[var(--fs-tiny)]", showDescription && "is-visible")} style={{ color: theme.node.muted }} title={summaryText}>
                     {summaryText}
                 </span>
+                <ModelTags tags={logicalCost?.tags} />
             </span>
             {showPrice ? (
                 <span className="ml-auto shrink-0 pl-2">
@@ -490,8 +492,8 @@ function ModelPrice({ price, quote, compact = false }: { price: ModelMenuPrice |
         const amount = (quote.amountMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 6 });
         const label = quote.estimated ? `预估:${amount}` : `${amount}`;
         return (
-            <span className="inline-flex shrink-0 items-center gap-0.5 text-[var(--fs-tiny)] font-bold tabular-nums text-amber-600 dark:text-amber-300" title={modelQuoteDescription(quote)}>
-                <Coins className="size-3" />
+            <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-bold tabular-nums" aria-label={modelQuoteDescription(quote)}>
+                <Coins className="model-picker-price-icon" aria-hidden="true" />
                 {compact ? label : `${label} 积分`}
             </span>
         );
@@ -500,19 +502,19 @@ function ModelPrice({ price, quote, compact = false }: { price: ModelMenuPrice |
     if (price === null) return compact ? null : <span className="shrink-0 text-[var(--fs-tiny)] text-foreground/40">未配置</span>;
     if (price.kind === "tiers") {
         return (
-            <span className="inline-flex shrink-0 items-center gap-0.5 text-[var(--fs-tiny)] font-bold tabular-nums text-amber-600 dark:text-amber-300" title={price.title}>
-                <Coins className="size-3" />
+            <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-bold tabular-nums">
+                <Coins className="model-picker-price-icon" aria-hidden="true" />
                 {compact ? price.compactLabel : price.label}
             </span>
         );
     }
     if (price.kind === "estimate") {
-        return <span className="shrink-0 text-[var(--fs-tiny)] font-medium text-amber-600 dark:text-amber-300" title={price.title}>{price.label || "按量预估"}</span>;
+        return <span className="model-picker-price inline-flex shrink-0 items-center text-[var(--fs-tiny)] font-semibold"><Coins className="model-picker-price-icon" aria-hidden="true" />{price.label || "按量预估"}</span>;
     }
     return (
-        <span className="inline-flex shrink-0 items-center gap-0.5 text-[var(--fs-tiny)] font-bold tabular-nums text-amber-600 dark:text-amber-300" title={`每${price.unit}消耗 ${price.value.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分`}>
-            <Coins className="size-3" />
-            {price.value.toLocaleString("zh-CN", { maximumFractionDigits: compact ? 3 : 6 })}/{price.unit}
+        <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-bold tabular-nums">
+            <Coins className="model-picker-price-icon" aria-hidden="true" />
+            {price.value.toLocaleString("zh-CN", { maximumFractionDigits: compact ? 3 : 6 })}{compact ? "/" : " 积分/"}{price.unit}
         </span>
     );
 }

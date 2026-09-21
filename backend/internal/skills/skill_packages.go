@@ -119,19 +119,6 @@ func truncateToRunes(s string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-// truncateWithEllipsis 截断并追加省略号，结果严格不超过 maxRunes，
-// 供元数据推断使用；kernel.TruncateRunes 会追加 "..." 导致超出上限。
-func truncateWithEllipsis(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	if maxRunes <= 3 {
-		return string(runes[:maxRunes])
-	}
-	return string(runes[:maxRunes-3]) + "..."
-}
-
 func (s *Service) EnsureSkillPackages() error {
 	skills, err := s.repo.SkillsForPackageEnsure(skillSourceUser)
 	if err != nil {
@@ -850,12 +837,30 @@ func parseSkillPackageMetadata(data []byte) skillPackageMetadata {
 			}
 			paragraph = append(paragraph, trimmed)
 		}
-		metadata.Description = kernel.TruncateRunes(strings.Join(paragraph, " "), 500)
+		metadata.Description = strings.Join(paragraph, " ")
 	}
-	metadata.Name = truncateWithEllipsis(strings.TrimSpace(metadata.Name), 80)
-	metadata.Description = truncateWithEllipsis(strings.TrimSpace(metadata.Description), 500)
-	metadata.Version = kernel.TruncateRunes(strings.TrimSpace(metadata.Version), 64)
+	metadata.Name = truncateSkillMetadata(metadata.Name, 80)
+	metadata.Description = truncateSkillMetadata(metadata.Description, 500)
+	metadata.Version = truncateSkillMetadata(metadata.Version, 64)
 	return metadata
+}
+
+// truncateSkillMetadata keeps the result within the validation limit. The
+// general-purpose TruncateRunes helper appends "...", which is useful for
+// display snippets but would make a value exactly at the limit invalid.
+func truncateSkillMetadata(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return string(runes[:limit])
+	}
+	return string(runes[:limit-3]) + "..."
 }
 
 func yamlScalar(value string) string {

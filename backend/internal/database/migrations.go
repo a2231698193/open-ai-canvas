@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 31
+const CurrentSchemaVersion int64 = 32
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -105,6 +105,14 @@ var schemaMigrations = []migration{
 	{version: 31, name: "tool_favorites", checksum: "sha256:tool-favorites-v31", apply: func(tx *gorm.DB) error {
 		return tx.AutoMigrate(&model.ToolFavorite{})
 	}},
+	{version: 32, name: "channel_model_tags", checksum: "sha256:channel-model-tags-v32", apply: migrateChannelModelTags},
+}
+
+func migrateChannelModelTags(tx *gorm.DB) error {
+	if tx.Migrator().HasColumn(&model.ChannelModel{}, "Tags") {
+		return nil
+	}
+	return tx.Migrator().AddColumn(&model.ChannelModel{}, "Tags")
 }
 
 func migrateChannelCreditCost(tx *gorm.DB) error {

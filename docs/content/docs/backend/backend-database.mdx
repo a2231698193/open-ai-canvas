@@ -5,6 +5,12 @@ description: 影策后端核心持久化表与状态边界
 
 # 后端数据库
 
+## 画布 Agent 外观配置
+
+`system_settings` 的 `appearance` JSON 合同版本 9 新增 `canvas`：助手名称、入口标签、面板标题、欢迎文案、输入提示、`avatarType`（`orb|live2d`）、`avatarHeight`（120–360）、`live2dResourceId` 和服务端确认的 `live2dEntry`。独立于站点品牌；缺失时读取内置画布默认值。不新增数据库结构迁移，不改变全局 schema 版本。
+
+模型包复用 `resources` 表，`kind=live2d`、`provider=local`，ZIP 不解压到磁盘。该 kind 仅由验证后的管理员导入路径保留，普通上传不能声明它。外观配置中的模型 ID 参与删除引用检查；清除引用不删除资源。默认球仍可保留模型引用，便于切换。
+
 后端通过 GORM 管理 SQLite 与 PostgreSQL 表结构。结构变化由 `migrate-schema` 按版本顺序执行并写入 `schema_migrations`；受管生产部署在 Backend 启动前运行独立迁移服务，Backend 只校验当前 Schema 是否与二进制兼容。业务写路径必须通过 service 和 repository 的状态约束，不能直接依赖前端状态。
 
 ## 结构迁移与版本
@@ -258,6 +264,8 @@ schema v27 为 `channel_model_price_tiers` 和 `billing_orders` 添加 `cost_con
 ## 画布生成工具
 
 Schema 30 新增 `tools`，31 新增 `tool_favorites`；主分支已有 28（Agent 执行日志）、29（资源租约）编号和 checksum 不变。
+
+Schema 32 为 `channel_models` 新增 `tags`（TEXT、NOT NULL、默认 `'[]'`），通过 JSON serializer 存储有序的 `{ text, color }` 数组。每个模型最多 5 个标签，文字去除首尾空白后为 1–12 字且不重复，颜色为 `purple/blue/green/gold/orange/pink`。标签仅用于展示，不影响价格、能力和路由。后端启动时执行增量迁移，已有模型默认无标签；回退应用可保留此新增列，若人工删除列会丢失标签配置，须先备份。
 
 - `tools`：自增 `id`、类型 `type`、名称 `label/label_en`、描述/标签、`prompt`、预览 `cover/media_url/extra_info_json`、比例、`owner_id`、`source`、`enabled`、`visibility`、排序权重和时间。
 - `tool_favorites`：`id`、`user_id`、`tool_id`、收藏时间；用户和工具联合唯一。删除自己的自定义工具时事务清理收藏，不删除预览文件。

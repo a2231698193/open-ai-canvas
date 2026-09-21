@@ -28,6 +28,52 @@ func TestArchiveFromMarkdownInfersMetadata(t *testing.T) {
 	}
 }
 
+func TestArchiveFromMarkdownTruncatesInferredDescriptionWithinLimit(t *testing.T) {
+	longDescription := bytes.Repeat([]byte("描述内容。"), 140)
+	data := append([]byte("# 风格库四级匹配序\n\n"), longDescription...)
+
+	archive, err := archiveFromMarkdown(data, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len([]rune(archive.Metadata.Description)); got > 500 {
+		t.Fatalf("inferred description length = %d, want <= 500", got)
+	}
+	if archive.Metadata.Description == "" {
+		t.Fatal("inferred description is empty")
+	}
+	if !bytes.Equal(archive.Files["SKILL.md"], data) {
+		t.Fatal("metadata truncation changed the original instruction")
+	}
+}
+
+func TestSkillMetadataLengthBoundaries(t *testing.T) {
+	for _, length := range []int{499, 500, 501, 553} {
+		value := strings.Repeat("文", length)
+		markdown := []byte("# 技能\n\n" + value)
+		archive, err := archiveFromMarkdown(markdown, "", "")
+		if err != nil {
+			t.Fatalf("description length %d: %v", length, err)
+		}
+		want := value
+		if length > 500 {
+			want = strings.Repeat("文", 497) + "..."
+		}
+		if archive.Metadata.Description != want {
+			t.Fatalf("description length %d: unexpected truncation", length)
+		}
+	}
+	metadata := parseSkillPackageMetadata([]byte("---\nname: " + strings.Repeat("名", 81) + "\ndescription: " + strings.Repeat("文", 501) + "\nmetadata:\n  version: " + strings.Repeat("版", 65) + "\n---\n"))
+	if len([]rune(metadata.Name)) != 80 || len([]rune(metadata.Description)) != 500 || len([]rune(metadata.Version)) != 64 {
+		t.Fatalf("metadata exceeds bounds: %#v", metadata)
+	}
+	// Supplied metadata still goes through strict validation; no widening of
+	// the archive contract is needed to fix inferred display metadata.
+	if _, err := finalizeSkillArchive(map[string][]byte{"SKILL.md": []byte("# 技能")}, skillPackageMetadata{Name: "技能", Description: strings.Repeat("文", 501)}); err == nil {
+		t.Fatal("expected overlong archive metadata to be rejected")
+	}
+}
+
 func TestArchiveFromZipNormalizesWrapperAndNestedFiles(t *testing.T) {
 	data := skillZip(t, map[string]string{
 		"director-main/SKILL.md":             "---\nname: AI 导演\ndescription: 导演工作流\nmetadata:\n  version: 2.1\n---\n",
