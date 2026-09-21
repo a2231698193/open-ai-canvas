@@ -191,9 +191,9 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 				"steps": map[string]any{"type": "array", "maxItems": 12, "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"tool":   str("这一步用哪个工具（工具名）"),
+						"tool":   str("工具名"),
 						"action": str("这一步做什么"),
-						"note":   str("可选：坑/前提/注意"),
+						"note":   str("可选：坑或前提"),
 					},
 					"required": []string{"tool", "action"}, "additionalProperties": false,
 				}},
@@ -264,7 +264,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"mode": map[string]any{"type": "string", "enum": cloudAgentGenerationModeNames()}, "prompt": str("完整生成提示词；引用素材时在对应描述中使用 @图片1、@视频1、@音频1，各类型按 referenceNodeIds 中出现顺序独立编号，文本来源不占媒体编号。服务端会为遗漏的已选素材补齐引用标签，不推断素材用途"),
 			"logicalModelId": str("selection.logicalModelId；与channelId/channelModelKey互斥"), "channelId": str("selection.channelId"), "channelModelKey": str("selection.channelModelKey"),
 			"durationSeconds": map[string]any{"type": "integer", "minimum": 0}, "size": str("模型支持的画幅，例如9:16"), "quality": str("目录支持的分辨率或质量"), "videoGenerateAudio": map[string]any{"type": "boolean", "description": "是否生成音频，仅视频可用"},
-			"snapshotHash": str("可省略；省略时服务端使用当前画布内容快照。也可传 canvas_get_state 的 mediaSnapshotHash 或上一写操作返回的 snapshotHash"), "nodeId": str("可续用的未提交媒体草稿ID；无草稿时才使用新唯一ID"), "title": str("媒体节点名称"), "sourceNodeId": str("仅文本/镜头提示词节点ID；无文本来源则留空，绝不能填图片/视频/音频ID"), "referenceNodeIds": map[string]any{"type": "array", "maxItems": 16, "items": str("当前画布媒体参考节点ID；参考图只放此处，保持引用顺序")}, "referenceTransientIds": map[string]any{"type": "array", "maxItems": 4, "items": str("由 image_annotation_render 返回的临时参考图ID")},
+			"snapshotHash": str("可省略：省略时用当前画布内容快照"), "nodeId": str("可续用的未提交媒体草稿ID；无草稿时才使用新唯一ID"), "title": str("媒体节点名称"), "sourceNodeId": str("仅文本/镜头提示词节点ID；不要填媒体节点"), "referenceNodeIds": map[string]any{"type": "array", "maxItems": 16, "items": str("画布媒体参考节点ID，按引用顺序")}, "referenceTransientIds": map[string]any{"type": "array", "maxItems": 4, "items": str("由 image_annotation_render 返回的临时参考图ID")},
 		}, "mode", "prompt", "nodeId", "title", "referenceNodeIds")
 	}
 	return tools
