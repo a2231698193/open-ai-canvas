@@ -68,6 +68,7 @@ type cloudAgentRuntime struct {
 	VideoSeconds           int                                     `json:"videoSeconds"`
 	Calls                  []cloudAgentCall                        `json:"calls"`
 	CallIndex              int                                     `json:"callIndex"`
+	ToolRepairs            map[string]cloudAgentToolRepair         `json:"toolRepairs,omitempty"`
 	Approval               *cloudAgentApproval                     `json:"approval,omitempty"`
 	Decisions              map[string]string                       `json:"decisions"`
 	DecisionSettings       map[string]string                       `json:"decisionSettings,omitempty"`
@@ -231,6 +232,14 @@ func validateCloudAgentRuntime(run *model.CloudAgentExecution, state *cloudAgent
 	}
 	if state.CallIndex < 0 || state.CallIndex > len(state.Calls) || len(state.Calls) > cloudAgentMaxToolCalls {
 		return errors.New("Agent runtime call cursor is invalid")
+	}
+	for toolName, repair := range state.ToolRepairs {
+		if toolName == "" || utf8.RuneCountInString(toolName) > 80 || repair.Attempt < 1 || repair.Attempt > cloudAgentToolAttemptLimit || repair.GroupID == "" {
+			return errors.New("Agent runtime tool repair state is invalid")
+		}
+		if err := validateCloudAgentID(repair.GroupID, "工具纠错组 ID", 240); err != nil {
+			return err
+		}
 	}
 	if state.ActiveTaskID != "" && state.MediaTaskID != "" {
 		return errors.New("Agent runtime has multiple active tasks")
@@ -933,7 +942,7 @@ func cloudAgentSafeMediaTaskError(task *model.Task) string {
 	return detail
 }
 
-func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgentCall, result any, err error) {
+func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgentCall, result any, err error) bool {
 	payload := map[string]any{"toolName": call.Function.Name, "callId": call.ID, "arguments": call.Function.Arguments}
 	if call.Function.Name == "skill_read_file" {
 		var args struct {
@@ -953,7 +962,7 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	kind := "tool_completed"
 	if err != nil {
 		detail, ok := result.(map[string]any)
-		if !ok {
+		if !ok || detail == nil {
 			detail = map[string]any{}
 		}
 		message := cloudAgentSafeToolError(err)
@@ -981,6 +990,9 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 			if call.Function.Name == "canvas_get_state" {
 				detail["exampleArguments"] = map[string]any{}
 			}
+			if call.Function.Name == "canvas_apply_ops" {
+				detail["exampleArguments"] = map[string]any{"snapshotHash": "<canvas_get_state.snapshotHash>", "ops": []any{map[string]any{"type": "add_node", "id": "<new-node-id>", "nodeType": "text", "content": "<content>"}}}
+			}
 		}
 		result = detail
 		kind = "tool_failed"
@@ -988,6 +1000,7 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	} else {
 		payload["text"] = "工具执行成功"
 	}
+	exhausted := cloudAgentTrackToolRepair(runID, state, call, result, err, payload)
 	raw, _ := json.Marshal(result)
 	payload["result"] = result
 	if call.Function.Name == "skill_read_file" && err == nil {
@@ -1006,6 +1019,7 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	state.Canonical.Messages = append(state.Canonical.Messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(raw)})
 	state.CallIndex++
 	state.Approval = nil
+	return exhausted
 }
 func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *cloudAgentRuntime) error {
 	if state.CallIndex < 0 || state.CallIndex >= len(state.Calls) {
@@ -1111,7 +1125,7 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 				if mutationErr != nil {
 					var argumentErr *cloudAgentArgumentError
 					if errors.As(mutationErr, &argumentErr) {
-						cloudAgentToolResult(run.ID, state, call, nil, mutationErr)
+						cloudAgentRecordToolResult(current, state, call, nil, mutationErr)
 						return cloudAgentSave(current, state)
 					}
 					var appErr *AppError
@@ -1194,12 +1208,12 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		if call.Function.Name == "ask_user" && toolErr == nil {
 			payload, _ := result.(map[string]any)
 			state.event(run.ID, "user_question", payload)
-			cloudAgentToolResult(run.ID, state, call, result, nil)
+			cloudAgentRecordToolResult(current, state, call, result, nil)
 			skipRemainingCloudAgentCalls(run.ID, state)
 			current.Status = "completed"
 			return cloudAgentSave(current, state)
 		}
-		cloudAgentToolResult(run.ID, state, call, result, toolErr)
+		cloudAgentRecordToolResult(current, state, call, result, toolErr)
 		return cloudAgentSave(current, state)
 	})
 }
@@ -1365,7 +1379,7 @@ func (s *Service) cloudAgentMediaError(run *model.CloudAgentExecution, state *cl
 			state.event(run.ID, "run_failed", map[string]any{"text": "Agent 媒体调用状态无效，本轮已停止"})
 			return cloudAgentSave(current, state)
 		}
-		cloudAgentToolResult(run.ID, state, state.Calls[state.CallIndex], map[string]any{"phase": phase, "taskSubmitted": submitted}, err)
+		cloudAgentRecordToolResult(current, state, state.Calls[state.CallIndex], map[string]any{"phase": phase, "taskSubmitted": submitted}, err)
 		if submitted {
 			state.MediaTaskID = ""
 		}

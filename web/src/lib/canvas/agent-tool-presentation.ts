@@ -1,3 +1,5 @@
+import { agentToolRetry } from "./agent-tool-retry";
+
 export const AGENT_TOOL_METADATA: Record<string, { summary: string | ((context: { pending: boolean; detail?: unknown }) => string); failureMessage: string }> = {
     canvas_list_node_types: { summary: "已读取可用节点类型", failureMessage: "获取可用节点类型失败" },
     canvas_get_state: { summary: "已读取当前画布", failureMessage: "获取画布内容失败" },
@@ -43,7 +45,7 @@ export function agentToolCategoryLabel(toolName: string, category: AgentToolCate
     return "操作画布";
 }
 
-type ToolStatus = "completed" | "failed" | "noop" | "rejected" | "pending";
+type ToolStatus = "completed" | "failed" | "noop" | "rejected" | "pending" | "retrying";
 
 function field(value: unknown, key: string): unknown {
     return value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
@@ -51,6 +53,7 @@ function field(value: unknown, key: string): unknown {
 
 export function agentToolStatus(title: string, text: string, detail?: unknown): ToolStatus {
     const event = field(detail, "eventType");
+    if (event === "tool_failed" && agentToolRetry(detail)?.status === "retrying") return "retrying";
     if (event === "tool_completed" || event === "generation_task_created" || event === "canvas_updated") return "completed";
     if (event === "tool_failed") return "failed";
     const raw = `${title} ${text} ${field(detail, "error") || ""}`;

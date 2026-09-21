@@ -14,6 +14,7 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 import type { Skill } from "@/services/api/skills";
 import { buildSkillMentionReferences } from "@/services/skill-runtime";
 import { agentToolCategory, agentToolCategoryLabel, agentToolStatus, friendlyAgentToolSummary } from "@/lib/canvas/agent-tool-presentation";
+import { agentToolRetry, type AgentToolRetryAttempt } from "@/lib/canvas/agent-tool-retry";
 
 export type CloudAgentChatAttachment = { id: string; name: string; url: string };
 type CloudAgentOperationImpact = {
@@ -325,6 +326,21 @@ export function AgentToolCard({ title, text, detail, theme, references = [], onF
     const isPlain = !actions.length && !state.isError;
     const conciseError = text.length > 180 ? `${text.slice(0, 180)}…` : text;
     const categoryIcon = category === "read" ? <Eye className="size-3.5" /> : category === "create" ? <Plus className="size-3.5" /> : <Pencil className="size-3.5" />;
+    const retry = agentToolRetry(detail);
+    const attempts = objectField(detail, "retryAttempts");
+    if (retry && Array.isArray(attempts)) {
+        const label = retry.status === "recovered" ? "自动纠正后已恢复" : retry.status === "exhausted" ? "自动纠正未完成" : "自动纠正记录";
+        return (
+            <details data-agent-tool-retry className="min-w-0 flex-1 text-xs leading-5" style={{ color: theme.node.muted }}>
+                <summary className="cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-2" style={{ outlineColor: theme.node.muted }}>
+                    {label} · {retry.attempt}/{retry.maxAttempts} 次尝试未通过
+                </summary>
+                <ol className="mt-2 space-y-1 pl-4" aria-label="自动纠正详情">
+                    {(attempts as AgentToolRetryAttempt[]).map((attempt, index) => <li key={attempt.id} className="whitespace-pre-wrap break-words">第 {index + 1} 次：{attempt.text}</li>)}
+                </ol>
+            </details>
+        );
+    }
     return (
         <div data-agent-tool-card className={`agent-tool-row agent-tool-row--${category}${isPlain ? " agent-tool-row--plain" : ""} flex min-w-0 flex-1 items-start gap-2.5 text-left`} style={{ color: theme.node.text }}>
             <span className="agent-tool-status shrink-0" style={{ color: state.color }} aria-hidden="true">{state.icon}</span>

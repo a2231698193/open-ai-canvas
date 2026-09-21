@@ -142,7 +142,9 @@
     font-weight: 500;
     line-height: 16px;
     text-decoration: none;
-    transition: background-color var(--admin-motion), color var(--admin-motion);
+    transition:
+        background-color var(--admin-motion),
+        color var(--admin-motion);
 }
 
 [data-admin-root] .admin-nav-link.is-collapsed {
@@ -651,18 +653,19 @@
     padding: 4px 0;
 }
 
-[data-admin-root] :is(
-    .admin-feature-command-bar,
-    .admin-appearance-command-bar,
-    .admin-access-command-bar,
-    .admin-email-command-bar,
-    .admin-storage-command-bar,
-    .admin-ark-command-bar,
-    .admin-intercept-command-bar,
-    .admin-drawing-command-bar,
-    .admin-runtime-policy-command-bar,
-    .admin-third-party-command-bar
-) {
+[data-admin-root]
+    :is(
+        .admin-feature-command-bar,
+        .admin-appearance-command-bar,
+        .admin-access-command-bar,
+        .admin-email-command-bar,
+        .admin-storage-command-bar,
+        .admin-ark-command-bar,
+        .admin-intercept-command-bar,
+        .admin-drawing-command-bar,
+        .admin-runtime-policy-command-bar,
+        .admin-third-party-command-bar
+    ) {
     position: sticky;
     top: 0;
     z-index: 8;
@@ -681,26 +684,24 @@
     backdrop-filter: none !important;
 }
 
-[data-admin-root] :is(
-    .admin-feature-command-bar,
-    .admin-appearance-command-bar,
-    .admin-access-command-bar,
-    .admin-email-command-bar,
-    .admin-storage-command-bar,
-    .admin-ark-command-bar,
-    .admin-intercept-command-bar,
-    .admin-drawing-command-bar,
-    .admin-runtime-policy-command-bar,
-    .admin-third-party-command-bar
-).is-dirty {
+[data-admin-root]
+    :is(
+        .admin-feature-command-bar,
+        .admin-appearance-command-bar,
+        .admin-access-command-bar,
+        .admin-email-command-bar,
+        .admin-storage-command-bar,
+        .admin-ark-command-bar,
+        .admin-intercept-command-bar,
+        .admin-drawing-command-bar,
+        .admin-runtime-policy-command-bar,
+        .admin-third-party-command-bar
+    ).is-dirty {
     border-bottom-color: color-mix(in srgb, var(--admin-status-warning) 55%, var(--admin-border)) !important;
     background: color-mix(in srgb, var(--admin-status-warning) 8%, var(--admin-canvas)) !important;
 }
 
-[data-admin-root] :is(
-    .admin-feature-command-copy strong,
-    .admin-appearance-command-copy strong
-) {
+[data-admin-root] :is(.admin-feature-command-copy strong, .admin-appearance-command-copy strong) {
     color: var(--admin-text);
     font-size: 12px;
     font-weight: 650;

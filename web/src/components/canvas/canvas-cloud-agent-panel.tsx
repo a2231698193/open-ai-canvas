@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, MoveDiagonal2, Settings2, ShieldCheck, Trash2, Sparkles, X } from "lucide-react";
 import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@/lib/canvas/agent-debug-export";
+import { agentToolRetry, mergeAgentToolRetry } from "@/lib/canvas/agent-tool-retry";
 import { agentPlanVisible, latestAgentPlanItems, pendingAgentQuestion } from "@/lib/canvas/cloud-agent-plan";
 import { markdownPlainText } from "@/lib/markdown-plain-text";
 import { nanoid } from "nanoid";
@@ -1235,6 +1236,11 @@ function applyAgentEvent(event: AgentEvent, setMessages: Dispatch<SetStateAction
         const id = payload.callId ? `canvas-${event.runId}-${payload.callId}` : event.eventId;
         setMessages((current) => appendUniqueMessage(current, { id, role: "tool", title: "canvas_apply_ops", text: "画布操作已完成", detail: { ...detail, eventType: event.type } }));
         return;
+    }
+    if (event.type.startsWith("tool_") && agentToolRetry(payload)) {
+        const message: CloudAgentChatMessage = { id: event.eventId, role: "tool", title: String(payload.toolName || "工具执行"), text, detail: { ...payload, eventType: event.type } };
+        setMessages((current) => mergeAgentToolRetry(current, message));
+        if (event.type === "tool_failed") return;
     }
     if (event.type === "tool_completed" && payload.toolName === "canvas_apply_ops" && payload.callId) {
         const id = `canvas-${event.runId}-${payload.callId}`;
