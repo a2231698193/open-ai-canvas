@@ -57,7 +57,7 @@ services:
   web:
     image: ${BUN_IMAGE:-docker.m.daocloud.io/oven/bun:1.3.13}
     working_dir: /workspace/web
-    command: ["sh", "-c", "bun install --frozen-lockfile --registry "$NPM_REGISTRY" && bun run dev"]
+    command: ["sh", "-c", "bun install --frozen-lockfile --registry \"$NPM_REGISTRY\" && bun run dev"]
     environment:
       NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
       VITE_API_PROXY_TARGET: http://backend:8080
