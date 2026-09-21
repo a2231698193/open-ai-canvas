@@ -54,11 +54,12 @@ const TOOL_REF_PATTERN = /@\[tool:(\w+):(\d+):([^:\]]+):([^\]]+)\]/g;
 /** 从文本中解析所有 @[tool:type:ID:label:icon] 令牌，返回去重的工具引用。 */
 export function parseToolMentionTokens(text: string): { type: string; toolId: number; label: string; icon: string }[] {
     const results: { type: string; toolId: number; label: string; icon: string }[] = [];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const match of text.matchAll(TOOL_REF_PATTERN)) {
         const toolId = Number(match[2]);
-        if (seen.has(toolId)) continue;
-        seen.add(toolId);
+        const identity = `${match[1]}:${toolId}`;
+        if (seen.has(identity)) continue;
+        seen.add(identity);
         let label = match[3];
         try { label = decodeURIComponent(label); } catch { /* Keep readable text for malformed imported labels. */ }
         results.push({ type: match[1], toolId, label, icon: match[4] });
@@ -601,8 +602,8 @@ function skillResourceText(node: CanvasNodeData) {
 
 export function buildToolMentionReference(toolId: number, label: string, type: string, icon: string): CanvasResourceReference {
     return {
-        id: `tool:${toolId}`,
-        nodeId: `tool:${toolId}`,
+        id: `tool:${type}:${toolId}`,
+        nodeId: `tool:${type}:${toolId}`,
         kind: "tool",
         label,
         title: label,

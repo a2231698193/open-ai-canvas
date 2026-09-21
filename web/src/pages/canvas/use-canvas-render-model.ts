@@ -359,11 +359,12 @@ export function useCanvasRenderModel({
             const text = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
             const tokens = parseToolMentionTokens(text);
             if (!tokens.length) continue;
-            const seen = new Set<number>();
+            const seen = new Set<string>();
             const refs: ReturnType<typeof buildToolMentionReference>[] = [];
             for (const { type, toolId, label, icon } of tokens) {
-                if (seen.has(toolId)) continue;
-                seen.add(toolId);
+                const identity = `${type}:${toolId}`;
+                if (seen.has(identity)) continue;
+                seen.add(identity);
                 refs.push(buildToolMentionReference(toolId, label, type, icon));
             }
             if (refs.length) map.set(node.id, refs);
