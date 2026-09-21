@@ -115,6 +115,7 @@
         "create": {
           "method": "POST",
           "path": "/api/minimax/v2/video_generation",
+          "originPath": true,
           "contentType": "application/json",
           "body": {
             "model": {
@@ -284,7 +285,8 @@
         },
         "poll": {
           "method": "GET",
-          "path": "/api/minimax/v2/query/video_generation/{{taskId}}"
+          "path": "/api/minimax/v2/query/video_generation/{{taskId}}",
+          "originPath": true
         },
         "response": {
           "taskId": {
