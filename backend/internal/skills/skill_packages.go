@@ -119,6 +119,19 @@ func truncateToRunes(s string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
+// truncateWithEllipsis 截断并追加省略号，结果严格不超过 maxRunes，
+// 供元数据推断使用；kernel.TruncateRunes 会追加 "..." 导致超出上限。
+func truncateWithEllipsis(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
+}
+
 func (s *Service) EnsureSkillPackages() error {
 	skills, err := s.repo.SkillsForPackageEnsure(skillSourceUser)
 	if err != nil {
@@ -839,8 +852,8 @@ func parseSkillPackageMetadata(data []byte) skillPackageMetadata {
 		}
 		metadata.Description = kernel.TruncateRunes(strings.Join(paragraph, " "), 500)
 	}
-	metadata.Name = kernel.TruncateRunes(strings.TrimSpace(metadata.Name), 80)
-	metadata.Description = kernel.TruncateRunes(strings.TrimSpace(metadata.Description), 500)
+	metadata.Name = truncateWithEllipsis(strings.TrimSpace(metadata.Name), 80)
+	metadata.Description = truncateWithEllipsis(strings.TrimSpace(metadata.Description), 500)
 	metadata.Version = kernel.TruncateRunes(strings.TrimSpace(metadata.Version), 64)
 	return metadata
 }

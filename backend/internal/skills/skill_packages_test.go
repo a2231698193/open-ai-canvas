@@ -3,7 +3,9 @@ package skills
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"infinite-canvas/backend/internal/kernel"
 	"infinite-canvas/backend/internal/model"
@@ -71,6 +73,54 @@ func TestParseGitHubSkillURL(t *testing.T) {
 	if _, err := parseGitHubSkillURL("https://github.com/ddcat-ai/open-ai-canvas/blob/main/SKILL.md", "", ""); err == nil {
 		t.Fatal("expected blob URL to be rejected")
 	}
+}
+
+func TestArchiveFromMarkdownKeepsInferredMetadataWithinLimits(t *testing.T) {
+	longName := strings.Repeat("名", 100)
+	longDescription := strings.Repeat("简介", 300)
+	for name, data := range map[string]string{
+		"heading":     "# " + longName + "\n\n" + longDescription + "\n",
+		"frontmatter": "---\nname: " + longName + "\ndescription: " + longDescription + "\n---\n\n正文",
+	} {
+		t.Run(name, func(t *testing.T) {
+			archive, err := archiveFromMarkdown([]byte(data), "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := utf8.RuneCountInString(archive.Metadata.Name); got > 80 {
+				t.Fatalf("name runes = %d, want <= 80", got)
+			}
+			if got := utf8.RuneCountInString(archive.Metadata.Description); got > 500 {
+				t.Fatalf("description runes = %d, want <= 500", got)
+			}
+		})
+	}
+}
+
+func TestEnsureSkillPackagesMigratesSkillWithLongInstructionMetadata(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+kernel.NewID()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
+		t.Fatal(err)
+	}
+	svc := New(repository.New(db), t.TempDir(), nil)
+	skill := model.Skill{
+		ID:          kernel.NewID(),
+		Name:        "长标题技能",
+		Description: "描述",
+		Instruction: "# " + strings.Repeat("长", 100) + "\n\n" + strings.Repeat("文", 600),
+		Status:      skillStatusEnabled,
+		Source:      3,
+	}
+	if err := db.Create(&skill).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureSkillPackages(); err != nil {
+		t.Fatal(err)
+	}
+	assertSkillVersionCount(t, db, skill.ID, 1)
 }
 
 func TestEnsureSkillPackagesMigratesAndRefreshesBuiltinSkills(t *testing.T) {
