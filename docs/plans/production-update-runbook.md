@@ -91,7 +91,16 @@ sudo /usr/local/sbin/update-yingce
 4. 仅以 fast-forward 更新到 `origin/main`；
 5. 串行构建后端和前端，降低小内存服务器 OOM 风险；
 6. 执行数据库迁移并重启服务；
-7. 等待容器健康并检查本机健康接口。
+7. 等待容器健康并检查本机健康接口；
+8. 更新成功后只保留最近 2 份完整备份和当前回退镜像，并把 BuildKit 缓存限制在 4GB。
+
+默认保留策略可在执行命令时覆盖：
+
+```bash
+sudo BACKUP_KEEP_COUNT=3 BUILD_CACHE_MAX_SIZE=6GB /usr/local/sbin/update-yingce
+```
+
+清理只在健康检查通过后执行；更新或健康检查失败时，当前备份和回退镜像不会被轮转。
 
 ## 4. 更新后验证
 

@@ -4,6 +4,8 @@ set -Eeuo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/data/open-ai-canvas}"
 BACKUP_ROOT="${BACKUP_ROOT:-/data/open-ai-canvas-backups}"
+BACKUP_KEEP_COUNT="${BACKUP_KEEP_COUNT:-2}"
+BUILD_CACHE_MAX_SIZE="${BUILD_CACHE_MAX_SIZE:-4GB}"
 REMOTE="${REMOTE:-origin}"
 BRANCH="${BRANCH:-main}"
 COMPOSE_FILE="docker-compose.deploy.yml"
@@ -141,6 +143,44 @@ tag_rollback_images() {
     fi
 }
 
+cleanup_old_backups() {
+    local -a backups=()
+    local backup index
+    while IFS= read -r backup; do
+        if [[ -s "${backup}/env" && -s "${backup}/postgres.dump" && -s "${backup}/backend-data.tar.gz" ]]; then
+            backups+=("$backup")
+        elif ! rm -rf -- "$backup"; then
+            printf '警告：无法清理不完整备份 %s\n' "$backup" >&2
+        fi
+    done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '????????-??????' -print | sort -r)
+    for ((index = BACKUP_KEEP_COUNT; index < ${#backups[@]}; index++)); do
+        if ! rm -rf -- "${backups[$index]}"; then
+            printf '警告：无法清理旧备份 %s\n' "${backups[$index]}" >&2
+        fi
+    done
+}
+
+cleanup_old_rollback_images() {
+    local keep_prefix="$1"
+    local repository image
+    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+        while IFS= read -r image; do
+            [[ -z "$image" || "$image" == "${repository}:rollback-${keep_prefix}" ]] && continue
+            docker image rm "$image" >/dev/null || printf '警告：无法清理旧回退镜像 %s\n' "$image" >&2
+        done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' --filter "reference=${repository}:rollback-*")
+    done
+}
+
+cleanup_after_update() {
+    local rollback_prefix="$1"
+    step "轮转更新备份与 Docker 缓存"
+    cleanup_old_backups
+    cleanup_old_rollback_images "$rollback_prefix"
+    if ! docker buildx prune --all --force --max-used-space "$BUILD_CACHE_MAX_SIZE"; then
+        printf '警告：BuildKit 缓存清理失败，请稍后手工执行 docker buildx prune。\n' >&2
+    fi
+}
+
 wait_health() {
     local bind="${1:-3000}"
     local host="127.0.0.1"
@@ -168,6 +208,7 @@ main() {
     command -v docker >/dev/null 2>&1 || fail "未安装 docker"
     docker compose version >/dev/null 2>&1 || fail "未安装 Docker Compose"
     command -v curl >/dev/null 2>&1 || fail "未安装 curl"
+    [[ "$BACKUP_KEEP_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "BACKUP_KEEP_COUNT 必须是正整数"
 
     [[ -d "$INSTALL_DIR/.git" ]] || fail "未找到 Git 仓库：$INSTALL_DIR"
     cd "$INSTALL_DIR"
@@ -223,10 +264,13 @@ main() {
         compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 backend web
     fi
     wait_health "$port"
+    cleanup_after_update "$old_short"
 
     printf '\n更新完成。\n'
     git log -1 --oneline --decorate
     compose ps
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
