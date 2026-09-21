@@ -15,11 +15,18 @@ function videoConfig(generateAudio: { supported: boolean; default: boolean }): A
         videoModel: "gravity::minimax-h3-a",
         videoGenerateAudio: "true",
         videoWatermark: "true",
-        channels: [{
-            id: "gravity", name: "万有引力", baseUrl: "/api", apiKey: "", apiFormat: "openai", scope: "system",
-            models: ["minimax-h3-a"],
-            modelCosts: [{ model: "minimax-h3-a", capability: "video", billingMode: "per_second", unitPriceMicrocredits: 1, capabilityConfig }],
-        }],
+        channels: [
+            {
+                id: "gravity",
+                name: "万有引力",
+                baseUrl: "/api",
+                apiKey: "",
+                apiFormat: "openai",
+                scope: "system",
+                models: ["minimax-h3-a"],
+                modelCosts: [{ model: "minimax-h3-a", capability: "video", billingMode: "per_second", unitPriceMicrocredits: 1, capabilityConfig }],
+            },
+        ],
     };
 }
 

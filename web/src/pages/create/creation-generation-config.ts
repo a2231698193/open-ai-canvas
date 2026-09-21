@@ -18,9 +18,14 @@ export function creationVideoConfig(config: AiConfig, model: string, settings: P
         size: normalized.ratio,
         videoSeconds: normalized.seconds,
         vquality: normalized.resolution.replace(/p$/i, ""),
-        ...resolveModelVideoBooleanOptions(config, model, {}, {
-            videoGenerateAudio: config.videoGenerateAudio,
-            videoWatermark: config.videoWatermark,
-        }),
+        ...resolveModelVideoBooleanOptions(
+            config,
+            model,
+            {},
+            {
+                videoGenerateAudio: config.videoGenerateAudio,
+                videoWatermark: config.videoWatermark,
+            },
+        ),
     };
 }

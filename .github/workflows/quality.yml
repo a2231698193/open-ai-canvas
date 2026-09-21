@@ -55,14 +55,8 @@ jobs:
       - name: Ensure dependency-backed tests were not skipped
         shell: bash
         run: |
-          set -o pipefail
-          go test ./internal/database/ ./internal/canvas/ ./internal/repository/ ./internal/platform/ ./internal/app/ \
-            -run 'TestPostgresAssetIDMigration|TestRepairAssetBytesPostgres|TestCanvasRevision|TestRuntimeCoordinatorRedisLeasePreservesLongestTTL|TestClearAdminRuntimeCacheUsesRedisWhitelist' \
-            -count=1 -v | tee "$RUNNER_TEMP/dependency-tests.log"
-          if grep -q -- "--- SKIP" "$RUNNER_TEMP/dependency-tests.log"; then
-            echo "::error::依赖外部服务的用例被跳过：请检查 CANVAS_TEST_POSTGRES_DSN 与 redis-server"
-            exit 1
-          fi
+          python3 ../.github/scripts/test_check_dependency_tests.py
+          python3 ../.github/scripts/check-dependency-tests.py "$RUNNER_TEMP/go-tests.jsonl"
       - name: Upload Go test timings
         if: always()
         uses: actions/upload-artifact@v4

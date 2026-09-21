@@ -251,6 +251,11 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"properties":           opProperties,
 			"required":             []string{"type", "id"},
 			"additionalProperties": false,
+			"oneOf": []map[string]any{
+				{"properties": map[string]any{"type": map[string]any{"const": "add_node"}}, "required": []string{"nodeType"}},
+				{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "required": []string{"patch"}},
+				{"properties": map[string]any{"type": map[string]any{"const": "connect_nodes"}}, "required": []string{"fromNodeId", "toNodeId"}},
+			},
 		}
 		add("canvas_apply_ops", "创建空白节点、修改提示词或建立引用连线，不提交生成任务、不产生生成费用；先读取画布并传 snapshotHash。提交媒体生成使用 generate_media。每次最多20项，禁止删除、任意 metadata 和媒体 URL。每项都需要 type 和 id：add_node 还需要 nodeType，update_node 还需要按节点能力清单填写 patch，connect_nodes 还需要 fromNodeId 与 toNodeId。连线是生成输入关系，不会改变已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind，能力以注册表为准。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
 	}

@@ -170,7 +170,9 @@ func newAdminStorageDeleteTestService(t *testing.T) (*Service, *gorm.DB, string,
 		t.Fatal(err)
 	}
 	dataDir := t.TempDir()
-	return New(repository.New(db), dataDir), db, dataDir, admin
+	svc := New(repository.New(db), dataDir)
+	startDeletionTestWorkers(t, svc)
+	return svc, db, dataDir, admin
 }
 
 func assertModelCount(t *testing.T, db *gorm.DB, value any, query string, expected int64, args ...any) {

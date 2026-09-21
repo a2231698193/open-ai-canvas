@@ -146,7 +146,8 @@ func (s *Service) deleteUserAssetWithResources(userID string, assetID string) er
 		return fmt.Errorf("素材记录删除失败，请重试：%w", err)
 	}
 	if len(deletionJobs) > 0 {
-		go s.drainResourceDeletionJobs(len(deletionJobs))
+		// 纳入停机等待；排空期间拒绝新 worker 时，已提交的 outbox 留待下次启动处理。
+		s.runWorkerTask(func() { s.drainResourceDeletionJobs(len(deletionJobs)) })
 	}
 	return nil
 }

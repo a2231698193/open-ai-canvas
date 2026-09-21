@@ -1,8 +1,8 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,25 +21,41 @@ import (
 // 而当前驱动没有启用。实测并发读写 400 次能撞到 70+ 次，CI 上因此偶发失败
 // （TestDeleteGeneratedAssetTaskReferences/cancelled_output 就是这样挂的）。
 //
-// 因此凡是会触发后台删除 outbox（`go s.drainResourceDeletionJobs`）的用例，统一用
+// 因此凡是会触发后台删除 outbox 的用例，统一用
 // 文件库 + WAL + busy_timeout：WAL 允许"一写多读"并发，写冲突退化成 SQLITE_BUSY 并由
 // busy_timeout 重试。
 //
-// 库文件刻意放在 `os.MkdirTemp` 而不是 `t.TempDir()` 下：outbox goroutine 可能在用例返回后
-// 仍在写库，`t.TempDir()` 的清理遇到这种写入会以 "directory not empty" 直接判失败，
-// 而它本身与用例断言无关。
+// 清理顺序为等待 service worker、关闭 SQL 连接、删除临时目录，不忽略清理错误。
 func newSQLiteTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	directory, err := os.MkdirTemp("", "canvas-test-db-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	directory := t.TempDir()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(directory, "test.db")+"?_journal_mode=WAL&_busy_timeout=5000"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("close test database: %v", err)
+		}
+	})
 	return db
+}
+
+func startDeletionTestWorkers(t *testing.T, svc *Service) {
+	t.Helper()
+	// 只启用生命周期跟踪，不启动生成、支付等无关的周期 worker。
+	svc.backgroundWorkers().Start()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := svc.StopWorker(ctx); err != nil {
+			t.Errorf("stop deletion workers: %v", err)
+		}
+	})
 }
 
 // TestSQLiteTestDBAllowsConcurrentReadWrite 守的是 newSQLiteTestDB 的选型：并发读写不得报锁。

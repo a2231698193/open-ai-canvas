@@ -513,5 +513,7 @@ func newResourceDeletionTestService(t *testing.T) (*Service, *gorm.DB, string) {
 		t.Fatal(err)
 	}
 	dataDir := t.TempDir()
-	return New(repository.New(db), dataDir), db, dataDir
+	svc := New(repository.New(db), dataDir)
+	startDeletionTestWorkers(t, svc)
+	return svc, db, dataDir
 }
