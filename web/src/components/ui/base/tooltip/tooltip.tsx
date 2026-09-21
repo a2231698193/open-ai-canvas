@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Tooltip as RACTooltip, TooltipTrigger, type Placement } from "react-aria-components";
+import { Focusable, Tooltip as RACTooltip, TooltipTrigger, type Placement } from "react-aria-components";
 
 import { cn } from "@/lib/utils";
 
@@ -42,7 +42,16 @@ export function Tooltip({ title, placement = "top", delay = 350, className, chil
 
     return (
         <TooltipTrigger delay={delay}>
-            <span className="inline-flex">{children}</span>
+            {/*
+             * RAC 1.21 的 TooltipTrigger 通过 context 下发 hover/focus 处理与 triggerRef，
+             * 只有消费该上下文的组件才会真正挂上（原生 <span>/<button> 不会读）。直接套
+             * 普通 span 的写法因此既没有触发事件、也没有定位基准，鼠标悬停永远不弹。
+             * Focusable 消费该上下文并把属性和 ref 合并到子元素：聚焦与悬停都可用，弹窗
+             * 也有定位基准；外层不占 Tab 位，键盘焦点落在内层控件上后冒泡触发。
+             */}
+            <Focusable excludeFromTabOrder>
+                <span className="inline-flex">{children}</span>
+            </Focusable>
             <RACTooltip placement={PLACEMENT_MAP[placement]} offset={6} className={cn("z-50 max-w-64 rounded-md border border-border bg-surface-strong px-2 py-1 text-xs leading-relaxed text-foreground shadow-md", "ra-pop-in", className)}>
                 {title}
             </RACTooltip>
