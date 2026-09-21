@@ -30,3 +30,18 @@ cleanup_old_backups
 [[ -d "${BACKUP_ROOT}/unrelated" ]]
 
 printf 'update-yingce backup retention: ok\n'
+
+# 备份 tar 退出码：1 视为可接受，2 及以上仍然失败
+tar_allow_changed bash -c 'exit 1'
+if tar_allow_changed bash -c 'exit 2'; then
+    printf 'expected rc 2 to fail\n' >&2
+    exit 1
+fi
+if tar_allow_changed bash -c 'exit 0'; then
+    :
+else
+    printf 'expected rc 0 to pass\n' >&2
+    exit 1
+fi
+
+printf 'update-yingce tar backup tolerance: ok\n'

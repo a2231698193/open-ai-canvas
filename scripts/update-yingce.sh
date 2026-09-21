@@ -120,17 +120,32 @@ backup_backend_data() {
     ALPINE_IMAGE="$(env_value ALPINE_IMAGE)"
     if [[ -n "$data_path" ]]; then
         [[ -d "$data_path" ]] || fail "CANVAS_DATA_PATH 不是目录：$data_path"
-        tar -C "$data_path" -czf "$dest" .
+        tar_allow_changed tar -C "$data_path" -czf "$dest" .
+        [[ -s "$dest" ]] || fail "后端数据备份为空"
         return
     fi
     if docker image inspect open-ai-canvas-backend:server >/dev/null 2>&1; then
-        compose run --rm --no-deps --user 0 --entrypoint tar backend czf - -C /data . >"$dest"
+        tar_allow_changed compose run --rm --no-deps --user 0 --entrypoint tar backend czf - -C /data . >"$dest"
+        [[ -s "$dest" ]] || fail "后端数据备份为空"
         return
     fi
     local volume
     volume="$(docker volume ls -q --filter name=backend-data | awk 'NR==1{print}')"
     [[ -n "$volume" ]] || fail "找不到后端数据卷，无法备份"
-    docker run --rm -v "$volume:/data:ro" "${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}" tar czf - -C /data . >"$dest"
+    tar_allow_changed docker run --rm -v "$volume:/data:ro" "${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}" tar czf - -C /data . >"$dest"
+    [[ -s "$dest" ]] || fail "后端数据备份为空"
+}
+
+# 备份运行中的数据目录时，插件等临时文件可能在打包期间被修改或删除，
+# 此时 tar 返回 1 但备份仍可用；只有 >=2 才是致命错误。
+tar_allow_changed() {
+    local rc=0
+    "$@" || rc=$?
+    if [[ "$rc" -eq 1 ]]; then
+        printf '警告：备份期间有文件被修改或删除，已忽略并继续。\n' >&2
+        return 0
+    fi
+    return "$rc"
 }
 
 tag_rollback_images() {
