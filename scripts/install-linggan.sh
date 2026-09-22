@@ -70,35 +70,40 @@ verify_sha256() {
     [[ "$actual" == "$expected" ]] || fail "SHA256 不一致：${file}"
 }
 
+# 从 Release 列表里挑出最新的、同时带目标平台压缩包和 SHA256SUMS 的那一个。
+#
+# 不读 /releases/latest：四段版本号会被 GitHub 判成预发布，latest 因此返回 404，
+# 而这正是本仓库当前唯一的发布形态。列表接口默认包含预发布，按创建时间倒序。
+# 输出两行：压缩包地址、校验和地址。
+linggan_release_urls() {
+    local asset="$1" releases_json="$2"
+    python3 - "$asset" "$releases_json" <<'PY'
+import json, sys
+asset, path = sys.argv[1], sys.argv[2]
+for release in json.load(open(path)):
+    if release.get("draft"):
+        continue
+    assets = {item.get("name"): item.get("browser_download_url") for item in release.get("assets", [])}
+    if asset in assets and "SHA256SUMS" in assets:
+        print(assets[asset])
+        print(assets["SHA256SUMS"])
+        raise SystemExit
+raise SystemExit(1)
+PY
+}
+
 install_linggan() {
-    local asset archive_url checksum_url checksums expected work archive
+    local asset archive_url checksum_url checksums expected work archive urls
     asset="$(linggan_asset_name)" || fail "当前系统没有对应安装包：$(uname -s) $(uname -m)"
     command -v unzip >/dev/null 2>&1 || fail "需要 unzip"
     command -v python3 >/dev/null 2>&1 || fail "需要 python3"
     work="$(mktemp -d)"
     archive="${work}/${asset}"
-    download "https://api.github.com/repos/${REPO}/releases/latest" "${work}/release.json"
-    archive_url="$(python3 - "$asset" "${work}/release.json" <<'PY'
-import json, sys
-asset, path = sys.argv[1], sys.argv[2]
-release = json.load(open(path))
-for item in release.get("assets", []):
-    if item.get("name") == asset:
-        print(item["browser_download_url"])
-        raise SystemExit
-raise SystemExit(1)
-PY
-)" || fail "最新正式版没有 ${asset}"
-    checksum_url="$(python3 - "${work}/release.json" <<'PY'
-import json, sys
-release = json.load(open(sys.argv[1]))
-for item in release.get("assets", []):
-    if item.get("name") == "SHA256SUMS":
-        print(item["browser_download_url"])
-        raise SystemExit
-raise SystemExit(1)
-PY
-)" || fail "最新正式版没有 SHA256SUMS"
+    download "https://api.github.com/repos/${REPO}/releases?per_page=30" "${work}/releases.json"
+    urls="$(linggan_release_urls "$asset" "${work}/releases.json")" || fail "没有任何 Release 同时提供 ${asset} 和 SHA256SUMS"
+    archive_url="$(printf '%s\n' "$urls" | sed -n '1p')"
+    checksum_url="$(printf '%s\n' "$urls" | sed -n '2p')"
+    [[ -n "$archive_url" && -n "$checksum_url" ]] || fail "Release 资产地址不完整"
     download "$archive_url" "$archive"
     download "$checksum_url" "${work}/SHA256SUMS"
     expected="$(awk -v name="$asset" '$2 == name { print $1 }' "${work}/SHA256SUMS")"

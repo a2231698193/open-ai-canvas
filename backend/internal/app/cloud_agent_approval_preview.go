@@ -141,11 +141,22 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				}
 			}
 			node := creationAddedNode(CreationCanvasOp{Type: op.Type, ID: op.ID, NodeType: op.NodeType, Title: title, X: x, Y: y, Metadata: capability.Metadata(content)})
+			if len(op.Generation) > 0 {
+				generationMetadata, generationErr := cloudAgentGenerationMetadata(op.NodeType, op.Generation)
+				if generationErr != nil {
+					return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d].generation", opIndex), "invalid_value", cloudAgentSafeToolError(generationErr))
+				}
+				nodeMetadata, _ := node["metadata"].(map[string]any)
+				for key, value := range generationMetadata {
+					nodeMetadata[key] = value
+				}
+			}
 			nodes = append(nodes, node)
 			nodeTitle := cloudAgentApprovalNodeTitle(node, capability.Label)
 			items = append(items, cloudAgentApprovalPreviewItem{
 				Operation: "add_node", NodeID: op.ID, NodeTitle: nodeTitle,
 				NodeType: capability.Type, NodeTypeLabel: capability.Label,
+				Fields:  cloudAgentGenerationFieldNames(op.Generation),
 				Summary: fmt.Sprintf("新增%s《%s》", capability.Label, nodeTitle),
 			})
 		case "connect_nodes":
@@ -200,6 +211,17 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 			fields := cloudAgentApprovalPatchLabels(capability.PatchFields, op.Patch)
 			if err := capability.ApplyPatch(nodes[index], op.Patch); err != nil {
 				return nil, BadAuthRequest(err.Error())
+			}
+			if len(op.Generation) > 0 {
+				generationMetadata, generationErr := cloudAgentGenerationMetadata(capability.Type, op.Generation)
+				if generationErr != nil {
+					return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d].generation", opIndex), "invalid_value", cloudAgentSafeToolError(generationErr))
+				}
+				nodeMetadata, _ := nodes[index]["metadata"].(map[string]any)
+				for key, value := range generationMetadata {
+					nodeMetadata[key] = value
+				}
+				fields = append(fields, cloudAgentGenerationFieldNames(op.Generation)...)
 			}
 			afterTitle := cloudAgentApprovalNodeTitle(nodes[index], capability.Label)
 			resultTitle := ""

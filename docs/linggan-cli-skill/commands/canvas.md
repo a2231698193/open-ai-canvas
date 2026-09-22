@@ -43,6 +43,34 @@ linggan canvas apply --file ops.json
 
 图片、视频、音频节点更新下次生成用的提示词草稿用 `metadata.composerContent`。这不会覆盖已经提交的生成结果。
 
+### 准备生成规格
+
+媒体节点可以用 `generation` 一次写好模型和生成参数，不必让用户事后在网页上补。`add_node` 和 `update_node` 都接受它：
+
+```json
+{
+  "type": "add_node", "id": "video-1", "nodeType": "video",
+  "title": "第 1 段", "content": "镜头提示词",
+  "generation": {
+    "model": "CHANNEL_000011::MiniMax-H3",
+    "size": "16:9",
+    "seconds": 15,
+    "vquality": "768p",
+    "generateAudio": true
+  }
+}
+```
+
+模型选择填 `model`（渠道模型，形如 `渠道ID::模型键`）或 `logicalModelId`，二者只能填一个。其余键用**节点字段名**，按节点类型区分：
+
+| 节点类型 | 可用字段 |
+|---|---|
+| 视频 | `size`、`seconds`、`vquality`、`generateAudio`、`watermark` |
+| 图片 | `size`、`quality`、`count`、`transparentBackground` |
+| 音频 | `audioVoice`、`audioFormat`、`audioSpeed`、`audioInstructions` |
+
+字段拼错或跨类型（例如给图片节点传 `seconds`）会被直接拒绝，并在错误里列出可用字段——不会静默丢弃。非媒体节点（`text`、`script` 等）不接受 `generation`。
+
 写入成功后使用返回的新 `snapshotHash`。旧哈希会被拒绝。
 
 ## 画布 Agent 的其余操作

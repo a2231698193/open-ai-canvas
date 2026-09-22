@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -172,6 +173,42 @@ func Decode(data []byte) (GenerationSpec, error) {
 // OptionsFromTaskConfig only copies public fields declared above. Credentials and
 // provider routing fields cannot be admitted by adding a task config key.
 func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) {
+	return optionsFromTaggedValues(mode, "task", config)
+}
+
+// OptionsFromNodeMetadata 读取画布节点 metadata 的选项写法（`node` 标签），
+// 供不经过任务协议、直接准备节点生成规格的入口使用。
+//
+// 与任务配置不同，这里拒绝未知字段：这个入口的存在意义是把节点规格写准，
+// 一个拼错后静默消失的字段会让节点停在编辑器默认值上，而工具却报告成功。
+func OptionsFromNodeMetadata(mode string, values map[string]any) (Options, error) {
+	allowed := map[string]bool{}
+	typ := reflect.TypeOf(Options{})
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if strings.Contains(","+field.Tag.Get("modes")+",", ","+mode+",") {
+			allowed[field.Tag.Get("node")] = true
+		}
+	}
+	unknown := []string{}
+	for key := range values {
+		if !allowed[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		names := make([]string, 0, len(allowed))
+		for name := range allowed {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return Options{}, invalid("generation."+unknown[0], fmt.Sprintf("该字段不适用于 %s 生成节点；可用字段：%s", mode, strings.Join(names, "、")))
+	}
+	return optionsFromTaggedValues(mode, "node", values)
+}
+
+func optionsFromTaggedValues(mode string, tag string, values map[string]any) (Options, error) {
 	options := Options{}
 	value, typ := reflect.ValueOf(&options).Elem(), reflect.TypeOf(options)
 	for i := 0; i < typ.NumField(); i++ {
@@ -179,7 +216,7 @@ func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) 
 		if !strings.Contains(","+field.Tag.Get("modes")+",", ","+mode+",") {
 			continue
 		}
-		raw, exists := config[field.Tag.Get("task")]
+		raw, exists := values[field.Tag.Get(tag)]
 		if !exists || raw == nil || raw == "" {
 			continue
 		}
@@ -188,19 +225,19 @@ func OptionsFromTaskConfig(mode string, config map[string]any) (Options, error) 
 		case reflect.String:
 			text, ok := raw.(string)
 			if !ok {
-				return options, invalid("options."+field.Tag.Get("task"), "必须是字符串")
+				return options, invalid("options."+field.Tag.Get(tag), "必须是字符串")
 			}
 			parsed.Elem().SetString(text)
 		case reflect.Bool:
 			boolean, err := strconv.ParseBool(fmt.Sprint(raw))
 			if err != nil {
-				return options, invalid("options."+field.Tag.Get("task"), "必须是布尔值")
+				return options, invalid("options."+field.Tag.Get(tag), "必须是布尔值")
 			}
 			parsed.Elem().SetBool(boolean)
 		case reflect.Int:
 			number, err := strconv.Atoi(fmt.Sprint(raw))
 			if err != nil {
-				return options, invalid("options."+field.Tag.Get("task"), "必须是整数")
+				return options, invalid("options."+field.Tag.Get(tag), "必须是整数")
 			}
 			parsed.Elem().SetInt(int64(number))
 		}

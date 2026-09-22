@@ -496,6 +496,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"title":      str("标题；更新操作可选"),
 			"content":    str("文本正文或媒体提示词；更新操作可选"),
 			"patch":      cloudAgentPatchSchema(),
+			"generation": map[string]any{"type": "object", "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝"},
 			"fromNodeId": str("连线来源节点ID"),
 			"toNodeId":   str("连线目标节点ID"),
 			"x":          map[string]any{"type": "number"},
@@ -973,6 +974,9 @@ type agentCanvasOp struct {
 	Title    *string        `json:"title"`
 	Content  *string        `json:"content"`
 	Patch    map[string]any `json:"patch"`
+	// Generation 是受白名单约束的生成规格（模型、时长、画幅、分辨率、音频等），
+	// 让 Agent 能把节点准备到「用户只需确认」的状态；不含任意 metadata 通道。
+	Generation map[string]any `json:"generation"`
 	// X/Y 为指针：nil 表示模型没有指定坐标，服务端按画布内容自动落位（不再落到原点重叠）。
 	// 指针语义与 canvas/capability/builtin.go 的 positionPatchFields 一致（坐标是可选的数字）。
 	X          *float64 `json:"x"`
