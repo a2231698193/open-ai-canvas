@@ -10,7 +10,14 @@ macOS 和 Linux：
 curl -fsSL https://raw.githubusercontent.com/a2231698193/open-ai-canvas/main/scripts/install-linggan.sh | bash
 ```
 
-安装包发布在 [GitHub Releases](https://github.com/a2231698193/open-ai-canvas/releases/latest)。`v1.5.7.2` 的质量检查和镜像构建通过后，这里才会出现四个系统压缩包。
+安装包发布在 [GitHub Releases](https://github.com/a2231698193/open-ai-canvas/releases)。每次推送 `v*` 版本标签时，流水线先跑质量检查和前后端镜像构建，通过后才编译四个系统的命令行压缩包并挂到这个 Release 上。仓库还没有发布过正式版本，所以现在 `releases/latest` 可能是空的；在第一个版本发布前，只能从源码安装：
+
+```bash
+cd backend
+go build -o "$HOME/.linggan/bin/linggan" ./cmd/linggan
+```
+
+服务端也要先部署对应版本，命令行才能连上画布和生成接口。
 
 ## 安装 Skill
 

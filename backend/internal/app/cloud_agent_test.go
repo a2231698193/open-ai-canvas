@@ -440,8 +440,9 @@ func TestCloudAgentTextDraftAdvancesWithoutWaitingScheduler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var state cloudAgentRuntime
-	if err := json.Unmarshal([]byte(execution.StateJSON), &state); err != nil {
+	// 事件落在运行日志里，checkpoint 的 state_json 不含 events，必须用解码器还原。
+	state, err := cloudAgentDecode(execution)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(state.Events) == 0 || state.Events[len(state.Events)-1].Type != "assistant_delta" || state.Events[len(state.Events)-1].Payload["text"] != "你好" {
