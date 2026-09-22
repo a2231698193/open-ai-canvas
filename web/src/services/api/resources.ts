@@ -345,17 +345,40 @@ export async function getResourceBlob(storageKey: string, options?: { allowProxy
     if (!id) return null;
     // A direct OSS response needs CORS to be readable as a Blob. Native <img>/<video>
     // can still display it without CORS, so background cache fills must not proxy it.
+    //
+    // 没配 CORS 的对象存储会让直连每次都失败：同一主机失败过一次就记住，
+    // 后续直接走同源代理，不再重复发出注定失败的跨域请求和控制台报错。
+    let ossUrl = "";
     try {
-        const ossUrl = await getResourceOSSUrl(storageKey);
-        const response = await fetch(ossUrl, { credentials: "omit", mode: "cors" });
-        if (response.ok) return response.blob();
-        if (!options?.allowProxyFallback || response.status === 401 || response.status === 403 || response.status === 404) return null;
+        ossUrl = await getResourceOSSUrl(storageKey);
     } catch {
         if (!options?.allowProxyFallback) return null;
+    }
+    const ossHost = hostOfUrl(ossUrl);
+    if (ossUrl && !(ossHost && corsBlockedHosts.has(ossHost))) {
+        try {
+            const response = await fetch(ossUrl, { credentials: "omit", mode: "cors" });
+            if (response.ok) return response.blob();
+            if (!options?.allowProxyFallback || response.status === 401 || response.status === 403 || response.status === 404) return null;
+        } catch {
+            if (ossHost) corsBlockedHosts.add(ossHost);
+            if (!options?.allowProxyFallback) return null;
+        }
     }
     if (!options?.allowProxyFallback) return null;
     const response = await fetch(resourceProxyFileUrl(id), { credentials: "include" });
     return response.ok ? response.blob() : null;
+}
+
+/** 同一会话内直连失败过的主机名，用于跳过注定失败的跨域重试。 */
+const corsBlockedHosts = new Set<string>();
+
+function hostOfUrl(url: string) {
+    try {
+        return new URL(url).host;
+    } catch {
+        return "";
+    }
 }
 
 function extensionFromMime(mimeType: string, kind: string) {
