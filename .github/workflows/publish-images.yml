@@ -186,8 +186,16 @@ jobs:
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "../dist/open-ai-canvas-host-updater-linux-$arch" ./cmd/host-updater
           done
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            staging="../dist/linggan-${goos}-${goarch}"
+            mkdir -p "$staging"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$staging/linggan" ./cmd/linggan
+            (cd "$staging" && zip -q -j "../linggan-${goos}-${goarch}.zip" linggan)
+          done
           cd ../dist
-          sha256sum open-ai-canvas-host-updater-linux-* > SHA256SUMS
+          sha256sum open-ai-canvas-host-updater-linux-* linggan-*.zip > SHA256SUMS
       - name: Prepare release notes
         shell: bash
         run: |
@@ -210,6 +218,10 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/open-ai-canvas-host-updater-linux-amd64 \
             dist/open-ai-canvas-host-updater-linux-arm64 \
+            dist/linggan-darwin-arm64.zip \
+            dist/linggan-darwin-amd64.zip \
+            dist/linggan-linux-amd64.zip \
+            dist/linggan-linux-arm64.zip \
             dist/SHA256SUMS \
             docker-compose.deploy.yml \
             --verify-tag \
