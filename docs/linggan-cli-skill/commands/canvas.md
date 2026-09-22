@@ -124,6 +124,28 @@ linggan canvas tool generate_media --file generate.json
 
 `mode` 可以是 `image`、`video` 或 `audio`。`logicalModelId` 与 `channelId`、`channelModelKey` 互斥，后两个必须成对使用。`referenceNodeIds` 只放媒体节点；文本来源放在 `sourceNodeId`。
 
+### 参考素材的角色
+
+需要区分首帧、尾帧和普通参考图时，用 `references` 代替 `referenceNodeIds`（两者只能填一个）。它自带顺序，`@图片N` 的编号按这个顺序：
+
+```json
+{
+  "mode": "video",
+  "references": [
+    {"nodeId": "seam-1", "role": "first_frame"},
+    {"nodeId": "chr-1", "role": "reference_image"}
+  ]
+}
+```
+
+`role` 取值 `first_frame`、`last_frame`、`reference_image`（省略即 `reference_image`；`reference` 是它的同义写法）。规则：
+
+- `first_frame` 和 `last_frame` 各自最多一个；填了 `last_frame` 就必须同时有 `first_frame`。
+- 首尾帧只能指向图片节点，指向视频或音频会被拒绝。
+- 只填 `reference_image` 时服务端按 `reference` 模式处理。
+
+服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），所以路由和供应商适配与网页生成一致，不需要额外参数。
+
 视频还有一个 `videoEditOperation`，取值 `text_to_video`、`image_to_video`、`reference_to_video`、`audio_to_video`。
 
 **多图全能参考必须显式填 `videoEditOperation: "reference_to_video"`**：省略时服务端按参考素材推导，而只挂参考图会推导成单首帧的 `image_to_video`，多张图会被上游按「输入媒体数量超过限制」拒绝。模型是否支持某个操作，以 `model_list` 返回的能力为准。

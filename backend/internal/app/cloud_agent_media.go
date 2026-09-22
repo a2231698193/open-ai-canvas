@@ -38,13 +38,14 @@ func (s *Service) cloudAgentModelList(intent *ModelRequestIntent) (any, error) {
 // Resolve actual canvas resources before filtering the shared catalog. Counts
 // supplied by the model must not replace resource ownership/readiness checks.
 func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*ModelRequestIntent, error) {
-	var a struct {
-		Mode               string   `json:"mode"`
-		ReferenceNodeIDs   []string `json:"referenceNodeIds"`
-		VideoEditOperation string   `json:"videoEditOperation"`
-	}
+	// 与 generate_media 共用同一组参数：带角色的 references 会决定本次意图里
+	// 的 ImageRoles，因此模型筛选结果必须和真正提交时一致。
+	var a cloudAgentMediaArgs
 	if err := decodeCloudAgentJSONObject(arguments, &a); err != nil {
 		return nil, BadAuthRequest("模型查询参数无效")
+	}
+	if err := normalizeCloudAgentMediaReferences(&a); err != nil {
+		return nil, err
 	}
 	if a.Mode == "" && len(a.ReferenceNodeIDs) == 0 {
 		return nil, nil
@@ -82,6 +83,9 @@ func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*Mo
 		return nil, err
 	}
 	refs["mode"] = a.Mode
+	if metadata := cloudAgentVideoRoleMetadata(a); len(metadata) > 0 {
+		refs["metadata"] = metadata
+	}
 	operation, err := cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
 	if err != nil {
 		return nil, err
@@ -91,24 +95,28 @@ func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*Mo
 }
 
 type cloudAgentMediaArgs struct {
-	Prepared              *cloudAgentPreparedMedia `json:"-"`
-	DraftRunID            string                   `json:"-"`
-	Mode                  string                   `json:"mode"`
-	Prompt                string                   `json:"prompt"`
-	LogicalModelID        string                   `json:"logicalModelId"`
-	ChannelID             string                   `json:"channelId"`
-	ChannelModelKey       string                   `json:"channelModelKey"`
-	Duration              int                      `json:"durationSeconds"`
-	Size                  string                   `json:"size"`
-	Quality               string                   `json:"quality"`
-	VideoGenerateAudio    *bool                    `json:"videoGenerateAudio"`
-	VideoEditOperation    string                   `json:"videoEditOperation"`
-	SnapshotHash          string                   `json:"snapshotHash"`
-	NodeID                string                   `json:"nodeId"`
-	Title                 string                   `json:"title"`
-	SourceNodeID          string                   `json:"sourceNodeId"`
-	ReferenceNodeIDs      []string                 `json:"referenceNodeIds"`
-	ReferenceTransientIDs []string                 `json:"referenceTransientIds"`
+	Prepared           *cloudAgentPreparedMedia `json:"-"`
+	DraftRunID         string                   `json:"-"`
+	Mode               string                   `json:"mode"`
+	Prompt             string                   `json:"prompt"`
+	LogicalModelID     string                   `json:"logicalModelId"`
+	ChannelID          string                   `json:"channelId"`
+	ChannelModelKey    string                   `json:"channelModelKey"`
+	Duration           int                      `json:"durationSeconds"`
+	Size               string                   `json:"size"`
+	Quality            string                   `json:"quality"`
+	VideoGenerateAudio *bool                    `json:"videoGenerateAudio"`
+	VideoEditOperation string                   `json:"videoEditOperation"`
+	SnapshotHash       string                   `json:"snapshotHash"`
+	NodeID             string                   `json:"nodeId"`
+	Title              string                   `json:"title"`
+	SourceNodeID       string                   `json:"sourceNodeId"`
+	ReferenceNodeIDs   []string                 `json:"referenceNodeIds"`
+	// References 是带角色的参考素材写法；与 ReferenceNodeIDs 二选一，
+	// 归一后 ReferenceNodeIDs 承载顺序，ReferenceRoles 承载角色。
+	References            []cloudAgentMediaReference `json:"references"`
+	ReferenceRoles        map[string]string          `json:"-"`
+	ReferenceTransientIDs []string                   `json:"referenceTransientIds"`
 }
 
 type cloudAgentMediaPlan struct {
@@ -576,6 +584,10 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	}
 	a.Mode = strings.ToLower(strings.TrimSpace(a.Mode))
 	a.DraftRunID = run.ID
+	// 角色归一必须在读画布之前：references 会决定本次请求的有序节点列表。
+	if err := normalizeCloudAgentMediaReferences(&a); err != nil {
+		return CreateTaskRequest{}, nil, err
+	}
 	if state.Approval != nil && state.Approval.Call.ID == call.ID {
 		a.Prepared = state.Approval.Prepared
 	}
@@ -587,6 +599,9 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	}
 	_, _, refs, err := cloudAgentMediaDocument(s.repo, run.UserID, state.Request.CanvasID, a, state.TransientReferences)
 	if err != nil {
+		return CreateTaskRequest{}, nil, err
+	}
+	if err := validateCloudAgentReferenceRoles(a, refs); err != nil {
 		return CreateTaskRequest{}, nil, err
 	}
 	if a.Prepared != nil {
@@ -620,6 +635,9 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	metadata := map[string]any{"nodeId": a.NodeID, "source": "cloud_agent"}
 	if a.Mode == "video" {
 		metadata["videoEditOperation"] = operation
+		for key, value := range cloudAgentVideoRoleMetadata(a) {
+			metadata[key] = value
+		}
 	}
 	input["metadata"] = metadata
 	transientSnapshot := map[string]cloudAgentTransientReference{}

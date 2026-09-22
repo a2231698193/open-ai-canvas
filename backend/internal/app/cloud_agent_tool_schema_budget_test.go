@@ -54,12 +54,15 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 
 	// 体积预算：上游 20 个工具实测 22,777 字节（预算 24000）。之后的实测与调整：
 	//   - 新增 canvas_arrange_nodes 并补齐描述、patch 字段后，21 个工具 24,788 字节 → 预算 25000
-	//   - generate_media 补 videoEditOperation（纯图参考无法推导出多图全能参考）后 25,237 字节
-	//   - canvas_apply_ops 补 generation（Agent 准备节点生成规格）后，22 个工具 25,512 字节 → 预算 25800
+	//   - generate_media 补 videoEditOperation 后 25,237 字节 → 预算 25500
+	//   - canvas_apply_ops 补 generation、generate_media 补 references（参考素材角色）后 25,778 字节
+	//     这次先做了一轮描述压缩（recall/remember_lesson、image_layer_split、
+	//     canvas_apply_ops 的坐标说明，共腾出约 180 字节），剩下的描述都是协议语义，
+	//     因此把预算定到 26200（约 1.6% 余量）而不是继续逐次微调。
 	// 新增工具或字段时请重新测量并有意识地调整这个数字，而不是让 schema 悄悄膨胀
-	// （它每一步都要发、还在前缀最前面）。余量已不足 1%，需要继续加字段时应当先做一轮
-	// 专门的描述压缩，而不是继续抬高这个上限。
-	if len(raw) > 25800 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 25800：请压缩描述或显式调整预算", len(raw))
+	// （它每一步都要发、还在前缀最前面）。余量已不足 2%，再要加字段就应当回到
+	// 「按工具逐个复核描述」这一层，而不是继续抬高这个上限。
+	if len(raw) > 26200 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 26200：请压缩描述或显式调整预算", len(raw))
 	}
 }

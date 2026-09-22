@@ -44,6 +44,9 @@ func cloudAgentGenerationSpec(a cloudAgentMediaArgs, refs map[string]any, resolv
 		for _, ref := range creationMaps(refs[media.field]) {
 			id := stringValue(ref["id"])
 			binding := contract.ReferenceBinding{ID: "node:" + id, NodeID: id, MediaType: media.kind, Role: "reference", Resolution: "latest"}
+			if role, assigned := a.ReferenceRoles[id]; assigned {
+				binding.Role = cloudAgentReferenceBindingRoles[role]
+			}
 			if key := stringValue(ref["storageKey"]); strings.HasPrefix(key, "resource:") {
 				binding.ResourceID = strings.TrimPrefix(key, "resource:")
 			}
