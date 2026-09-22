@@ -711,6 +711,18 @@ func createCloudAgentMediaNode(repo *repository.Repository, userID, canvasID str
 		meta["status"], meta["taskId"], meta["taskStatus"] = "loading", task.ID, "queued"
 		delete(meta, "agentDraftRunId")
 	}
+	// 视频的模式与首尾帧也要落到节点上：网页端的模式下拉和参考帧读的是节点 metadata，
+	// 只写任务会让用户打开画布看到「参考帧」是空的。
+	operation := ""
+	if task != nil {
+		operation = task.Operation
+	}
+	if operation == "" {
+		operation, _ = cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
+	}
+	for key, value := range cloudAgentVideoNodeMetadata(a, operation) {
+		meta[key] = value
+	}
 	descriptor, supported := cloudAgentNodeCapabilityForGenerationMode(a.Mode)
 	if !supported || !cloudAgentGenerationModeSupported(a.Mode) {
 		return BadAuthRequest("生成模式当前不受 Agent 支持")

@@ -173,7 +173,7 @@ linggan canvas tool generate_media --file generate.json
 - 首尾帧只能指向图片节点，指向视频或音频会被拒绝。
 - 只填 `reference_image` 时服务端按 `reference` 模式处理。
 
-服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），所以路由和供应商适配与网页生成一致，不需要额外参数。
+服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），**并且写进节点本身**：路由和供应商适配与网页生成一致，用户打开画布时模式下拉和「参考帧」也和你提交的一致，不需要额外参数。没有显式角色时按最终 operation 回填模式（`reference_to_video` → 全能参考），所以两图全能参考不会在界面上显示成首尾帧参考。
 
 ### 四种视频模式怎么填
 

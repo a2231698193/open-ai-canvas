@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -109,5 +110,67 @@ func TestValidateCloudAgentReferenceRolesRequiresImageFrames(t *testing.T) {
 	a.ReferenceRoles = map[string]string{"img-1": cloudAgentReferenceRoleFirstFrame}
 	if err := validateCloudAgentReferenceRoles(a, refs); err != nil {
 		t.Fatalf("首帧指向图片节点应通过，err = %v", err)
+	}
+}
+
+// 视频的模式与首尾帧必须同时写进节点 metadata：网页端的模式下拉和「参考帧」读的是
+// videoMode / videoStartFrameNodeId / videoEndFrameNodeId。只写任务不写节点，用户打开
+// 画布会看到参考帧是空的，甚至按连接数猜成别的模式。
+func TestCLIGenerateMediaWritesKeyframesIntoNodeMetadata(t *testing.T) {
+	s, _, args := agentMediaFixture(t)
+	args.ReferenceNodeIDs = nil
+	args.References = []cloudAgentMediaReference{
+		{NodeID: "hero", Role: "first_frame"},
+		{NodeID: "cat", Role: "last_frame"},
+	}
+	args.VideoEditOperation = ""
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.CLICanvasTool("user", "agent-canvas", "generate_media", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if taskID, _ := result.(map[string]any)["taskId"].(string); taskID == "" {
+		t.Fatalf("没有创建任务：%#v", result)
+	}
+	canvas, err := s.repo.CanvasProjectForUser("user", "agent-canvas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := cloudAgentCanvasNode(doc, args.NodeID)
+	if node == nil {
+		t.Fatalf("没有创建节点：%s", canvas.PayloadJSON)
+	}
+	meta, _ := node["metadata"].(map[string]any)
+	if meta["videoMode"] != "keyframes" || meta["videoStartFrameNodeId"] != "hero" || meta["videoEndFrameNodeId"] != "cat" {
+		t.Fatalf("节点缺少首尾帧元数据：%#v", meta)
+	}
+}
+
+// 没有显式角色时按最终 operation 回填模式，避免两图全能参考在界面上显示成首尾帧参考。
+func TestCloudAgentVideoNodeMetadataFallsBackToOperation(t *testing.T) {
+	plain := cloudAgentMediaArgs{Mode: "video", ReferenceNodeIDs: []string{"a", "b"}}
+	if metadata := cloudAgentVideoNodeMetadata(plain, "reference_to_video"); metadata["videoMode"] != "reference" {
+		t.Fatalf("reference_to_video 应回填 reference：%#v", metadata)
+	}
+	if metadata := cloudAgentVideoNodeMetadata(plain, "image_to_video"); metadata["videoMode"] != "image" {
+		t.Fatalf("image_to_video 应回填 image：%#v", metadata)
+	}
+	if metadata := cloudAgentVideoNodeMetadata(plain, "text_to_video"); metadata["videoMode"] != "text" {
+		t.Fatalf("text_to_video 应回填 text：%#v", metadata)
+	}
+	// 显式角色优先，且非视频模式不产生这些键。
+	keyframes := cloudAgentMediaArgs{Mode: "video", ReferenceRoles: map[string]string{"a": cloudAgentReferenceRoleFirstFrame, "b": cloudAgentReferenceRoleLastFrame}}
+	if metadata := cloudAgentVideoNodeMetadata(keyframes, "image_to_video"); metadata["videoMode"] != "keyframes" || metadata["videoEndFrameNodeId"] != "b" {
+		t.Fatalf("显式角色被 operation 覆盖：%#v", metadata)
+	}
+	if metadata := cloudAgentVideoNodeMetadata(cloudAgentMediaArgs{Mode: "image"}, "image_to_image"); metadata != nil {
+		t.Fatalf("图片节点不该写视频模式：%#v", metadata)
 	}
 }

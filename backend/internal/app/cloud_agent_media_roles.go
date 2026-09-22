@@ -89,6 +89,35 @@ func cloudAgentReferenceRoleName(raw string) (string, error) {
 	}
 }
 
+// cloudAgentVideoNodeMetadata 是写进节点 metadata 的视频模式事实。
+//
+// 网页端的模式下拉和首尾帧读的就是 videoMode / videoStartFrameNodeId /
+// videoEndFrameNodeId 这三个键：只把角色写进任务、不写进节点，用户打开画布会看到
+// 「参考帧」两个下拉是空的，甚至按连接数猜成另一个模式，再提交时那对首尾帧就丢了。
+//
+// 没有显式角色时按最终 operation 回填模式（reference_to_video 只能是全能参考），
+// 免得两图全能参考在界面上显示成首尾帧参考。
+func cloudAgentVideoNodeMetadata(a cloudAgentMediaArgs, operation string) map[string]any {
+	if a.Mode != "video" {
+		return nil
+	}
+	metadata := cloudAgentVideoRoleMetadata(a)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	if _, exists := metadata["videoMode"]; !exists {
+		switch operation {
+		case "text_to_video":
+			metadata["videoMode"] = "text"
+		case "image_to_video":
+			metadata["videoMode"] = "image"
+		default:
+			metadata["videoMode"] = "reference"
+		}
+	}
+	return metadata
+}
+
 func cloudAgentRoleNodeID(roles map[string]string, target string) string {
 	for nodeID, role := range roles {
 		if role == target {

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Images, Image as ImageIcon } from "lucide-react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
-import { VIDEO_GENERATION_MODE_OPTIONS, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
+import { VIDEO_GENERATION_MODE_OPTIONS, videoFrameSelectionPatch, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 
@@ -63,7 +63,8 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
 
     const setFrame = (key: "videoStartFrameNodeId" | "videoEndFrameNodeId", value: string) => {
         const next = value === EMPTY_FRAME_VALUE ? undefined : value;
-        onMetadataChange(key === "videoStartFrameNodeId" ? { videoStartFrameNodeId: next } : { videoEndFrameNodeId: next });
+        // 连同当前模式一起写回：只写帧字段时，选完首帧会被推导成"图生视频"，尾帧入口消失。
+        onMetadataChange(videoFrameSelectionPatch(videoMode, key, next));
     };
 
     if (referenceMode === "all") {

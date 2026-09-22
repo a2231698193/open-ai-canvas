@@ -48,6 +48,25 @@ export function videoGenerationModeFromMetadata(
     if (explicit) return explicit;
     if (metadata?.videoEditOperation === "reference_to_video") return "reference";
     if (metadata?.videoEndFrameNodeId) return "keyframes";
-    if (metadata?.videoStartFrameNodeId || metadata?.videoEditOperation === "image_to_video") return "image";
+    if (metadata?.videoStartFrameNodeId) {
+        // 只选了首帧、但画布上仍是「两张图」的输入时依然是首尾帧模式：否则用户在面板上
+        // 刚点完首帧，模式就被推导成图生视频，尾帧下拉直接消失、再也选不了（实测）。
+        return legacyInput && inferVideoGenerationMode(legacyInput) === "keyframes" ? "keyframes" : "image";
+    }
+    if (metadata?.videoEditOperation === "image_to_video") return "image";
     return legacyInput ? inferVideoGenerationMode(legacyInput) : "text";
+}
+
+// 选首帧/尾帧时顺带把当前模式固定下来：只写帧字段会让模式在"两张图"和"一张图"之间
+// 反复推导，用户选完首帧就会丢掉尾帧入口。返回的是可直接并入节点 metadata 的补丁。
+export function videoFrameSelectionPatch(
+    mode: VideoGenerationMode,
+    key: "videoStartFrameNodeId" | "videoEndFrameNodeId",
+    value: string | undefined,
+): { videoMode: VideoGenerationMode; videoEditOperation: ReturnType<typeof videoModeOperation>; videoStartFrameNodeId?: string; videoEndFrameNodeId?: string } {
+    return {
+        videoMode: mode,
+        videoEditOperation: videoModeOperation(mode),
+        ...(key === "videoStartFrameNodeId" ? { videoStartFrameNodeId: value } : { videoEndFrameNodeId: value }),
+    };
 }
