@@ -39,8 +39,9 @@ func (s *Service) cloudAgentModelList(intent *ModelRequestIntent) (any, error) {
 // supplied by the model must not replace resource ownership/readiness checks.
 func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*ModelRequestIntent, error) {
 	var a struct {
-		Mode             string   `json:"mode"`
-		ReferenceNodeIDs []string `json:"referenceNodeIds"`
+		Mode               string   `json:"mode"`
+		ReferenceNodeIDs   []string `json:"referenceNodeIds"`
+		VideoEditOperation string   `json:"videoEditOperation"`
 	}
 	if err := decodeCloudAgentJSONObject(arguments, &a); err != nil {
 		return nil, BadAuthRequest("模型查询参数无效")
@@ -81,7 +82,11 @@ func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*Mo
 		return nil, err
 	}
 	refs["mode"] = a.Mode
-	intent := ModelRequestIntentFromTaskInput(refs, "canvas_"+a.Mode, cloudAgentMediaOperation(a.Mode, refs))
+	operation, err := cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
+	if err != nil {
+		return nil, err
+	}
+	intent := ModelRequestIntentFromTaskInput(refs, "canvas_"+a.Mode, operation)
 	return &intent, nil
 }
 
@@ -97,6 +102,7 @@ type cloudAgentMediaArgs struct {
 	Size                  string                   `json:"size"`
 	Quality               string                   `json:"quality"`
 	VideoGenerateAudio    *bool                    `json:"videoGenerateAudio"`
+	VideoEditOperation    string                   `json:"videoEditOperation"`
 	SnapshotHash          string                   `json:"snapshotHash"`
 	NodeID                string                   `json:"nodeId"`
 	Title                 string                   `json:"title"`
@@ -496,7 +502,32 @@ func lenAnySlice(value any) int {
 	}
 }
 
-func cloudAgentMediaOperation(mode string, refs map[string]any) string {
+// 各生成模式认可的媒体任务操作。显式指定时按这里判定取值，未指定时按参考素材推导。
+var cloudAgentMediaOperations = map[string][]string{
+	"image": {"text_to_image", "image_to_image"},
+	"video": {"text_to_video", "image_to_video", "reference_to_video", "audio_to_video"},
+	"audio": {"text_to_audio"},
+}
+
+// cloudAgentMediaOperation 解析本次生成的操作类型。显式指定的值优先，只做取值合法性检查；
+// 未指定时按参考素材推导，纯图参考只能推出 image_to_video，多图全能参考必须显式指定。
+func cloudAgentMediaOperation(mode string, refs map[string]any, requested string) (string, error) {
+	if value := strings.TrimSpace(requested); value != "" {
+		allowed := cloudAgentMediaOperations[mode]
+		if len(allowed) == 0 {
+			return "", BadAuthRequest(fmt.Sprintf("%s 模式不支持指定 videoEditOperation", mode))
+		}
+		for _, candidate := range allowed {
+			if candidate == value {
+				return value, nil
+			}
+		}
+		return "", BadAuthRequest(fmt.Sprintf("videoEditOperation %q 无效；%s 模式可用取值：%s", value, mode, strings.Join(allowed, "、")))
+	}
+	return cloudAgentInferredMediaOperation(mode, refs), nil
+}
+
+func cloudAgentInferredMediaOperation(mode string, refs map[string]any) string {
 	switch mode {
 	case "video":
 		if lenAnySlice(refs["referenceVideos"]) > 0 {
@@ -579,7 +610,10 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	if err := validateCloudAgentMediaReferences(a.Mode, refs); err != nil {
 		return CreateTaskRequest{}, nil, err
 	}
-	operation := cloudAgentMediaOperation(a.Mode, refs)
+	operation, err := cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
+	if err != nil {
+		return CreateTaskRequest{}, nil, err
+	}
 	if operation == "" {
 		return CreateTaskRequest{}, nil, BadAuthRequest("生成模式尚未实现媒体任务适配器")
 	}

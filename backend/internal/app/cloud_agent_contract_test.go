@@ -275,7 +275,7 @@ func TestCloudAgentGenerationAdapterRejectsUnimplementedMode(t *testing.T) {
 	if descriptor, ok := cloudAgentNodeCapabilityForGenerationMode("table-render"); !ok || descriptor.Type != "table" {
 		t.Fatal("hypothetical new mode did not resolve its canvas descriptor")
 	}
-	if cloudAgentGenerationModeSupported("table-render") || cloudAgentMediaOperation("table-render", nil) != "" {
+	if cloudAgentGenerationModeSupported("table-render") || cloudAgentInferredMediaOperation("table-render", nil) != "" {
 		t.Fatal("unimplemented mode may create a billable task")
 	}
 	for _, mode := range cloudAgentGenerationModeNames() {
@@ -287,7 +287,7 @@ func TestCloudAgentGenerationAdapterRejectsUnimplementedMode(t *testing.T) {
 		t.Fatal("unimplemented mode accepted media references")
 	}
 	for _, mode := range cloudAgentGenerationModeNames() {
-		if _, ok := cloudAgentNodeCapabilityForGenerationMode(mode); !ok || cloudAgentMediaOperation(mode, nil) == "" {
+		if _, ok := cloudAgentNodeCapabilityForGenerationMode(mode); !ok || cloudAgentInferredMediaOperation(mode, nil) == "" {
 			t.Fatalf("exposed mode %s lacks a node or task adapter", mode)
 		}
 	}

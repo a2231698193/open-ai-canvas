@@ -96,6 +96,21 @@ linggan canvas tool generate_media --file generate.json
 
 `mode` 可以是 `image`、`video` 或 `audio`。`logicalModelId` 与 `channelId`、`channelModelKey` 互斥，后两个必须成对使用。`referenceNodeIds` 只放媒体节点；文本来源放在 `sourceNodeId`。
 
+视频还有一个 `videoEditOperation`，取值 `text_to_video`、`image_to_video`、`reference_to_video`、`audio_to_video`。
+
+**多图全能参考必须显式填 `videoEditOperation: "reference_to_video"`**：省略时服务端按参考素材推导，而只挂参考图会推导成单首帧的 `image_to_video`，多张图会被上游按「输入媒体数量超过限制」拒绝。模型是否支持某个操作，以 `model_list` 返回的能力为准。
+
+```json
+{
+  "mode": "video",
+  "videoEditOperation": "reference_to_video",
+  "prompt": "…",
+  "nodeId": "video-1",
+  "title": "第 1 段",
+  "referenceNodeIds": ["img-1", "img-2", "img-3"]
+}
+```
+
 分镜：
 
 ```bash
