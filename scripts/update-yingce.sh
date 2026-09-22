@@ -210,11 +210,94 @@ wait_health() {
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         if curl -fsS "$url" >/dev/null; then
             printf '本机健康检查通过：%s\n' "$url"
-            return
+            return 0
         fi
         sleep 3
     done
-    fail "服务已启动，但 ${url} 未通过健康检查"
+    printf '服务已启动，但 %s 未通过健康检查。\n' "$url" >&2
+    return 1
+}
+
+mem_available_mb() {
+    local meminfo="$1"
+    [[ -r "$meminfo" ]] || return 1
+    awk '/^MemAvailable:/ { printf "%d\n", $2 / 1024; found = 1 } END { exit found ? 0 : 1 }' "$meminfo"
+}
+
+memory_is_sufficient() {
+    local available="$1"
+    local minimum="$2"
+    (( available >= minimum ))
+}
+
+require_free_memory() {
+    local available minimum="${MIN_FREE_MEMORY_MB:-1024}"
+    [[ "$minimum" =~ ^[1-9][0-9]*$ ]] || fail "MIN_FREE_MEMORY_MB 必须是正整数"
+    available="$(mem_available_mb /proc/meminfo)" || fail "无法读取可用内存，已拒绝更新，线上容器未切换"
+    if ! memory_is_sufficient "$available" "$minimum"; then
+        fail "可用内存 ${available}MB，低于 ${minimum}MB，已拒绝更新，线上容器未切换。确认内存充足后可临时执行：sudo MIN_FREE_MEMORY_MB=... /usr/local/sbin/update-yingce"
+    fi
+    printf '可用内存 %sMB，要求至少 %sMB。\n' "$available" "$minimum"
+}
+
+protect_running_services() {
+    local score="${SERVICE_OOM_SCORE_ADJ:--500}"
+    local id found=0
+    [[ "$score" =~ ^-?[0-9]+$ ]] || fail "SERVICE_OOM_SCORE_ADJ 必须是整数"
+    (( score >= -1000 && score <= 1000 )) || fail "SERVICE_OOM_SCORE_ADJ 必须在 -1000 到 1000 之间"
+    while IFS= read -r id; do
+        [[ -z "$id" ]] && continue
+        found=1
+        if docker update --oom-score-adj "$score" "$id" >/dev/null; then
+            printf '已保护运行中的容器 %s（oom_score_adj=%s）。\n' "$id" "$score"
+        else
+            printf '警告：无法设置容器 %s 的 OOM 优先级。\n' "$id" >&2
+        fi
+    done < <(compose ps -q backend web redis 2>/dev/null || true)
+    if (( found == 0 )); then
+        printf '没有正在运行的 backend、web 或 redis 容器，跳过 OOM 保护。\n'
+    fi
+}
+
+release_rollback_notice() {
+    local migration_started="$1"
+    local backup_dir="$2"
+    if [[ "$migration_started" == "1" ]]; then
+        printf '数据库迁移步骤已开始。本次只回退前后端镜像，不恢复数据库。备份目录：%s' "$backup_dir"
+        return 0
+    fi
+    printf '数据库迁移尚未执行。本次只回退前后端镜像。备份目录：%s' "$backup_dir"
+}
+
+switch_services() {
+    if uses_compose_postgres; then
+        migration_started=1
+        compose up -d --remove-orphans --wait --wait-timeout 600
+        return
+    fi
+    compose stop postgres >/dev/null 2>&1 || true
+    compose rm -f postgres >/dev/null 2>&1 || true
+    compose up -d redis --wait --wait-timeout 120
+    migration_started=1
+    compose run --rm --no-deps migrate
+    compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 backend web
+}
+
+restore_previous_release() {
+    local prefix="$1"
+    local repository image
+    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+        image="${repository}:rollback-${prefix}"
+        if ! docker image inspect "$image" >/dev/null 2>&1; then
+            printf '缺少回退镜像 %s。\n' "$image" >&2
+            return 1
+        fi
+    done
+    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+        docker tag "${repository}:rollback-${prefix}" "${repository}:server"
+    done
+    compose stop --timeout "${ROLLBACK_STOP_TIMEOUT:-20}" backend web >/dev/null 2>&1 || true
+    compose up -d --no-deps --force-recreate --wait --wait-timeout 180 backend web
 }
 
 main() {
@@ -232,7 +315,8 @@ main() {
     reexec_if_remote_script_changed "$@"
     require_clean_worktree
 
-    local old_commit old_short stamp backup_dir port
+    local old_commit old_short stamp backup_dir port migration_started=0
+    require_free_memory
     old_commit="$(git rev-parse HEAD)"
     old_short="$(git rev-parse --short=12 HEAD)"
     stamp="$(date +%Y%m%d-%H%M%S)"
@@ -263,22 +347,29 @@ main() {
         printf '代码已是 %s/%s 最新提交，仍将按当前源码重建并重启服务。\n' "$REMOTE" "$BRANCH"
     fi
 
+    require_free_memory
+    protect_running_services
+    export BUILD_GOMAXPROCS="${BUILD_GOMAXPROCS:-1}"
+    export BUILD_GOGC="${BUILD_GOGC:-50}"
+
     step "串行构建后端镜像"
-    COMPOSE_PARALLEL_LIMIT=1 compose build backend
+    if ! COMPOSE_PARALLEL_LIMIT=1 compose build backend; then
+        fail "后端镜像构建失败，线上容器未切换。请勿继续清理 Docker。"
+    fi
     step "串行构建前端镜像"
-    COMPOSE_PARALLEL_LIMIT=1 compose build web
+    if ! COMPOSE_PARALLEL_LIMIT=1 compose build web; then
+        fail "前端镜像构建失败，线上容器未切换。请勿继续清理 Docker。"
+    fi
 
     step "迁移数据库并重启服务"
-    if uses_compose_postgres; then
-        compose up -d --remove-orphans --wait --wait-timeout 600
-    else
-        compose stop postgres >/dev/null 2>&1 || true
-        compose rm -f postgres >/dev/null 2>&1 || true
-        compose up -d redis --wait --wait-timeout 120
-        compose run --rm --no-deps migrate
-        compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 backend web
+    if ! switch_services || ! wait_health "$port"; then
+        step "新版本未就绪，切回更新前的前后端镜像"
+        printf '%s\n' "$(release_rollback_notice "$migration_started" "$backup_dir")" >&2
+        if restore_previous_release "$old_short" && wait_health "$port"; then
+            fail "已切回旧版本容器，更新未完成。备份和回退镜像已保留：${backup_dir}"
+        fi
+        fail "自动回退失败。请勿继续重建或清理 Docker。备份目录：${backup_dir}。回退镜像：rollback-${old_short}"
     fi
-    wait_health "$port"
     cleanup_after_update "$old_short"
 
     printf '\n更新完成。\n'

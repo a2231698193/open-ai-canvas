@@ -22,9 +22,13 @@ COPY backend ./backend
 COPY plugin-packages ./plugin-packages
 ARG TARGETOS
 ARG TARGETARCH
+ARG BUILD_GOMAXPROCS=
+ARG BUILD_GOGC=
 RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
     test -n "$TARGETOS"; \
     test -n "$TARGETARCH"; \
+    if [ -n "$BUILD_GOMAXPROCS" ]; then export GOMAXPROCS="$BUILD_GOMAXPROCS"; fi; \
+    if [ -n "$BUILD_GOGC" ]; then export GOGC="$BUILD_GOGC"; fi; \
     PAYMENT_PLUGIN_GOOS="$TARGETOS" \
     PAYMENT_PLUGIN_GOARCH="$TARGETARCH" \
     PAYMENT_PLUGIN_CGO_ENABLED=0 \
@@ -68,7 +72,11 @@ COPY VERSION /src/VERSION
 ARG BUILD_VERSION
 ARG BUILD_COMMIT=unknown
 ARG BUILD_TIME=unknown
+ARG BUILD_GOMAXPROCS=
+ARG BUILD_GOGC=
 RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
+    if [ -n "$BUILD_GOMAXPROCS" ]; then export GOMAXPROCS="$BUILD_GOMAXPROCS"; fi; \
+    if [ -n "$BUILD_GOGC" ]; then export GOGC="$BUILD_GOGC"; fi; \
     version="${BUILD_VERSION:-$(tr -d '\r\n' </src/VERSION)}"; \
     ldflags="-s -w -X infinite-canvas/backend/internal/buildinfo.Version=${version} -X infinite-canvas/backend/internal/buildinfo.Commit=${BUILD_COMMIT} -X infinite-canvas/backend/internal/buildinfo.BuildTime=${BUILD_TIME}"; \
     CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="$ldflags" -o /out/infinite-canvas-backend ./cmd/server; \

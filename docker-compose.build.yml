@@ -9,6 +9,8 @@ services:
         ALPINE_IMAGE: ${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
+        BUILD_GOMAXPROCS: ${BUILD_GOMAXPROCS:-}
+        BUILD_GOGC: ${BUILD_GOGC:-}
 
   backend:
     image: open-ai-canvas-backend:server

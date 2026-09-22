@@ -45,3 +45,22 @@ else
 fi
 
 printf 'update-yingce tar backup tolerance: ok\n'
+
+meminfo="$(mktemp)"
+printf 'MemTotal:       8000000 kB\nMemAvailable:   2097152 kB\n' >"$meminfo"
+[[ "$(mem_available_mb "$meminfo")" == "2048" ]]
+memory_is_sufficient 2048 1024
+if memory_is_sufficient 512 1024; then
+    printf 'expected insufficient memory to fail\n' >&2
+    exit 1
+fi
+if mem_available_mb "${meminfo}.missing"; then
+    printf 'expected missing meminfo to fail\n' >&2
+    exit 1
+fi
+rm -f "$meminfo"
+printf 'update-yingce memory gate: ok\n'
+
+[[ "$(release_rollback_notice 0 /tmp/backup)" == "数据库迁移尚未执行。本次只回退前后端镜像。备份目录：/tmp/backup" ]]
+[[ "$(release_rollback_notice 1 /tmp/backup)" == "数据库迁移步骤已开始。本次只回退前后端镜像，不恢复数据库。备份目录：/tmp/backup" ]]
+printf 'update-yingce rollback notice: ok\n'

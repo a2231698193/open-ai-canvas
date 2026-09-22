@@ -89,18 +89,21 @@ sudo /usr/local/sbin/update-yingce
 2. 更新前备份 PostgreSQL、后端数据和 `.env`；
 3. 保存旧版前后端镜像；
 4. 仅以 fast-forward 更新到 `origin/main`；
-5. 串行构建后端和前端，降低小内存服务器 OOM 风险；
-6. 执行数据库迁移并重启服务；
-7. 等待容器健康并检查本机健康接口；
-8. 更新成功后只保留最近 2 份完整备份和当前回退镜像，并把 BuildKit 缓存限制在 4GB。
+5. 可用内存低于 1024MB 时拒绝更新，不切换线上容器；
+6. 调低正在运行的 backend、web、redis 被 OOM 杀掉的优先级，再串行构建。后端编译默认限制为 1 个线程；
+7. 执行数据库迁移并重启服务；
+8. 等待容器健康并检查本机健康接口。构建失败不切换容器；启动或健康检查失败时自动切回更新前的前后端镜像，不恢复数据库；
+9. 只有新版本健康检查通过后，才保留最近 2 份完整备份和当前回退镜像，并把 BuildKit 缓存限制在 4GB。
 
 默认保留策略可在执行命令时覆盖：
 
 ```bash
-sudo BACKUP_KEEP_COUNT=3 BUILD_CACHE_MAX_SIZE=6GB /usr/local/sbin/update-yingce
+sudo BACKUP_KEEP_COUNT=3 BUILD_CACHE_MAX_SIZE=6GB MIN_FREE_MEMORY_MB=1536 /usr/local/sbin/update-yingce
 ```
 
-清理只在健康检查通过后执行；更新或健康检查失败时，当前备份和回退镜像不会被轮转。
+`MIN_FREE_MEMORY_MB` 默认 1024。内存长期紧张时再临时调低，不要让构建把线上容器挤掉。`BUILD_GOMAXPROCS` 和 `BUILD_GOGC` 只作用于这次后端编译，默认是 `1` 和 `50`。
+
+清理只在新版本健康检查通过后执行。构建失败、启动失败或自动回退时，当前备份和回退镜像都不会被轮转。
 
 ## 4. 更新后验证
 
@@ -138,7 +141,11 @@ echo
 
 ## 5. 更新失败时
 
-不要连续重建或清理 Docker。先收集状态和日志：
+构建失败时，线上容器仍是旧版本，不要接着手工重建。
+
+启动或健康检查失败时，脚本会把 `rollback-<旧提交>` 重新标成正在使用的镜像，并只重建 backend 和 web。自动回退不恢复数据库。迁移已经开始时，需要按该版本的迁移内容决定是否手工恢复备份。
+
+回退容器也起不来时，脚本会停住。不要连续重建或清理 Docker。先收集状态和日志：
 
 ```bash
 cd /data/open-ai-canvas
