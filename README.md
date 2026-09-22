@@ -14,6 +14,7 @@
 - 产品更新：账户菜单的「产品更新」读取本仓库的用户侧更新日志。
 - 短剧分镜：恢复章节与画布分镜的结构化镜头行解析。
 - 工程约定：按最小范围合并官方 `upstream/main`，不接入第三方埋点或日志外发；协作约定见 [`AGENTS.md`](AGENTS.md)。
+- 外部命令行：[`linggan` 安装、Skill 包和登录说明](docs/plans/linggan-cli.md)。
 
 上游能力细节以[功能清单](docs/content/docs/overview/features.mdx)为准。
 
