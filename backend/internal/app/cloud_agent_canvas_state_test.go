@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -65,7 +66,45 @@ func TestCloudAgentCanvasStateKeepsEveryConnection(t *testing.T) {
 	}
 }
 
-// 连线多到一页放不下时，游标必须前进，直到读完且不重复、不遗漏。
+// 摘要页正文被截断时必须点出节点 ID：否则调用方会把 2000 字符的摘要当全文，
+// 也不会知道还能精读到 16000 字符。
+func TestCloudAgentCanvasStateReportsTruncatedNodes(t *testing.T) {
+	s, _, _, _ := creationTestService(t)
+	long := strings.Repeat("镜头指令", 700)
+	doc := map[string]any{
+		"nodes": []any{
+			map[string]any{"id": "long-1", "type": "text", "title": "长提示词", "position": map[string]any{"x": float64(0), "y": float64(0)}, "width": float64(120), "height": float64(80), "metadata": map[string]any{"content": long}},
+			map[string]any{"id": "short-1", "type": "text", "title": "短提示词", "position": map[string]any{"x": float64(200), "y": float64(0)}, "width": float64(120), "height": float64(80), "metadata": map[string]any{"content": "一句话"}},
+		},
+		"connections": []any{},
+	}
+
+	view, err := cloudAgentCanvasState(s.repo, "user", "canvas", doc, 0, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, _ := view.(map[string]any)
+	ids, _ := state["truncatedNodeIds"].([]any)
+	if len(ids) != 1 || ids[0] != "long-1" {
+		t.Fatalf("truncatedNodeIds = %#v", state["truncatedNodeIds"])
+	}
+	if note, _ := state["truncatedNote"].(string); !strings.Contains(note, "16000") {
+		t.Fatalf("truncatedNote 没有告诉调用方怎么读全文：%#v", state["truncatedNote"])
+	}
+
+	precise, err := cloudAgentCanvasState(s.repo, "user", "canvas", doc, 0, []string{"long-1"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, _ := precise.(map[string]any)
+	if full["truncatedNodeIds"] != nil {
+		t.Fatalf("精读不应报告截断：%#v", full["truncatedNodeIds"])
+	}
+	node := full["nodes"].([]any)[0].(map[string]any)
+	if node["content"] != long {
+		t.Fatalf("精读没有返回全文：%d 字符", len([]rune(stringValue(node["content"]))))
+	}
+}
 func TestCloudAgentCanvasStatePagesConnectionsForward(t *testing.T) {
 	s, _, _, _ := creationTestService(t)
 	const total = 2500

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"infinite-canvas/backend/internal/canvas/capability"
@@ -141,12 +142,14 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				}
 			}
 			node := creationAddedNode(CreationCanvasOp{Type: op.Type, ID: op.ID, NodeType: op.NodeType, Title: title, X: x, Y: y, Metadata: capability.Metadata(content)})
+			nodeMetadata, _ := node["metadata"].(map[string]any)
+			// 作者标记：只有 Agent 自己在写入路径上新建的节点才带上它，delete_node 也只认它。
+			nodeMetadata[cloudAgentNodeAuthorField] = time.Now().UTC().Format(time.RFC3339)
 			if len(op.Generation) > 0 {
 				generationMetadata, generationErr := cloudAgentGenerationMetadata(op.NodeType, op.Generation)
 				if generationErr != nil {
 					return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d].generation", opIndex), "invalid_value", cloudAgentSafeToolError(generationErr))
 				}
-				nodeMetadata, _ := node["metadata"].(map[string]any)
 				for key, value := range generationMetadata {
 					nodeMetadata[key] = value
 				}
@@ -188,6 +191,24 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				NodeType: fromCapability.Type, NodeTypeLabel: fromCapability.Label,
 				TargetNodeID: op.ToNodeID, TargetNodeTitle: toTitle, TargetNodeType: toCapability.Type,
 				Summary: fmt.Sprintf("建立《%s》→《%s》的引用连线", fromTitle, toTitle),
+			})
+		case "delete_node":
+			if index < 0 {
+				return nil, BadAuthRequest("只能删除存在的节点")
+			}
+			capability, ok := cloudAgentNodeCapabilityForType(stringValue(nodes[index]["type"]))
+			if !ok {
+				return nil, BadAuthRequest("不支持的节点类型")
+			}
+			if err := validateCloudAgentNodeDeletion(doc, nodes[index], edges); err != nil {
+				return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d]", opIndex), "not_deletable", cloudAgentSafeToolError(err))
+			}
+			deletedTitle := cloudAgentApprovalNodeTitle(nodes[index], capability.Label)
+			nodes = append(nodes[:index], nodes[index+1:]...)
+			items = append(items, cloudAgentApprovalPreviewItem{
+				Operation: "delete_node", NodeID: op.ID, NodeTitle: deletedTitle,
+				NodeType: capability.Type, NodeTypeLabel: capability.Label,
+				Summary: fmt.Sprintf("删除空节点%s《%s》", capability.Label, deletedTitle),
 			})
 		case "update_node":
 			if len(op.Patch) == 0 {
@@ -256,6 +277,9 @@ func cloudAgentCanvasApprovalPreview(items []cloudAgentApprovalPreviewItem) clou
 	}
 	if counts["connect_nodes"] > 0 {
 		parts = append(parts, fmt.Sprintf("建立 %d 条引用连线", counts["connect_nodes"]))
+	}
+	if counts["delete_node"] > 0 {
+		parts = append(parts, fmt.Sprintf("删除 %d 个空节点", counts["delete_node"]))
 	}
 	return cloudAgentApprovalPreview{
 		Kind: "canvas_mutation", Title: "确认画布修改",

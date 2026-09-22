@@ -35,8 +35,8 @@ func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 	if _, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+hash+`","ops":[{"type":"add_node","id":"other","nodeType":"text"}]}`)); err == nil || !strings.Contains(err.Error(), "请重新读取后再提交") {
 		t.Fatalf("stale snapshot should be rejected, err=%v", err)
 	}
-	if _, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+nextHash+`","ops":[{"type":"delete_node","id":"note"}]}`)); err == nil || !strings.Contains(err.Error(), "不支持的画布写操作") {
-		t.Fatalf("delete should be rejected, err=%v", err)
+	if _, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+nextHash+`","ops":[{"type":"delete_node","id":"note"}]}`)); err == nil || !strings.Contains(err.Error(), "只能删除空节点") {
+		t.Fatalf("有正文的节点不该被删除, err=%v", err)
 	}
 	created, err := s.CLICanvasTool("user", "cli-canvas", "canvas_create_storyboard", []byte(`{"snapshotHash":"`+nextHash+`","nodeId":"storyboard-1","title":"追逐","rows":[{"durationSeconds":4,"plotDescription":"主角冲出巷口"}]}`))
 	if err != nil {
@@ -44,6 +44,16 @@ func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 	}
 	if created.(map[string]any)["nodeId"] != "storyboard-1" {
 		t.Fatalf("storyboard = %#v", created)
+	}
+	// 同一份写入路径新建的空节点可以撤销；撤销后画布哈希继续前进，旧哈希作废。
+	storyboardHash, _ := created.(map[string]any)["snapshotHash"].(string)
+	blank, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+storyboardHash+`","ops":[{"type":"add_node","id":"blank","nodeType":"text","title":"待删"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blankHash, _ := blank.(map[string]any)["snapshotHash"].(string)
+	if _, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+blankHash+`","ops":[{"type":"delete_node","id":"blank"}]}`)); err != nil {
+		t.Fatalf("Agent 建的空节点应当可以撤销, err=%v", err)
 	}
 	if _, err := s.CLICanvasTool("user", "cli-canvas", "generate_media", []byte(`{"mode":"image","prompt":"海报","nodeId":"image-1","title":"海报"}`)); err == nil {
 		t.Fatal("generation without a selected model should fail before use")

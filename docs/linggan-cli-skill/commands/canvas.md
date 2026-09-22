@@ -33,7 +33,9 @@ linggan canvas apply --file ops.json
 }
 ```
 
-允许的 `type` 只有 `add_node`、`update_node`、`connect_nodes`。一次最多 20 项。
+允许的 `type` 只有 `add_node`、`update_node`、`connect_nodes`、`delete_node`。一次最多 20 项。
+
+`delete_node` 只能撤销自己刚建的空节点：`canvas state` 返回 `agentCreated: true`，且该节点没有正文、没有提示词、没有生成任务、没有连线、也没有被分镜或批量表引用时才能删。其他情况会被拒绝并说明原因；普通节点仍然只能在网页上手动删除。
 
 `nodeType` 可以是 `text`、`markdown`、`image`、`video`、`audio`、`frame`、`batch-table`、`script`。
 
@@ -91,12 +93,25 @@ linggan canvas apply --file ops.json
 | `model_list` | 按生成模式和参考节点列出模型 |
 | `image_text_detect` | 读取图片节点，准备文字识别 |
 | `canvas_arrange_nodes` | 只整理节点坐标，不改内容和连线 |
-| `canvas_inspect_image` | 返回图片节点的短时查看链接，供外部模型看图 |
+| `canvas_inspect_image` | 返回图片节点的短时查看链接，供外部模型看图；`nodeId` 或 `nodeIds`（一次最多 6 张）二选一 |
+| `canvas_inspect_media` | 读图片/视频/音频节点的素材事实：是否就绪、时长、分辨率、字节、格式；不带画面 |
 | `image_annotation_render` | 生成标注参考图 |
 | `generate_media` | 创建图片、视频或音频节点并提交生成 |
 | `image_layer_split` | 拆分图片图层并提交生成 |
 
 图片、视频和音频生成优先用 `generate_media`，不要用 `task create`。`task create` 只提交任务，不会创建结果节点，也不会把结果写回画布。
+
+生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。
+
+```bash
+linggan canvas tool canvas_inspect_media --file media.json
+```
+
+```json
+{"nodeIds": ["video-1", "video-2"]}
+```
+
+要看图片画面用 `canvas_inspect_image`：它返回素材的 `nodeId`、尺寸和短时 `imageUrl`，由你自己的模型去取图；`nodeIds` 一次最多 6 张。看不到图（取图失败）时如实说明，不要凭标题猜画面。
 
 ```bash
 linggan canvas tool model_list --file model.json

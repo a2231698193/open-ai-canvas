@@ -97,6 +97,9 @@ func cloudAgentCanvasState(repo *repository.Repository, userID, canvasID string,
 	}
 	nodes := []any{}
 	included := map[string]bool{}
+	// 摘要页正文每字段只留 limit 个字符。被截断的节点要明确报出来，否则调用方会把
+	// 摘要当全文照抄（改写旧提示词时最危险），也不知道还能精读到 16000 字符。
+	truncated := []any{}
 	next := 0
 	pageBytes := 1024
 	for index, node := range all {
@@ -164,6 +167,13 @@ func cloudAgentCanvasState(repo *repository.Repository, userID, canvasID string,
 		}
 		for key, value := range projected {
 			item[key] = value
+		}
+		if cloudAgentProjectionTruncated(projected) {
+			truncated = append(truncated, id)
+		}
+		// 作者标记要暴露：模型据此判断哪些节点是自己建的、可以用 delete_node 撤销。
+		if stringValue(meta[cloudAgentNodeAuthorField]) != "" {
+			item["agentCreated"] = true
 		}
 		if capability.GenerationMode != "" {
 			generation := map[string]any{"taskStatus": "not_submitted"}
@@ -251,7 +261,23 @@ func cloudAgentCanvasState(repo *repository.Repository, userID, canvasID string,
 	if hasMoreConnections {
 		nextConnection = cursor
 	}
-	return map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "mediaSnapshotHash": cloudAgentMediaContentHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "totalConnections": len(allEdges), "nextOffset": next, "hasMore": next > 0, "connectionOffset": connectionOffset, "nextConnectionOffset": nextConnection, "hasMoreConnections": hasMoreConnections, "pageByteBudget": cloudAgentReadPageBytes}, nil
+	view := map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "mediaSnapshotHash": cloudAgentMediaContentHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "totalConnections": len(allEdges), "nextOffset": next, "hasMore": next > 0, "connectionOffset": connectionOffset, "nextConnectionOffset": nextConnection, "hasMoreConnections": hasMoreConnections, "pageByteBudget": cloudAgentReadPageBytes}
+	if len(truncated) > 0 {
+		view["truncatedNodeIds"] = truncated
+		view["truncatedNote"] = fmt.Sprintf("这些节点的字段在摘要页被截断（每字段最多 %d 字符）；用 canvas_get_state 传 nodeIds 精读，最多可读到 16000 字符。", limit)
+	}
+	return view, nil
+}
+
+// cloudAgentProjectionTruncated 判断投影里有没有字段被截断：投影会为每个被截断的字段
+// 加上同名的 xxxTruncated 标记，所以这里只认值为 true 的标记。
+func cloudAgentProjectionTruncated(projected map[string]any) bool {
+	for key, value := range projected {
+		if truncated, ok := value.(bool); ok && truncated && strings.HasSuffix(key, "Truncated") {
+			return true
+		}
+	}
+	return false
 }
 
 func cloudAgentSafeNumber(value any) (any, bool) {

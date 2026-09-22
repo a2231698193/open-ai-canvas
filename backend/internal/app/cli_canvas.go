@@ -140,7 +140,14 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 		}
 		return applyCloudAgentArrangeNodes(s.repo, userID, canvasID, call, policy)
 	case "canvas_inspect_image":
-		return s.prepareCloudAgentImageInspection(userID, canvasID, state, call)
+		inspections, err := s.prepareCloudAgentImageInspection(userID, canvasID, state, call)
+		if err != nil {
+			return nil, err
+		}
+		batch, _ := inspections.(cloudAgentImageInspections)
+		return cloudAgentImageInspectionWithURLs(batch), nil
+	case "canvas_inspect_media":
+		return cloudAgentMediaInspection(s.repo, userID, canvasID, call)
 	case "model_list":
 		intent, err := s.cloudAgentModelIntent(userID, canvasID, string(raw))
 		if err != nil {

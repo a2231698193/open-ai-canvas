@@ -1100,17 +1100,20 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	} else {
 		payload["text"] = "工具执行成功"
 	}
-	if inspection, ok := result.(cloudAgentImageInspection); ok && err == nil {
-		receipt, _ := json.Marshal(inspection.Receipt)
-		payload["result"] = inspection.Receipt
+	if inspections, ok := result.(cloudAgentImageInspections); ok && err == nil {
+		// 单图仍按"工具消息就是那份回执"入历史；多图合成一个对象，逐图回执在 images 里。
+		content, _ := json.Marshal(cloudAgentImageInspectionResult(inspections))
+		payload["result"] = cloudAgentImageInspectionResult(inspections)
 		state.event(runID, kind, payload)
 		// tool 角色只接受字符串内容（四种上游图式都是纯文本），因此工具回执照常入历史，
 		// 图片另起一条 user 消息携带，并显式标注为数据而非指令。
 		state.Canonical.Messages = append(state.Canonical.Messages,
-			map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(receipt)})
-		// 重复查看时只回执文字（ImageURL 为空），不再附图。
-		if strings.TrimSpace(inspection.ImageURL) != "" {
-			cloudAgentStageImageInspection(state, inspection)
+			map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(content)})
+		for _, inspection := range inspections {
+			// 重复查看时只回执文字（ImageURL 为空），不再附图。
+			if strings.TrimSpace(inspection.ImageURL) != "" {
+				cloudAgentStageImageInspection(state, inspection)
+			}
 		}
 		// 一批里可能有多个调用（模型一次发起 parallel tool calls），上游要求
 		// assistant(tool_calls) 之后紧跟每一个 tool_call_id 的 tool 消息，所以图片
@@ -1344,8 +1347,10 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		case call.Function.Name == "canvas_inspect_image":
 			result, toolErr = inspectionResult, inspectionErr
 			if toolErr == nil && inspectionResult != nil {
-				if inspection, ok := inspectionResult.(cloudAgentImageInspection); ok {
-					state.markCanvasAssetInspected(stringValue(inspection.Receipt["nodeId"]))
+				if inspections, ok := inspectionResult.(cloudAgentImageInspections); ok {
+					for _, inspection := range inspections {
+						state.markCanvasAssetInspected(stringValue(inspection.Receipt["nodeId"]))
+					}
 				}
 			}
 		case call.Function.Name == "skill_read_file", call.Function.Name == "image_annotation_render":

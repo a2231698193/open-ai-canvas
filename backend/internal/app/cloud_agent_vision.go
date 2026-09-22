@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"infinite-canvas/backend/internal/repository"
 )
 
 // cloudAgentImageInspection 是"让模型真的看一眼画布上的图"的工具结果。
@@ -15,8 +17,84 @@ import (
 // 交付方式因此是单一契约：链接必须能被模型上游取到。取不到时不在这里做服务端取图内联，
 // 而是由上游如实报告失败，部署侧修正 CANVAS_PUBLIC_BASE_URL 或存储域名本身。
 type cloudAgentImageInspection struct {
-	Receipt  map[string]any
-	ImageURL string
+	Receipt  map[string]any `json:"receipt"`
+	ImageURL string         `json:"imageUrl,omitempty"`
+}
+
+// cloudAgentImageInspections 是一条工具调用里查看的一批图片。
+// 模型可以一次发起多个并行调用（每个各带一张图），也可以用 nodeIds 一次读多张：
+// 两种走法最终都汇成"一批"，合并成一条 user 消息，图片挂在同一条消息上。
+type cloudAgentImageInspections []cloudAgentImageInspection
+
+// cloudAgentInspectTargets 解析看图/看素材工具的目标节点：nodeId 与 nodeIds 二选一，
+// 去重后最多 cloudAgentMaxInspectTargets 个。多了不是省事，而是把上下文一次性塞满。
+func cloudAgentInspectTargets(arguments string, allowRefresh bool) ([]string, bool, error) {
+	var args struct {
+		NodeID  string   `json:"nodeId"`
+		NodeIDs []string `json:"nodeIds"`
+		Refresh bool     `json:"refresh"`
+	}
+	if err := decodeCloudAgentJSONObject(arguments, &args); err != nil {
+		return nil, false, BadAuthRequest("看图工具参数无效：只允许 nodeId、nodeIds 与 refresh")
+	}
+	if args.NodeID != "" && len(args.NodeIDs) > 0 {
+		return nil, false, BadAuthRequest("nodeId 与 nodeIds 只能填一个")
+	}
+	if !allowRefresh && args.Refresh {
+		return nil, false, BadAuthRequest("该工具不接受 refresh")
+	}
+	targets := []string{}
+	for _, id := range append([]string{args.NodeID}, args.NodeIDs...) {
+		id = strings.TrimSpace(id)
+		if id == "" || cloudAgentContainsString(targets, id) {
+			continue
+		}
+		if err := validateCloudAgentID(id, "节点ID", 80); err != nil {
+			return nil, false, err
+		}
+		targets = append(targets, id)
+	}
+	if len(targets) == 0 {
+		return nil, false, BadAuthRequest("请提供 nodeId，或用 nodeIds 一次读取多个节点")
+	}
+	if len(targets) > cloudAgentMaxInspectTargets {
+		return nil, false, BadAuthRequest(fmt.Sprintf("一次最多读取 %d 个节点；请分批读取", cloudAgentMaxInspectTargets))
+	}
+	return targets, args.Refresh, nil
+}
+
+// cloudAgentImageInspectionWithURLs 是给命令行/外部 Agent 的形态：短时链接并进回执，
+// 单节点直接返回一个对象（外部 Agent 只关心"给我图和链接"），多节点放在 images 里。
+// 模型自身看到的回执另有形状，见 cloudAgentImageInspectionResult。
+func cloudAgentImageInspectionWithURLs(inspections cloudAgentImageInspections) any {
+	items := make([]any, 0, len(inspections))
+	for _, inspection := range inspections {
+		item := map[string]any{}
+		for key, value := range inspection.Receipt {
+			item[key] = value
+		}
+		if inspection.ImageURL != "" {
+			item["imageUrl"] = inspection.ImageURL
+		}
+		items = append(items, item)
+	}
+	if len(items) == 1 {
+		return items[0]
+	}
+	return map[string]any{"images": items}
+}
+
+// cloudAgentImageInspectionResult 是模型在 tool 消息里看到的回执：单图保持
+// "就是那份回执"（历史行为，占位符与既有回执都按这个形状读），多图并成一个对象。
+func cloudAgentImageInspectionResult(inspections cloudAgentImageInspections) any {
+	receipts := make([]any, 0, len(inspections))
+	for _, inspection := range inspections {
+		receipts = append(receipts, inspection.Receipt)
+	}
+	if len(receipts) == 1 {
+		return receipts[0]
+	}
+	return map[string]any{"images": receipts}
 }
 
 const (
@@ -31,6 +109,9 @@ const (
 	cloudAgentMaxImageInspectionsPerRun = 2
 	// cloudAgentVisualNoteLimit 是观察记录的长度上限（一句话描述，不是整段推理）。
 	cloudAgentVisualNoteLimit = 400
+	// cloudAgentMaxInspectTargets 是一次调用能读的节点数上限。图片按视觉 token 计费，
+	// 一次塞太多等于把上下文一次性占满；需要更多时模型应当分批读。
+	cloudAgentMaxInspectTargets = 6
 )
 
 // cloudAgentImageMessageNodeIDs 从看图消息里取回节点 ID（按出现顺序去重）。
@@ -95,22 +176,38 @@ func (s *Service) cloudAgentVisionEnabled(req CloudAgentRequest) bool {
 
 // prepareCloudAgentImageInspection 校验目标节点是可查看的图片素材，并签发短时下载链接。
 // 只暴露已经保存到账号资源库、状态就绪、媒体类型匹配的素材；不接受外部地址。
+// 支持 nodeId 或 nodeIds：一次读多张时同样按"一批图"处理，图片合并到一条 user 消息。
 //
 // 同一张图在本轮看过 cloudAgentMaxImageInspectionsPerRun 次之后只回执文字、不再附图：
 // 上游每步都会重新读取图片并按视觉 token 计费，而重复看图并不能得到新信息——实测模型
 // 因为"看不见图"的怀疑反复重看，单轮被拖到 892s。确需重新确认画面时模型传 refresh=true。
 func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, state *cloudAgentRuntime, call cloudAgentCall) (any, error) {
-	var args struct {
-		NodeID  string `json:"nodeId"`
-		Refresh bool   `json:"refresh"`
-	}
-	if err := decodeCloudAgentJSONObject(call.Function.Arguments, &args); err != nil {
-		return nil, BadAuthRequest("看图工具参数无效：只允许 nodeId 与 refresh")
-	}
-	if err := validateCloudAgentID(args.NodeID, "图片节点ID", 80); err != nil {
+	targets, refresh, err := cloudAgentInspectTargets(call.Function.Arguments, true)
+	if err != nil {
 		return nil, err
 	}
-	canvas, err := s.repo.CanvasProjectForUser(userID, canvasID)
+	doc, err := cloudAgentInspectionDocument(s.repo, userID, canvasID)
+	if err != nil {
+		return nil, err
+	}
+	inspections := make(cloudAgentImageInspections, 0, len(targets))
+	for _, nodeID := range targets {
+		node := cloudAgentCanvasNode(doc, nodeID)
+		if node == nil {
+			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
+		}
+		inspection, err := s.cloudAgentInspectImageNode(userID, state, node, refresh)
+		if err != nil {
+			return nil, err
+		}
+		inspections = append(inspections, inspection)
+	}
+	return inspections, nil
+}
+
+// cloudAgentInspectionDocument 读取画布文档，两个查看类工具共用同一份加载与解析口径。
+func cloudAgentInspectionDocument(repo *repository.Repository, userID, canvasID string) (map[string]any, error) {
+	canvas, err := repo.CanvasProjectForUser(userID, canvasID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,39 +215,44 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 	if err != nil {
 		return nil, BadAuthRequest("服务端画布内容无法解析，请先重新同步")
 	}
-	var node map[string]any
+	return doc, nil
+}
+
+func cloudAgentCanvasNode(doc map[string]any, nodeID string) map[string]any {
 	for _, candidate := range creationMaps(doc["nodes"]) {
-		if stringValue(candidate["id"]) == args.NodeID {
-			node = candidate
-			break
+		if stringValue(candidate["id"]) == nodeID {
+			return candidate
 		}
 	}
-	if node == nil {
-		return nil, BadAuthRequest("指定节点不在当前画布")
-	}
+	return nil
+}
+
+// cloudAgentInspectImageNode 处理一张图：就绪校验、短时链接、重复查看降级。
+func (s *Service) cloudAgentInspectImageNode(userID string, state *cloudAgentRuntime, node map[string]any, refresh bool) (cloudAgentImageInspection, error) {
+	nodeID := stringValue(node["id"])
 	reference, _, err := cloudAgentReference(s.repo, userID, node)
 	if err != nil {
-		return nil, err
+		return cloudAgentImageInspection{}, err
 	}
 	mimeType := stringValue(reference["mimeType"])
 	if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
-		return nil, BadAuthRequest("该节点没有可查看的图片素材：只能查看已就绪的图片节点")
+		return cloudAgentImageInspection{}, BadAuthRequest("该节点没有可查看的图片素材：只能查看已就绪的图片节点")
 	}
 	resourceID := strings.TrimPrefix(stringValue(reference["storageKey"]), "resource:")
 	if resourceID == "" {
-		return nil, BadAuthRequest("该节点的图片尚未保存到账号资源库，无法查看")
+		return cloudAgentImageInspection{}, BadAuthRequest("该节点的图片尚未保存到账号资源库，无法查看")
 	}
 	resource, err := s.repo.ResourceForUser(userID, resourceID)
 	if err != nil {
-		return nil, BadAuthRequest("该节点的图片资源不存在或不属于当前用户")
+		return cloudAgentImageInspection{}, BadAuthRequest("该节点的图片资源不存在或不属于当前用户")
 	}
 	// 链接要跨越模型的一次往返，用比浏览器直连更长的有效期。
 	url, err := s.providerResourceURL(resource, time.Now().Add(providerResourceURLTTL))
 	if err != nil {
-		return nil, err
+		return cloudAgentImageInspection{}, err
 	}
 	receipt := map[string]any{
-		"nodeId":   args.NodeID,
+		"nodeId":   nodeID,
 		"title":    truncateRunes(stringValue(node["title"]), 200),
 		"mimeType": mimeType,
 		"width":    reference["width"], "height": reference["height"], "bytes": reference["bytes"],
@@ -160,21 +262,73 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 			"确需重新确认画面时再调用本工具并传 refresh=true。" +
 			"如果看不到图片（上游取图失败），如实说明而不是凭标题猜测；运维需检查 CANVAS_PUBLIC_BASE_URL 是否是上游能访问到的地址。",
 	}
-	if note := state.cloudAgentVisualNoteFor(args.NodeID); note != "" {
+	if note := state.cloudAgentVisualNoteFor(nodeID); note != "" {
 		// 模型自己的观察是最便宜的"记忆"：推理内容不回灌上下文，只有写进正文的话才留得下来。
 		receipt["previousObservation"] = note
 	}
-	seen := state.cloudAgentImageInspectionCount(args.NodeID)
-	if seen >= cloudAgentMaxImageInspectionsPerRun && !args.Refresh {
+	seen := state.cloudAgentImageInspectionCount(nodeID)
+	if seen >= cloudAgentMaxImageInspectionsPerRun && !refresh {
 		receipt["repeat"] = true
 		receipt["note"] = "本轮你已经看过这张图，这次只回执文字、不再附图：请以你此前写下的观察为准。" +
 			"确需重新确认画面时再调用本工具并传 refresh=true。"
-		if note := state.cloudAgentVisualNoteFor(args.NodeID); note != "" {
+		if note := state.cloudAgentVisualNoteFor(nodeID); note != "" {
 			receipt["previousObservation"] = note
 		}
 		return cloudAgentImageInspection{Receipt: receipt}, nil
 	}
 	return cloudAgentImageInspection{Receipt: receipt, ImageURL: url}, nil
+}
+
+// cloudAgentMediaInspection 读取图片/视频/音频节点的素材事实：是否就绪、
+// 时长、分辨率、字节、格式和输入种类。它不下载任何媒体，也不签发链接——回答的是
+// "这个结果能用吗、多长、多大"，而"画面长什么样"仍然只能由 canvas_inspect_image 得到。
+//
+// 单个节点没就绪不判整次调用失败：一次看多个节点时，如实逐条回报比整体报错更有用。
+func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID string, call cloudAgentCall) (any, error) {
+	targets, _, err := cloudAgentInspectTargets(call.Function.Arguments, false)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := cloudAgentInspectionDocument(repo, userID, canvasID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]any, 0, len(targets))
+	for _, nodeID := range targets {
+		node := cloudAgentCanvasNode(doc, nodeID)
+		if node == nil {
+			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
+		}
+		nodeType := stringValue(node["type"])
+		descriptor, known := cloudAgentNodeCapabilityForType(nodeType)
+		// 复用参考素材的判定：文本等非媒体节点，以及没有接入参考适配的节点都不算媒体。
+		_, _, referenceErr := cloudAgentReferenceDescriptor(node)
+		if !known || referenceErr != nil {
+			return nil, BadAuthRequest("该节点不是媒体节点，读素材事实只能用图片、视频或音频节点：" + nodeID)
+		}
+		item := map[string]any{
+			"nodeId": nodeID, "type": descriptor.Type, "inputKind": descriptor.InputKind,
+			"title": truncateRunes(stringValue(node["title"]), 200), "ready": false,
+		}
+		reference, _, refErr := cloudAgentReference(repo, userID, node)
+		if refErr != nil {
+			// 尚未生成完、失败或素材不在本账号：把原因如实说出来，不要编造尺寸和时长。
+			item["issue"] = cloudAgentSafeToolError(refErr)
+			items = append(items, item)
+			continue
+		}
+		item["ready"] = true
+		for _, key := range []string{"mimeType", "bytes", "width", "height", "durationMs"} {
+			if value, ok := reference[key]; ok {
+				item[key] = value
+			}
+		}
+		items = append(items, item)
+	}
+	if len(items) == 1 {
+		return items[0], nil
+	}
+	return map[string]any{"media": items}, nil
 }
 
 // markCanvasAssetInspected 把已查看过的素材标记为 inspected。

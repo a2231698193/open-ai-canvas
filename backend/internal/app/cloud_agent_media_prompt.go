@@ -7,7 +7,28 @@ import (
 	"unicode/utf8"
 )
 
-var cloudAgentMediaMention = regexp.MustCompile(`@(图片|视频|音频)[0-9]+`)
+var (
+	cloudAgentMediaMention = regexp.MustCompile(`@(图片|视频|音频)[0-9]+`)
+	// 供应商和编辑器都接受不带 @ 的原生写法（图片1、音频2）。它只用来判断「这条素材
+	// 调用方已经写过了」，不参与绑定校验：裸编号也可能只是画面描述，把「图片3 张桌子」
+	// 判成非法引用会打断本来正常的提示词。
+	cloudAgentMediaNativeMention = regexp.MustCompile(`(图片|视频|音频)([0-9]+)`)
+)
+
+const cloudAgentMediaReferenceHeader = "【资产参考】"
+
+// mergeCloudAgentReferenceBlock 把遗漏的素材并入已有的【资产参考】段落，没有这一段时
+// 才新建。读回来的提示词往往已经带着上一次追加的段落，直接再拼一段会让同一份提示词里
+// 出现两个【资产参考】，上游只会看到重复说明。
+func mergeCloudAgentReferenceBlock(prompt string, missing []string) string {
+	lines := strings.Join(missing, "\n")
+	index := strings.Index(prompt, cloudAgentMediaReferenceHeader)
+	if index < 0 {
+		return prompt + "\n\n" + cloudAgentMediaReferenceHeader + "\n" + lines
+	}
+	head := index + len(cloudAgentMediaReferenceHeader)
+	return prompt[:head] + "\n" + lines + prompt[head:]
+}
 
 // Slot labels follow each media array's order, matching the canvas editor and
 // provider inputs. Text source edges do not consume a media slot.
@@ -40,6 +61,11 @@ func cloudAgentMediaReferencePrompt(prompt string, refs map[string]any) (string,
 		}
 		mentioned[token] = true
 	}
+	for _, match := range cloudAgentMediaNativeMention.FindAllStringSubmatch(prompt, -1) {
+		if token := "@" + match[1] + match[2]; available[token] {
+			mentioned[token] = true
+		}
+	}
 	missing := []string{}
 	for _, ref := range references {
 		if !mentioned[ref.token] {
@@ -47,7 +73,7 @@ func cloudAgentMediaReferencePrompt(prompt string, refs map[string]any) (string,
 		}
 	}
 	if len(missing) > 0 {
-		prompt += "\n\n【资产参考】\n" + strings.Join(missing, "\n")
+		prompt = mergeCloudAgentReferenceBlock(prompt, missing)
 	}
 	if count := utf8.RuneCountInString(prompt); count > 16000 {
 		return "", BadAuthRequest(fmt.Sprintf("补齐素材引用后的提示词共%d字符，超过16000字符上限；请缩短提示词后重试，不会自动截断", count))

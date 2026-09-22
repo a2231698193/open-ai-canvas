@@ -84,7 +84,7 @@ func TestCloudAgentCanvasApprovalPreviewRejectsUnknownTargetInsteadOfFallingBack
 }
 
 // 漏 patch 必须是**可恢复的参数错误**：运行期会把它当工具结果回给模型重试，
-// 而不是把整轮判死；未知操作类型（例如删除）仍按准入失败终止。
+// 而不是把整轮判死；真正未知的操作类型仍按准入失败终止。
 func TestCloudAgentCanvasApprovalPreviewTreatsMissingPatchAsArgumentError(t *testing.T) {
 	doc, err := creationDocument(`{"nodes":[{"id":"image-1","type":"image","title":"参考图"}],"connections":[]}`)
 	if err != nil {
@@ -96,7 +96,15 @@ func TestCloudAgentCanvasApprovalPreviewTreatsMissingPatchAsArgumentError(t *tes
 		t.Fatalf("漏 patch 应当是可恢复的参数错误，实际：%v", err)
 	}
 
+	// delete_node 现在是已知操作，但仍只允许撤销 Agent 自己建的空节点；
+	// 拒绝理由要能定位到具体哪一项，模型据此改参数或放弃这一项。
 	_, err = applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "delete_node", ID: "image-1"}})
+	var fieldErr *cloudAgentFieldArgumentError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "ops[0]" || fieldErr.Issue != "not_deletable" || !strings.Contains(err.Error(), "不是 Agent 建的") {
+		t.Fatalf("删除被拒应当是可定位到 ops 的可恢复参数错误：%v", err)
+	}
+
+	_, err = applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "destroy_node", ID: "image-1"}})
 	if err == nil {
 		t.Fatal("未知画布写操作必须仍然报错")
 	}

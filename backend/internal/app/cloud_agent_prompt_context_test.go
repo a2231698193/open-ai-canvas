@@ -69,6 +69,29 @@ func TestCloudAgentPolicyContextDoesNotPromoteUserGoal(t *testing.T) {
 	}
 }
 
+// 锚点里的提示词只是摘要：截断必须显式标注，否则模型会把半截提示词当全文改写。
+func TestCloudAgentAnchorMarksTruncatedPrompt(t *testing.T) {
+	long := strings.Repeat("镜头连续运动", 200)
+	canvas := &model.CanvasProject{PayloadJSON: `{"nodes":[{"id":"video-1","type":"video","title":"长提示词","metadata":{"composerContent":"` + long + `"}},{"id":"video-2","type":"video","title":"短提示词","metadata":{"composerContent":"一句话"}}]}`}
+	anchor, err := cloudAgentCreativeAnchorForCanvas(nil, "user", canvas, "继续", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchor.ReferenceAssets) != 2 {
+		t.Fatalf("锚点素材数量不对：%+v", anchor.ReferenceAssets)
+	}
+	truncated, short := anchor.ReferenceAssets[0], anchor.ReferenceAssets[1]
+	if truncated.NodeID != "video-1" || !truncated.PromptTruncated {
+		t.Fatalf("截断的提示词没有标记：%+v", truncated)
+	}
+	if len([]rune(truncated.Prompt)) != cloudAgentAnchorPromptLimit+3 {
+		t.Fatalf("截断长度不是 %d+省略号：%d", cloudAgentAnchorPromptLimit, len([]rune(truncated.Prompt)))
+	}
+	if short.PromptTruncated || short.Prompt != "一句话" {
+		t.Fatalf("未截断的提示词被误标：%+v", short)
+	}
+}
+
 func TestCloudAgentAnchorDoesNotInferReferenceRequirement(t *testing.T) {
 	canvas := &model.CanvasProject{PayloadJSON: `{"nodes":[{"id":"image-1","type":"image","title":"候选图"}]}`}
 	for _, prompt := range []string{"不要用参考图，只修正标点", "请解释图生视频是什么意思", "只改台词，不改变风格"} {

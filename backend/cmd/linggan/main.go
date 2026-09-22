@@ -67,8 +67,10 @@ func usage() {
   linggan task create --file <任务.json>
   linggan task get <任务ID>
   linggan confirm <确认编号>
+  linggan confirm --list
+  linggan confirm --cancel <确认编号>
 
-在终端里直接运行生成命令时，输入 y 后立即提交。由 Agent 运行时不提交，先返回 needs_confirmation；用户在对话里同意后，Agent 再执行 linggan confirm。
+在终端里直接运行生成命令时，输入 y 后立即提交。由 Agent 运行时不提交，先返回 needs_confirmation；用户在对话里同意后，Agent 再执行 linggan confirm。待确认生成保留 30 分钟，过期作废；用 linggan confirm --list 查看，用 linggan confirm --cancel 取消。
 `)
 }
 
@@ -421,8 +423,18 @@ func taskCreate(args []string) error {
 }
 
 func cmdConfirm(args []string) error {
+	if len(args) == 1 && args[0] == "--list" {
+		actions, err := listPendingConfirmations()
+		if err != nil {
+			return err
+		}
+		return printPendingConfirmations(actions)
+	}
+	if len(args) == 2 && args[0] == "--cancel" {
+		return cancelPendingConfirmation(args[1])
+	}
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		return errors.New("用法：linggan confirm <确认编号>")
+		return errors.New("用法：linggan confirm <确认编号> | linggan confirm --list | linggan confirm --cancel <确认编号>")
 	}
 	action, err := loadPending(args[0])
 	if err != nil {

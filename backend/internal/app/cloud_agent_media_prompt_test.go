@@ -47,6 +47,40 @@ func TestCloudAgentMediaReferencePrompt(t *testing.T) {
 	}
 }
 
+func TestCloudAgentMediaReferencePromptMergesInsteadOfDuplicating(t *testing.T) {
+	ref := func(name string) map[string]any {
+		return map[string]any{"name": name, "storageKey": "resource:test"}
+	}
+	images := []any{ref("人物"), ref("假发")}
+	refs := map[string]any{"referenceImages": images, "referenceAudios": []any{ref("声音")}}
+
+	// 读回来的提示词已经带着上一次追加的段落：只能有一段，遗漏的素材并进去。
+	existing := "人物严格参考 @图片1\n\n【资产参考】\n假发：@图片2"
+	got, err := cloudAgentMediaReferencePrompt(existing, refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(got, "【资产参考】"); count != 1 {
+		t.Fatalf("追加出 %d 段【资产参考】：%q", count, got)
+	}
+	if !strings.Contains(got, "声音：@音频1") || !strings.Contains(got, "假发：@图片2") {
+		t.Fatalf("遗漏的素材没有并进已有段落：%q", got)
+	}
+	if again, err := cloudAgentMediaReferencePrompt(got, refs); err != nil || again != got {
+		t.Fatalf("同一份提示词重复提交不稳定：%q, %v", again, err)
+	}
+
+	// 供应商原生写法（不带 @）同样算已经写过引用，不再补说明。
+	native := "以 图片1 为参考，假发用 图片2"
+	if got, err := cloudAgentMediaReferencePrompt(native, map[string]any{"referenceImages": images}); err != nil || got != native {
+		t.Fatalf("原生标签仍被追加：%q, %v", got, err)
+	}
+	// 裸编号不参与绑定校验：画面描述里的「图片3」不该被打断，该补的说明照旧补。
+	if got, err := cloudAgentMediaReferencePrompt("画面里有 图片3 张桌子", map[string]any{"referenceImages": images}); err != nil || !strings.Contains(got, "人物：@图片1") {
+		t.Fatalf("裸编号被误判成已引用：%q, %v", got, err)
+	}
+}
+
 func TestCloudAgentMediaMentionsPersistAcrossApproval(t *testing.T) {
 	s, _, args := agentMediaFixture(t)
 	args.Prompt = "人物参考 @图片1，使用另一张图的假发。"

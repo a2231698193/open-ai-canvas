@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -226,6 +227,12 @@ func cloudAgentPairingInspection(nodeID, url string) cloudAgentImageInspection {
 	}
 }
 
+// cloudAgentPairingBatch 包装成"一次调用读到的图"（生产路径返回的就是这个类型）：
+// 一次 nodeId 调用是一张，一次 nodeIds 调用是多张，运行时看到的形状相同。
+func cloudAgentPairingBatch(inspections ...cloudAgentImageInspection) cloudAgentImageInspections {
+	return cloudAgentImageInspections(inspections)
+}
+
 // runCloudAgentBatch 复刻 runtime 执行一批调用的两条路径：
 //  1. 逐个调用走 cloudAgentToolResult（本批最后一个调用是看图时，它会立刻 flush）；
 //  2. 整批结束、开始组装 canonical 之前走 advanceCloudAgent 里的兜底 flush（幂等）。
@@ -257,8 +264,8 @@ func TestCloudAgentBatchImagesFollowAllToolResults(t *testing.T) {
 		cloudAgentPairingCall("call-2", "canvas_get_state", `{}`),
 	)
 	results := map[string]any{
-		"call-0": cloudAgentPairingInspection("image-a", "https://example.test/a"),
-		"call-1": cloudAgentPairingInspection("image-b", "https://example.test/b"),
+		"call-0": cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")),
+		"call-1": cloudAgentPairingBatch(cloudAgentPairingInspection("image-b", "https://example.test/b")),
 	}
 
 	// 只执行调用，不走兜底 flush：模拟"批次刚执行完、还没开始组装下一步请求"。
@@ -327,6 +334,41 @@ func TestCloudAgentBatchImagesFollowAllToolResults(t *testing.T) {
 	}
 }
 
+// 场景 2b：一次调用用 nodeIds 读多张图 —— 与并行多次调用读图走同一条路径：
+// 一批图合并成一条 user 消息，工具消息里逐图列出回执。
+func TestCloudAgentSingleCallWithNodeIdsStagesEveryImage(t *testing.T) {
+	state := cloudAgentPairingState(
+		cloudAgentPairingCall("call-0", "canvas_inspect_image", `{"nodeIds":["image-a","image-b"]}`),
+		cloudAgentPairingCall("call-1", "canvas_get_state", `{}`),
+	)
+	runCloudAgentBatch(t, state, map[string]any{
+		"call-0": cloudAgentImageInspections{
+			cloudAgentPairingInspection("image-a", "https://example.test/a"),
+			cloudAgentPairingInspection("image-b", "https://example.test/b"),
+		},
+	})
+	messages := state.Canonical.Messages
+	assertCloudAgentToolCallPairing(t, messages)
+	if len(messages) != 4 {
+		t.Fatalf("expected assistant + 2 tool + 1 user image, got%s", cloudAgentDebugMessages(messages))
+	}
+	if got := cloudAgentMessageImagePartCount(messages[3]); got != 2 {
+		t.Fatalf("nodeIds 读到的两张图必须在同一条消息里，got %d", got)
+	}
+	if nodes := cloudAgentImageMessageNodeIDs(messages[3]); len(nodes) != 2 || nodes[0] != "image-a" || nodes[1] != "image-b" {
+		t.Fatalf("图片消息应保留两个 nodeId：%v", nodes)
+	}
+	// 多图回执合成一个对象，逐图带 nodeId；单图回执保持原样（就是那份 receipt）。
+	content := stringField(messages[1], "content")
+	if !strings.Contains(content, `"images"`) || !strings.Contains(content, "image-a") || !strings.Contains(content, "image-b") {
+		t.Fatalf("多图工具回执不对：%s", content)
+	}
+	single, _ := json.Marshal(cloudAgentImageInspectionResult(cloudAgentImageInspections{cloudAgentPairingInspection("image-a", "")}))
+	if strings.Contains(string(single), `"images"`) || !strings.Contains(string(single), `"nodeId":"image-a"`) {
+		t.Fatalf("单图回执形状被改了：%s", single)
+	}
+}
+
 // 场景 2：单图且是最后一个调用 —— 行为与修复前一致（仍然只有一条 user 图片消息，
 // 紧跟最后一条 tool 结果）。
 func TestCloudAgentSingleImageAsLastCallKeepsOneImageMessage(t *testing.T) {
@@ -335,7 +377,7 @@ func TestCloudAgentSingleImageAsLastCallKeepsOneImageMessage(t *testing.T) {
 		cloudAgentPairingCall("call-1", "canvas_inspect_image", `{"nodeId":"image-a"}`),
 	)
 	runCloudAgentBatch(t, state, map[string]any{
-		"call-1": cloudAgentPairingInspection("image-a", "https://example.test/a"),
+		"call-1": cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")),
 	})
 	messages := state.Canonical.Messages
 	assertCloudAgentToolCallPairing(t, messages)
@@ -374,9 +416,9 @@ func TestCloudAgentBatchMergesImagesAroundRecoverableToolError(t *testing.T) {
 		cloudAgentPairingCall("call-2", "canvas_inspect_image", `{"nodeId":"image-b"}`),
 	)
 	runCloudAgentBatch(t, state, map[string]any{
-		"call-0": cloudAgentPairingInspection("image-a", "https://example.test/a"),
+		"call-0": cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")),
 		"call-1": cloudAgentJSONArgumentError(errors.New("unknown field bogus")),
-		"call-2": cloudAgentPairingInspection("image-b", "https://example.test/b"),
+		"call-2": cloudAgentPairingBatch(cloudAgentPairingInspection("image-b", "https://example.test/b")),
 	})
 	messages := state.Canonical.Messages
 	assertCloudAgentToolCallPairing(t, messages)
@@ -414,7 +456,7 @@ func TestCloudAgentBufferedImagesFlushAtBatchEndAndSurviveCheckpoint(t *testing.
 		cloudAgentPairingCall("call-2", "canvas_get_state", `{}`),
 	)
 	runCloudAgentBatch(t, state, map[string]any{
-		"call-0": cloudAgentPairingInspection("image-a", "https://example.test/a"),
+		"call-0": cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")),
 		"call-1": cloudAgentImageInspection{Receipt: map[string]any{"nodeId": "image-a", "repeat": true}},
 	})
 	messages := state.Canonical.Messages
@@ -448,7 +490,7 @@ func TestCloudAgentPendingImagesSurviveCheckpointRoundTrip(t *testing.T) {
 	// 合并树（上游为底）的解码会校验事件身份 `event.EventID == "<runID>:<seq>"`。
 	// 本用例只需要"保存/解码"这条路径，不需要真实运行身份：用空 runID 让事件身份与
 	// 下面那个裸 run（ID 为空）一致，从而绕开运行期请求校验（它只在 run 有 ID 时执行）。
-	cloudAgentToolResult("", state, state.Calls[0], cloudAgentPairingInspection("image-a", "https://example.test/a"), nil)
+	cloudAgentToolResult("", state, state.Calls[0], cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")), nil)
 	cloudAgentToolResult("", state, state.Calls[1], map[string]any{"ok": true}, nil)
 	if len(state.PendingImageInspections) != 1 {
 		t.Fatalf("expected one buffered inspection, got %d", len(state.PendingImageInspections))
@@ -717,7 +759,7 @@ func TestCloudAgentAskUserBatchFlushesBufferedImages(t *testing.T) {
 		cloudAgentPairingCall("call-0", "canvas_inspect_image", `{"nodeId":"image-a"}`),
 		cloudAgentPairingCall("call-1", "ask_user", `{}`),
 	)
-	cloudAgentToolResult("run-1", state, state.Calls[0], cloudAgentPairingInspection("image-a", "https://example.test/a"), nil)
+	cloudAgentToolResult("run-1", state, state.Calls[0], cloudAgentPairingBatch(cloudAgentPairingInspection("image-a", "https://example.test/a")), nil)
 	// ask_user 的收尾顺序（cloud_agent_runtime.go 的 ask_user 分支）：先写自己的回执，
 	// 再结束本批剩余调用。
 	cloudAgentToolResult("run-1", state, state.Calls[1], map[string]any{"phase": "question"}, nil)

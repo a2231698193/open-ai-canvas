@@ -16,6 +16,10 @@ type cloudAgentCreativeAnchor struct {
 	ReferenceAssets  []cloudAgentReferenceAnchor `json:"referenceAssets,omitempty"`
 }
 
+// cloudAgentAnchorPromptLimit 是素材锚点里提示词摘要的上限。锚点每一轮都会发出去，
+// 所以这里只留够"认得这条素材"的长度；需要全文时按节点精读（上限 16000 字符）。
+const cloudAgentAnchorPromptLimit = 1000
+
 type cloudAgentReferenceAnchor struct {
 	NodeID                   string   `json:"nodeId"`
 	Type                     string   `json:"type"`
@@ -25,6 +29,9 @@ type cloudAgentReferenceAnchor struct {
 	ReferenceReady           bool     `json:"referenceReady"`
 	VisualIdentity           string   `json:"visualIdentity"`
 	RequiresVisualInspection bool     `json:"requiresVisualInspection"`
+	// PromptTruncated 明确告诉模型这里的提示词不是全文：它只是素材锚点的摘要，
+	// 想照着旧提示词改写必须先按节点精读，不能把截断当全文照抄。
+	PromptTruncated bool `json:"promptTruncated,omitempty"`
 	// VisualNote 是模型看过这张图之后自己写下的一句观察。锚点会跨轮继承，
 	// 因此下一轮不必重复看图也能拿到文字观察（推理内容不会回灌上下文）。
 	VisualNote string `json:"visualNote,omitempty"`
@@ -79,12 +86,14 @@ func cloudAgentCreativeAnchorForCanvas(repo *repository.Repository, userID strin
 			continue
 		}
 		meta, _ := node["metadata"].(map[string]any)
+		prompt := firstNonEmpty(stringValue(meta["prompt"]), stringValue(meta["composerContent"]))
 		item := cloudAgentReferenceAnchor{
 			NodeID: stringValue(node["id"]), Type: stringValue(node["type"]),
 			Title:          truncateRunes(stringValue(node["title"]), 300),
-			Prompt:         truncateRunes(firstNonEmpty(stringValue(meta["prompt"]), stringValue(meta["composerContent"])), 1000),
+			Prompt:         truncateRunes(prompt, cloudAgentAnchorPromptLimit),
 			VisualIdentity: "unknown", RequiresVisualInspection: true,
 		}
+		item.PromptTruncated = len([]rune(prompt)) > cloudAgentAnchorPromptLimit
 		if tags, ok := meta["assetTags"].([]any); ok {
 			for _, tag := range tags {
 				if text := strings.TrimSpace(stringValue(tag)); text != "" {
