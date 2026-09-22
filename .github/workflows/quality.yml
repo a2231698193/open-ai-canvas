@@ -51,7 +51,11 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -json ./... | tee "$RUNNER_TEMP/go-tests.jsonl"
+          # internal/app 单包在 CI 上已经要 8-10 分钟（1486 个用例，每个构造服务的用例都要
+          # 读入并解析官方插件包），默认的 10 分钟单包超时只剩几十秒余量，一次并发跑两个
+          # 工作流就会踩线失败。这里显式放宽到 20 分钟；真正需要的是把包本身变快
+          # （官方插件包按进程缓存解析结果），而不是继续抬这个数字。
+          go test -json -timeout 20m ./... | tee "$RUNNER_TEMP/go-tests.jsonl"
       - name: Ensure dependency-backed tests were not skipped
         shell: bash
         run: |
