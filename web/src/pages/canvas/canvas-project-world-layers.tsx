@@ -9,6 +9,7 @@ import type { CanvasBatchConnectionPreview } from "@/lib/canvas/canvas-batch-con
 import { sortCanvasNodesByStackOrder, type CanvasNodeStackOrder } from "@/lib/canvas/canvas-node-stack-order";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { isFrameNode } from "@/lib/canvas/canvas-frame";
+import { pauseCanvasNodeVideo, shouldPausePlayingCanvasVideo } from "@/lib/canvas/canvas-video-playback-pause";
 import type { CanvasDisplayConnection, CanvasFolderStyle, CanvasFolderTheme, CanvasNodeData, ConnectionHandle, Position, SelectionBox } from "@/types/canvas";
 
 type DragPreview = { x: number; y: number; nodeIds: Set<string> } | null;
@@ -88,6 +89,17 @@ export const CanvasProjectWorldLayers = memo(function CanvasProjectWorldLayers(p
     useEffect(() => {
         if (activeMediaNodeId && !props.nodeById.has(activeMediaNodeId)) setActiveMediaNodeId(null);
     }, [activeMediaNodeId, props.nodeById]);
+    useEffect(() => {
+        if (!activeMediaNodeId) return;
+        const nodeId = activeMediaNodeId;
+        // 播放器手势停在节点内部；空白和其它节点的按下发生在外层，要在捕获阶段暂停。
+        const handlePointerDown = (event: PointerEvent) => {
+            if (!shouldPausePlayingCanvasVideo(event.target, nodeId)) return;
+            pauseCanvasNodeVideo(document, nodeId);
+        };
+        document.addEventListener("pointerdown", handlePointerDown, true);
+        return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+    }, [activeMediaNodeId]);
     const orderedVisibleNodes = useMemo(() => [
         ...props.visibleNodes.filter(isFrameNode),
         ...sortCanvasNodesByStackOrder(props.visibleNodes.filter((node) => !isFrameNode(node)), props.nodeStackOrder),
