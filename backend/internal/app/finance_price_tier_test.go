@@ -106,7 +106,7 @@ func TestPublicCatalogPriceAppliesCreditMultiplier(t *testing.T) {
 	}
 	spec := CapabilitySpec{Version: 1, Capability: "image", Options: map[string]OptionConstraint{"quality": {Values: []any{"1k"}}}}
 	cached := cachedLogicalModel{
-		Model: model.LogicalModel{ID: "logical-image", PricePolicy: "channel", Capability: "image"},
+		Model:       model.LogicalModel{ID: "logical-image", PricePolicy: "channel", Capability: "image"},
 		ProductSpec: spec, Defaults: map[string]any{"quality": "1k"},
 		Routes: []cachedLogicalRoute{{Route: model.LogicalModelRoute{ID: "image-route", Enabled: true, Weight: 1}, CapabilitySpec: spec, ChannelModel: channelModel}},
 	}

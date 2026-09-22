@@ -210,10 +210,10 @@ func protocolRequestFromInput(input canvasGenerationInput) protocol.GenerationRe
 		Watermark:     parseBool(input.Config.VideoWatermark, false),
 		Operation:     firstNonEmpty(metadataString(input.Metadata, "videoEditOperation"), metadataString(input.Metadata, "videoOperation")),
 		Extra: map[string]any{
-			"videoSeconds": input.Config.VideoSeconds,
-			"audioVoice":   input.Config.AudioVoice,
-			"audioFormat":  input.Config.AudioFormat,
-			"count":        input.Config.Count,
+			"videoSeconds":          input.Config.VideoSeconds,
+			"audioVoice":            input.Config.AudioVoice,
+			"audioFormat":           input.Config.AudioFormat,
+			"count":                 input.Config.Count,
 			"transparentBackground": input.Config.TransparentBackground,
 		},
 	}

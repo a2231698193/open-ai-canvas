@@ -1182,7 +1182,7 @@ func TestLK888VideoProfile(t *testing.T) {
 
 	enhance, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
 		Model: "video-enhance", Prompt: "", Resolution: "4k", Duration: 12,
-		Videos: []MediaReference{{URL: "https://cdn.example/source.mp4", Role: "reference_video"}},
+		Videos:          []MediaReference{{URL: "https://cdn.example/source.mp4", Role: "reference_video"}},
 		ProviderOptions: map[string]map[string]any{"lk888-video": {"fps": "60", "tool_version": "professional", "scene": "aigc", "enhance_style": "natural"}},
 	}})
 	if err != nil {
