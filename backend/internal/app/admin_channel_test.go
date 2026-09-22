@@ -168,7 +168,10 @@ func TestDuplicateSystemChannelCopiesSecretsModelsAndPriceTiers(t *testing.T) {
 }
 
 func TestChannelFromRequestStoresAndClearsHeaders(t *testing.T) {
-	request := ChannelRequest{Name: "Headers", BaseURL: "https://example.com/v1", Headers: []OutboundHeader{{Name: "User-Agent", Value: "Custom Agent"}}}
+	// 用回环地址而不是外部域名：这里校验的是渠道字段的存取，不该依赖外网 DNS
+	// （缺网的环境下会白等一次解析超时）。
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
+	request := ChannelRequest{Name: "Headers", BaseURL: "https://127.0.0.1:8080/v1", Headers: []OutboundHeader{{Name: "User-Agent", Value: "Custom Agent"}}}
 	channel, err := channelFromRequest(request, model.ModelChannel{})
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +212,7 @@ func TestChannelFromRequestRejectsInvalidConcurrencyLimit(t *testing.T) {
 }
 
 func TestRuntimeConcurrencyUsesEnvironmentFallback(t *testing.T) {
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	t.Setenv("CANVAS_CHANNEL_CONCURRENCY", "7")
 	t.Setenv("CANVAS_WORKER_CONCURRENCY", "9")
 	setting := defaultRuntimePolicy().Task
@@ -217,7 +221,7 @@ func TestRuntimeConcurrencyUsesEnvironmentFallback(t *testing.T) {
 	}
 
 	useGlobal := true
-	channel, err := channelFromRequest(ChannelRequest{Name: "Global", BaseURL: "https://example.com/v1", UseGlobalConcurrency: &useGlobal}, model.ModelChannel{ConcurrencyLimit: 4})
+	channel, err := channelFromRequest(ChannelRequest{Name: "Global", BaseURL: "https://127.0.0.1:8080/v1", UseGlobalConcurrency: &useGlobal}, model.ModelChannel{ConcurrencyLimit: 4})
 	if err != nil || channel.ConcurrencyLimit != 0 {
 		t.Fatalf("global concurrency channel = %#v, error = %v", channel, err)
 	}

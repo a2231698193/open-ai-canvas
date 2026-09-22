@@ -19,15 +19,19 @@ import (
 )
 
 func validateStorageEndpoint(raw string) (*url.URL, error) {
-	parsed, err := ValidateOutboundURL(raw)
-	if err != nil {
-		return nil, err
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Hostname() == "" {
+		return nil, BadAuthRequest("对象存储 Endpoint 无效")
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || strings.Trim(parsed.Path, "/") != "" {
 		return nil, BadAuthRequest("对象存储 Endpoint 必须是服务根 URL，不能包含认证信息、路径、查询参数或片段")
 	}
 	if parsed.Scheme == "http" && !AllowedPrivateUpstreamHost(parsed.Hostname()) {
 		return nil, BadAuthRequest("对象存储 HTTP Endpoint 仅允许访问 CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS 精确放行的主机")
+	}
+	// 出站校验（含域名解析）放在最后：地址结构本身就不合法的输入不必白等一次 DNS。
+	if _, err := ValidateOutboundURL(raw); err != nil {
+		return nil, err
 	}
 	return parsed, nil
 }

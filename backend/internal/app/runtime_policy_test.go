@@ -46,8 +46,10 @@ func TestProviderPollingDeadlineDefaultsToOneHour(t *testing.T) {
 }
 
 func TestOnlyResumableNewAPIChannel2VideoDeadlinesStayRunning(t *testing.T) {
+	// 回环地址 + 精确放行：这条用例只判断协议解析，不该依赖外网 DNS。
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	svc := &Service{}
-	input, err := json.Marshal(canvasGenerationInput{Mode: "video", Config: providerConfig{BaseURL: "https://example.com", InterfaceType: string(model.ChannelInterfaceNewAPIChannel2)}})
+	input, err := json.Marshal(canvasGenerationInput{Mode: "video", Config: providerConfig{BaseURL: "https://127.0.0.1", InterfaceType: string(model.ChannelInterfaceNewAPIChannel2)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,7 @@ func TestOnlyResumableNewAPIChannel2VideoDeadlinesStayRunning(t *testing.T) {
 	if svc.shouldDeferVideoProviderTask(base, string(input), providerHTTPError{StatusCode: 400, Body: `{"code":"task_not_exist"}`}) {
 		t.Fatal("untyped provider error must not be deferred")
 	}
-	other, err := json.Marshal(canvasGenerationInput{Mode: "video", Config: providerConfig{BaseURL: "https://example.com", InterfaceType: string(model.ChannelInterfaceNewAPIVideo)}})
+	other, err := json.Marshal(canvasGenerationInput{Mode: "video", Config: providerConfig{BaseURL: "https://127.0.0.1", InterfaceType: string(model.ChannelInterfaceNewAPIVideo)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +95,7 @@ func TestOnlyResumableNewAPIChannel2VideoDeadlinesStayRunning(t *testing.T) {
 }
 
 func TestResumableVideoDeadlineUsesResolvedSystemChannelProtocol(t *testing.T) {
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	db, err := gorm.Open(sqlite.Open("file:"+kernel.NewID()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +105,7 @@ func TestResumableVideoDeadlineUsesResolvedSystemChannelProtocol(t *testing.T) {
 	}
 	channel := model.ModelChannel{
 		ID: "channel-video", UserID: "admin", Scope: model.ChannelScopeSystem, Enabled: true, Name: "Video",
-		BaseURL: "https://example.com", APIKey: "test-key", APIFormat: "openai", ModelsJSON: `["video-model"]`,
+		BaseURL: "https://127.0.0.1", APIKey: "test-key", APIFormat: "openai", ModelsJSON: `["video-model"]`,
 	}
 	channelModel := model.ChannelModel{
 		ID: "model-video", ChannelID: channel.ID, ModelKey: "video-model", Capability: "video",

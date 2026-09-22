@@ -869,20 +869,13 @@ func (s *Service) channelFromRequest(req ChannelRequest, channel model.ModelChan
 	if baseURL == "" {
 		return channel, BadAuthRequest("请填写 Base URL")
 	}
-	// 启用/停用或只修改价格、模型等配置时，不应要求上游域名当前可解析。
-	// 只有 Base URL 实际变化时才做出站地址校验。
-	connectionChanged := strings.TrimRight(baseURL, "/") != strings.TrimRight(channel.BaseURL, "/")
-	if connectionChanged {
-		if _, err := ValidateOutboundURL(baseURL); err != nil {
-			return channel, err
-		}
-	}
 	models := uniqueNonEmpty(req.Models)
 	modelsJSON, _ := json.Marshal(models)
 	headersJSON, err := EncodeOutboundHeadersJSON(req.Headers)
 	if err != nil {
 		return channel, err
 	}
+	previousBaseURL := channel.BaseURL
 	channel.Name = name
 	if req.SortOrder != nil {
 		if err := validateChannelSortOrder(*req.SortOrder); err != nil {
@@ -908,6 +901,14 @@ func (s *Service) channelFromRequest(req ChannelRequest, channel model.ModelChan
 		channel.ConcurrencyLimit = *req.ConcurrencyLimit
 	} else if req.UseGlobalConcurrency != nil {
 		return channel, BadAuthRequest("请填写渠道最大并发数")
+	}
+	// 出站地址校验要解析域名，所以放在最后：本地字段就已经不合法的请求不必白等一次 DNS。
+	// 启用/停用或只修改价格、模型等配置时也不应要求上游域名当前可解析——
+	// 只有 Base URL 实际变化时才做校验。
+	if strings.TrimRight(baseURL, "/") != strings.TrimRight(previousBaseURL, "/") {
+		if _, err := ValidateOutboundURL(baseURL); err != nil {
+			return channel, err
+		}
 	}
 	channel.ModelsJSON = string(modelsJSON)
 	channel.HeadersJSON = headersJSON
