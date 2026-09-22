@@ -111,14 +111,6 @@ type githubSkillSpec struct {
 	Subdir string
 }
 
-func truncateToRunes(s string, maxRunes int) string {
-	if utf8.RuneCountInString(s) <= maxRunes {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:maxRunes])
-}
-
 func (s *Service) EnsureSkillPackages() error {
 	skills, err := s.repo.SkillsForPackageEnsure(skillSourceUser)
 	if err != nil {
@@ -126,9 +118,9 @@ func (s *Service) EnsureSkillPackages() error {
 	}
 	for index := range skills {
 		skill := &skills[index]
-		name := truncateToRunes(skill.Name, 80)
-		description := truncateToRunes(skill.Description, 500)
-		archive, err := archiveFromMarkdown([]byte(skill.Instruction), name, description)
+		// Legacy fields are only fallbacks for package metadata. Bound them at
+		// this migration boundary without rewriting source fields or relaxing uploads.
+		archive, err := archiveFromMarkdown([]byte(skill.Instruction), truncateSkillMetadata(skill.Name, 80), truncateSkillMetadata(skill.Description, 500))
 		if err != nil {
 			return fmt.Errorf("迁移技能 %s 文件包失败: %w", skill.ID, err)
 		}

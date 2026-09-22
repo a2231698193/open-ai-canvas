@@ -60,6 +60,8 @@ linggan canvas apply --file ops.json
 | `canvas_edit_batch_table` | 编辑批量创作表，不提交生成 |
 | `model_list` | 按生成模式和参考节点列出模型 |
 | `image_text_detect` | 读取图片节点，准备文字识别 |
+| `canvas_arrange_nodes` | 只整理节点坐标，不改内容和连线 |
+| `canvas_inspect_image` | 返回图片节点的短时查看链接，供外部模型看图 |
 | `image_annotation_render` | 生成标注参考图 |
 | `generate_media` | 创建图片、视频或音频节点并提交生成 |
 | `image_layer_split` | 拆分图片图层并提交生成 |

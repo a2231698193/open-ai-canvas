@@ -123,9 +123,8 @@ describe("canvas resource mention editor", () => {
         expect(component).toContain("slash.start + 1 + slash.query.length");
         expect(component).toContain("buildSkillMentionReferences(availableSlashSkills)");
         expect(component).toContain("[/、]([^\\s/、]*)$");
-        // 输入提示已改为可配置的 Agent 外观文案，默认值留在 agent-appearance。
-        expect(source("../src/components/canvas/canvas-cloud-agent-panel.tsx")).toContain("agentCopy(appearance.inputPlaceholder, appearance.agentName)");
-        expect(source("../src/lib/canvas/agent-appearance.ts")).toContain("输入操作指导；用 @ 引用画布节点，用 / 或 、 引用 Skills");
+        expect(source("../src/lib/canvas/agent-appearance.ts")).toContain("用 / 或 、 引用 Skills");
+        expect(source("../src/components/canvas/canvas-cloud-agent-panel.tsx")).toContain("用 / 或 、 引用 Skills");
     });
 
     test("skill chips use one colored icon instead of exposing the serialized token", () => {

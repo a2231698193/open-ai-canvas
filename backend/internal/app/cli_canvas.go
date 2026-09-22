@@ -93,6 +93,14 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 			return nil, err
 		}
 		return applyCloudAgentBatchTableMutation(s.repo, userID, canvasID, call, policy)
+	case "canvas_arrange_nodes":
+		policy, err := s.RuntimePolicy()
+		if err != nil {
+			return nil, err
+		}
+		return applyCloudAgentArrangeNodes(s.repo, userID, canvasID, call, policy)
+	case "canvas_inspect_image":
+		return s.prepareCloudAgentImageInspection(userID, canvasID, state, call)
 	case "model_list":
 		intent, err := s.cloudAgentModelIntent(userID, canvasID, string(raw))
 		if err != nil {
