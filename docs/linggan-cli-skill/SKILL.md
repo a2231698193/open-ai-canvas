@@ -19,6 +19,7 @@ description: >-
 - 生成没有 `--yes`。Agent 执行 `generate_media`、`image_layer_split` 或 `task create` 时，命令不会提交，只会返回 `needs_confirmation`。先用对话把摘要告诉用户并询问。用户明确同意后，由 Agent 执行返回的 `nextCommand`，不要让用户自己去终端执行。用户未同意时不要执行确认命令。
 - 不能删除普通节点：只有 `canvas_get_state` 里带 `agentCreated`、且没有正文、没有任务、没有连线、没有被分镜或批量表引用的空节点能用 `canvas_apply_ops` 的 `delete_node` 撤销。文本/剧本节点的正文、媒体节点的提示词草稿（`composerContent`）都算内容；媒体节点没有任务时那份自动写入的 `prompt` 不算（它清不掉）。不能写任意媒体地址或任意 metadata。分镜和批量创作表只能使用各自的工具删除一行。
 - 第一版没有项目工作区。项目、分集和角色仍在网页里处理。
+- 提交视频前先确认参考素材：网页上的「文生视频 / 图生视频 / 首尾帧参考 / 全能参考」在命令行里由 `referenceNodeIds` 或 `references`（`first_frame` / `last_frame` / `reference_image`）加 `videoEditOperation` 决定，首尾帧只接受画布里的图片节点，多图全能参考必须显式传 `reference_to_video`。四种模式的对号入座和完整例子见 `examples/video-modes.md`。
 
 ## 命令
 
@@ -41,6 +42,6 @@ description: >-
 
 待确认生成只在本机保留 30 分钟，`needs_confirmation` 会返回 `expiresAt`；过期后必须重新执行生成命令，不能拿旧草稿提交。
 
-详细参数见 `commands/`。可复制流程见 `examples/`。
+详细参数见 `commands/`。可复制流程见 `examples/`（视频四种模式见 `examples/video-modes.md`）。
 
 安装见仓库 `scripts/install-linggan.sh`。安装前的版本标签还没有这些压缩包时，命令不存在是正常的。

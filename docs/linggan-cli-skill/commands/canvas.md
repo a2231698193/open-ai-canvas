@@ -151,6 +151,8 @@ linggan canvas tool generate_media --file generate.json
 
 `mode` 可以是 `image`、`video` 或 `audio`。`logicalModelId` 与 `channelId`、`channelModelKey` 互斥，后两个必须成对使用。`referenceNodeIds` 只放媒体节点；文本来源放在 `sourceNodeId`。
 
+图片和视频都要给 `size`（如 `16:9`、`9:16`）；视频还要给正数 `durationSeconds`，画幅和时长都必须落在 `model_list` 返回的取值范围内，否则准入会拒绝。
+
 ### 参考素材的角色
 
 需要区分首帧、尾帧和普通参考图时，用 `references` 代替 `referenceNodeIds`（两者只能填一个）。它自带顺序，`@图片N` 的编号按这个顺序：
@@ -172,6 +174,60 @@ linggan canvas tool generate_media --file generate.json
 - 只填 `reference_image` 时服务端按 `reference` 模式处理。
 
 服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），所以路由和供应商适配与网页生成一致，不需要额外参数。
+
+### 四种视频模式怎么填
+
+网页上的四个视频模式在命令行里不是开关，而是由「参考素材 + `videoEditOperation`」决定的。对号入座：
+
+| 模式 | 参考素材怎么传 | `videoEditOperation` | 说明 |
+|---|---|---|---|
+| 文生视频 | 什么都不传 | 省略（推导为 `text_to_video`） | 只有提示词 |
+| 图生视频 | `referenceNodeIds: ["<图片节点>"]` | 省略（推导为 `image_to_video`） | 一张图当首帧 |
+| 首尾帧参考 | `references` 里一条 `first_frame` + 一条 `last_frame` | 省略即可 | 两张都必须是画布里的图片节点 |
+| 全能参考 | 多张图放 `referenceNodeIds` 或都标 `reference_image` | **必须显式 `reference_to_video`** | 省略会被推导成单首帧的 `image_to_video`，多图会被上游按「输入媒体数量超过限制」拒掉 |
+
+首尾帧的完整写法（首帧、尾帧都取自画布上已有的图片节点）：
+
+```json
+{
+  "mode": "video",
+  "prompt": "婴儿房夜景，镜头从安抚毯特写缓缓推近到窗外月光（首帧见 @图片1，尾帧见 @图片2）",
+  "nodeId": "vid-seg2",
+  "title": "EP01 段2 · 首尾帧",
+  "channelId": "<model_list 返回的 selection.channelId>",
+  "channelModelKey": "<model_list 返回的 selection.channelModelKey>",
+  "size": "9:16",
+  "durationSeconds": 5,
+  "references": [
+    {"nodeId": "img-scn-nursery-master", "role": "first_frame"},
+    {"nodeId": "img-scn-nursery-cam", "role": "last_frame"}
+  ]
+}
+```
+
+提交前先拿这两张图问一次模型目录，确认候选里有支持首尾帧的模型：
+
+```bash
+linggan canvas tool model_list --file model.json
+```
+
+```json
+{"mode": "video", "referenceNodeIds": ["img-scn-nursery-master", "img-scn-nursery-cam"]}
+```
+
+返回的 `intent.imageRoles` 会列出 `first_frame` / `last_frame`，每项的 `options.video.references.imageRoles` 才是这个模型真正支持的帧角色；没有 `last_frame` 的模型不要用来做首尾帧。
+
+### 画布上哪张图能当首尾帧
+
+先用 `linggan canvas state` 找到图片节点，再按事实挑，不要靠标题猜：
+
+- `type` 是 `image`；
+- `outputReference.ready` 为 `true`（素材已就绪、归属当前账号）；
+- 需要知道尺寸时看 `asset.width` / `asset.height`，需要核对画面内容时用 `canvas_inspect_image` 真的看一眼。
+
+不满足就绪条件的节点会在生成准入阶段被拒绝，摘要里的 `estimateError` 会说明原因（例如「参考资产尚未保存到账号资源库」）。首尾帧指向视频或音频节点会直接报错，`last_frame` 单独出现也会报「填了 last_frame 就必须同时指定 first_frame」。
+
+提交后 `needs_confirmation` 的 `summary.references` 会原样带回每条素材的角色和顺序，拿它跟用户的意图核一遍再询问，不要凭记忆确认。
 
 ### 提示词里的素材引用
 
