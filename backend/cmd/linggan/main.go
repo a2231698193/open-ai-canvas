@@ -36,6 +36,8 @@ func main() {
 		err = cmdAsset(os.Args[2:])
 	case "task":
 		err = cmdTask(os.Args[2:])
+	case "confirm":
+		err = cmdConfirm(os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -64,8 +66,9 @@ func usage() {
   linggan asset upload --file <文件> [--kind image|video|audio]
   linggan task create --file <任务.json>
   linggan task get <任务ID>
+  linggan confirm <确认编号>
 
-生成必须在当前终端输入 y 才会提交。
+在终端里直接运行生成命令时，输入 y 后立即提交。由 Agent 运行时不提交，先返回 needs_confirmation；用户在对话里同意后，Agent 再执行 linggan confirm。
 `)
 }
 
@@ -295,8 +298,10 @@ func canvasTool(args []string) error {
 		request["type"] = "canvas_" + stringify(request["mode"])
 		request["operation"] = tool
 		request["prompt"] = stringify(request["prompt"])
+		request["canvasId"] = id
 		request["model"] = stringify(request["logicalModelId"]) + stringify(request["channelModelKey"])
-		if err := confirmTask(request); err != nil {
+		proceed, err := gateGeneration(request, pendingAction{Kind: "tool", CanvasID: id, Tool: tool, Body: raw, Summary: request})
+		if err != nil || !proceed {
 			return err
 		}
 	}
@@ -388,40 +393,46 @@ func taskCreate(args []string) error {
 		return errors.New("任务里的 projectId 与当前画布不一致")
 	}
 	request["projectId"] = id
-	if err := confirmTask(request); err != nil {
-		return err
-	}
 	body, err := json.Marshal(request)
 	if err != nil {
+		return err
+	}
+	proceed, err := gateGeneration(request, pendingAction{Kind: "task", CanvasID: id, Body: body, Summary: request})
+	if err != nil || !proceed {
 		return err
 	}
 	data, err := client.do("POST", "/tasks", bytes.NewReader(body), "application/json")
 	return finish(data, err)
 }
 
-func confirmTask(request map[string]any) error {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+func cmdConfirm(args []string) error {
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		return errors.New("用法：linggan confirm <确认编号>")
+	}
+	action, err := loadPending(args[0])
 	if err != nil {
-		return errors.New("生成必须在终端确认，当前没有可用终端，未提交")
-	}
-	defer tty.Close()
-	fmt.Fprintln(tty, "即将提交生成，确认后会计入当前账号积分：")
-	for _, key := range []string{"projectId", "type", "operation", "logicalModelId", "model", "prompt"} {
-		value, _ := request[key].(string)
-		if value == "" {
-			continue
-		}
-		fmt.Fprintf(tty, "  %s：%s\n", key, shorten(value, 500))
-	}
-	fmt.Fprint(tty, "确认提交？输入 y 后回车，其他输入都会取消：")
-	line, err := bufio.NewReader(tty).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
-	if strings.TrimSpace(strings.ToLower(line)) != "y" {
-		return errors.New("未确认，生成未提交")
+	client, _, err := authorizedClient()
+	if err != nil {
+		return err
 	}
-	return nil
+	var data json.RawMessage
+	switch action.Kind {
+	case "tool":
+		data, err = client.do("POST", "/cli/canvases/"+urlPath(action.CanvasID)+"/tools/"+urlPath(action.Tool), bytes.NewReader(action.Body), "application/json")
+	case "task":
+		data, err = client.do("POST", "/tasks", bytes.NewReader(action.Body), "application/json")
+	default:
+		return errors.New("待确认记录的类型无效")
+	}
+	if err != nil {
+		return err
+	}
+	if err := deletePending(action.ID); err != nil {
+		return err
+	}
+	return printJSON(data)
 }
 
 func authorizedClient() (apiClient, sessionFile, error) {

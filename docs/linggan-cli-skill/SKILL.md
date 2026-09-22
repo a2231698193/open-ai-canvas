@@ -16,7 +16,7 @@ description: >-
 
 - 不调用 `/api/agent/runs`，也不使用灵感站点里的语言模型。
 - 不自己拼接 HTTP 请求，不读取 `~/.linggan/session.json`。
-- 生成没有 `--yes`。`linggan canvas tool generate_media`、`linggan canvas tool image_layer_split` 和 `linggan task create` 都会在当前终端等待用户输入 `y`。Agent 不能代替用户输入，也不能把命令放到没有终端的后台执行。
+- 生成没有 `--yes`。Agent 执行 `generate_media`、`image_layer_split` 或 `task create` 时，命令不会提交，只会返回 `needs_confirmation`。先用对话把摘要告诉用户并询问。用户明确同意后，由 Agent 执行返回的 `nextCommand`，不要让用户自己去终端执行。用户未同意时不要执行确认命令。
 - 不能删除普通节点，不能写任意媒体地址或任意 metadata。分镜和批量创作表只能使用各自的工具删除一行。
 - 第一版没有项目工作区。项目、分集和角色仍在网页里处理。
 
@@ -35,6 +35,7 @@ description: >-
 | `linggan canvas tool <工具名> --file <参数.json>` | 执行网页画布 Agent 的画布工具，包括分镜、批量表、模型目录和图片/视频/音频生成 |
 | `linggan asset upload --file <文件>` | 上传素材 |
 | `linggan task get <任务ID>` | 查询任务状态 |
+| `linggan confirm <确认编号>` | 用户在对话里同意后，提交刚才挂起的生成 |
 
 详细参数见 `commands/`。可复制流程见 `examples/`。
 

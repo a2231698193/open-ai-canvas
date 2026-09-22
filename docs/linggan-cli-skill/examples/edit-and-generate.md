@@ -14,7 +14,7 @@ linggan canvas tool model_list --file model.json
 linggan canvas tool generate_media --file generate.json
 ```
 
-命令停在终端确认时，把显示的模型、提示词和画布告诉用户，然后等待用户自己输入 `y` 或取消。不要代为确认。
+命令返回 `needs_confirmation` 时，把 `summary` 发到对话里询问用户。用户同意后执行返回的 `nextCommand`。不要要求用户自己打开终端。
 
 确认并返回任务 ID 后：
 

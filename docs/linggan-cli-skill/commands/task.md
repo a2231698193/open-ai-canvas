@@ -11,9 +11,7 @@ linggan task get <任务ID>
 
 `task.json` 使用网站提交生成时的任务对象。命令会把 `projectId` 设成当前画布；文件里已有的 `projectId` 必须和当前画布相同。
 
-提交前，命令在当前终端显示 `type`、`operation`、`model`、`logicalModelId` 和 `prompt`。用户输入 `y` 后才请求服务器。没有终端，或输入的不是 `y`，都不会创建任务，也不会扣积分。
-
-Agent 不能添加确认参数，不能把 `y` 写入命令，也不能在没有终端的环境运行 `task create`。
+Agent 执行时不会直接创建任务，而是返回 `needs_confirmation`。把摘要发到对话里询问。用户明确同意后，执行返回的 `nextCommand`。不要要求用户自己打开终端。
 
 ```json
 {

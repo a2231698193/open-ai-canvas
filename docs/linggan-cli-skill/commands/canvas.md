@@ -108,4 +108,4 @@ linggan canvas tool canvas_edit_storyboard --file edit.json
 
 批量创作表使用 `canvas_read_batch_table` 和 `canvas_edit_batch_table`。它可以改任务行、并发和参考图列，但不会提交收费生成。
 
-`generate_media` 和 `image_layer_split` 会在终端等待输入 `y`。确认前不会创建任务，也不会扣积分。
+Agent 执行 `generate_media` 或 `image_layer_split` 时，stdout 返回 `needs_confirmation`，此时还没有创建任务。把 `summary` 告诉用户并询问。用户明确同意后，执行同一输出里的 `nextCommand`。不要让用户自己打开终端，也不要在用户同意前执行确认。
