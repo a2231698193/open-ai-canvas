@@ -64,3 +64,30 @@ printf 'update-yingce memory gate: ok\n'
 [[ "$(release_rollback_notice 0 /tmp/backup)" == "数据库迁移尚未执行。本次只回退前后端镜像。备份目录：/tmp/backup" ]]
 [[ "$(release_rollback_notice 1 /tmp/backup)" == "数据库迁移步骤已开始。本次只回退前后端镜像，不恢复数据库。备份目录：/tmp/backup" ]]
 printf 'update-yingce rollback notice: ok\n'
+
+# BuildKit 缓存带着 Go 编译缓存和前端依赖：默认保留，只在磁盘紧张或显式要求时清理。
+docker_calls=0
+docker() { docker_calls=$((docker_calls + 1)); return 0; }
+docker_available_mb() { printf '%s\n' "${FAKE_AVAILABLE_MB}"; }
+
+FAKE_AVAILABLE_MB=20480
+docker_calls=0
+prune_build_cache >/dev/null
+[[ "$docker_calls" -eq 0 ]] || { printf 'expected a warm cache to be kept\n' >&2; exit 1; }
+
+FAKE_AVAILABLE_MB=1024
+docker_calls=0
+prune_build_cache >/dev/null
+[[ "$docker_calls" -eq 1 ]] || { printf 'expected low disk to prune\n' >&2; exit 1; }
+
+FAKE_AVAILABLE_MB=20480
+docker_calls=0
+FORCE_BUILD_CACHE_PRUNE=1 prune_build_cache >/dev/null
+[[ "$docker_calls" -eq 1 ]] || { printf 'expected the explicit override to prune\n' >&2; exit 1; }
+
+if (BUILD_CACHE_MIN_FREE_MB=abc prune_build_cache) >/dev/null 2>&1; then
+    printf 'expected an invalid cache threshold to fail\n' >&2
+    exit 1
+fi
+
+printf 'update-yingce build cache retention: ok\n'

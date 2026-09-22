@@ -90,10 +90,10 @@ sudo /usr/local/sbin/update-yingce
 3. 保存旧版前后端镜像；
 4. 仅以 fast-forward 更新到 `origin/main`；
 5. 可用内存低于 1024MB 时拒绝更新，不切换线上容器；
-6. 调低正在运行的 backend、web、redis 被 OOM 杀掉的优先级，再串行构建。后端编译默认限制为 1 个线程；
+6. 调低正在运行的 backend、web、redis 被 OOM 杀掉的优先级，再串行构建。编译默认用满所有核心；
 7. 执行数据库迁移并重启服务；
 8. 等待容器健康并检查本机健康接口。构建失败不切换容器；启动或健康检查失败时自动切回更新前的前后端镜像，不恢复数据库；
-9. 只有新版本健康检查通过后，才保留最近 2 份完整备份和当前回退镜像，并把 BuildKit 缓存限制在 4GB。
+9. 只有新版本健康检查通过后，才保留最近 2 份完整备份和当前回退镜像。磁盘可用空间高于 5GB 时**不动** BuildKit 缓存。
 
 默认保留策略可在执行命令时覆盖：
 
@@ -101,7 +101,17 @@ sudo /usr/local/sbin/update-yingce
 sudo BACKUP_KEEP_COUNT=3 BUILD_CACHE_MAX_SIZE=6GB MIN_FREE_MEMORY_MB=1536 /usr/local/sbin/update-yingce
 ```
 
-`MIN_FREE_MEMORY_MB` 默认 1024。内存长期紧张时再临时调低，不要让构建把线上容器挤掉。`BUILD_GOMAXPROCS` 和 `BUILD_GOGC` 只作用于这次后端编译，默认是 `1` 和 `50`。
+`MIN_FREE_MEMORY_MB` 默认 1024。内存长期紧张时再临时调低，不要让构建把线上容器挤掉。
+
+`BUILD_GOMAXPROCS` 和 `BUILD_GOGC` 只作用于这次后端编译，默认不设置，让 Go 用满所有核心。只有构建确实把内存打满、需要压低编译峰值时才临时设置，例如 `BUILD_GOMAXPROCS=2 BUILD_GOGC=50`；压得越低构建越慢。
+
+BuildKit 缓存里带着 Go 的编译缓存和前端的依赖，`docker buildx prune --all` 会把它们一起删除，之后每次更新都变成冷构建，后端编译和前端安装各要多花好几分钟。所以脚本默认保留缓存：磁盘可用空间低于 `BUILD_CACHE_MIN_FREE_MB`（默认 5120MB）时才清理一次。需要立刻清理时执行：
+
+```bash
+sudo FORCE_BUILD_CACHE_PRUNE=1 /usr/local/sbin/update-yingce
+```
+
+确认缓存有没有被清掉，可以在更新前后各跑一次 `docker buildx du`，比较输出的总量。
 
 清理只在新版本健康检查通过后执行。构建失败、启动失败或自动回退时，当前备份和回退镜像都不会被轮转。
 

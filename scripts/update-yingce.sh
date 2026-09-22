@@ -6,6 +6,9 @@ INSTALL_DIR="${INSTALL_DIR:-/data/open-ai-canvas}"
 BACKUP_ROOT="${BACKUP_ROOT:-/data/open-ai-canvas-backups}"
 BACKUP_KEEP_COUNT="${BACKUP_KEEP_COUNT:-2}"
 BUILD_CACHE_MAX_SIZE="${BUILD_CACHE_MAX_SIZE:-4GB}"
+# 构建缓存决定下一次更新是热构建还是冷构建：Go 标准库和前端的 node_modules
+# 都在里面，被清掉就要重编、重下。只在磁盘真的紧张时才动它。
+BUILD_CACHE_MIN_FREE_MB="${BUILD_CACHE_MIN_FREE_MB:-5120}"
 REMOTE="${REMOTE:-origin}"
 BRANCH="${BRANCH:-main}"
 COMPOSE_FILE="docker-compose.deploy.yml"
@@ -186,14 +189,42 @@ cleanup_old_rollback_images() {
     done
 }
 
+docker_available_mb() {
+    local target="/var/lib/docker"
+    [[ -d "$target" ]] || target="/"
+    df -Pm "$target" 2>/dev/null | awk 'NR == 2 { print $4 }'
+}
+
+# BuildKit 缓存里带着 Go 的编译缓存和前端依赖。`--all` 会把它们一起删掉，
+# 于是下一次更新变成冷构建，后端编译和前端安装都会多花好几分钟。
+# 因此默认不清理，只在可用磁盘低于阈值时才做一次彻底清理，并接受随之而来的冷构建。
+prune_build_cache() {
+    local available min_free
+    min_free="${BUILD_CACHE_MIN_FREE_MB}"
+    [[ "$min_free" =~ ^[1-9][0-9]*$ ]] || fail "BUILD_CACHE_MIN_FREE_MB 必须是正整数"
+    if [[ -z "${FORCE_BUILD_CACHE_PRUNE:-}" ]]; then
+        available="$(docker_available_mb)"
+        if [[ -z "$available" ]]; then
+            printf '警告：无法读取磁盘可用空间，已跳过 BuildKit 缓存清理。\n' >&2
+            return 0
+        fi
+        if (( available >= min_free )); then
+            printf '磁盘可用 %sMB，保留 BuildKit 缓存以加快下次更新。\n' "$available"
+            return 0
+        fi
+        printf '磁盘可用 %sMB，低于 %sMB，清理 BuildKit 缓存。\n' "$available" "$min_free"
+    fi
+    if ! docker buildx prune --all --force --max-used-space "$BUILD_CACHE_MAX_SIZE"; then
+        printf '警告：BuildKit 缓存清理失败，请稍后手工执行 docker buildx prune。\n' >&2
+    fi
+}
+
 cleanup_after_update() {
     local rollback_prefix="$1"
     step "轮转更新备份与 Docker 缓存"
     cleanup_old_backups
     cleanup_old_rollback_images "$rollback_prefix"
-    if ! docker buildx prune --all --force --max-used-space "$BUILD_CACHE_MAX_SIZE"; then
-        printf '警告：BuildKit 缓存清理失败，请稍后手工执行 docker buildx prune。\n' >&2
-    fi
+    prune_build_cache
 }
 
 wait_health() {
@@ -349,8 +380,9 @@ main() {
 
     require_free_memory
     protect_running_services
-    export BUILD_GOMAXPROCS="${BUILD_GOMAXPROCS:-1}"
-    export BUILD_GOGC="${BUILD_GOGC:-50}"
+    # 编译默认用满所有核心。只有在内存确实不够、必须压低编译峰值时才临时设置这两个变量。
+    export BUILD_GOMAXPROCS="${BUILD_GOMAXPROCS:-}"
+    export BUILD_GOGC="${BUILD_GOGC:-}"
 
     step "串行构建后端镜像"
     if ! COMPOSE_PARALLEL_LIMIT=1 compose build backend; then
