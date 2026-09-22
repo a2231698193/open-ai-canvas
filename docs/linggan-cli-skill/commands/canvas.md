@@ -11,6 +11,8 @@ linggan canvas state --offset 0
 
 `state` 返回节点摘要、连线和 `snapshotHash`。节点很多时看 `hasMore` 和 `nextOffset`，用 `--offset` 继续读。不要猜节点 ID。
 
+连线单独分页：看 `hasMoreConnections` 和 `nextConnectionOffset`，继续读时传 `--connection-offset`。**连线不会因为节点分页而少返回**——某条边的两端即使不在这一页节点里，它也会出现在 `connections` 里。`totalConnections` 是这张画布的真实连线总数，可以用它对账。不要因为某一页没看到某条连线就判定它不存在并重复建边，那会撞上「连线重复」。
+
 ## 修改
 
 先读 `state`，把返回的 `snapshotHash` 原样放进操作文件。
@@ -174,3 +176,5 @@ linggan canvas tool canvas_edit_storyboard --file edit.json
 批量创作表使用 `canvas_read_batch_table` 和 `canvas_edit_batch_table`。它可以改任务行、并发和参考图列，但不会提交收费生成。
 
 Agent 执行 `generate_media` 或 `image_layer_split` 时，stdout 返回 `needs_confirmation`，此时还没有创建任务。把 `summary` 告诉用户并询问。用户明确同意后，执行同一输出里的 `nextCommand`。不要让用户自己打开终端，也不要在用户同意前执行确认。
+
+`summary` 里的 `estimatedCredits` 是这次生成的预估积分，`amountMicrocredits` 是同一金额的微积分整数形式，两者都由服务端按真实计费规则算出，不是本地估算。询问用户时把预估积分一起说出来，让用户在花钱前看到价格。`summary.estimateError` 表示这次参数算不出报价（通常是模型或参考素材不合法），提交同样会被拒绝：先按提示改参数，不要把这种调用拿去让用户确认。

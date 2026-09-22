@@ -56,3 +56,65 @@ func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 		t.Fatalf("result leaked a URL or failed to encode: %s %v", encoded, err)
 	}
 }
+
+func TestCLIQuoteMediaPricesWithoutSideEffectsAndMatchesSubmission(t *testing.T) {
+	s, db, args := agentMediaFixture(t)
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tasksBefore, ordersBefore int64
+	db.Model(&model.Task{}).Count(&tasksBefore)
+	db.Model(&model.BillingOrder{}).Count(&ordersBefore)
+
+	quoted, err := s.CLIQuoteMedia("user", "agent-canvas", raw)
+	if err != nil {
+		t.Fatalf("quote failed on args the submission accepts: %v", err)
+	}
+	quote, _ := quoted.(map[string]any)
+	amount, _ := quote["amountMicrocredits"].(int64)
+	credits, _ := quote["estimatedCredits"].(float64)
+	if amount <= 0 || credits != float64(amount)/float64(CreditScale) {
+		t.Fatalf("quote did not expose a usable price: %#v", quoted)
+	}
+	if quote["canvasId"] != "agent-canvas" || quote["mode"] != "video" || quote["nodeId"] != args.NodeID || quote["billingMode"] != "per_second" {
+		t.Fatalf("quote lost submission identity: %#v", quoted)
+	}
+	var tasksAfter, ordersAfter int64
+	db.Model(&model.Task{}).Count(&tasksAfter)
+	db.Model(&model.BillingOrder{}).Count(&ordersAfter)
+	if tasksAfter != tasksBefore || ordersAfter != ordersBefore {
+		t.Fatalf("quote must not create tasks or orders: tasks %d->%d orders %d->%d", tasksBefore, tasksAfter, ordersBefore, ordersAfter)
+	}
+	var canvas model.CanvasProject
+	if err := db.First(&canvas, "id = ?", "agent-canvas").Error; err != nil {
+		t.Fatal(err)
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes, _ := creationObjects(doc["nodes"]); nodes[args.NodeID] != nil {
+		t.Fatalf("quote wrote the generation node: %s", canvas.PayloadJSON)
+	}
+
+	submitted, err := s.CLICanvasTool("user", "agent-canvas", "generate_media", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskID, _ := submitted.(map[string]any)["taskId"].(string)
+	var order model.BillingOrder
+	if err := db.First(&order, "task_id = ?", taskID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if order.AmountMicrocredits != amount || order.BillingMode != quote["billingMode"] {
+		t.Fatalf("quote %#v disagrees with the real order %+v", quote, order)
+	}
+
+	if _, err := s.CLIQuoteMedia("user", "agent-canvas", []byte(`{"mode":"video","prompt":"海报","nodeId":"image-2","videoEditOperation":"not-an-operation"}`)); err == nil {
+		t.Fatal("quote must reject args the submission rejects")
+	}
+	if _, err := s.CLIQuoteMedia("user", "other-canvas", raw); err == nil {
+		t.Fatal("quote leaked a foreign canvas")
+	}
+}

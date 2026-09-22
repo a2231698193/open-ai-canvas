@@ -9,7 +9,7 @@ import (
 
 // CLICanvasState 给外部命令行返回与画布 Agent 相同的只读摘要。
 // 不调用系统语言模型。snapshotHash 与受控写入使用同一份内容哈希。
-func (s *Service) CLICanvasState(userID, canvasID string, offset int) (map[string]any, error) {
+func (s *Service) CLICanvasState(userID, canvasID string, offset int, connectionOffsets ...int) (map[string]any, error) {
 	if err := validateCloudAgentID(strings.TrimSpace(canvasID), "画布 ID", 80); err != nil {
 		return nil, err
 	}
@@ -21,7 +21,7 @@ func (s *Service) CLICanvasState(userID, canvasID string, offset int) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	state, err := cloudAgentCanvasState(s.repo, userID, canvasID, doc, offset, nil, 0)
+	state, err := cloudAgentCanvasState(s.repo, userID, canvasID, doc, offset, nil, 0, connectionOffsets...)
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +56,46 @@ func (s *Service) CLIApplyCanvasOps(userID, canvasID string, raw json.RawMessage
 		return nil, BadAuthRequest("画布已变化，本次未写入；请重新读取后再提交")
 	}
 	return result, err
+}
+
+// CLIQuoteMedia 只算钱：走与 generate_media 完全相同的解析、准入与报价链路，
+// 但不创建任务、不扣费、不写画布。报价与真正提交共用同一份准备逻辑，
+// 所以两边不会算出两个数；参数有错时也会在这里提前报出来。
+func (s *Service) CLIQuoteMedia(userID, canvasID string, raw json.RawMessage) (any, error) {
+	if err := validateCloudAgentID(strings.TrimSpace(canvasID), "画布 ID", 80); err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || !json.Valid(raw) {
+		return nil, BadAuthRequest("生成参数必须是 JSON 对象")
+	}
+	call := cloudAgentCall{ID: newID()}
+	call.Function.Name = "generate_media"
+	call.Function.Arguments = string(raw)
+	run := &model.CloudAgentExecution{ID: "cli-quote-" + newID(), UserID: userID, CanvasID: canvasID}
+	state := &cloudAgentRuntime{Request: CloudAgentRequest{CanvasID: canvasID}, TransientReferences: map[string]cloudAgentTransientReference{}}
+	request, plan, err := s.prepareCloudAgentMedia(run, state, call)
+	if err != nil {
+		return nil, err
+	}
+	admission := &creationTaskPreparation{}
+	request.creationPrepare = admission
+	if _, err := s.CreateTask(userID, request); err != nil {
+		return nil, err
+	}
+	result := map[string]any{"canvasId": canvasID, "mode": plan.Args.Mode}
+	if plan.Args.NodeID != "" {
+		result["nodeId"] = plan.Args.NodeID
+	}
+	if order := admission.Order; order != nil {
+		result["model"] = order.Model
+		result["billingMode"] = order.BillingMode
+		result["quantity"] = order.Quantity
+		result["unitPriceMicrocredits"] = order.UnitPriceMicrocredits
+		result["multiplierBasisPoints"] = order.MultiplierBasisPoints
+		result["amountMicrocredits"] = order.AmountMicrocredits
+		result["estimatedCredits"] = float64(order.AmountMicrocredits) / float64(CreditScale)
+	}
+	return result, nil
 }
 
 // CLICanvasTool 执行画布 Agent 的画布工具。它不创建 Agent 运行，也不调用语言模型。

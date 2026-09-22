@@ -65,7 +65,7 @@ func bufioReadLine(tty io.Reader) (string, error) {
 
 func confirmOnTerminal(tty *os.File, summary map[string]any) error {
 	fmt.Fprintln(tty, "即将提交生成，确认后会计入当前账号积分：")
-	for _, key := range []string{"canvasId", "projectId", "type", "operation", "videoEditOperation", "mode", "logicalModelId", "model", "prompt"} {
+	for _, key := range []string{"canvasId", "projectId", "type", "operation", "videoEditOperation", "mode", "logicalModelId", "model", "estimatedCredits", "estimateError", "prompt"} {
 		value := stringify(summary[key])
 		if value == "" {
 			continue

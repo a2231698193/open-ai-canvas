@@ -28,7 +28,15 @@ func RegisterCLICanvasRoutes(r *gin.RouterGroup, svc *service.Service) {
 				return
 			}
 		}
-		state, err := svc.CLICanvasState(user.ID, c.Param("id"), offset)
+		connectionOffset := 0
+		if raw := c.Query("connectionOffset"); raw != "" {
+			connectionOffset, err = strconv.Atoi(raw)
+			if err != nil {
+				fail(c, http.StatusBadRequest, errors.New("connectionOffset 必须是整数"))
+				return
+			}
+		}
+		state, err := svc.CLICanvasState(user.ID, c.Param("id"), offset, connectionOffset)
 		if err != nil {
 			failService(c, err)
 			return
@@ -52,6 +60,25 @@ func RegisterCLICanvasRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		result, err := svc.CLIApplyCanvasOps(user.ID, c.Param("id"), json.RawMessage(body))
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, result)
+	})
+	r.POST("/cli/canvases/:id/quote", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 256<<10)
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		result, err := svc.CLIQuoteMedia(user.ID, c.Param("id"), json.RawMessage(body))
 		if err != nil {
 			failService(c, err)
 			return

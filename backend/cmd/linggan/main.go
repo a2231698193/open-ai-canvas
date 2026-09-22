@@ -60,7 +60,7 @@ func usage() {
   linggan canvas list
   linggan canvas create --title <名称>
   linggan canvas use <画布ID>
-  linggan canvas state [--offset N]
+  linggan canvas state [--offset N] [--connection-offset N]
   linggan canvas apply --file <操作.json>
   linggan canvas tool <工具名> --file <参数.json>
   linggan asset upload --file <文件> [--kind image|video|audio]
@@ -222,6 +222,7 @@ func canvasState(args []string) error {
 	flags := flag.NewFlagSet("canvas state", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	offset := flags.Int("offset", 0, "分页起点")
+	connectionOffset := flags.Int("connection-offset", 0, "连线分页起点")
 	canvasID := flags.String("canvas", "", "画布 ID")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -234,7 +235,7 @@ func canvasState(args []string) error {
 	if id == "" {
 		return errors.New("还没有当前画布，请先 create 或 use")
 	}
-	data, err := client.do("GET", fmt.Sprintf("/cli/canvases/%s/state?offset=%d", urlPath(id), *offset), nil, "")
+	data, err := client.do("GET", fmt.Sprintf("/cli/canvases/%s/state?offset=%d&connectionOffset=%d", urlPath(id), *offset, *connectionOffset), nil, "")
 	return finish(data, err)
 }
 
@@ -300,6 +301,20 @@ func canvasTool(args []string) error {
 		request["prompt"] = stringify(request["prompt"])
 		request["canvasId"] = id
 		request["model"] = stringify(request["logicalModelId"]) + stringify(request["channelModelKey"])
+		// 报价复用服务端的准入链路：既给出金额，也在用户确认之前就把参数错误报出来，
+		// 避免「确认完才发现提交不了」。算不出来不阻断确认，但要如实带进摘要。
+		if quoteData, quoteErr := client.do("POST", "/cli/canvases/"+urlPath(id)+"/quote", bytes.NewReader(raw), "application/json"); quoteErr == nil {
+			var quote map[string]any
+			if json.Unmarshal(quoteData, &quote) == nil {
+				for _, key := range []string{"estimatedCredits", "amountMicrocredits", "billingMode", "quantity"} {
+					if value, exists := quote[key]; exists {
+						request[key] = value
+					}
+				}
+			}
+		} else {
+			request["estimateError"] = quoteErr.Error()
+		}
 		proceed, err := gateGeneration(request, pendingAction{Kind: "tool", CanvasID: id, Tool: tool, Body: raw, Summary: request})
 		if err != nil || !proceed {
 			return err

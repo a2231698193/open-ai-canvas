@@ -227,24 +227,31 @@ func cloudAgentCanvasState(repo *repository.Repository, userID, canvasID string,
 		nodes = append(nodes, item)
 		included[id] = true
 	}
+	// 连线是全量事实，不按「两端节点是否落在本页」过滤。按页过滤会让调用方
+	// 根本看不到这些边，只能判定成「连线缺失」而重复建同一条，撞上「连线重复」。
+	allEdges := creationMaps(doc["connections"])
 	edges := []any{}
-	nextConnection := 0
-	for index, edge := range creationMaps(doc["connections"]) {
-		if index < connectionOffset {
-			continue
+	cursor := connectionOffset
+	for ; cursor < len(allEdges); cursor++ {
+		edge := allEdges[cursor]
+		item := map[string]any{"id": edge["id"], "fromNodeId": edge["fromNodeId"], "toNodeId": edge["toNodeId"]}
+		body, _ := json.Marshal(item)
+		// 每页至少放一条边：节点详情可能已经吃掉整个预算，如果这里严格按预算退出，
+		// nextConnectionOffset 会等于本次的 connectionOffset，调用方原地打转。
+		if len(edges) > 0 && pageBytes+len(body) > cloudAgentReadPageBytes {
+			break
 		}
-		if included[stringValue(edge["fromNodeId"])] || included[stringValue(edge["toNodeId"])] {
-			item := map[string]any{"id": edge["id"], "fromNodeId": edge["fromNodeId"], "toNodeId": edge["toNodeId"]}
-			body, _ := json.Marshal(item)
-			if pageBytes+len(body) > cloudAgentReadPageBytes {
-				nextConnection = index
-				break
-			}
-			pageBytes += len(body)
-			edges = append(edges, item)
-		}
+		pageBytes += len(body)
+		edges = append(edges, item)
 	}
-	return map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "mediaSnapshotHash": cloudAgentMediaContentHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "nextOffset": next, "hasMore": next > 0, "nextConnectionOffset": nextConnection, "hasMoreConnections": nextConnection > 0, "pageByteBudget": cloudAgentReadPageBytes}, nil
+	// 用游标本身判断还有没有剩余，而不是拿 0 当哨兵：否则首页恰好放不下第一条边时
+	// 会被报成「没有更多」，调用方永远读不到它。
+	hasMoreConnections := cursor < len(allEdges)
+	nextConnection := 0
+	if hasMoreConnections {
+		nextConnection = cursor
+	}
+	return map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "mediaSnapshotHash": cloudAgentMediaContentHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "totalConnections": len(allEdges), "nextOffset": next, "hasMore": next > 0, "connectionOffset": connectionOffset, "nextConnectionOffset": nextConnection, "hasMoreConnections": hasMoreConnections, "pageByteBudget": cloudAgentReadPageBytes}, nil
 }
 
 func cloudAgentSafeNumber(value any) (any, bool) {
