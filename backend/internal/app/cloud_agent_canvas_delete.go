@@ -1,6 +1,9 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // cloudAgentNodeAuthorField 是 Agent 写入路径在新建节点上留下的作者标记。
 // 它只在 canvas_apply_ops 的 add_node 分支里写，节点 patch 白名单里没有这个键，
@@ -24,8 +27,8 @@ func validateCloudAgentNodeDeletion(doc map[string]any, node map[string]any, edg
 	if taskID := firstNonEmpty(stringValue(meta["taskId"]), stringValue(meta["generationTaskId"])); taskID != "" {
 		return BadAuthRequest("不能删除已经提交过生成的节点")
 	}
-	if cloudAgentNodeHasContent(meta) {
-		return BadAuthRequest("只能删除空节点：这个节点已经有正文、提示词或生成结果")
+	if cloudAgentNodeHasContent(node, meta) {
+		return BadAuthRequest("只能删除空节点：这个节点的 " + cloudAgentNodeContentField(node, meta) + " 非空")
 	}
 	for _, edge := range edges {
 		if stringValue(edge["fromNodeId"]) == nodeID || stringValue(edge["toNodeId"]) == nodeID {
@@ -40,13 +43,31 @@ func validateCloudAgentNodeDeletion(doc map[string]any, node map[string]any, edg
 
 // cloudAgentNodeHasContent 判断节点是否已经有实际内容。标题不算内容：误建一个带标题的
 // 空节点是最常见的场景，要求标题也为空会让这个工具失去意义。
-func cloudAgentNodeHasContent(meta map[string]any) bool {
-	for _, key := range []string{"content", "composerContent", "prompt", "storageKey"} {
-		if text := stringValue(meta[key]); text != "" {
-			return true
+//
+// 媒体节点不把 metadata.prompt 算作内容：那是"已提交提示词"，而媒体占位节点在没有任何
+// 生成任务时，这个字段只是新建时顺手写下的初值（content 与 composerContent 同时被写）。
+// 用户看得见、也改得动的是 composerContent，它仍然算内容；产物 storageKey 和
+// success/generating 状态同样算内容。
+func cloudAgentNodeHasContent(node, meta map[string]any) bool {
+	return cloudAgentNodeContentField(node, meta) != ""
+}
+
+// cloudAgentNodeContentField 返回让节点"不算空"的那个字段名，便于拒绝时说明原因。
+func cloudAgentNodeContentField(node, meta map[string]any) string {
+	keys := []string{"content", "composerContent", "prompt", "storageKey"}
+	descriptor, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
+	if known && descriptor.GenerationMode != "" {
+		keys = []string{"content", "composerContent", "storageKey"}
+	}
+	for _, key := range keys {
+		if text := strings.TrimSpace(stringValue(meta[key])); text != "" {
+			return key
 		}
 	}
-	return meta["status"] == "success" || meta["status"] == "generating"
+	if status := stringValue(meta["status"]); status == "success" || status == "generating" {
+		return "status=" + status
+	}
+	return ""
 }
 
 // cloudAgentNodeStructuredReference 返回正在引用该节点的结构化节点名（没有则空）。

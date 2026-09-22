@@ -3,9 +3,11 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"infinite-canvas/backend/internal/model"
 	"infinite-canvas/backend/internal/repository"
 )
 
@@ -284,7 +286,12 @@ func (s *Service) cloudAgentInspectImageNode(userID string, state *cloudAgentRun
 // "这个结果能用吗、多长、多大"，而"画面长什么样"仍然只能由 canvas_inspect_image 得到。
 //
 // 单个节点没就绪不判整次调用失败：一次看多个节点时，如实逐条回报比整体报错更有用。
-func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID string, call cloudAgentCall) (any, error) {
+// 传了 service 时，本地视频缺失的时长/分辨率会现解析一次容器头（远端存储不下载）。
+func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID string, call cloudAgentCall, services ...*Service) (any, error) {
+	var service *Service
+	if len(services) > 0 {
+		service = services[0]
+	}
 	targets, _, err := cloudAgentInspectTargets(call.Function.Arguments, false)
 	if err != nil {
 		return nil, err
@@ -321,6 +328,28 @@ func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID str
 		for _, key := range []string{"mimeType", "bytes", "width", "height", "durationMs"} {
 			if value, ok := reference[key]; ok {
 				item[key] = value
+			}
+		}
+		// 视频的时长和分辨率上游基本不回传，资源行里可能是 0。本地文件能解析就现算一次；
+		// 远端存储不下载，解析不出来就如实留 0，并说明这两个事实拿不到。
+		if descriptor.InputKind == "video" && (intValue(item["width"]) <= 0 || intValue(item["height"]) <= 0 || intValue(item["durationMs"]) <= 0) {
+			resourceID := strings.TrimPrefix(stringValue(reference["storageKey"]), "resource:")
+			if service != nil && resourceID != "" {
+				if resource, err := repo.ResourceForUser(userID, resourceID); err == nil {
+					width, height, durationMs := service.probeLocalVideoFacts(resource)
+					probed := map[string]int64{"width": int64(width), "height": int64(height), "durationMs": durationMs}
+					for _, key := range []string{"width", "height", "durationMs"} {
+						if intValue(item[key]) <= 0 && probed[key] > 0 {
+							item[key] = probed[key]
+						}
+					}
+					if width > 0 || height > 0 || durationMs > 0 {
+						item["factsSource"] = "container"
+					}
+				}
+			}
+			if intValue(item["durationMs"]) <= 0 || intValue(item["width"]) <= 0 {
+				item["factsIncomplete"] = "视频时长或分辨率无法从资源元数据得到；本地原件会解析容器头，远端存储不下载"
 			}
 		}
 		items = append(items, item)
@@ -592,4 +621,13 @@ func cloudAgentFlushPendingImages(state *cloudAgentRuntime) bool {
 	state.Canonical.Messages = append(state.Canonical.Messages,
 		map[string]any{"role": "user", "content": cloudAgentImageContentParts(inspections...)})
 	return true
+}
+
+// probeLocalVideoFacts 只在本地视频缺少时长/分辨率时读一次容器头（moov 可能在尾部）。
+// 远端存储不做下载：读不到就保持未知，让调用方知道这个事实拿不到，而不是给一个假的 0。
+func (s *Service) probeLocalVideoFacts(resource *model.Resource) (int, int, int64) {
+	if s == nil || resource == nil || resource.Kind != "video" || resource.Provider != "local" || resource.Status != model.ResourceStatusReady {
+		return 0, 0, 0
+	}
+	return probeMP4FileMetadata(filepath.Join(s.dataDir, "resources", filepath.FromSlash(resource.ObjectKey)))
 }

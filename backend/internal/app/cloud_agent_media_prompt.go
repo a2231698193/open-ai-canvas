@@ -9,10 +9,13 @@ import (
 
 var (
 	cloudAgentMediaMention = regexp.MustCompile(`@(图片|视频|音频)[0-9]+`)
-	// 供应商和编辑器都接受不带 @ 的原生写法（图片1、音频2）。它只用来判断「这条素材
-	// 调用方已经写过了」，不参与绑定校验：裸编号也可能只是画面描述，把「图片3 张桌子」
-	// 判成非法引用会打断本来正常的提示词。
-	cloudAgentMediaNativeMention = regexp.MustCompile(`(图片|视频|音频)([0-9]+)`)
+	// 供应商和编辑器都接受不带 @ 的原生写法：
+	//   - 中文裸写：图片1、音频2
+	//   - MiniMax-H3 系列：<Picture 1>、<Video 1>、<Audio 1>（<Subject N> 是主体编号，
+	//     不占素材槽位，不能当成引用）
+	// 这些只用来判断「这条素材调用方已经写过了」，不参与绑定校验：裸编号也可能只是画面
+	// 描述，把「图片3 张桌子」判成非法引用会打断本来正常的提示词。
+	cloudAgentMediaNativeMention = regexp.MustCompile(`(图片|视频|音频)([0-9]+)|<[Pp]icture\s*([0-9]+)>|<[Vv]ideo\s*([0-9]+)>|<[Aa]udio\s*([0-9]+)>`)
 )
 
 const cloudAgentMediaReferenceHeader = "【资产参考】"
@@ -62,7 +65,22 @@ func cloudAgentMediaReferencePrompt(prompt string, refs map[string]any) (string,
 		mentioned[token] = true
 	}
 	for _, match := range cloudAgentMediaNativeMention.FindAllStringSubmatch(prompt, -1) {
-		if token := "@" + match[1] + match[2]; available[token] {
+		// match = [全文, 中文标签, 中文序号, Picture 序号, Video 序号, Audio 序号]
+		label, index := match[1], match[2]
+		if index == "" {
+			switch {
+			case match[3] != "":
+				label, index = "图片", match[3]
+			case match[4] != "":
+				label, index = "视频", match[4]
+			case match[5] != "":
+				label, index = "音频", match[5]
+			}
+		}
+		if index == "" {
+			continue
+		}
+		if token := "@" + label + index; available[token] {
 			mentioned[token] = true
 		}
 	}

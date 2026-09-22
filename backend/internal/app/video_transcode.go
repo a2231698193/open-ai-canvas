@@ -349,3 +349,107 @@ func (s *Service) BackfillPlaybackTranscodes() {
 		}
 	}
 }
+
+// probeMP4Metadata 解析 mp4 的时长与首个视频轨分辨率。上游很少回传这两项，
+// 而"生成成功"要能核对是不是 15s / 16:9，所以在落盘和读取时自己解析一次容器。
+// 解析不出来就返回 0，调用方按"未知"处理，绝不写假数据。
+func probeMP4Metadata(data []byte) (int, int, int64) {
+	moov, ok := mp4TopLevelBox(data, "moov")
+	if !ok {
+		return 0, 0, 0
+	}
+	return mp4MoovMetadata(moov)
+}
+
+// probeMP4FileMetadata 从本地 mp4 文件解析（moov 可能在文件尾部，按 box 头逐个定位）。
+func probeMP4FileMetadata(path string) (int, int, int64) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, 0
+	}
+	defer f.Close()
+	pos := int64(0)
+	for {
+		boxType, size, err := readMP4BoxHeaderAt(f, pos)
+		if err != nil || size > probeMaxMoovSize {
+			return 0, 0, 0
+		}
+		if boxType == "moov" {
+			buf := make([]byte, size)
+			if _, err := f.ReadAt(buf, pos); err != nil {
+				return 0, 0, 0
+			}
+			return mp4MoovMetadata(buf)
+		}
+		pos += size
+	}
+}
+
+// mp4TopLevelBox 取顶层某类 box 的完整内容（含 box 头），跳过 mdat 数据体。
+func mp4TopLevelBox(data []byte, want string) ([]byte, bool) {
+	pos := 0
+	for pos+8 <= len(data) {
+		size := int(binary.BigEndian.Uint32(data[pos : pos+4]))
+		boxType := string(data[pos+4 : pos+8])
+		hdr := 8
+		if size == 1 {
+			if pos+16 > len(data) {
+				return nil, false
+			}
+			size = int(binary.BigEndian.Uint64(data[pos+8 : pos+16]))
+			hdr = 16
+		}
+		if size < hdr || pos+size > len(data) {
+			return nil, false
+		}
+		if boxType == want {
+			return data[pos : pos+size], true
+		}
+		pos += size
+	}
+	return nil, false
+}
+
+// mp4MoovMetadata 从 moov 里取 mvhd 的时长和首个有尺寸的 tkhd（音频轨宽高为 0，跳过）。
+func mp4MoovMetadata(moov []byte) (int, int, int64) {
+	width, height := 0, 0
+	durationMs := int64(0)
+	for _, body := range boxBodies(moov, "mvhd") {
+		var timescale uint32
+		var duration uint64
+		if moov[body] == 1 {
+			if body+32 > len(moov) {
+				continue
+			}
+			timescale = binary.BigEndian.Uint32(moov[body+20 : body+24])
+			duration = binary.BigEndian.Uint64(moov[body+24 : body+32])
+		} else {
+			if body+20 > len(moov) {
+				continue
+			}
+			timescale = binary.BigEndian.Uint32(moov[body+12 : body+16])
+			duration = uint64(binary.BigEndian.Uint32(moov[body+16 : body+20]))
+		}
+		if timescale > 0 && duration > 0 {
+			durationMs = int64(duration) * 1000 / int64(timescale)
+			break
+		}
+	}
+	for _, body := range boxBodies(moov, "tkhd") {
+		// tkhd 的宽高是 16.16 定点，位于矩阵之后：version 0 在 body+76，version 1 在 body+88。
+		offset := 76
+		if moov[body] == 1 {
+			offset = 88
+		}
+		if body+offset+8 > len(moov) {
+			continue
+		}
+		trackWidth := int(binary.BigEndian.Uint32(moov[body+offset:body+offset+4]) >> 16)
+		trackHeight := int(binary.BigEndian.Uint32(moov[body+offset+4:body+offset+8]) >> 16)
+		if trackWidth > 0 && trackHeight > 0 {
+			width, height = trackWidth, trackHeight
+			break
+		}
+	}
+	return width, height, durationMs
+}

@@ -112,11 +112,26 @@ func generatedMediaDescriptor(nodeType, version, label string, width, height flo
 		Purpose: semantics.Purpose, GoodFor: semantics.GoodFor, NotIdealFor: semantics.NotIdealFor,
 		Tradeoffs: semantics.Tradeoffs, Actions: semantics.Actions,
 		InputKind: nodeType, GenerationMode: generationMode, Connection: connection, CanUpdate: true,
-		SummaryFields:  []string{"prompt", "composerContent", "assetTags", "referenceNodeIds"},
-		DetailFields:   []string{"prompt", "composerContent", "assetTags", "referenceNodeIds"},
+		// 生成规格字段（contract.Options 的节点名）必须读得回来：Agent 用 generation 写完
+		// 规格后要能自证写对了，否则只能靠下游是否真的用了这个规格来间接判断。
+		SummaryFields:  generatedMediaProjectionFields(),
+		DetailFields:   generatedMediaProjectionFields(),
 		PatchFields:    editableNodeFields("metadata.composerContent", "下一版提示词", "下次生成使用的提示词草稿；不覆盖已提交提示词或媒体结果"),
 		CreateMetadata: generatedMetadata,
 	}
+}
+
+// generatedMediaProjectionFields 是媒体节点读取时要投影的字段：节点正文/草稿/标签/参考，
+// 外加生成规格。规格字段名取自 contract.Options 的 node 标签，前端读的也是同一组字段。
+func generatedMediaProjectionFields() []string {
+	fields := []string{"prompt", "composerContent", "assetTags", "referenceNodeIds"}
+	return append(fields, generatedSpecFieldNames...)
+}
+
+var generatedSpecFieldNames = []string{
+	"model", "size", "quality", "count", "transparentBackground",
+	"seconds", "vquality", "generateAudio", "watermark",
+	"audioVoice", "audioFormat", "audioSpeed", "audioInstructions",
 }
 
 type generatedMediaCapabilitySemantics struct {

@@ -2,6 +2,8 @@ package app
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,5 +110,68 @@ func TestCloudAgentMediaInspectionReportsFactsWithoutMedia(t *testing.T) {
 	}
 	if _, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"missing"}`)); err == nil || !strings.Contains(err.Error(), "不在当前画布") {
 		t.Fatalf("不存在的节点应被拒：%v", err)
+	}
+}
+
+// 资源行里没有时长/分辨率时，本地原件要能现解析出来；远端存储不下载，
+// 拿不到就如实留 0，绝不编造数字。
+func TestCloudAgentMediaInspectionProbesLocalVideoFacts(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	dataDir := t.TempDir()
+	s.dataDir = dataDir
+	clip := metadataMP4(1000, 15000, 1280, 720, true)
+	rel := filepath.Join("clips", "seg-1.mp4")
+	local := filepath.Join(dataDir, "resources", filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(local), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local, clip, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []any{
+		&model.Resource{ID: "video-local", UserID: "user", Kind: "video", Status: "ready", Provider: "local", MimeType: "video/mp4", Size: int64(len(clip)), ObjectKey: rel},
+		&model.Resource{ID: "video-remote", UserID: "user", Kind: "video", Status: "ready", Provider: "s3", MimeType: "video/mp4", ObjectKey: rel},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	doc := map[string]any{"nodes": []any{
+		map[string]any{"id": "video-local", "type": "video", "title": "本地原件", "metadata": map[string]any{"status": "success", "storageKey": "resource:video-local"}},
+		map[string]any{"id": "video-remote", "type": "video", "title": "远端原件", "metadata": map[string]any{"status": "success", "storageKey": "resource:video-remote"}},
+	}, "connections": []any{}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.CanvasProject{ID: "probe-canvas", UserID: "user", PayloadJSON: string(raw)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	call := func(arguments string) cloudAgentCall {
+		var c cloudAgentCall
+		c.ID, c.Function.Name, c.Function.Arguments = "call-1", "canvas_inspect_media", arguments
+		return c
+	}
+
+	facts, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-local"}`), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := facts.(map[string]any)
+	if got["durationMs"] != int64(15000) || got["width"] != int64(1280) || got["height"] != int64(720) || got["factsSource"] != "container" {
+		t.Fatalf("本地视频事实没有现解析出来：%#v", got)
+	}
+	if _, leaked := got["factsIncomplete"]; leaked {
+		t.Fatalf("解析成功后不该报事实不全：%#v", got)
+	}
+
+	// 远端存储不下载：如实标出这两个事实拿不到，而不是给一个假的 0。
+	remote, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-remote"}`), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteFacts, _ := remote.(map[string]any)
+	if remoteFacts["durationMs"] != int64(0) || stringValue(remoteFacts["factsIncomplete"]) == "" {
+		t.Fatalf("远端视频应当如实报告事实不全：%#v", remoteFacts)
 	}
 }

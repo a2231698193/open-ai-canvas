@@ -17,7 +17,7 @@ description: >-
 - 不调用 `/api/agent/runs`，也不使用灵感站点里的语言模型。
 - 不自己拼接 HTTP 请求，不读取 `~/.linggan/session.json`。
 - 生成没有 `--yes`。Agent 执行 `generate_media`、`image_layer_split` 或 `task create` 时，命令不会提交，只会返回 `needs_confirmation`。先用对话把摘要告诉用户并询问。用户明确同意后，由 Agent 执行返回的 `nextCommand`，不要让用户自己去终端执行。用户未同意时不要执行确认命令。
-- 不能删除普通节点：只有 `canvas_get_state` 里带 `agentCreated`、且没有正文、没有任务、没有连线、没有被分镜或批量表引用的空节点能用 `canvas_apply_ops` 的 `delete_node` 撤销。不能写任意媒体地址或任意 metadata。分镜和批量创作表只能使用各自的工具删除一行。
+- 不能删除普通节点：只有 `canvas_get_state` 里带 `agentCreated`、且没有正文、没有任务、没有连线、没有被分镜或批量表引用的空节点能用 `canvas_apply_ops` 的 `delete_node` 撤销。文本/剧本节点的正文、媒体节点的提示词草稿（`composerContent`）都算内容；媒体节点没有任务时那份自动写入的 `prompt` 不算（它清不掉）。不能写任意媒体地址或任意 metadata。分镜和批量创作表只能使用各自的工具删除一行。
 - 第一版没有项目工作区。项目、分集和角色仍在网页里处理。
 
 ## 命令

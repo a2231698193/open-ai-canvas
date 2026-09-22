@@ -1893,7 +1893,7 @@ PR #507 核心能力已按主分支实现保留，并补齐小视口尺寸约束
 - [ ] 打开包含旧 `SC.01` 默认标题和用户自定义标题的项目，确认前者显示为“镜头01”且编号旁不重复，后者原样保留；新增镜头和章节生成镜头都直接使用中文编号。
 - [ ] 在项目设置分别选择系统、用户自定义的默认生图/视频模型，刷新后进入分镜图、动作预演和镜头视频，确认项目默认优先、已下架模型回退全局默认；切换 Seedance、MiniMax-H3 等能力不同的模型时，画幅、时长、分辨率和本次预计积分立即更新，并与实际账单一致。
 - [ ] 连续选择两个镜头并分别提交视频生成，确认两个镜头独立显示“正在提交/生成中”，第二个任务不会被第一个全局锁阻止；刷新页面后两个任务状态都能恢复，完成产物分别绑定各自提交时的镜头版本。
-- [ ] 给镜头绑定带主图和声音样本的角色卡及场景资产，使用 MiniMax-H3 生成并检查请求日志：文本包含 `【资产参考】`、角色声音说明和台词，角色/场景图片为 `reference_image`、声音为 `reference_audio`，请求不再出现误判的 `first_frame`，画幅和 `768P` / `2K` 与界面选择一致。
+- [ ] 给镜头绑定带主图和声音样本的角色卡及场景资产，使用 MiniMax-H3 生成并检查请求日志：角色声音说明和台词进入文本，角色/场景图片为 `reference_image`、声音为 `reference_audio`，请求不再出现误判的 `first_frame`，画幅和 `768P` / `2K` 与界面选择一致。提示词用 `@图片N` 或中文裸写 `图片N` 时，遗漏的素材会补进 `【资产参考】` 段落；提示词已用 H3 原生 `<Picture N>` 写全时不再补该段落（此项行为已变更，需按新口径复验）。
 - [ ] 使用同一镜头资产依次切换 Agnes 2.5、Seedance `/videos`、火山方舟、NewAPI 媒体任务和 xAI，确认单张角色图仍走 reference 字段；再切换 Gemini Veo、Novita，确认提交前给出“不支持 reference_to_video”的明确提示，而不是把角色图当起始帧生成。
 - [ ] 当前“资产拆分 AI、多宫格生成提交、批量视频任务、后端交付包”仍是后续阶段，界面不得显示为已完成或可用。
 
@@ -2866,3 +2866,5 @@ SSE 现在按 revision 变化发送紧凑快照，无变化只 heartbeat；客�
 主分支提交前复测：前端 `bun run test` 全量 1925 项通过，生产构建、类型检查、UI 退场 lint 通过；构建仍有大分块提示。同步了技能/工具标签结构与多行连接菜单的源码守护断言。后端 `go test ./...` 全量通过，工具、迁移、资源引用、handler 及工具预览权限/项目封面专项通过。本轮未执行真实模型调用、PostgreSQL 实库迁移或登录态浏览器验收，这些项目继续保留待验收。
 
 命令行缺口清单第一批（连线分页、生成前报价、空节点撤销、素材事实）：后端 `go test ./cmd/linggan/ -count=1`、`go test ./internal/handler/ -count=1` 与 `go test ./internal/app/ -count=1`（跳过 4 个依赖外网 DNS 的用例）全部通过，`gofmt` 与 `go build ./...` 通过。本机当前无法解析 `example.com`，`TestRuntimeConcurrencyUsesEnvironmentFallback`、`TestChannelFromRequestStoresAndClearsHeaders` 等 4 个用例因此在域名解析阶段等待 30 秒后失败；已在改动前的 HEAD 上用 `TestRuntimeConcurrencyUsesEnvironmentFallback` 复现同样的 `外部服务域名解析失败`，属于环境缺网而不是本次回归。工具 schema 体积预算的度量口径改为与 `CloudAgentSupportedToolNames` 一致的并集（含看图工具，24 个工具 27,842 字节 → 预算 28,300），并压缩了 `canvas_inspect_image` 与 `canvas_apply_ops` 的描述。前端本轮未改动，没有新增浏览器验收。仍待真实账号确认：报价与最终扣费一致、`confirm --list/--cancel`、30 分钟过期、界面上撤销 Agent 建的空节点、`canvas_inspect_media` 在真实视频生成后的时长与分辨率。
+
+命令行验收报告（v1.5.7.4）复核修复：`generation` 规格改为可读回（媒体节点投影加 `model`/`size`/`seconds`/`vquality`/`generateAudio` 等，绑定任务后 `generation.spec` 回显任务实际规格）；`update_node` 允许只带 `generation`（不必再编一个无害 `patch`，schema 的 oneOf 同步改成 patch/generation 任一）；提示词原生标签识别扩到 MiniMax-H3 的 `<Picture N>`/`<Video N>`/`<Audio N>`（`<Subject N>` 不算素材引用）；媒体节点在没有生成任务时不再把 `metadata.prompt` 计入"非空"判据，`composerContent` 草稿仍然算内容；视频时长与分辨率落到资源行（生成落盘时解析 mp4 容器头），资源行缺失时读取侧再解析一次本地原件并标 `factsSource`，远端存储标 `factsIncomplete` 并如实留 0。新增测试：真实字节构造的 mp4 解析（含 moov 在尾部）、本地/远端视频事实、落盘回填、`<Picture N>` 识别、只带 generation 的更新与规格读回、媒体节点撤销。mp4 解析结果与 macOS Spotlight 元数据在真实样片上一致（如 1376×768 / 11.542s）。后端 `go test ./internal/app/ ./internal/handler/ ./cmd/linggan/ -count=1`（跳过 4 个依赖外网 DNS 的用例）通过。仍待真实账号复验：网页端看 `<Picture N>` 提示词不再追加「资产参考」时的出片效果、`probe-spec` 那类节点的撤销、远端存储视频的事实提示。

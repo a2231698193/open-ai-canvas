@@ -9,7 +9,9 @@ linggan canvas use <画布ID>
 linggan canvas state --offset 0
 ```
 
-`state` 返回节点摘要、连线和 `snapshotHash`。节点很多时看 `hasMore` 和 `nextOffset`，用 `--offset` 继续读。不要猜节点 ID。
+`state` 返回节点摘要、连线和 `snapshotHash`。节点很多时看 `hasMore` 和 `nextOffset`，用 `--offset` 继续读：**每页长度不等长**（按字节预算切分，实测 14 → 6 → 3），必须原样跟着 `nextOffset` 走，不要按固定步长自增，否则会漏掉最后一页。不要猜节点 ID。
+
+摘要里的正文每个字段最多 2000 字符，被截断的节点列在 `truncatedNodeIds`（字段上也有 `contentTruncated` / `composerContentTruncated` 这类标记）。要全文就按节点精读，最多 16000 字符；不要把截断的摘要当全文照抄。
 
 连线单独分页：看 `hasMoreConnections` 和 `nextConnectionOffset`，继续读时传 `--connection-offset`。**连线不会因为节点分页而少返回**——某条边的两端即使不在这一页节点里，它也会出现在 `connections` 里。`totalConnections` 是这张画布的真实连线总数，可以用它对账。不要因为某一页没看到某条连线就判定它不存在并重复建边，那会撞上「连线重复」。
 
@@ -35,17 +37,23 @@ linggan canvas apply --file ops.json
 
 允许的 `type` 只有 `add_node`、`update_node`、`connect_nodes`、`delete_node`。一次最多 20 项。
 
-`delete_node` 只能撤销自己刚建的空节点：`canvas state` 返回 `agentCreated: true`，且该节点没有正文、没有提示词、没有生成任务、没有连线、也没有被分镜或批量表引用时才能删。其他情况会被拒绝并说明原因；普通节点仍然只能在网页上手动删除。
+`delete_node` 只能撤销自己刚建的空节点：`canvas state` 返回 `agentCreated: true`，且该节点没有正文、没有提示词草稿、没有生成任务、没有产物、没有连线、也没有被分镜或批量表引用时才能删。被拒绝时会说明是哪个字段挡住了（例如 `composerContent 非空`），清掉那个字段就能删。媒体节点如果没有任务，新建时顺手写入的 `prompt` 不算内容（这个字段不能 patch，否则节点会永远删不掉）。普通节点、用户手工建的节点仍然只能在网页上手动删除。
 
 `nodeType` 可以是 `text`、`markdown`、`image`、`video`、`audio`、`frame`、`batch-table`、`script`。
 
 文本节点更新正文用：
 
 ```json
-{"type": "update_node", "id": "note-1", "patch": {"metadata.content": "修改后的正文"}}
+{"type": "update_node", "id": "note-1", "patch": {"content": "修改后的正文"}}
 ```
 
-图片、视频、音频节点更新下次生成用的提示词草稿用 `metadata.composerContent`。这不会覆盖已经提交的生成结果。
+图片、视频、音频节点更新下次生成用的提示词草稿也用 `content`（服务端写进 `metadata.composerContent`，不覆盖已经提交的提示词和生成结果）。**patch 的键只能是 `title`、`content`、`x`、`y`**，写 `metadata.composerContent` 这类路径会被拒绝。
+
+只改生成规格时不必再编一个无害的 `title`：`patch` 和 `generation` 至少给一个就行。
+
+```json
+{"type": "update_node", "id": "video-1", "generation": {"size": "9:16", "seconds": 5}}
+```
 
 ### 准备生成规格
 
@@ -75,6 +83,8 @@ linggan canvas apply --file ops.json
 
 字段拼错或跨类型（例如给图片节点传 `seconds`）会被直接拒绝，并在错误里列出可用字段——不会静默丢弃。非媒体节点（`text`、`script` 等）不接受 `generation`。
 
+写进去的规格能读回来：`canvas state` 和 `canvas_get_state` 会在该节点上返回 `model`、`size`、`seconds`、`vquality`、`generateAudio` 等字段，审批摘要也会逐项列出这次改了哪些规格。节点已经绑定了生成任务时，`generation.spec` 还会回显任务实际保存的规格（如 `size`/`videoSeconds`/`vquality`/`videoGenerateAudio`），可以拿它核对提交时用的是不是你要的那一套。
+
 写入成功后使用返回的新 `snapshotHash`。旧哈希会被拒绝。
 
 ## 画布 Agent 的其余操作
@@ -101,7 +111,7 @@ linggan canvas apply --file ops.json
 
 图片、视频和音频生成优先用 `generate_media`，不要用 `task create`。`task create` 只提交任务，不会创建结果节点，也不会把结果写回画布。
 
-生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。
+生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。本地原件会在读取时解析一次视频容器头，这种情况下多一个 `factsSource: "container"`；远端存储不下载，拿不到就带 `factsIncomplete` 并如实留 0，不要把它当成“视频是 0 秒”。
 
 ```bash
 linggan canvas tool canvas_inspect_media --file media.json
@@ -163,6 +173,17 @@ linggan canvas tool generate_media --file generate.json
 
 服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），所以路由和供应商适配与网页生成一致，不需要额外参数。
 
+### 提示词里的素材引用
+
+素材按类型独立编号（图片、视频、音频各从 1 开始），顺序就是你传的 `referenceNodeIds` / `references` 顺序。写提示词时：
+
+- 推荐直接用 `@图片1`、`@视频1`、`@音频1`；这些标签会被校验，写了一个没有对应素材的编号会被拒绝。
+- 供应商的原生写法同样认：中文裸写 `图片1`，以及 MiniMax-H3 的 `<Picture 1>`、`<Video 1>`、`<Audio 1>`（`<Subject N>` 是主体编号，不算素材引用）。
+- 你没写到的素材，服务端会补一段 `【资产参考】`（“素材名称：@标签”）。提示词里已经有 `【资产参考】` 段落时，缺的素材并入那一段，不会出现两段。
+- 因此提示词已经用 `<Picture N>` 写全时不会再补段落；补不补都不影响编号顺序，`@图片N` 始终对应你传进去的第 N 张图。
+
+### 视频生成操作
+
 视频还有一个 `videoEditOperation`，取值 `text_to_video`、`image_to_video`、`reference_to_video`、`audio_to_video`。
 
 **多图全能参考必须显式填 `videoEditOperation: "reference_to_video"`**：省略时服务端按参考素材推导，而只挂参考图会推导成单首帧的 `image_to_video`，多张图会被上游按「输入媒体数量超过限制」拒绝。模型是否支持某个操作，以 `model_list` 返回的能力为准。
@@ -192,4 +213,4 @@ linggan canvas tool canvas_edit_storyboard --file edit.json
 
 Agent 执行 `generate_media` 或 `image_layer_split` 时，stdout 返回 `needs_confirmation`，此时还没有创建任务。把 `summary` 告诉用户并询问。用户明确同意后，执行同一输出里的 `nextCommand`。不要让用户自己打开终端，也不要在用户同意前执行确认。
 
-`summary` 里的 `estimatedCredits` 是这次生成的预估积分，`amountMicrocredits` 是同一金额的微积分整数形式，两者都由服务端按真实计费规则算出，不是本地估算。询问用户时把预估积分一起说出来，让用户在花钱前看到价格。`summary.estimateError` 表示这次参数算不出报价（通常是模型或参考素材不合法），提交同样会被拒绝：先按提示改参数，不要把这种调用拿去让用户确认。
+`summary` 里的 `estimatedCredits` 是这次生成的预估积分，`amountMicrocredits` 是同一金额的微积分整数形式，两者都由服务端按真实计费规则算出，不是本地估算。询问用户时把预估积分一起说出来，让用户在花钱前看到价格。`summary.estimateError` 表示这次参数算不出报价（通常是模型或参考素材不合法），提交同样会被拒绝：先按提示改参数，不要把这种调用拿去让用户确认。挂起阶段只做报价和参数体检，`videoEditOperation` 这类取值的硬校验发生在 `linggan confirm` 那一步——所以别用“挂起没报错”当成参数一定合法的证明。

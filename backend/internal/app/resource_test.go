@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"hash/crc64"
@@ -1087,5 +1088,40 @@ func TestPersistGeneratedMediaAppliesStoredFileQuota(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "20GB 上限") {
 		t.Fatalf("persistGeneratedMediaResult() error = %v", err)
+	}
+}
+
+// 视频产物落盘时要顺手把时长和分辨率解析出来：上游基本不回传这两项，
+// 少了它们，"生成成功"就无法核对是不是 15s / 16:9。
+func TestPersistGeneratedVideoFillsDurationAndResolution(t *testing.T) {
+	svc := newResourceTestService(t)
+	clip := metadataMP4(1000, 15000, 1280, 720, false)
+	result, err := svc.persistGeneratedMediaResult("user-1", map[string]interface{}{
+		"video": map[string]interface{}{"dataUrl": "data:video/mp4;base64," + base64.StdEncoding.EncodeToString(clip)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	video := result["video"].(map[string]interface{})
+	resource, err := svc.repo.ResourceForUser("user-1", stringValue(video["resourceId"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.DurationMs != 15000 || resource.Width != 1280 || resource.Height != 720 {
+		t.Fatalf("落盘后的事实 = %dms %d×%d, want 15000ms 1280×720", resource.DurationMs, resource.Width, resource.Height)
+	}
+	// 调用方已经量过的值优先：不覆盖前端量到的真实数据。
+	measured, err := svc.persistGeneratedMediaResult("user-1", map[string]interface{}{
+		"video": map[string]interface{}{"dataUrl": "data:video/mp4;base64," + base64.StdEncoding.EncodeToString(clip), "durationMs": float64(1234), "width": float64(640), "height": float64(360)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := svc.repo.ResourceForUser("user-1", stringValue(measured["video"].(map[string]interface{})["resourceId"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.DurationMs != 1234 || stored.Width != 640 || stored.Height != 360 {
+		t.Fatalf("已有事实被覆盖 = %dms %d×%d", stored.DurationMs, stored.Width, stored.Height)
 	}
 }

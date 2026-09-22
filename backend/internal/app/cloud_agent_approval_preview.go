@@ -211,11 +211,11 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				Summary: fmt.Sprintf("删除空节点%s《%s》", capability.Label, deletedTitle),
 			})
 		case "update_node":
-			if len(op.Patch) == 0 {
+			if len(op.Patch) == 0 && len(op.Generation) == 0 {
 				// 漏字段是模型照 schema 就能自己修好的参数错误：当成工具结果回给它重试，
 				// 而不是判整轮失败（用户只在失败提示里看到一句"必须提供 patch"）。
 				// 未知操作类型仍按准入失败终止（cloud_agent_test.go 有用例断言这一行为）。
-				return nil, &cloudAgentArgumentError{BadAuthRequest("更新节点必须提供 patch")}
+				return nil, &cloudAgentArgumentError{BadAuthRequest("更新节点必须提供 patch 或 generation 中至少一项")}
 			}
 			if index < 0 {
 				return nil, BadAuthRequest("只能更新现有且受 Agent 支持的节点")
@@ -229,9 +229,13 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				return nil, BadAuthRequest("不能修改锁定节点")
 			}
 			beforeTitle := cloudAgentApprovalNodeTitle(nodes[index], capability.Label)
-			fields := cloudAgentApprovalPatchLabels(capability.PatchFields, op.Patch)
-			if err := capability.ApplyPatch(nodes[index], op.Patch); err != nil {
-				return nil, BadAuthRequest(err.Error())
+			// patch 可以只带 generation：只想改生成规格时不必再编一个无害 patch。
+			fields := []string{}
+			if len(op.Patch) > 0 {
+				fields = cloudAgentApprovalPatchLabels(capability.PatchFields, op.Patch)
+				if err := capability.ApplyPatch(nodes[index], op.Patch); err != nil {
+					return nil, BadAuthRequest(err.Error())
+				}
 			}
 			if len(op.Generation) > 0 {
 				generationMetadata, generationErr := cloudAgentGenerationMetadata(capability.Type, op.Generation)
@@ -252,7 +256,7 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 			items = append(items, cloudAgentApprovalPreviewItem{
 				Operation: "update_node", NodeID: op.ID, NodeTitle: beforeTitle, ResultTitle: resultTitle,
 				NodeType: capability.Type, NodeTypeLabel: capability.Label, Fields: fields,
-				Summary: fmt.Sprintf("修改%s《%s》的%s", capability.Label, beforeTitle, strings.Join(fields, "、")),
+				Summary: cloudAgentUpdateNodeSummary(capability.Label, beforeTitle, fields),
 			})
 		default:
 			return nil, BadAuthRequest("不支持的画布写操作")
@@ -261,6 +265,15 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 	doc["nodes"] = nodes
 	doc["connections"] = edges
 	return items, nil
+}
+
+// cloudAgentUpdateNodeSummary 描述这次更新改了哪些字段。fields 为空只可能是调用方
+// 既没给 patch 也没给 generation——那一步在此之前就被拒绝了，所以这里不会出现空列表。
+func cloudAgentUpdateNodeSummary(label, title string, fields []string) string {
+	if len(fields) == 0 {
+		return fmt.Sprintf("修改%s《%s》", label, title)
+	}
+	return fmt.Sprintf("修改%s《%s》的%s", label, title, strings.Join(fields, "、"))
 }
 
 func cloudAgentCanvasApprovalPreview(items []cloudAgentApprovalPreviewItem) cloudAgentApprovalPreview {

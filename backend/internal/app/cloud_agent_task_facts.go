@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"infinite-canvas/backend/internal/model"
@@ -36,6 +37,49 @@ type cloudAgentTaskFacts struct {
 	CancellationAt     *time.Time                   `json:"cancellationRequestedAt,omitempty"`
 	SubmissionReceipt  *cloudAgentSubmissionReceipt `json:"submissionReceipt,omitempty"`
 	Billing            *cloudAgentTaskBillingFacts  `json:"billing,omitempty"`
+	Spec               *cloudAgentTaskSpecFacts     `json:"spec,omitempty"`
+}
+
+// cloudAgentTaskSpecFacts 回显任务里实际保存下来的生成规格。只回显规格本身：渠道、
+// 线路、密钥和上游地址都不在其列。Agent 写完规格（或提交生成）之后要能自证写的
+// 是什么，而不是只能靠下游是否真的按这个规格出片来间接判断。
+type cloudAgentTaskSpecFacts struct {
+	Mode                  string `json:"mode,omitempty"`
+	Size                  string `json:"size,omitempty"`
+	Quality               string `json:"quality,omitempty"`
+	Count                 string `json:"count,omitempty"`
+	TransparentBackground string `json:"transparentBackground,omitempty"`
+	VideoSeconds          string `json:"videoSeconds,omitempty"`
+	VQuality              string `json:"vquality,omitempty"`
+	VideoGenerateAudio    string `json:"videoGenerateAudio,omitempty"`
+	VideoWatermark        string `json:"videoWatermark,omitempty"`
+	AudioVoice            string `json:"audioVoice,omitempty"`
+	AudioFormat           string `json:"audioFormat,omitempty"`
+	AudioSpeed            string `json:"audioSpeed,omitempty"`
+	AudioInstructions     string `json:"audioInstructions,omitempty"`
+}
+
+// cloudAgentTaskSpec 从任务输入里取出生成规格；非生成任务（文本、分镜等）返回 nil。
+func cloudAgentTaskSpec(inputJSON string) *cloudAgentTaskSpecFacts {
+	if strings.TrimSpace(inputJSON) == "" {
+		return nil
+	}
+	var input canvasGenerationInput
+	if json.Unmarshal([]byte(inputJSON), &input) != nil {
+		return nil
+	}
+	spec := cloudAgentTaskSpecFacts{
+		Mode: input.Mode, Size: input.Config.Size, Quality: input.Config.Quality,
+		Count: input.Config.Count, TransparentBackground: input.Config.TransparentBackground,
+		VideoSeconds: input.Config.VideoSeconds, VQuality: input.Config.VQuality,
+		VideoGenerateAudio: input.Config.VideoGenerateAudio, VideoWatermark: input.Config.VideoWatermark,
+		AudioVoice: input.Config.AudioVoice, AudioFormat: input.Config.AudioFormat,
+		AudioSpeed: input.Config.AudioSpeed, AudioInstructions: input.Config.AudioInstructions,
+	}
+	if spec == (cloudAgentTaskSpecFacts{}) {
+		return nil
+	}
+	return &spec
 }
 
 type cloudAgentSubmissionReceipt struct {
@@ -70,6 +114,7 @@ func cloudAgentTaskDiagnostic(repo *repository.Repository, task *model.Task) map
 	if context := taskClientContext(task.InputJSON); context != nil {
 		facts.NodeID = context.NodeID
 	}
+	facts.Spec = cloudAgentTaskSpec(task.InputJSON)
 	if diagnostic := taskExecutionDiagnostic(task); diagnostic != nil {
 		facts.TaskSubmitted = diagnostic.TaskSubmitted
 		facts.SubmissionOutcome = diagnostic.SubmissionOutcome

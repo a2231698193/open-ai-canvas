@@ -176,3 +176,63 @@ func TestPersistPlaybackResourceReturnsAfterExhaustedRetries(t *testing.T) {
 		t.Fatalf("calls = %d, want %d", saver.calls, playbackPersistAttempts)
 	}
 }
+
+// boxOf 构造一个 box；full 为真时带 version/flags（mvhd/tkhd 是 full box，
+// moov/trak/mdat/ftyp 不是）。
+func boxOf(boxType string, version byte, payload []byte, full bool) []byte {
+	body := payload
+	if full {
+		body = make([]byte, 4+len(payload))
+		body[0] = version
+		copy(body[4:], payload)
+	}
+	out := make([]byte, 8+len(body))
+	binary.BigEndian.PutUint32(out[0:4], uint32(len(out)))
+	copy(out[4:8], boxType)
+	copy(out[8:], body)
+	return out
+}
+
+// metadataMP4 造一个含 mvhd（timescale/duration）与视频轨 tkhd（16.16 定点宽高）的最小 mp4。
+// withTrailingMoov 模拟"mdat 在前、moov 在尾部"的流式写入形态。
+func metadataMP4(timescale, duration uint32, width, height uint16, withTrailingMoov bool) []byte {
+	mvhd := make([]byte, 96)
+	binary.BigEndian.PutUint32(mvhd[8:12], timescale)
+	binary.BigEndian.PutUint32(mvhd[12:16], duration)
+	tkhd := make([]byte, 80)
+	binary.BigEndian.PutUint32(tkhd[72:76], uint32(width)<<16)
+	binary.BigEndian.PutUint32(tkhd[76:80], uint32(height)<<16)
+	moov := append(boxOf("mvhd", 0, mvhd, true), boxOf("trak", 0, boxOf("tkhd", 0, tkhd, true), false)...)
+	ftyp := boxOf("ftyp", 0, []byte("isom\x00\x00\x02\x00isomiso2"), false)
+	mdat := boxOf("mdat", 0, make([]byte, 64), false)
+	if withTrailingMoov {
+		return append(append(ftyp, mdat...), boxOf("moov", 0, moov, false)...)
+	}
+	return append(append(ftyp, boxOf("moov", 0, moov, false)...), mdat...)
+}
+
+// 视频落盘和读取都要能拿到真实时长与分辨率：上游基本不回传这两项，
+// 少了它们"生成成功"就无法核对是不是 15s / 16:9。
+func TestProbeMP4MetadataReadsDurationAndResolution(t *testing.T) {
+	width, height, durationMs := probeMP4Metadata(metadataMP4(1000, 15000, 1920, 1080, false))
+	if width != 1920 || height != 1080 || durationMs != 15000 {
+		t.Fatalf("probeMP4Metadata = %d×%d, %dms", width, height, durationMs)
+	}
+
+	path := filepath.Join(t.TempDir(), "trailing.mp4")
+	if err := os.WriteFile(path, metadataMP4(600, 9000, 720, 1280, true), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	width, height, durationMs = probeMP4FileMetadata(path)
+	if width != 720 || height != 1280 || durationMs != 15000 {
+		t.Fatalf("moov 在尾部的文件 = %d×%d, %dms", width, height, durationMs)
+	}
+
+	// 解析不出来时返回未知，不编造数字。
+	if w, h, d := probeMP4Metadata([]byte("not a video")); w != 0 || h != 0 || d != 0 {
+		t.Fatalf("非 mp4 应当返回未知：%d×%d, %dms", w, h, d)
+	}
+	if w, h, d := probeMP4FileMetadata(filepath.Join(t.TempDir(), "missing.mp4")); w != 0 || h != 0 || d != 0 {
+		t.Fatalf("不存在的文件应当返回未知：%d×%d, %dms", w, h, d)
+	}
+}

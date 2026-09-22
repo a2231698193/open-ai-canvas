@@ -510,7 +510,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"additionalProperties": false,
 			"oneOf": []map[string]any{
 				{"properties": map[string]any{"type": map[string]any{"const": "add_node"}}, "required": []string{"nodeType"}},
-				{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "required": []string{"patch"}},
+				{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}}},
 				{"properties": map[string]any{"type": map[string]any{"const": "connect_nodes"}}, "required": []string{"fromNodeId", "toNodeId"}},
 				{"properties": map[string]any{"type": map[string]any{"const": "delete_node"}}},
 			},
@@ -743,7 +743,7 @@ func cloudAgentReadTool(repo *repository.Repository, userID string, state *cloud
 		}
 		return map[string]any{"nodeId": args.NodeID, "reference": ref, "status": "ready_for_visual_detection", "outputSchema": []string{"original", "text", "location"}, "nextStep": "使用视觉模型对该参考图返回 JSON 数组；不要把识别结果写回画布"}, nil
 	case "canvas_inspect_media":
-		return cloudAgentMediaInspection(repo, userID, state.Request.CanvasID, call)
+		return cloudAgentMediaInspection(repo, userID, state.Request.CanvasID, call, service)
 	case "image_annotation_render":
 		if len(services) == 0 || services[0] == nil {
 			return nil, BadAuthRequest("标注资源存储不可用")

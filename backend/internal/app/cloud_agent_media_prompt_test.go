@@ -153,3 +153,36 @@ func TestCloudAgentMediaReferenceEdgesFollowApprovedOrder(t *testing.T) {
 		t.Fatalf("wrong reference order or unrelated edge changed: %v", ids)
 	}
 }
+
+// H3 原生写法 <Picture 1> 也算已经引用过：这是模型自己的素材语法，再补一段
+// 【资产参考】只是重复说明，白占 token 还可能让上游把两套编号混着读。
+func TestCloudAgentMediaReferencePromptRecognizesNativePictureTags(t *testing.T) {
+	ref := func(name string) map[string]any {
+		return map[string]any{"name": name, "storageKey": "resource:test"}
+	}
+	images := []any{ref("人物"), ref("假发")}
+	refs := map[string]any{"referenceImages": images, "referenceAudios": []any{ref("声音")}}
+
+	h3 := "subject_definitions:\n<Subject 1> 为 <Picture 1> 中的初中男生：13 岁\n<Subject 2> 为 <Picture 2> 中的短发女生"
+	if got, err := cloudAgentMediaReferencePrompt(h3, map[string]any{"referenceImages": images}); err != nil || got != h3 {
+		t.Fatalf("<Picture N> 仍被追加说明：%q, %v", got, err)
+	}
+	// 只提到部分素材时，缺的那些仍然要补进【资产参考】。
+	got, err := cloudAgentMediaReferencePrompt(h3, refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "声音：@音频1") || strings.Contains(got, "人物：@图片1") || strings.Contains(got, "假发：@图片2") {
+		t.Fatalf("应当只补没写过的素材：%q", got)
+	}
+	// <Subject N> 是主体编号，不占素材槽位：不能当成已引用。
+	subjectOnly := "<Subject 1> 抬头看向窗外"
+	got, err = cloudAgentMediaReferencePrompt(subjectOnly, map[string]any{"referenceImages": images})
+	if err != nil || !strings.Contains(got, "人物：@图片1") {
+		t.Fatalf("<Subject N> 被误判成素材引用：%q, %v", got, err)
+	}
+	// 视频/音频的原生写法同样识别。
+	if got, err := cloudAgentMediaReferencePrompt("<Video 1> 作为运镜参考，<Audio 1> 作为声音样本", map[string]any{"referenceVideos": []any{ref("运镜")}, "referenceAudios": []any{ref("声音")}}); err != nil || strings.Contains(got, "【资产参考】") {
+		t.Fatalf("<Video N>/<Audio N> 未被识别：%q, %v", got, err)
+	}
+}

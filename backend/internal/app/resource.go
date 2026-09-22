@@ -394,6 +394,20 @@ func (s *Service) ImportResourceURL(userID string, rawURL string, kind string, w
 			height = decodedHeight
 		}
 	}
+	if kind == "video" && (width <= 0 || height <= 0 || durationMs <= 0) {
+		// 前端导入会带上浏览器量到的时长和分辨率；CLI / Agent 路径没有浏览器，
+		// 就自己解析一遍容器，别让视频事实永远停在 0。
+		probedWidth, probedHeight, probedDuration := probeMP4Metadata(payload.data)
+		if width <= 0 {
+			width = probedWidth
+		}
+		if height <= 0 {
+			height = probedHeight
+		}
+		if durationMs <= 0 {
+			durationMs = probedDuration
+		}
+	}
 	size := int64(len(payload.data))
 	if existing != nil {
 		return s.retryStoredResource(userID, existing, kind, payload.mimeType, size, bytes.NewReader(payload.data))
@@ -756,8 +770,23 @@ func (s *Service) persistGeneratedMediaValueMode(userID string, value interface{
 			if err == nil {
 				kind := normalizeResourceKind("", mimeType)
 				width, height := intValue(item["width"]), intValue(item["height"])
+				durationMs := int64(intValue(item["durationMs"]))
 				if kind == "image" && (width <= 0 || height <= 0) {
 					width, height = imageDimensions(data)
+				}
+				if kind == "video" && (width <= 0 || height <= 0 || durationMs <= 0) {
+					// 上游很少回传视频时长和分辨率。少了它们，"生成成功"就无法核对
+					// 是不是 15s / 16:9，所以在落盘时自己解析一次容器。
+					probedWidth, probedHeight, probedDuration := probeMP4Metadata(data)
+					if width <= 0 {
+						width = probedWidth
+					}
+					if height <= 0 {
+						height = probedHeight
+					}
+					if durationMs <= 0 {
+						durationMs = probedDuration
+					}
 				}
 				quotaDay := ""
 				if enforceQuota {
@@ -766,7 +795,7 @@ func (s *Service) persistGeneratedMediaValueMode(userID string, value interface{
 						return nil, err
 					}
 				}
-				resource, _, err := s.storeResource(userID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, int64(len(data)), width, height, int64(intValue(item["durationMs"])), bytes.NewReader(data), nil, false)
+				resource, _, err := s.storeResource(userID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, int64(len(data)), width, height, durationMs, bytes.NewReader(data), nil, false)
 				if err != nil {
 					if enforceQuota {
 						s.releaseUserUploadQuota(userID, quotaDay, int64(len(data)))

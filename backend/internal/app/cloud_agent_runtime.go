@@ -1312,6 +1312,12 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 	if allowed && call.Function.Name == "canvas_inspect_image" && state.Request.VisionEnabled {
 		inspectionResult, inspectionErr = s.prepareCloudAgentImageInspection(run.UserID, state.Request.CanvasID, state, call)
 	}
+	// 读素材事实要读资源行，本地视频还要解析一次容器头拿时长/分辨率，同样放在事务外。
+	var mediaFactsResult any
+	var mediaFactsErr error
+	if allowed && call.Function.Name == "canvas_inspect_media" {
+		mediaFactsResult, mediaFactsErr = cloudAgentMediaInspection(s.repo, run.UserID, state.Request.CanvasID, call, s)
+	}
 	// Skill reads use the domain repository and filesystem, not the checkpoint
 	// transaction's connection. Read first to avoid nesting DB reads on SQLite.
 	var skillResult any
@@ -1353,6 +1359,8 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 					}
 				}
 			}
+		case call.Function.Name == "canvas_inspect_media":
+			result, toolErr = mediaFactsResult, mediaFactsErr
 		case call.Function.Name == "skill_read_file", call.Function.Name == "image_annotation_render":
 			result, toolErr = skillResult, skillErr
 		default:

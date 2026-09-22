@@ -98,3 +98,42 @@ func TestCloudAgentCanvasStateExposesAgentCreatedNodes(t *testing.T) {
 		t.Fatalf("普通节点不应带 agentCreated：%#v", seen)
 	}
 }
+
+// 验收报告里的坑：用 content 建的媒体节点，prompt 会被一起写上，而 prompt 不可 patch，
+// 于是节点"永远不空"、删不掉。媒体节点没有任务时，prompt 只是新建时的初值，不算内容；
+// 用户看得见、改得动的 composerContent 仍然算内容。
+func TestCloudAgentDeleteNodeIgnoresPromptOnTasklessMediaNode(t *testing.T) {
+	content := "九字提示词占位"
+	doc := map[string]any{"nodes": []any{}, "connections": []any{}}
+	if _, err := applyCloudAgentCanvasPlan(doc, []agentCanvasOp{
+		{Type: "add_node", ID: "probe-spec", NodeType: "video", Content: &content},
+		{Type: "add_node", ID: "note", NodeType: "text", Content: &content},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	metaOf := func(id string) map[string]any {
+		meta, _ := cloudAgentCanvasNode(doc, id)["metadata"].(map[string]any)
+		return meta
+	}
+	if metaOf("probe-spec")["prompt"] == "" || metaOf("probe-spec")["composerContent"] == "" {
+		t.Fatalf("夹具不对：新建媒体节点应当同时写入 prompt 与 composerContent：%#v", metaOf("probe-spec"))
+	}
+	// 草稿还在时仍要拒绝，并指明是哪个字段挡住了。
+	if _, err := applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "delete_node", ID: "probe-spec"}}); err == nil || !strings.Contains(err.Error(), "composerContent") {
+		t.Fatalf("草稿非空时应当拒绝并说明字段：%v", err)
+	}
+	// 用 content 清空草稿（prompt 仍留着）之后就该能删——这正是验收现场的情形。
+	if _, err := applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "update_node", ID: "probe-spec", Patch: map[string]any{"content": ""}}}); err != nil {
+		t.Fatal(err)
+	}
+	if metaOf("probe-spec")["prompt"] == "" {
+		t.Fatal("夹具不对：prompt 不该被 patch 清掉")
+	}
+	if _, err := applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "delete_node", ID: "probe-spec"}}); err != nil {
+		t.Fatalf("媒体节点只剩 prompt 时应当可以撤销：%v", err)
+	}
+	// 文本节点的正文仍然一律阻止删除。
+	if _, err := applyCloudAgentCanvasPlan(doc, []agentCanvasOp{{Type: "delete_node", ID: "note"}}); err == nil || !strings.Contains(err.Error(), "content 非空") {
+		t.Fatalf("文本节点正文非空时应当拒绝：%v", err)
+	}
+}

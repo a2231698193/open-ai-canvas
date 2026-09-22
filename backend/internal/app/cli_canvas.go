@@ -147,7 +147,7 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 		batch, _ := inspections.(cloudAgentImageInspections)
 		return cloudAgentImageInspectionWithURLs(batch), nil
 	case "canvas_inspect_media":
-		return cloudAgentMediaInspection(s.repo, userID, canvasID, call)
+		return cloudAgentMediaInspection(s.repo, userID, canvasID, call, s)
 	case "model_list":
 		intent, err := s.cloudAgentModelIntent(userID, canvasID, string(raw))
 		if err != nil {
