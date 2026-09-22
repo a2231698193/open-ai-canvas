@@ -19,6 +19,7 @@ import { useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store"
 import { repairMissingCanvasAssets, collectCanvasMediaAssetIds, rebindInconsistentCanvasAssets, type CanvasAssetRebindResult } from "@/services/canvas-asset-repair";
 import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
 import { applyAgentCanvasPatch, type AgentCanvasPatch } from "@/lib/canvas/agent-canvas-patch";
+import { rebaseEditedProjectOntoRemote } from "@/lib/canvas/canvas-storage-revision";
 
 let activeRemoteUserId = "";
 type RemoteUserDataPhase = "inactive" | "hydrating" | "ready" | "failed";
@@ -29,6 +30,7 @@ let syncPromise: Promise<void> | null = null;
 let syncQueued = false;
 let remoteOperationTail: Promise<void> = Promise.resolve();
 let subscriptionsInstalled = false;
+const autoSyncUnsubscribers: Array<() => void> = [];
 let acknowledgedAssets = new Map<string, Asset>();
 let acknowledgedProjects = new Map<string, CanvasProject>();
 let incrementalSession = false;
@@ -36,6 +38,9 @@ let sessionEpoch = 0;
 const verifiedProjects = new Set<string>();
 const verifiedAssets = new Set<string>();
 const remoteProjectLoadPromises = new Map<string, Promise<CanvasProject | undefined>>();
+// One realignment per project per drain pass: a canvas that keeps moving under us
+// must fall back to the conflict surface instead of retrying forever.
+let realignedProjectsThisDrain = new Set<string>();
 
 export async function initializeRemoteUserDataSession(userId: string) {
     await withRemoteUserDataSyncExclusive(async () => {
@@ -339,10 +344,15 @@ export async function syncRemoteUserData(userId?: string | null) {
     });
 }
 
+function clearSyncTimer() {
+    if (syncTimer && typeof window !== "undefined") window.clearTimeout(syncTimer);
+    syncTimer = null;
+}
+
 export function installRemoteUserDataAutoSync() {
     if (subscriptionsInstalled) return;
     subscriptionsInstalled = true;
-    useCanvasStore.subscribe((state, previous) => {
+    autoSyncUnsubscribers.push(useCanvasStore.subscribe((state, previous) => {
         if (state.projects === previous.projects) return;
         const before = new Map(previous.projects.map((project) => [project.id, project]));
         const changed = state.projects.filter((project) => !sameCanvasContent(before.get(project.id), project));
@@ -355,15 +365,19 @@ export function installRemoteUserDataAutoSync() {
             }
         }
         scheduleRemoteUserDataSync();
-    });
-    useAssetStore.subscribe((state, previous) => {
+    }));
+    autoSyncUnsubscribers.push(useAssetStore.subscribe((state, previous) => {
         if (state.assets !== previous.assets) scheduleRemoteUserDataSync();
-    });
+    }));
 }
 
 export function resetRemoteUserDataSync() {
     sessionEpoch += 1;
     incrementalSession = false;
+    // 订阅是模块级状态：不在这里解除，重置后的下一次写入仍会排同步，
+    // 在已经离开浏览器的宿主里就会以 window 未定义失败。
+    for (const unsubscribe of autoSyncUnsubscribers.splice(0)) unsubscribe();
+    subscriptionsInstalled = false;
     verifiedProjects.clear();
     verifiedAssets.clear();
     remoteProjectLoadPromises.clear();
@@ -371,10 +385,7 @@ export function resetRemoteUserDataSync() {
     remoteUserDataPhase = "inactive";
     acknowledgedAssets.clear();
     acknowledgedProjects.clear();
-    if (syncTimer) {
-        window.clearTimeout(syncTimer);
-        syncTimer = null;
-    }
+    clearSyncTimer();
     syncQueued = false;
     useSyncProgressStore.getState().clearAll();
 }
@@ -404,7 +415,10 @@ export function scheduleRemoteUserDataSync() {
         syncQueued = true;
         return;
     }
-    if (syncTimer) window.clearTimeout(syncTimer);
+    // 没有定时器就没有自动同步：测试宿主或已离开浏览器时静默跳过，
+    // 不能让一次普通写入在 window 未定义处崩掉。
+    if (typeof window === "undefined") return;
+    clearSyncTimer();
     syncTimer = window.setTimeout(() => {
         syncTimer = null;
         void saveRemoteUserDataNow().catch((error) => console.warn("云端自动同步失败", error));
@@ -651,10 +665,39 @@ export async function forceOverwriteRemoteCanvasSync(): Promise<CanvasAssetRebin
 
 async function drainRemoteUserDataChanges(options: { force?: boolean } = {}) {
     const uploaded = new Map<string, string>();
+    realignedProjectsThisDrain = new Set();
     do {
         syncQueued = false;
         await saveRemoteUserDataBatch(uploaded, options);
     } while (syncQueued);
+}
+
+/**
+ * Another writer — a second tab, or the `linggan` CLI — can advance the canvas
+ * revision while this tab still holds unsaved edits, so the save loses the
+ * revision race. Re-read the remote revision and fold this tab's edits onto it.
+ * A same-field edit keeps the conflict: the draft is preserved and the automatic
+ * save stays paused, exactly as before.
+ */
+async function realignProjectAfterConflict(source: CanvasProject) {
+    if (realignedProjectsThisDrain.has(source.id)) return false;
+    realignedProjectsThisDrain.add(source.id);
+    const base = acknowledgedProjects.get(source.id);
+    const current = useCanvasStore.getState().openProject(source.id);
+    if (!base || !current) return false;
+    const { project: remote } = await getRemoteCanvasProject(source.id);
+    if (!Number.isSafeInteger(remote.revision) || !Number.isSafeInteger(base.revision)) return false;
+    const { project: merged, conflicts } = rebaseEditedProjectOntoRemote({ base, local: current, durable: remote, baseRevision: base.revision! });
+    if (conflicts.length) return false;
+    const remoteHash = await canvasContentHash(remote);
+    acknowledgedProjects.set(source.id, { ...remote, remoteContentHash: remoteHash });
+    verifiedProjects.add(source.id);
+    useCanvasStore.setState((state) => ({ projects: state.projects.map((project) => project === current
+        ? { ...merged, revision: remote.revision, remoteContentHash: remoteHash } : project) }));
+    await flushCanvasStorePersistence();
+    useSyncProgressStore.getState().setProjectProgress(source.id, { phase: "pending", message: "云端画布已有更新，已合并本地修改并继续保存" });
+    syncQueued = true;
+    return true;
 }
 
 async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: { force?: boolean } = {}) {
@@ -741,6 +784,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             if (pending) syncQueued = true;
         } catch (error) {
             const conflict = error instanceof ApiError && (error.status === 409 || error.status === 428);
+            if (conflict && await realignProjectAfterConflict(source)) continue;
             useSyncProgressStore.getState().setProjectProgress(source.id, {
                 phase: conflict ? "conflict" : "error",
                 message: error instanceof Error ? error.message : "云端同步失败，等待重试",

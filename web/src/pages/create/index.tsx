@@ -12,7 +12,7 @@ import { getActiveUserScope } from "@/lib/user-scope";
 import { continueCreationConversationOnCanvas } from "@/services/creation-canvas-conversation";
 import { useExternalAssetSources } from "@/hooks/use-external-asset-sources";
 import { modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue, videoDurationAllowed, videoDurationOptions } from "@/lib/model-capabilities";
-import { modelCompatibilityError, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
+import { modelCompatibilityError, modelGroupReferenceLimits, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
 import { videoModeImageRoles, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
 import type { BackendGenerationResult } from "@/services/api/generation-task";
 import type { Skill } from "@/services/api/skills";
@@ -28,7 +28,7 @@ import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
 import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins/builtin/prompt-optimizer";
 import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
-import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreationAttachmentLimit, removeCreationReferenceTokens, replaceCreationAttachmentReference, selectedCreationReferences, type CreationReference } from "./creation-references";
+import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreationAttachmentLimit, reconcileCreationAttachmentLimits, removeCreationReferenceTokens, replaceCreationAttachmentReference, selectedCreationReferences, type CreationReference } from "./creation-references";
 import { activeVideoCreationAttachments, creationAttachmentFromAsset, creationAttachmentFromAudio, creationAttachmentFromAudioAsset, creationAttachmentFromDocument, creationAttachmentFromExternalAsset, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentFromVideoAsset, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
 import { defaultCreationMode, modeLabels, type CreationConversation, type CreationMessage, type CreationMode, type CreationRetryContext, type CreationSettings, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
 import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages } from "./creation-conversations";
@@ -43,17 +43,6 @@ type CreationRuntime = Awaited<ReturnType<typeof loadCreationRuntime>>;
 
 const TEXT_STREAMING_PREF_KEY = "creation.composer.text-streaming";
 const TEXT_THINKING_PREF_KEY = "creation.composer.text-thinking";
-
-function creationLibraryDisabledReason(mode: CreationMode, kind: string | undefined, videoLimits?: CreationReferenceLimits) {
-    if (!kind) return undefined;
-    if (mode === "image") return kind === "image" ? undefined : "图片创作仅支持参考图";
-    if (mode !== "video") return undefined;
-
-    const maximum = kind === "image" ? videoLimits?.maxImages : kind === "video" ? videoLimits?.maxVideos : kind === "audio" ? videoLimits?.maxAudios : 0;
-    if ((maximum || 0) > 0) return undefined;
-    const label = kind === "video" ? "视频" : kind === "audio" ? "音频" : kind === "image" ? "图片" : "此类素材";
-    return `当前视频模型不支持参考${label}`;
-}
 
 function readComposerPref(key: string, fallback: boolean): boolean {
     try {
@@ -174,8 +163,17 @@ export default function CreatePage() {
         : config, [config, mode, ratio, seconds, selectedModel, videoQuality]);
     const imageProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).image!, [config, selectedModel]);
     const videoProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).video!, [config, selectedModel]);
+    // 全能参考模式按同名模型组取上限：还没加素材时页面解析到的是能力最弱的线路，
+    // 用单个模型的上限会把第一张参考图直接挡在门外。其余三种模式的上限由模式本身决定。
+    const videoReferenceLimits = useMemo(() => mode === "video" && videoMode === "reference"
+        ? modelGroupReferenceLimits(config, preferredModel || selectedModel, "video")
+        : undefined, [config, mode, preferredModel, selectedModel, videoMode]);
+    const videoReferenceMaximum = useCallback((kind: "image" | "video" | "audio") => {
+        const references = videoReferenceLimits ?? videoProfile.references;
+        return kind === "image" ? references.maxImages : kind === "video" ? references.maxVideos : references.maxAudios;
+    }, [videoProfile.references, videoReferenceLimits]);
     const maxReferences = mode === "video"
-        ? videoMode === "text" ? 0 : videoMode === "image" ? 1 : videoMode === "keyframes" ? 2 : videoProfile.references.maxImages + videoProfile.references.maxVideos + videoProfile.references.maxAudios
+        ? videoMode === "text" ? 0 : videoMode === "image" ? 1 : videoMode === "keyframes" ? 2 : videoReferenceMaximum("image") + videoReferenceMaximum("video") + videoReferenceMaximum("audio")
         : mode === "image" ? imageProfile.references.maxImages : 6;
     const referenceImageSize = useMemo(() => {
         const imageAttachments = attachments.filter(isImageAttachment);
@@ -253,12 +251,15 @@ export default function CreatePage() {
     }, [composerPreferencesHydrated, composerPreferencesInitialized, mode, selectedModel, videoProfile]);
 
     useEffect(() => {
-        if (mode === "video") return;
-        const reconciled = reconcileCreationAttachmentLimit(attachments, mentionReferences, maxReferences);
+        // 文生、图生和首尾帧模式的素材在切换模式时保留，只按模式固定数量约束入口。
+        if (mode === "video" && videoMode !== "reference") return;
+        const reconciled = videoReferenceLimits
+            ? reconcileCreationAttachmentLimits(attachments, mentionReferences, videoReferenceLimits)
+            : reconcileCreationAttachmentLimit(attachments, mentionReferences, maxReferences);
         if (reconciled.attachments === attachments) return;
         setAttachments(reconciled.attachments);
         if (reconciled.removedReferences.length) setPrompt((current) => removeCreationReferenceTokens(current, reconciled.removedReferences));
-    }, [attachments, maxReferences, mentionReferences, mode]);
+    }, [attachments, maxReferences, mentionReferences, mode, videoMode, videoReferenceLimits]);
 
     useEffect(() => {
         let cancelled = false;
@@ -418,9 +419,9 @@ export default function CreatePage() {
         if (videoMode === "text") return "文生视频不使用参考素材";
         if (videoMode !== "reference") return kind === "image" ? undefined : "当前视频模式仅支持图片";
         const current = kind === "image" ? attachmentCounts.referenceImages.length : kind === "video" ? attachmentCounts.referenceVideos.length : attachmentCounts.referenceAudios.length;
-        const limit = kind === "image" ? videoProfile.references.maxImages : kind === "video" ? videoProfile.references.maxVideos : videoProfile.references.maxAudios;
+        const limit = videoReferenceMaximum(kind);
         return current >= limit ? `当前模型最多支持 ${limit} ${kind === "image" ? "张图片" : kind === "video" ? "个视频" : "个音频"}` : undefined;
-    }, [attachmentCounts.referenceAudios.length, attachmentCounts.referenceImages.length, attachmentCounts.referenceVideos.length, mode, videoMode, videoProfile.references.maxAudios, videoProfile.references.maxImages, videoProfile.references.maxVideos]);
+    }, [attachmentCounts.referenceAudios.length, attachmentCounts.referenceImages.length, attachmentCounts.referenceVideos.length, mode, videoMode, videoReferenceMaximum]);
     const externalLibraryItems = useMemo<AssetLibraryPickerItem[]>(
         () => externalAssetSources.items.map((item) => ({
             ...item,
@@ -508,9 +509,9 @@ export default function CreatePage() {
             if (videoMode === "text") return;
             const selected = splitCreationAttachments(merged);
             if (videoMode === "reference" && (
-                selected.referenceImages.length > videoProfile.references.maxImages
-                || selected.referenceVideos.length > videoProfile.references.maxVideos
-                || selected.referenceAudios.length > videoProfile.references.maxAudios
+                selected.referenceImages.length > videoReferenceMaximum("image")
+                || selected.referenceVideos.length > videoReferenceMaximum("video")
+                || selected.referenceAudios.length > videoReferenceMaximum("audio")
             )) {
                 toast.warning("所选素材超过当前视频模式或模型的参考上限，请减少选择后重试");
                 return;
@@ -643,9 +644,9 @@ export default function CreatePage() {
             return;
         }
         if (mode === "video" && videoMode === "reference" && (
-            activeVideoAttachments.referenceImages.length > videoProfile.references.maxImages
-            || activeVideoAttachments.referenceVideos.length > videoProfile.references.maxVideos
-            || activeVideoAttachments.referenceAudios.length > videoProfile.references.maxAudios
+            activeVideoAttachments.referenceImages.length > videoReferenceMaximum("image")
+            || activeVideoAttachments.referenceVideos.length > videoReferenceMaximum("video")
+            || activeVideoAttachments.referenceAudios.length > videoReferenceMaximum("audio")
         )) {
             toast.warning("全能参考素材数量超过当前模型上限，请减少后重试");
             releaseRetryLock();
@@ -1034,6 +1035,7 @@ export default function CreatePage() {
         attachments,
         referenceImageSize,
         maxReferences,
+        videoReferenceLimits,
         references: mentionReferences,
         onRemoveAttachment: removeAttachment,
         onClearAttachments: clearAttachments,

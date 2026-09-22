@@ -49,7 +49,7 @@ import { VIDEO_GENERATION_MODE_OPTIONS, type VideoGenerationMode } from "@/lib/v
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
-import { displayCreationPrompt, type CreationReference } from "./creation-references";
+import { displayCreationPrompt, type CreationReference, type CreationReferenceLimits } from "./creation-references";
 import { creationAttachmentKind, creationMediaAspectRatio, removeCreationAttachment, type CreationAttachment, type CreationMode } from "./creation-assets";
 import { conversationTimestamp, isImageAttachment, isVideoAttachment } from "./creation-conversations";
 import { conversationTimeFormatter, countOptions, historyDayFormatter, messageTimeFormatter, modeLabels, qualityOptions, ratioOptions, resolutionOptions, shotScriptLabels, type CreationConversation, type CreationMessage, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
@@ -325,6 +325,8 @@ type ComposerProps = {
     attachments: CreationAttachment[];
     referenceImageSize?: { width: number; height: number };
     maxReferences: number;
+    /** 全能参考模式的上限（同名模型组并集）；其余视频模式由模式本身决定，不使用它。 */
+    videoReferenceLimits?: CreationReferenceLimits;
     references: CreationReference[];
     onRemoveAttachment: (id: string) => void;
     onClearAttachments: () => void;
@@ -449,13 +451,14 @@ export function CreationComposer(props: ComposerProps) {
     const imageReferencesSupported = props.imageProfile.references.maxImages > 0;
     const referencesSupported = props.mode === "image"
         ? imageReferencesSupported
-        : props.mode !== "video" || props.videoMode !== "text";
+        : props.mode !== "video" || props.maxReferences > 0;
+    const videoReferenceLimits = props.videoReferenceLimits ?? props.videoProfile.references;
     const canAddMoreReferences = referencesSupported && (props.mode === "video"
         ? props.videoMode === "image" || props.videoMode === "keyframes"
             ? true
-            : referenceCounts.image < props.videoProfile.references.maxImages
-                    || referenceCounts.video < props.videoProfile.references.maxVideos
-                    || referenceCounts.audio < props.videoProfile.references.maxAudios
+            : referenceCounts.image < videoReferenceLimits.maxImages
+                    || referenceCounts.video < videoReferenceLimits.maxVideos
+                    || referenceCounts.audio < videoReferenceLimits.maxAudios
         : props.attachments.length < props.maxReferences);
     const addReferenceLabel = interactionBusy
         ? props.referenceReplacementBusy ? "正在替换参考图" : "生成中暂不能添加参考内容"

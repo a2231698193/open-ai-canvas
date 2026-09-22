@@ -219,9 +219,25 @@ test("load latest, save and reload stay synced when Agent history replays an unv
     expect(requests.filter((request) => request.method === "put")).toHaveLength(1);
 });
 
-test("a conflict preserves drafts, stops retries and does not block another canvas", async () => {
+test("an independent remote edit merges with local edits instead of stopping the canvas", async () => {
     remote.set("canvas", { ...addNode(canvas(), "remote-video"), revision: 2 });
     useCanvasStore.getState().updateProject("canvas", { nodes: addNode(canvas(), "local-video").nodes });
+
+    await saveRemoteUserDataNow();
+
+    expect(remote.get("canvas")!.revision).toBe(3);
+    expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "remote-video", "local-video"]);
+    expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
+    expect(await readCanvasSyncDrafts("canvas")).toEqual([]);
+});
+
+test("a same-field conflict preserves drafts, stops retries and does not block another canvas", async () => {
+    const remoteCanvas = canvas();
+    remoteCanvas.nodes[0] = { ...remoteCanvas.nodes[0], title: "云端改名" };
+    remote.set("canvas", { ...addNode(remoteCanvas, "remote-video"), revision: 2 });
+    useCanvasStore.getState().updateProject("canvas", {
+        nodes: addNode(canvas(), "local-video").nodes.map((node, index) => (index === 0 ? { ...node, title: "本地改名" } : node)),
+    });
     useCanvasStore.getState().renameProject("other", "other edit");
     await expect(saveRemoteUserDataNow()).rejects.toThrow("版本冲突");
     expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "remote-video"]);

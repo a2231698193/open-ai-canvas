@@ -309,6 +309,10 @@ function mergeProject(base: CanvasProject | undefined, local: CanvasProject, dur
         if (local.revision === base?.revision && sameCanvasContent(base, local)) return { ...durable, viewport: local.viewport };
         return local;
     }
+    return mergeProjectContent(base, local, durable, document, baseRevision, nextRevision, conflicts);
+}
+
+function mergeProjectContent(base: CanvasProject | undefined, local: CanvasProject, durable: CanvasProject, document: CanvasStorageDocument, baseRevision: number, nextRevision: number, conflicts: CanvasStorageConflict[]) {
     const common = {
         projectId: local.id,
         tombstones: document.tombstones,
@@ -362,6 +366,32 @@ function mergeProject(base: CanvasProject | undefined, local: CanvasProject, dur
         durable: durable.chatSessions,
     });
     return merged;
+}
+
+/**
+ * Fold one tab's unsaved edits onto a canvas revision that moved on elsewhere
+ * (another tab, or the `linggan` CLI) so a save that lost the revision race can
+ * continue instead of stopping the canvas.
+ *
+ * The three-way merge is the same one the storage rebase uses: an edit to a
+ * field the remote revision also changed is reported in `conflicts`, and the
+ * caller must then keep the draft-and-stop behaviour rather than overwrite the
+ * remote content. `base` must be the last content this tab agreed on; an
+ * absent or mismatched base means the edit ancestry is unknown and no merge is
+ * safe, so the result reports a conflict without changing anything.
+ */
+export function rebaseEditedProjectOntoRemote(input: { base: CanvasProject | undefined; local: CanvasProject; durable: CanvasProject; baseRevision: number }) {
+    const conflict: CanvasStorageConflict[] = [{ kind: "project", id: input.local.id }];
+    if (!input.base || input.base.revision !== input.local.revision) return { project: input.local, conflicts: conflict };
+    const document: CanvasStorageDocument = {
+        state: { projects: [] },
+        version: 0,
+        storageRevision: input.baseRevision,
+        tombstones: emptyTombstones(),
+    };
+    const conflicts: CanvasStorageConflict[] = [];
+    const project = mergeProjectContent(input.base, input.local, input.durable, document, input.baseRevision, input.baseRevision + 1, conflicts);
+    return { project, conflicts };
 }
 
 export function rebaseCanvasProjects(input: { document: CanvasStorageDocument; baseProjects: CanvasProject[]; localProjects: CanvasProject[]; baseRevision: number }) {
