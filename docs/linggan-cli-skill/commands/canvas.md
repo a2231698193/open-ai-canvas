@@ -121,7 +121,7 @@ linggan canvas tool canvas_inspect_media --file media.json
 {"nodeIds": ["video-1", "video-2"]}
 ```
 
-要看图片画面用 `canvas_inspect_image`：它返回素材的 `nodeId`、尺寸和短时 `imageUrl`，由你自己的模型去取图；`nodeIds` 一次最多 6 张。看不到图（取图失败）时如实说明，不要凭标题猜画面。
+要看图片画面用 `canvas_inspect_image`：命令行返回素材的 `nodeId`、尺寸和短时 `imageUrl`，由你自己的模型去取图（网页画布 Agent 那边是服务端直接把真实图片字节交给模型，不看这个链接）；`nodeIds` 一次最多 6 张。看不到图（取图失败）时如实说明，不要凭标题猜画面。
 
 ```bash
 linggan canvas tool model_list --file model.json
