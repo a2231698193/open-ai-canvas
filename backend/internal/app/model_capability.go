@@ -1075,6 +1075,13 @@ func validateVideoTask(profile *VideoCapabilityConfig, input canvasGenerationInp
 	return nil
 }
 
+// validateVideoReferenceMode 按模式校验参考素材数量与角色。
+//
+// 这里的"恰好 1 张 / 恰好 2 张"不是产品侧的保守取值，而是上游协议的硬约束：以线上在用的
+// seedance 接入约定为例（见 docs/lk888/video2.md 的 content 角色表），`reference_image`
+// 与 `first_frame`/`last_frame` **不能混用**，首尾帧模式下多给一张参考图上游会拒绝或忽略。
+// xAI、Agnes 等协议在本仓库里也是显式报"不能同时混用首尾帧和角色参考图"。要参考图只能走
+// 全能参考（带参考视频/音频），但那条路不表达首尾帧——所以不要为了让两者并存而放宽这里。
 func validateVideoReferenceMode(profile *VideoCapabilityConfig, input canvasGenerationInput) error {
 	mode := metadataString(input.Metadata, "videoMode")
 	startFrameID := metadataString(input.Metadata, "videoStartFrameNodeId")
