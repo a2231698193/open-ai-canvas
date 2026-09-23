@@ -1090,12 +1090,14 @@ func validateVideoReferenceMode(profile *VideoCapabilityConfig, input canvasGene
 		}
 	case "image":
 		if len(input.ReferenceImages) != 1 || len(input.ReferenceVideos)+len(input.ReferenceAudios) > 0 {
-			return BadAuthRequest("图生视频需要且只能使用一张首帧图片")
+			// 只报"只能一张"会让人以为这是产品硬规定：真正的原因是模式（videoMode）由显式角色
+			// 决定，而图生视频这条模式只收一张图。文案要把出路一起说清楚。
+			return BadAuthRequest("图生视频只收一张首帧图片；要多张图片或参考视频/音频请改用全能参考（videoEditOperation 传 reference_to_video）")
 		}
 		requiredRoles = []string{"first_frame"}
 	case "keyframes":
 		if len(input.ReferenceImages) != 2 || len(input.ReferenceVideos)+len(input.ReferenceAudios) > 0 {
-			return BadAuthRequest("首尾帧参考需要且只能使用两张图片")
+			return BadAuthRequest("首尾帧参考只收两张图片（首帧 + 尾帧），不能额外带参考图；要多带素材请改用全能参考（videoEditOperation 传 reference_to_video）")
 		}
 		if startFrameID == "" || endFrameID == "" || startFrameID == endFrameID {
 			return BadAuthRequest("首尾帧参考必须指定两张不同的首帧和尾帧图片")

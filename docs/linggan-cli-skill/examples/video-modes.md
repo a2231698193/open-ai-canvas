@@ -22,7 +22,7 @@ linggan canvas tool model_list --file model.json
 {"mode": "video", "referenceNodeIds": ["img-scn-nursery-master", "img-scn-nursery-cam"]}
 ```
 
-**模式与图片数量是绑死的**：给了 `first_frame` 就是图生视频，只能有 1 张图；给了 `first_frame` + `last_frame` 就是首尾帧，只能有 2 张图（多一张就会收到「首尾帧参考需要且只能使用两张图片」）。想在首尾帧之外再带风格/角色参考图，当前不支持——那种需求要用「全能参考」（多图 + `reference_to_video`），但那条路上不表达首尾帧。
+**模式与图片数量是绑死的**：给了 `first_frame` 就是图生视频，只能有 1 张图；给了 `first_frame` + `last_frame` 就是首尾帧，只能有 2 张图（多一张就会收到「首尾帧参考只收两张图片（首帧 + 尾帧），不能额外带参考图」）。想在首尾帧之外再带风格/角色参考图，当前不支持——那种需求要用「全能参考」（多图 + `reference_to_video`），但那条路上不表达首尾帧。
 
 选模型时看每项的 `options.video.references.imageRoles`：要 `last_frame` 才能做首尾帧，要放三张以上图就得选支持 `reference_to_video` 的模型。
 
