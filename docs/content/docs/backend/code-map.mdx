@@ -102,7 +102,7 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 | `kernel` | 结构化错误、错误码、ID 与通用字符串/配额换算 | **已抽出**：`internal/kernel` |
 | `generation` | 协议注册表和生成域边界 | **部分抽出**：`internal/generation` 提供协议注册入口；`provider_*` 执行簇仍在 `app` |
 | `outbound` | 出站 URL/Header 校验、SSRF 防护、HTTP 客户端 | **已抽出**：`internal/outbound` |
-| `skills` | 技能库、GitHub/ZIP 包、内置技能种子、后台同步 | **已抽出**：`internal/skills` |
+| `skills` | 技能库、GitHub/ZIP 包、内置技能种子、场景预设目录、后台同步 | **已抽出**：`internal/skills`（场景预设见 `skills_presets.go` + `seed/presets.json`） |
 | `prompts` | 提示词模板、用户定制、风格档案、JSON 抽取 | **已抽出**：`internal/prompts` |
 | `auth` | 登录注册、OAuth、邮件验证码、LibTV/TapNow 导入 | **已抽出**：`internal/auth` |
 | `canvas` | 画布公开分享、媒体引用守卫、用户画布/素材库同步 | **已抽出**：`internal/canvas` |
@@ -124,7 +124,8 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 | 用户画布与素材 | `handler/user_data.go` | `internal/canvas` |
 | 文件和对象存储 | `handler/routes.go`、`handler/resource_delivery.go` | `internal/app/resource.go`、`resource_access.go`、`internal/storage`（签名/CDN/range）、`internal/assets`（访问合同） |
 | 画布分享 | `handler/canvas_share.go` | `internal/canvas` |
-| 技能库 | `handler/skills.go` | `internal/skills`、`repository/skills.go` |
+| 技能库与场景预设 | `handler/skills.go` | `internal/skills`（含只读场景预设目录 `GET /skills/presets`）、`repository/skills.go` |
+| Agent 技能用量 | `handler/agent.go` | `internal/app/cloud_agent_skill_usage.go`（按运行日志统计检索与读取）、`repository/cloud_agent.go` |
 | 提示词模板 | `handler/auth.go`、`handler/user_data.go` | `internal/prompts` |
 | 用户风格库 | `handler/style_profile.go` | `internal/prompts`、`repository/style_profile.go` |
 | 用量分析 | `handler/admin_analytics.go` | `internal/app/analytics.go`、`repository/analytics.go` |

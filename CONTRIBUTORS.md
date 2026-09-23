@@ -214,4 +214,14 @@
   <br clear="left">
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+  <img src="assets/user-song.jpg" alt="亿媒网老宋" width="56" align="left">
+  <strong>亿媒网老宋</strong><br>
+  <a href="mailto:61731514@qq.com">61731514@qq.com</a><br>
+  <a href="https://em8.top">亿媒网 em8.top</a><br>
+  <em>全国10W+媒体、自媒体，助力企业品牌传播</em>
+  <br clear="left">
+</td>
+</tr>
 </table>

@@ -2921,6 +2921,12 @@ SSE 现在按 revision 变化发送紧凑快照，无变化只 heartbeat；客�
 
 验证：`gofmt -l` 干净；`go build ./...`；后端 `go test ./...` 全量通过（无跳过、无 FAIL）。前端 `bun run typecheck`、`bun run test` 2083 项全通过、`bun scripts/check-changed-formatting.mjs`（BASE_SHA 取合并前的 main）通过——上游新增的 5 个前端文件按本仓库 prettier 配置重新格式化。上游自带的两项测试按本仓库契约做了适配：`canvas_inspect_image` 返回批量类型，`resolveMediaUrl` 断言改为访问契约解析；另外发现 `resolveImageUrl` 在访问地址签发失败时会中断生成结果落盘（Worker 测试环境复现 `Invalid URL`），已加平台文件地址兜底。仍待真实环境验收：OSS/CDN 透传 `response-content-disposition`（直连下载的文件名依赖它）、生产更新后的识图循环止损表现、视频节点首帧与音量在真实素材上的表现。
 
+上游主线合并（8 个提交：图片裁剪跨域修复、技能场景预设与场景胶囊、技能用量统计、创作引导可点选项与工具描述预算、技能种子同步与门房、README 社区展示）：只有 `README.md` 一个文件冲突，其余 28 个文件自动合并。
+
+合并取舍：本仓库 README 是特意裁剪过的（定位 → 与上游差异 → 快速开始 → 部署与安全 → 文档 → 许可证），署名走 `CONTRIBUTORS.md` + `NOTICE`，因此两处 README 冲突都取本仓库版本，官方这次新增的贡献者（亿媒网老宋 / `assets/user-song.jpg`）补进了 `CONTRIBUTORS.md`，官方新加的贡献者解析断言因此仍然成立。前端自动合并留下一个重复 import（`markdownPlainText`）已清理；本仓库的两条守护断言按合并后的结构收紧——插话用例原先用 `not.toContain("disabled={busy || running ||")` 全局否定，现在官方新增的场景胶囊本身允许运行中禁用，断言改成只取 `<AgentChatComposer>` 自己的 `disabled` 表达式。
+
+验证：后端 `gofmt -l` 干净、`go build ./...`、`go test ./... -count=1` 全量通过（0 个 FAIL，含上游新增的场景预设与技能用量用例）；前端 `bun run typecheck`、`bun run lint`、`bun run build`、`bun run test` 2084 项通过、改动文件 prettier 检查通过（上游新增的 `canvas-cloud-agent-chat-ui.tsx`、`skills-api.test.ts` 按本仓库 prettier 配置重新格式化）。仍待真实环境验收：场景胶囊在真实技能库上的挂载与自动补装、技能用量在后台的展示口径、云端图片裁剪在真实 OSS/CDN 资源上的表现（跨域图片依赖前端取回字节后裁剪）。
+
 ## 画布媒体交互与 Agent 循环止损复测（2026-09-23）
 
 本轮针对画布媒体节点、生成任务状态及云端 Agent 重复读取问题完成实现和复测。代码仍未提交，以下结论基于当前工作区的专项测试与隔离本地浏览器环境，不代表已部署生产。

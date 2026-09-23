@@ -15,8 +15,11 @@ test("运行中不再锁死输入框，发送走插话而不是新建轮次", as
     expect(panel).toContain('interjection: "sent"');
 
     // 输入框的禁用条件里不能再有 running —— 只保留「连不上事件流」「历史/待确认未水合」这类真不能发的状态
-    expect(panel).toContain('disabled={Boolean(run && connectionStatus !== "connected")');
-    expect(panel).not.toContain("disabled={busy || running ||");
+    // 只看输入框自己的 disabled：场景胶囊等其它控件允许在运行中禁用。
+    const composerDisabled = panel.match(/<AgentChatComposer[\s\S]*?disabled=\{([^}]*)\}/)?.[1] ?? "";
+    expect(composerDisabled).toContain('connectionStatus !== "connected"');
+    expect(composerDisabled).not.toContain("busy");
+    expect(composerDisabled).not.toContain("running");
     // 停止按钮由 running 驱动，发送按钮由我们自己的请求驱动，两者不再互斥
     expect(panel).toContain("sending={busy}");
     expect(panel).toContain("running={running}");
