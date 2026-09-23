@@ -104,14 +104,16 @@ linggan canvas apply --file ops.json
 | `image_text_detect` | 读取图片节点，准备文字识别 |
 | `canvas_arrange_nodes` | 只整理节点坐标，不改内容和连线 |
 | `canvas_inspect_image` | 返回图片节点的短时查看链接，供外部模型看图；`nodeId` 或 `nodeIds`（一次最多 6 张）二选一 |
-| `canvas_inspect_media` | 读图片/视频/音频节点的素材事实：是否就绪、时长、分辨率、字节、格式；不带画面 |
+| `canvas_inspect_media` | 读图片/视频/音频节点的素材事实（是否就绪、时长、分辨率、字节、格式）并给出短时 `resourceUrl`；不带画面 |
 | `image_annotation_render` | 生成标注参考图 |
 | `generate_media` | 创建图片、视频或音频节点并提交生成 |
 | `image_layer_split` | 拆分图片图层并提交生成 |
 
 图片、视频和音频生成优先用 `generate_media`，不要用 `task create`。`task create` 只提交任务，不会创建结果节点，也不会把结果写回画布。
 
-生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。本地原件会在读取时解析一次视频容器头，这种情况下多一个 `factsSource: "container"`；远端存储不下载，拿不到就带 `factsIncomplete` 并如实留 0，不要把它当成“视频是 0 秒”。
+生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`，**以及 `resourceUrl`（图片、视频、音频都有，短时签名链接，由你自己的模型或脚本去取）**；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。签不出链接时多一个 `urlIssue`，事实仍然可用。本地原件会在读取时解析一次视频容器头，这种情况下多一个 `factsSource: "container"`；远端存储不下载，拿不到就带 `factsIncomplete` 并如实留 0，不要把它当成“视频是 0 秒”。
+
+要看画面：图片用 `canvas_inspect_image`（短时链接，`nodeIds` 一次最多 6 张）；视频和音频用 `canvas_inspect_media` 的 `resourceUrl` 自己下载后再处理（抽帧、送视频模型等）。
 
 ```bash
 linggan canvas tool canvas_inspect_media --file media.json

@@ -283,12 +283,16 @@ func (s *Service) cloudAgentInspectImageNode(userID string, state *cloudAgentRun
 }
 
 // cloudAgentMediaInspection 读取图片/视频/音频节点的素材事实：是否就绪、
-// 时长、分辨率、字节、格式和输入种类。它不下载任何媒体，也不签发链接——回答的是
-// "这个结果能用吗、多长、多大"，而"画面长什么样"仍然只能由 canvas_inspect_image 得到。
+// 时长、分辨率、字节、格式和输入种类。它不下载任何媒体——回答的是"这个结果能用吗、
+// 多长、多大"，而"画面长什么样"仍然只能由 canvas_inspect_image 得到。
 //
 // 单个节点没就绪不判整次调用失败：一次看多个节点时，如实逐条回报比整体报错更有用。
 // 传了 service 时，本地视频缺失的时长/分辨率会现解析一次容器头（远端存储不下载）。
-func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID string, call cloudAgentCall, services ...*Service) (any, error) {
+//
+// withURL 只给命令行/外部 Agent 用：外部 Agent 拿不到服务端内联的字节，需要短时签名
+// 链接自己去取图片、视频或音频；画布 Agent 的图片由服务端读字节、媒体只给事实，
+// 因此那条路径不签发链接（也不把 URL 写进检查点）。
+func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID string, call cloudAgentCall, withURL bool, services ...*Service) (any, error) {
 	var service *Service
 	if len(services) > 0 {
 		service = services[0]
@@ -329,6 +333,15 @@ func cloudAgentMediaInspection(repo *repository.Repository, userID, canvasID str
 		for _, key := range []string{"mimeType", "bytes", "width", "height", "durationMs"} {
 			if value, ok := reference[key]; ok {
 				item[key] = value
+			}
+		}
+		if withURL && service != nil {
+			url, urlErr := service.signedInspectionResourceURL(userID, stringValue(reference["storageKey"]))
+			if urlErr != nil {
+				// 链接签不出来不影响事实：如实说明，别把已经拿到的时长分辨率也一起丢掉。
+				item["urlIssue"] = cloudAgentSafeToolError(urlErr)
+			} else {
+				item["resourceUrl"] = url
 			}
 		}
 		// 视频的时长和分辨率上游基本不回传，资源行里可能是 0。本地文件能解析就现算一次；

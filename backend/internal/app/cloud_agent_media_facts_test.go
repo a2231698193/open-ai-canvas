@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/storage"
 )
 
 // nodeId 与 nodeIds 二选一：两个都填、都不填、超过上限都要在动手之前报错。
@@ -74,7 +75,7 @@ func TestCloudAgentMediaInspectionReportsFactsWithoutMedia(t *testing.T) {
 		return c
 	}
 
-	single, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"video-1"}`))
+	single, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"video-1"}`), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestCloudAgentMediaInspectionReportsFactsWithoutMedia(t *testing.T) {
 		t.Fatalf("读素材事实不应签发链接：%#v", facts)
 	}
 
-	batch, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeIds":["video-1","audio-1","video-2"]}`))
+	batch, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeIds":["video-1","audio-1","video-2"]}`), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,10 +106,10 @@ func TestCloudAgentMediaInspectionReportsFactsWithoutMedia(t *testing.T) {
 		t.Fatalf("音频事实不完整：%#v", audio)
 	}
 
-	if _, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"note-1"}`)); err == nil || !strings.Contains(err.Error(), "不是媒体节点") {
+	if _, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"note-1"}`), false); err == nil || !strings.Contains(err.Error(), "不是媒体节点") {
 		t.Fatalf("文本节点应被拒：%v", err)
 	}
-	if _, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"missing"}`)); err == nil || !strings.Contains(err.Error(), "不在当前画布") {
+	if _, err := cloudAgentMediaInspection(s.repo, "user", "facts-canvas", call(`{"nodeId":"missing"}`), false); err == nil || !strings.Contains(err.Error(), "不在当前画布") {
 		t.Fatalf("不存在的节点应被拒：%v", err)
 	}
 }
@@ -153,7 +154,7 @@ func TestCloudAgentMediaInspectionProbesLocalVideoFacts(t *testing.T) {
 		return c
 	}
 
-	facts, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-local"}`), s)
+	facts, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-local"}`), false, s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,12 +167,63 @@ func TestCloudAgentMediaInspectionProbesLocalVideoFacts(t *testing.T) {
 	}
 
 	// 远端存储不下载：如实标出这两个事实拿不到，而不是给一个假的 0。
-	remote, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-remote"}`), s)
+	remote, err := cloudAgentMediaInspection(s.repo, "user", "probe-canvas", call(`{"nodeId":"video-remote"}`), false, s)
 	if err != nil {
 		t.Fatal(err)
 	}
 	remoteFacts, _ := remote.(map[string]any)
 	if remoteFacts["durationMs"] != int64(0) || stringValue(remoteFacts["factsIncomplete"]) == "" {
 		t.Fatalf("远端视频应当如实报告事实不全：%#v", remoteFacts)
+	}
+}
+
+// 外部 Agent 拿不到服务端内联的字节，必须能自己取到媒体：命令行这条路要给图片、视频、
+// 音频都签发短时链接；画布 Agent 那条路（withURL=false）只给事实，不把 URL 带进上下文。
+func TestCLIMediaInspectionSignsResourceURLForVideo(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	// 用公开 CDN 方式签发：不需要 DNS，也不依赖服务器公网地址配置。
+	settingJSON, err := json.Marshal(ossSettingValue{Enabled: true, Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", CDNBaseURL: "https://media.example.com", Bucket: "b", AccessKeyID: "id", AccessKeySecret: "secret", Delivery: storage.DeliverySettings{CDNAuthMode: "public"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Save(&model.SystemSetting{Key: ossSettingKey, ValueJSON: string(settingJSON)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	clip := metadataMP4(1000, 12000, 1344, 768, true)
+	// 资源行带上落盘时解析出的时长与分辨率（远端存储读取侧不再下载，事实来自资源行）。
+	if err := db.Create(&model.Resource{ID: "clip-res", UserID: "user", Kind: "video", Status: "ready", Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", Bucket: "b", ObjectKey: "users/user/video/clip.mp4", MimeType: "video/mp4", Size: int64(len(clip)), Width: 1344, Height: 768, DurationMs: 12000}).Error; err != nil {
+		t.Fatal(err)
+	}
+	doc := map[string]any{"nodes": []any{
+		map[string]any{"id": "video-1", "type": "video", "title": "第 1 段", "metadata": map[string]any{"status": "success", "storageKey": "resource:clip-res"}},
+	}, "connections": []any{}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.CanvasProject{ID: "url-canvas", UserID: "user", PayloadJSON: string(raw)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var call cloudAgentCall
+	call.ID, call.Function.Name, call.Function.Arguments = "call-1", "canvas_inspect_media", `{"nodeId":"video-1"}`
+
+	// 命令行：带 resourceUrl
+	withURL, err := cloudAgentMediaInspection(s.repo, "user", "url-canvas", call, true, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cliFacts, _ := withURL.(map[string]any)
+	url, _ := cliFacts["resourceUrl"].(string)
+	if !strings.HasPrefix(url, "https://media.example.com/") || cliFacts["durationMs"] != int64(12000) || cliFacts["width"] != 1344 || cliFacts["ready"] != true {
+		t.Fatalf("命令行读视频应当同时拿到链接与事实：%#v", cliFacts)
+	}
+
+	// 画布 Agent：只给事实
+	agentFacts, err := cloudAgentMediaInspection(s.repo, "user", "url-canvas", call, false, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, leaked := agentFacts.(map[string]any)["resourceUrl"]; leaked {
+		t.Fatalf("画布 Agent 那条路不应带链接：%#v", agentFacts)
 	}
 }

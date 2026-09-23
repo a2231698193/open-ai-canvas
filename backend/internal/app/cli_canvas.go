@@ -193,7 +193,8 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 	case "canvas_inspect_image":
 		return s.CLICanvasImageInspection(userID, canvasID, state, call)
 	case "canvas_inspect_media":
-		return cloudAgentMediaInspection(s.repo, userID, canvasID, call, s)
+		// 外部 Agent 需要能自己取到媒体：带短时签名链接（图片、视频、音频都可）。
+		return cloudAgentMediaInspection(s.repo, userID, canvasID, call, true, s)
 	case "model_list":
 		intent, err := s.cloudAgentModelIntent(userID, canvasID, string(raw))
 		if err != nil {

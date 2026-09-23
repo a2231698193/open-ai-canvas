@@ -743,7 +743,7 @@ func cloudAgentReadTool(repo *repository.Repository, userID string, state *cloud
 		}
 		return map[string]any{"nodeId": args.NodeID, "reference": ref, "status": "ready_for_visual_detection", "outputSchema": []string{"original", "text", "location"}, "nextStep": "使用视觉模型对该参考图返回 JSON 数组；不要把识别结果写回画布"}, nil
 	case "canvas_inspect_media":
-		return cloudAgentMediaInspection(repo, userID, state.Request.CanvasID, call, service)
+		return cloudAgentMediaInspection(repo, userID, state.Request.CanvasID, call, false, service)
 	case "image_annotation_render":
 		if len(services) == 0 || services[0] == nil {
 			return nil, BadAuthRequest("标注资源存储不可用")

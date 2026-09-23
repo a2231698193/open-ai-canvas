@@ -1319,7 +1319,7 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 	var mediaFactsResult any
 	var mediaFactsErr error
 	if allowed && call.Function.Name == "canvas_inspect_media" {
-		mediaFactsResult, mediaFactsErr = cloudAgentMediaInspection(s.repo, run.UserID, state.Request.CanvasID, call, s)
+		mediaFactsResult, mediaFactsErr = cloudAgentMediaInspection(s.repo, run.UserID, state.Request.CanvasID, call, false, s)
 	}
 	// Skill reads use the domain repository and filesystem, not the checkpoint
 	// transaction's connection. Read first to avoid nesting DB reads on SQLite.
