@@ -59,6 +59,7 @@ export type ApiCallLog = {
     channelName: string;
     taskId?: string;
     taskStatus?: TaskStatus;
+    mediaStage?: GenerationTask["mediaStage"];
     billingOrderId?: string;
     billingStatus?: BillingOrder["status"];
     billingAmountMicrocredits: number;
@@ -66,7 +67,7 @@ export type ApiCallLog = {
     source: string;
     capability: "text" | "image" | "video" | "audio" | "";
     operation?: string;
-    requestKind: "create" | "poll" | "download" | "repair" | "";
+    requestKind: "create" | "poll" | "download" | "upload" | "local_save" | "register" | "repair" | "";
     billable: boolean;
     apiFormat: string;
     method: string;
@@ -278,6 +279,10 @@ export type AdminOSSSetting = {
     region: string;
     endpoint: string;
     cdnBaseUrl: string;
+    // 分发策略：与后端 storage.Settings.Delivery 对齐（上游 b9c7439c 补齐）。
+    cdnAuthMode: "" | "public" | "qiniu" | string;
+    requireCDN: boolean;
+    allowPrivateProxy: boolean;
     bucket: string;
     accessKeyId: string;
     accessKeySecret?: string;

@@ -8,13 +8,23 @@ export const statusLabel: Record<TaskStatus, string> = {
     cancelled: "已取消",
 };
 
-type GenerationTaskDisplayTarget = Pick<GenerationTask, "status" | "stage">;
+type GenerationTaskDisplayTarget = Pick<GenerationTask, "status" | "stage" | "mediaStage">;
+
+export function mediaDeliverySummary(status: TaskStatus | undefined, stage: GenerationTask["mediaStage"]) {
+    if (!stage) return "";
+    if (stage === "completed") return "生成成功 · 文件保存成功 · 素材登记成功";
+    const prefix = stage === "download" || stage === "checkpoint" ? "生成成功" : stage === "register" ? "生成成功 · 文件保存成功" : "生成成功 · 下载成功";
+    const action = { download: "下载", upload: "上传 OSS", local_save: "保存文件", register: "登记素材", checkpoint: "记录恢复信息" }[stage];
+    return `${prefix} · ${action}${status === "failed" ? "失败" : status === "cancelled" ? "已停止" : "待完成"}`;
+}
 
 export function isGenerationTaskSubmissionUncertain(task: GenerationTaskDisplayTarget) {
     return task.stage === "submission_unknown";
 }
 
 export function generationTaskStatusLabel(task: GenerationTaskDisplayTarget) {
+    if (task.mediaStage && task.status === "failed") return "作品保存未完成";
+    if (task.mediaStage && (task.status === "queued" || task.status === "running")) return "作品已生成，正在保存";
     if (isGenerationTaskSubmissionUncertain(task)) return "提交结果待确认";
     return statusLabel[task.status];
 }
@@ -28,6 +38,7 @@ export function generationTaskStageLabel(task: GenerationTaskDisplayTarget) {
 }
 
 export function generationTaskShowsProgress(task: GenerationTaskDisplayTarget) {
+    if (task.mediaStage && task.mediaStage !== "completed") return false;
     if (isGenerationTaskSubmissionUncertain(task)) return false;
     // 进行中一律带进度条：文案已统一为「生成中」，不再按阶段隐藏进度。
     return true;

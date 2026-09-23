@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { MediaPreview } from "@/components/media-preview";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
-import { formatTaskKind, generationTaskProgressText, statusLabel } from "@/lib/generation-task-display";
+import { formatTaskKind, generationTaskProgressText, generationTaskStatusLabel } from "@/lib/generation-task-display";
 import type { GenerationTask } from "@/services/api/task-center";
 import type { AiConfig } from "@/stores/use-config-store";
 import { formatModelName, getTaskCanvasContext, isTaskFailed, statusDotClassName, taskAttentionReason, TaskBilling, TaskDate } from "./task-shared";
@@ -44,7 +44,7 @@ export function TaskListRow({
                 <div className="task-record-heading">
                     <span className={`task-record-status ${isFailed ? "is-failed" : isActive ? "is-active" : "is-success"}`}>
                         <i className={statusDotClassName(task.status)} />
-                        {statusLabel[task.status]}
+                        {generationTaskStatusLabel(task)}
                     </span>
                     <button type="button" className="task-record-title" title={task.prompt} onClick={onOpen}>
                         {task.prompt || "未命名任务"}
@@ -61,7 +61,7 @@ export function TaskListRow({
                     </span>
                 </div>
                 {isActive ? (
-                    <div className="task-record-progress" role="progressbar" aria-label="任务生成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
+                    <div className="task-record-progress" role="progressbar" aria-label={generationTaskStatusLabel(task)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress || 0}>
                         <span>{generationTaskProgressText(task)}</span>
                         <span>{task.progress || 0}%</span>
                         <i>
@@ -84,16 +84,8 @@ export function TaskListRow({
                     <IconButton size="sm" variant="ghost" icon={Eye} aria-label="查看详情" onClick={onOpen} />
                 </Tooltip>
                 {isFailed ? (
-                    <Tooltip title={retryDisabled ? "内容审核失败，无法自动重试" : "重试任务"}>
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<RotateCcw className="size-3.5" />}
-                            aria-label="重试任务"
-                            loading={actingId === task.id}
-                            disabled={retryDisabled}
-                            onClick={onRetry}
-                        />
+                    <Tooltip title={retryDisabled ? "内容审核失败，无法自动重试" : task.canRecoverMedia ? "重试保存，不重新生成" : "重试任务"}>
+                        <Button type="text" size="small" icon={<RotateCcw className="size-3.5" />} aria-label={task.canRecoverMedia ? "重试保存" : "重试任务"} loading={actingId === task.id} disabled={retryDisabled} onClick={onRetry} />
                     </Tooltip>
                 ) : null}
             </div>
@@ -124,7 +116,13 @@ function TaskPreviewThumbnail({ task, onOpen }: { task: GenerationTask; onOpen: 
             aria-label={previewUnavailable ? "预览不可用，素材可能已删除" : isVideo ? "放大预览生成视频" : "放大预览生成图片"}
             title={previewUnavailable ? "预览不可用，素材可能已删除" : undefined}
         >
-            {thumbnailUrl ? <MediaPreview src={thumbnailUrl} kind="image" width={68} height={48} loading="lazy" className="h-full w-full object-cover" fallbackLabel="预览不可用" onUnavailable={() => setUnavailableUrl(thumbnailUrl)} /> : isVideo ? <TaskVideoThumbnail src={task.previewUrl} /> : <ImageIcon className="size-4" />}
+            {thumbnailUrl ? (
+                <MediaPreview src={thumbnailUrl} kind="image" width={68} height={48} loading="lazy" className="h-full w-full object-cover" fallbackLabel="预览不可用" onUnavailable={() => setUnavailableUrl(thumbnailUrl)} />
+            ) : isVideo ? (
+                <TaskVideoThumbnail src={task.previewUrl} />
+            ) : (
+                <ImageIcon className="size-4" />
+            )}
             {!previewUnavailable ? (
                 <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition-[background-color,opacity] duration-150 group-hover:bg-black/30 group-hover:opacity-100 group-focus-visible:bg-black/30 group-focus-visible:opacity-100">
                     {isVideo ? <Play className="size-4 fill-current" /> : <Eye className="size-4" />}

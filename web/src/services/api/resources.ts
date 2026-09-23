@@ -18,10 +18,10 @@ export type RemoteResource = {
     height?: number;
     durationMs?: number;
     etag?: string;
-	playbackStatus?: string;
-	playbackObjectKey?: string;
-	playbackError?: string;
-	error?: string;
+    playbackStatus?: string;
+    playbackObjectKey?: string;
+    playbackError?: string;
+    error?: string;
     createdAt: string;
     updatedAt: string;
 };
@@ -33,6 +33,9 @@ export type UserOSSSetting = {
     region: string;
     endpoint: string;
     cdnBaseUrl: string;
+    cdnAuthMode: "" | "public" | "qiniu" | string;
+    requireCDN: boolean;
+    allowPrivateProxy: boolean;
     bucket: string;
     accessKeyId: string;
     hasAccessKeySecret: boolean;
@@ -52,6 +55,9 @@ export type UserOSSSetting = {
 export type UserOSSSettingInput = Pick<UserOSSSetting, "enabled" | "provider" | "s3Preset" | "region" | "endpoint" | "cdnBaseUrl" | "bucket" | "accessKeyId" | "pathPrefix" | "pathStyle"> & {
     accessKeySecret?: string;
     sessionToken?: string;
+    cdnAuthMode?: "" | "public" | "qiniu" | string;
+    requireCDN?: boolean;
+    allowPrivateProxy?: boolean;
 };
 
 export type AccountFileStorageUsage = {
@@ -96,9 +102,23 @@ export class ResourceUploadError extends Error {
 const resourceCache = new Map<string, RemoteResource>();
 const resourceRequests = new Map<string, Promise<RemoteResource>>();
 const missingResourceIds = new Set<string>();
-const ossUrlCache = new Map<string, { url: string; expiresAt: number }>();
-const ossUrlRequests = new Map<string, Promise<string>>();
-const OSS_URL_CACHE_TTL_MS = 4 * 60 * 1000;
+export type ResourceAccessPurpose = "display" | "copy" | "download" | "browser-process" | "provider-input";
+export type ResourceAccessVariant = "original" | "playback";
+export type ResourceAccess = {
+    resourceId: string;
+    requestedVariant: ResourceAccessVariant;
+    actualVariant: ResourceAccessVariant;
+    url: string;
+    delivery: "cdn" | "origin" | "platform-local" | "platform-proxy";
+    issuedAt: string;
+    expiresAt?: string;
+    refreshAt: string;
+    revision: string;
+    fallbackReason?: string;
+};
+
+const accessCache = new Map<string, { value: ResourceAccess; expiresAt: number }>();
+const accessRequests = new Map<string, Promise<ResourceAccess>>();
 
 export function resourceStorageKey(id: string) {
     return `resource:${id}`;
@@ -140,12 +160,7 @@ export function isResourceUrl(url?: string) {
 const CHUNK_UPLOAD_THRESHOLD = 50 << 20;
 const CHUNK_UPLOAD_RETRIES = 2;
 
-export async function uploadResourceFile(
-    file: Blob,
-    kind: "image" | "video" | "audio" | "file",
-    meta?: ResourceUploadMeta,
-    onProgress?: (uploadedBytes: number, totalBytes: number) => void,
-): Promise<RemoteResource> {
+export async function uploadResourceFile(file: Blob, kind: "image" | "video" | "audio" | "file", meta?: ResourceUploadMeta, onProgress?: (uploadedBytes: number, totalBytes: number) => void): Promise<RemoteResource> {
     const name = meta?.fileName || (file instanceof File ? file.name : `${kind}.${extensionFromMime(file.type, kind)}`);
     // 分片与 multipart 两条路径的失败都要归一成 ResourceUploadError，
     // 否则调用方只能靠文案猜测该重试还是该报错。
@@ -163,9 +178,11 @@ export async function uploadResourceFile(
         if (meta?.durationMs) formData.append("durationMs", String(Math.round(meta.durationMs)));
         const data = await http.post<{ resource: RemoteResource }>("/resources", formData, {
             ...uploadRequestConfig(meta?.idempotencyKey),
-            onUploadProgress: onProgress ? ({ loaded, total }) => {
-                if (total && total > 0) onProgress(Math.min(file.size, file.size * loaded / total), file.size);
-            } : undefined,
+            onUploadProgress: onProgress
+                ? ({ loaded, total }) => {
+                      if (total && total > 0) onProgress(Math.min(file.size, (file.size * loaded) / total), file.size);
+                  }
+                : undefined,
         });
         resourceCache.set(resourceCacheKey(data.resource.id), data.resource);
         return data.resource;
@@ -189,7 +206,11 @@ async function uploadFileInChunks(file: Blob, name: string, kind: "image" | "vid
 }
 
 async function runChunkedUpload(file: Blob, name: string, kind: "image" | "video" | "audio" | "file", meta: ResourceUploadMeta | undefined, onProgress?: (uploadedBytes: number, totalBytes: number) => void) {
-    const session = await http.post<{ uploadId: string; chunkSize: number; chunkCount: number }>("/resources/uploads", { fileName: name, kind, size: file.size, width: meta?.width, height: meta?.height, durationMs: meta?.durationMs }, uploadRequestConfig(meta?.idempotencyKey));
+    const session = await http.post<{ uploadId: string; chunkSize: number; chunkCount: number }>(
+        "/resources/uploads",
+        { fileName: name, kind, size: file.size, width: meta?.width, height: meta?.height, durationMs: meta?.durationMs },
+        uploadRequestConfig(meta?.idempotencyKey),
+    );
     for (let index = 0; index < session.chunkCount; index++) {
         const start = index * session.chunkSize;
         const end = Math.min(file.size, start + session.chunkSize);
@@ -246,7 +267,8 @@ export function getResource(id: string): Promise<RemoteResource> {
     if (missingResourceIds.has(cacheKey)) return Promise.reject(new Error("资源不存在或已被删除"));
     const pending = resourceRequests.get(cacheKey);
     if (pending) return pending;
-    const task = http.get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`)
+    const task = http
+        .get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`)
         .then((data) => {
             resourceCache.set(cacheKey, data.resource);
             return data.resource;
@@ -263,36 +285,59 @@ export function getResource(id: string): Promise<RemoteResource> {
 // refreshResource 绕过缓存强制拉取资源最新状态（转码副本就绪轮询用），并回写缓存。
 export function refreshResource(id: string): Promise<RemoteResource> {
     const cacheKey = resourceCacheKey(id);
-    return http.get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`)
-        .then((data) => {
-            resourceCache.set(cacheKey, data.resource);
-            missingResourceIds.delete(cacheKey);
-            return data.resource;
-        });
+    return http.get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`).then((data) => {
+        resourceCache.set(cacheKey, data.resource);
+        missingResourceIds.delete(cacheKey);
+        return data.resource;
+    });
 }
 
-export async function getResourceOSSUrl(storageKey?: string) {
+export async function getResourceAccess(storageKey: string | undefined, purpose: ResourceAccessPurpose = "display", variant: ResourceAccessVariant = "original") {
     const id = resourceIdFromStorageKey(storageKey);
     if (!id) throw new Error("当前媒体尚未上传到后端资源存储");
-    const cached = ossUrlCache.get(resourceCacheKey(id));
-    if (cached && cached.expiresAt > Date.now()) return cached.url;
-    const pending = ossUrlRequests.get(resourceCacheKey(id));
+    const key = `${resourceCacheKey(id)}:${purpose}:${variant}`;
+    const cached = accessCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const pending = accessRequests.get(key);
     if (pending) return pending;
     const request = (async () => {
         try {
-            const data = await http.get<{ url: string }>(`/resources/${encodeURIComponent(id)}/oss-url`);
-            if (!data.url) throw new Error("后端未返回对象存储地址");
-            ossUrlCache.set(resourceCacheKey(id), { url: data.url, expiresAt: Date.now() + OSS_URL_CACHE_TTL_MS });
-            return data.url;
+            const data = await http.post<{ items: Array<{ resourceId: string; access?: ResourceAccess; error?: { msg?: string } }> }>("/resources/access", [{ resourceId: id, purpose, variant }]);
+            const item = data.items?.[0];
+            if (!item?.access?.url) throw new Error(item?.error?.msg || "后端未返回资源访问地址");
+            const value = item.access;
+            const ttl = value.expiresAt ? Math.max(10_000, new Date(value.expiresAt).getTime() - Date.now() - 15_000) : 5 * 60_000;
+            accessCache.set(key, { value, expiresAt: Date.now() + ttl });
+            return value;
         } catch (error) {
             if (error instanceof ApiError) throw new Error(error.message || "获取对象存储地址失败");
             throw error;
         } finally {
-            ossUrlRequests.delete(resourceCacheKey(id));
+            accessRequests.delete(key);
         }
     })();
-    ossUrlRequests.set(resourceCacheKey(id), request);
+    accessRequests.set(key, request);
     return request;
+}
+
+/** 模型上游读取资源使用更长 TTL，但仍走统一资源访问合同。 */
+export async function getResourceInputURL(storageKey?: string) {
+    return (await getResourceAccess(storageKey, "provider-input")).url;
+}
+
+/**
+ * Resolve a platform delivery URL against the configured API origin.
+ *
+ * Cloud deliveries are already absolute CDN/origin URLs. Local/proxy
+ * deliveries are intentionally returned by the backend as controlled API
+ * paths; when the frontend talks to a separate backend origin, resolving the
+ * path here prevents a Blob read from accidentally targeting the web origin.
+ */
+export function resolveResourceAccessURL(url: string) {
+    if (!url || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(url)) return url;
+    const base = String(apiBaseURL).trim();
+    if (!/^https?:\/\//i.test(base)) return url;
+    return new URL(url, `${base.replace(/\/+$/, "")}/`).toString();
 }
 
 function resourceCacheKey(id: string) {
@@ -312,18 +357,7 @@ export function resourceIdFromFileUrl(url?: string) {
 
 export function resourceFileUrl(id: string, options?: { download?: boolean; fileName?: string; proxy?: boolean }) {
     const base = String(apiBaseURL).replace(/\/+$/, "");
-    const url = `${base}/resources/${encodeURIComponent(id)}/file`;
-    const params = new URLSearchParams();
-    if (options?.download) params.set("download", "1");
-    if (options?.proxy) params.set("proxy", "1");
-    if (!options?.download && !options?.proxy) params.set("direct", "1");
-    if (options?.download && options.fileName) params.set("filename", options.fileName);
-    const query = params.toString();
-    return query ? `${url}?${query}` : url;
-}
-
-function resourceProxyFileUrl(id: string) {
-    return resourceFileUrl(id, { proxy: true });
+    return `${base}/resources/${encodeURIComponent(id)}/file`;
 }
 
 export function resolveResourceUrl(storageKey?: string, fallback = "") {
@@ -337,48 +371,21 @@ export function resolveResourceUrl(storageKey?: string, fallback = "") {
 // 副本就绪前由后端回退原件，调用方再按需降级。
 export function playbackVariantUrl(id: string) {
     const base = String(apiBaseURL).replace(/\/+$/, "");
-    return `${base}/resources/${encodeURIComponent(id)}/file?variant=playback&direct=1`;
+    return `${base}/resources/${encodeURIComponent(id)}/file?variant=playback`;
 }
 
-export async function getResourceBlob(storageKey: string, options?: { allowProxyFallback?: boolean }) {
+export async function getResourceBlob(storageKey: string) {
     const id = resourceIdFromStorageKey(storageKey);
     if (!id) return null;
-    // A direct OSS response needs CORS to be readable as a Blob. Native <img>/<video>
-    // can still display it without CORS, so background cache fills must not proxy it.
-    //
-    // 没配 CORS 的对象存储会让直连每次都失败：同一主机失败过一次就记住，
-    // 后续直接走同源代理，不再重复发出注定失败的跨域请求和控制台报错。
-    let ossUrl = "";
-    try {
-        ossUrl = await getResourceOSSUrl(storageKey);
-    } catch {
-        if (!options?.allowProxyFallback) return null;
-    }
-    const ossHost = hostOfUrl(ossUrl);
-    if (ossUrl && !(ossHost && corsBlockedHosts.has(ossHost))) {
-        try {
-            const response = await fetch(ossUrl, { credentials: "omit", mode: "cors" });
-            if (response.ok) return response.blob();
-            if (!options?.allowProxyFallback || response.status === 401 || response.status === 403 || response.status === 404) return null;
-        } catch {
-            if (ossHost) corsBlockedHosts.add(ossHost);
-            if (!options?.allowProxyFallback) return null;
-        }
-    }
-    if (!options?.allowProxyFallback) return null;
-    const response = await fetch(resourceProxyFileUrl(id), { credentials: "include" });
-    return response.ok ? response.blob() : null;
-}
-
-/** 同一会话内直连失败过的主机名，用于跳过注定失败的跨域重试。 */
-const corsBlockedHosts = new Set<string>();
-
-function hostOfUrl(url: string) {
-    try {
-        return new URL(url).host;
-    } catch {
-        return "";
-    }
+    const access = await getResourceAccess(storageKey, "browser-process");
+    // CDN/origin URLs carry their own authorization and must not receive the
+    // application session cookie. Local/proxy delivery is intentionally
+    // session-bound, so a Blob read must include it even when the URL is
+    // relative to the platform origin.
+    const credentials = access.delivery === "platform-local" || access.delivery === "platform-proxy" ? "include" : "omit";
+    const response = await fetch(resolveResourceAccessURL(access.url), { credentials, mode: "cors" });
+    if (!response.ok) throw new Error(`资源读取失败（${response.status}）`);
+    return response.blob();
 }
 
 function extensionFromMime(mimeType: string, kind: string) {
