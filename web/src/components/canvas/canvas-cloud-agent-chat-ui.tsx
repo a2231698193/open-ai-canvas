@@ -538,7 +538,14 @@ export const AGENT_SCENE_DEFS: Array<{ key: string; label: string }> = [
     { key: "others", label: "其他" },
 ];
 
-export function AgentSceneCapsules({ buckets, installedIds, theme, disabled = false, onPick, onPickSkill }: {
+export function AgentSceneCapsules({
+    buckets,
+    installedIds,
+    theme,
+    disabled = false,
+    onPick,
+    onPickSkill,
+}: {
     buckets: AgentSceneBucket[];
     installedIds: Set<string>;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
@@ -595,9 +602,7 @@ export function AgentSceneCapsules({ buckets, installedIds, theme, disabled = fa
                                     }}
                                 >
                                     <span className="block whitespace-nowrap font-medium">{preset.name}</span>
-                                    <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 opacity-60">
-                                        {missing > 0 ? `${preset.skillIds.length} 个技能 · ${missing} 个待装` : `${preset.skillIds.length} 个技能`}
-                                    </span>
+                                    <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 opacity-60">{missing > 0 ? `${preset.skillIds.length} 个技能 · ${missing} 个待装` : `${preset.skillIds.length} 个技能`}</span>
                                 </button>
                             );
                         })}
