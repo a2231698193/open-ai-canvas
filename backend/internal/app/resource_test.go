@@ -732,8 +732,9 @@ func TestNormalizeSingleByteRange(t *testing.T) {
 func TestHydrateNewAPIChannel1ResourceUsesSignedOSSURL(t *testing.T) {
 	svc := newResourceTestService(t)
 	settingJSON, _ := json.Marshal(ossSettingValue{
-		Enabled: true, Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", Bucket: "private-bucket",
-		AccessKeyID: "access-id", AccessKeySecret: "secret-value",
+		Enabled: true, Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", CDNBaseURL: "https://media.example.com",
+		Bucket: "private-bucket", AccessKeyID: "access-id", AccessKeySecret: "secret-value",
+		Delivery: storage.DeliverySettings{CDNAuthMode: "public"},
 	})
 	if err := svc.repo.SaveSystemSetting(&model.SystemSetting{Key: ossSettingKey, ValueJSON: string(settingJSON)}); err != nil {
 		t.Fatal(err)
@@ -750,7 +751,7 @@ func TestHydrateNewAPIChannel1ResourceUsesSignedOSSURL(t *testing.T) {
 	if err := svc.hydrateProviderMedia("user-1", &media, providerMediaHydrationPolicy{requireURL: true}); err != nil {
 		t.Fatalf("hydrateProviderMedia() error = %v", err)
 	}
-	if !strings.HasPrefix(media.URL, "https://private-bucket.oss-cn-test.aliyuncs.com/") || media.DataURL != "" || !strings.Contains(media.URL, "Signature=") {
+	if media.URL != "https://media.example.com/users/user-1/image/reference.png" || media.DataURL != "" {
 		t.Fatalf("media = %#v", media)
 	}
 	if err := svc.hydrateProviderMedia("other-user", &providerMedia{StorageKey: "resource:resource-1"}, providerMediaHydrationPolicy{requireURL: true}); err == nil {
@@ -760,10 +761,11 @@ func TestHydrateNewAPIChannel1ResourceUsesSignedOSSURL(t *testing.T) {
 
 func TestHydrateNewAPIChannel1ResourceUsesSignedLocalURL(t *testing.T) {
 	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	t.Setenv("CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS", "127.0.0.1")
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer server.Close()
 	svc := newResourceTestService(t)
-	settingJSON, _ := json.Marshal(ossSettingValue{Provider: "aliyun", PublicBaseURL: server.URL})
+	settingJSON, _ := json.Marshal(ossSettingValue{Provider: "aliyun", PublicBaseURL: "https://127.0.0.1"})
 	if err := svc.repo.SaveSystemSetting(&model.SystemSetting{Key: ossSettingKey, ValueJSON: string(settingJSON)}); err != nil {
 		t.Fatal(err)
 	}
@@ -775,7 +777,7 @@ func TestHydrateNewAPIChannel1ResourceUsesSignedLocalURL(t *testing.T) {
 	if err := svc.hydrateProviderMedia("user-1", &media, providerMediaHydrationPolicy{requireURL: true}); err != nil {
 		t.Fatalf("hydrateProviderMedia() error = %v", err)
 	}
-	if !strings.HasPrefix(media.URL, server.URL+"/api/public/resources/resource-local/file/resource-local.png?") || !strings.Contains(media.URL, "signature=") || media.DataURL != "" {
+	if !strings.HasPrefix(media.URL, "https://127.0.0.1/api/public/resources/resource-local/file?") || !strings.Contains(media.URL, "signature=") || media.DataURL != "" {
 		t.Fatalf("media = %#v", media)
 	}
 	stored, err := svc.repo.Resource("resource-local")
@@ -787,8 +789,9 @@ func TestHydrateNewAPIChannel1ResourceUsesSignedLocalURL(t *testing.T) {
 func TestHydratePreferredURLUsesObjectStorageAndFallsBackLocal(t *testing.T) {
 	svc := newResourceTestService(t)
 	settingJSON, _ := json.Marshal(ossSettingValue{
-		Enabled: true, Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", Bucket: "private-bucket",
-		AccessKeyID: "access-id", AccessKeySecret: "secret-value",
+		Enabled: true, Provider: "aliyun", Endpoint: "https://oss-cn-test.aliyuncs.com", CDNBaseURL: "https://media.example.com",
+		Bucket: "private-bucket", AccessKeyID: "access-id", AccessKeySecret: "secret-value",
+		Delivery: storage.DeliverySettings{CDNAuthMode: "public"},
 	})
 	if err := svc.repo.SaveSystemSetting(&model.SystemSetting{Key: ossSettingKey, ValueJSON: string(settingJSON)}); err != nil {
 		t.Fatal(err)
@@ -805,7 +808,7 @@ func TestHydratePreferredURLUsesObjectStorageAndFallsBackLocal(t *testing.T) {
 	if err := svc.hydrateProviderMedia("user-1", &media, providerMediaHydrationPolicy{preferURL: true}); err != nil {
 		t.Fatalf("hydrateProviderMedia(prefer object) error = %v", err)
 	}
-	if !strings.HasPrefix(media.URL, "https://private-bucket.oss-cn-test.aliyuncs.com/") || media.DataURL != "" || !strings.Contains(media.URL, "Signature=") {
+	if media.URL != "https://media.example.com/users/user-1/image/prefer.png" || media.DataURL != "" {
 		t.Fatalf("object media = %#v", media)
 	}
 

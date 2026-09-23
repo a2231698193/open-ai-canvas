@@ -16,6 +16,7 @@ import (
 	"infinite-canvas/backend/internal/kernel"
 	"infinite-canvas/backend/internal/outbound"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -71,6 +72,18 @@ type ObjectStream struct {
 
 func GetOSSObjectRange(setting Settings, objectKey string, rangeHeader string) (*ObjectStream, error) {
 	setting = NormalizeSettings(setting)
+	// This compatibility entry point is also used by older callers that only
+	// know CDNBaseURL. The application delivery policy uses GetOriginObjectRange
+	// for an explicit private-proxy fallback, so a missing CDN auth mode never
+	// turns that fallback into an accidental CDN request.
+	if setting.CDNBaseURL != "" && (setting.Delivery.CDNAuthMode == "" || CDNEnabled(setting)) {
+		return getCDNObjectRange(setting, objectKey, rangeHeader)
+	}
+	return GetOriginObjectRange(setting, objectKey, rangeHeader)
+}
+
+func GetOriginObjectRange(setting Settings, objectKey string, rangeHeader string) (*ObjectStream, error) {
+	setting = NormalizeSettings(setting)
 	if setting.Provider == s3Provider {
 		return GetS3ObjectRange(setting, objectKey, rangeHeader)
 	}
@@ -81,6 +94,39 @@ func GetOSSObjectRange(setting Settings, objectKey string, rangeHeader string) (
 		return GetQiniuObjectRange(setting, objectKey, rangeHeader)
 	}
 	return GetAliyunOSSObjectRange(setting, objectKey, rangeHeader)
+}
+
+func getCDNObjectRange(setting Settings, objectKey string, rangeHeader string) (*ObjectStream, error) {
+	var (
+		urlValue string
+		err      error
+	)
+	if setting.Delivery.CDNAuthMode == "" {
+		urlValue, err = OssCDNObjectURL(setting.CDNBaseURL, objectKey)
+	} else {
+		urlValue, err = SignCDNURL(setting, objectKey, time.Now().Add(resourceAccessURLTTL))
+	}
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, urlValue, nil)
+	if err != nil {
+		return nil, err
+	}
+	if rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
+	}
+	outbound.ApplyDefaultOutboundHeaders(req)
+	resp, err := outbound.OutboundHTTPClient(2 * time.Minute).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("CDN 读取失败：%w", err)
+	}
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+		defer resp.Body.Close()
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("CDN 读取失败：%s %s", resp.Status, strings.TrimSpace(string(detail)))
+	}
+	return &ObjectStream{Body: resp.Body, StatusCode: resp.StatusCode, ContentLength: resp.ContentLength, ContentRange: resp.Header.Get("Content-Range"), AcceptRanges: kernel.FirstNonEmpty(resp.Header.Get("Accept-Ranges"), "bytes")}, nil
 }
 
 func GetAliyunOSSObjectRange(setting Settings, objectKey string, rangeHeader string) (*ObjectStream, error) {
@@ -104,6 +150,20 @@ func GetAliyunOSSObjectRange(setting Settings, objectKey string, rangeHeader str
 }
 
 func SignedOSSObjectURL(setting Settings, objectKey string, expiresAt time.Time) (string, error) {
+	setting = NormalizeSettings(setting)
+	// Keep the low-level helper compatible with historical callers that passed
+	// only CDNBaseURL. The application policy remains strict and calls
+	// SignedOriginObjectURL when CDN authentication is not explicitly enabled.
+	if setting.CDNBaseURL != "" && (setting.Delivery.CDNAuthMode == "" || CDNEnabled(setting)) {
+		if setting.Delivery.CDNAuthMode == "" {
+			return OssCDNObjectURL(setting.CDNBaseURL, objectKey)
+		}
+		return SignCDNURL(setting, objectKey, expiresAt)
+	}
+	return SignedOriginObjectURL(setting, objectKey, expiresAt)
+}
+
+func SignedOriginObjectURL(setting Settings, objectKey string, expiresAt time.Time) (string, error) {
 	setting = NormalizeSettings(setting)
 	if setting.Provider == s3Provider {
 		return SignedS3ObjectURL(setting, objectKey, expiresAt)
@@ -451,7 +511,11 @@ func OssBucketBaseURL(setting Settings) (*url.URL, error) {
 	if parsed.Host == "" {
 		return nil, errors.New("OSS Endpoint 格式不正确")
 	}
-	if !strings.HasPrefix(parsed.Host, setting.Bucket+".") {
+	host := parsed.Hostname()
+	// Local test/dev endpoints and explicit IP endpoints are commonly path-style
+	// services. Do not turn 127.0.0.1 into test-bucket.127.0.0.1, which both
+	// breaks the endpoint and makes the upload fallback impossible to exercise.
+	if host != "localhost" && net.ParseIP(host) == nil && !strings.HasPrefix(strings.ToLower(host), "localhost:") && !strings.HasPrefix(parsed.Host, setting.Bucket+".") {
 		parsed.Host = setting.Bucket + "." + parsed.Host
 	}
 	return parsed, nil

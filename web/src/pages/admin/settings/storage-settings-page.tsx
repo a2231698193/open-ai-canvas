@@ -32,7 +32,26 @@ type OSSFormValues = {
     allowUserS3: boolean;
 };
 
-type StoragePayload = Pick<AdminOSSSetting, "enabled" | "provider" | "region" | "endpoint" | "cdnBaseUrl" | "cdnAuthMode" | "requireCDN" | "allowPrivateProxy" | "bucket" | "accessKeyId" | "accessKeySecret" | "sessionToken" | "publicBaseUrl" | "pathPrefix" | "s3Preset" | "pathStyle" | "allowUserS3">;
+type StoragePayload = Pick<
+    AdminOSSSetting,
+    | "enabled"
+    | "provider"
+    | "region"
+    | "endpoint"
+    | "cdnBaseUrl"
+    | "cdnAuthMode"
+    | "requireCDN"
+    | "allowPrivateProxy"
+    | "bucket"
+    | "accessKeyId"
+    | "accessKeySecret"
+    | "sessionToken"
+    | "publicBaseUrl"
+    | "pathPrefix"
+    | "s3Preset"
+    | "pathStyle"
+    | "allowUserS3"
+>;
 
 const STORAGE_MODES: Array<{ mode: StorageMode; label: string; short: string; description: string }> = [
     { mode: "local", label: "服务器本地", short: "本地磁盘", description: "新增资源写入当前部署的数据目录，通过后端签名链接访问。" },
@@ -547,11 +566,7 @@ export default function StorageSettingsPage() {
                                             >
                                                 <Input autoComplete="off" inputMode="url" placeholder="https://media.example.com" />
                                             </Form.Item>
-                                            <Form.Item
-                                                name="cdnAuthMode"
-                                                label="CDN 访问鉴权"
-                                                extra="public 适用于 CDN 已公开或由 CDN 自行鉴权；qiniu 仅支持七牛私有下载签名。阿里云/腾讯云私有 CDN 暂不自动签名。"
-                                            >
+                                            <Form.Item name="cdnAuthMode" label="CDN 访问鉴权" extra="public 适用于 CDN 已公开或由 CDN 自行鉴权；qiniu 仅支持七牛私有下载签名。阿里云/腾讯云私有 CDN 暂不自动签名。">
                                                 <Select
                                                     options={[
                                                         { label: "未配置（回源或按兜底策略）", value: "" },

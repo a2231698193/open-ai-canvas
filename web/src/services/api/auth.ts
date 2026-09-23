@@ -279,7 +279,6 @@ export type AdminOSSSetting = {
     region: string;
     endpoint: string;
     cdnBaseUrl: string;
-    // 分发策略：与后端 storage.Settings.Delivery 对齐（上游 b9c7439c 补齐）。
     cdnAuthMode: "" | "public" | "qiniu" | string;
     requireCDN: boolean;
     allowPrivateProxy: boolean;

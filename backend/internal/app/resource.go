@@ -15,6 +15,7 @@ import (
 	_ "image/png"
 	"infinite-canvas/backend/internal/kernel"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -338,7 +339,7 @@ func (s *Service) openResourceRange(userID string, resource *model.Resource, ran
 	setting.Provider = firstNonEmpty(resource.Provider, setting.Provider)
 	setting.Endpoint = firstNonEmpty(resource.Endpoint, setting.Endpoint)
 	setting.Bucket = firstNonEmpty(resource.Bucket, setting.Bucket)
-	stream, err := getOSSObjectRange(setting, resource.ObjectKey, normalizeSingleByteRange(rangeHeader))
+	stream, err := getOriginOSSObjectRange(setting, resource.ObjectKey, normalizeSingleByteRange(rangeHeader))
 	if err != nil {
 		return nil, err
 	}
@@ -446,6 +447,9 @@ func writeLocalResourceObject(filePath string, body io.Reader) error {
 }
 
 // A cloud write is successful only after the configured origin accepts it.
+// storeResourceObject writes to the configured origin and degrades to local storage
+// when the external origin is unavailable. The resource binding is rewritten before
+// the caller persists the ready state, so later reads follow the actual object location.
 func (s *Service) storeResourceObject(resource *model.Resource, fileName string, body io.Reader) (string, error) {
 	if resource == nil {
 		return "", errors.New("资源不存在")
@@ -453,11 +457,36 @@ func (s *Service) storeResourceObject(resource *model.Resource, fileName string,
 	if resource.Provider == "local" {
 		return "", writeLocalResourceObject(filepath.Join(s.dataDir, "resources", filepath.FromSlash(resource.ObjectKey)), body)
 	}
-	setting, err := s.ossSettingForResource(resource.UserID, resource)
-	if err != nil {
-		return "", err
+	setting, settingErr := s.ossSettingForResource(resource.UserID, resource)
+	var etag string
+	var putErr error
+	if settingErr == nil {
+		etag, putErr = putOSSObject(setting, resource.ObjectKey, resource.MimeType, resource.Size, body)
 	}
-	return putOSSObject(setting, resource.ObjectKey, resource.MimeType, resource.Size, body)
+	if putErr == nil && settingErr == nil {
+		return etag, nil
+	}
+	fallbackErr := putErr
+	if fallbackErr == nil {
+		fallbackErr = settingErr
+	}
+	if seeker, ok := body.(io.Seeker); ok {
+		if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr != nil {
+			return "", errors.Join(fallbackErr, fmt.Errorf("降级本地存储时重置读取位置失败：%w", seekErr))
+		}
+	}
+	localKey := localObjectKey(resource.UserID, resource.Kind, fileName, resource.MimeType, time.Now())
+	resource.Provider = "local"
+	resource.ObjectKey = localKey
+	resource.Endpoint = ""
+	resource.Bucket = ""
+	resource.StorageSettingID = ""
+	resource.ETag = ""
+	if localErr := writeLocalResourceObject(filepath.Join(s.dataDir, "resources", filepath.FromSlash(localKey)), body); localErr != nil {
+		return "", errors.Join(fallbackErr, fmt.Errorf("降级本地存储失败：%w", localErr))
+	}
+	log.Printf("object storage upload degraded to local storage: resource=%s error=%v", resource.ID, fallbackErr)
+	return "", nil
 }
 
 func (s *Service) retryStoredResource(userID string, resource *model.Resource, kind string, mimeType string, size int64, body io.Reader) (*model.Resource, error) {

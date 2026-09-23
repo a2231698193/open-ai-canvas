@@ -129,7 +129,7 @@ func ResolveAccess(resource *model.Resource, setting storage.Settings, options A
 	} else if setting.Delivery.RequireCDN {
 		return nil, AccessError(503, "resource_cdn_unconfigured", "CDN 访问鉴权未配置，请检查存储分发设置")
 	} else if storage.PublicOrigin(setting) {
-		access.URL, err = storage.SignedOSSObjectURL(setting, resource.ObjectKey, expires)
+		access.URL, err = storage.SignedOriginObjectURL(setting, resource.ObjectKey, expires)
 		access.Delivery = DeliveryOrigin
 		if setting.CDNBaseURL != "" {
 			access.FallbackReason = "cdn_auth_unconfigured"
