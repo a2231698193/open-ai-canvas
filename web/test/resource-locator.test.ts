@@ -23,8 +23,8 @@ describe("resource locators", () => {
             content: "data:image/png;base64,aaa",
             dataUrl: "data:image/png;base64,aaa",
         }, "resource:img_1");
-        expect(imagePayload.content).toBe("/api/resources/img_1/file?direct=1");
-        expect(imagePayload.dataUrl).toBe("/api/resources/img_1/file?direct=1");
+        expect(imagePayload.content).toBe("/api/resources/img_1/file");
+        expect(imagePayload.dataUrl).toBe("/api/resources/img_1/file");
     });
 
     test("空内容视为待写入的媒体定位符", () => {

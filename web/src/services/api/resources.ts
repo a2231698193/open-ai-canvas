@@ -355,9 +355,18 @@ export function resourceIdFromFileUrl(url?: string) {
     }
 }
 
-export function resourceFileUrl(id: string, options?: { download?: boolean; fileName?: string; proxy?: boolean }) {
+export function resourceFileUrl(id: string, options?: { download?: boolean; fileName?: string }) {
     const base = String(apiBaseURL).replace(/\/+$/, "");
-    return `${base}/resources/${encodeURIComponent(id)}/file`;
+    const url = `${base}/resources/${encodeURIComponent(id)}/file`;
+    // 出口（CDN / 源站 / 平台代理）由服务端按资源与存储配置决定；前端只表达用途与附件名。
+    // download=1 仍被后端映射成 purpose=download。
+    const params = new URLSearchParams();
+    if (options?.download) {
+        params.set("download", "1");
+        if (options.fileName) params.set("filename", options.fileName);
+    }
+    const query = params.toString();
+    return query ? `${url}?${query}` : url;
 }
 
 export function resolveResourceUrl(storageKey?: string, fallback = "") {
