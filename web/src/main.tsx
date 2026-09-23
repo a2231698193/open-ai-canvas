@@ -11,5 +11,6 @@ if (/^\/welcome\/?$/.test(window.location.pathname)) void import("./welcome-appl
 else {
     // The backend-free DEV lab must not make requests before AppProviders isolates it.
     const appearanceReady = isIsolatedDirectorRepro(import.meta.env.DEV, window.location.pathname) ? Promise.resolve() : bootstrapAppearance();
-    void appearanceReady.then(() => import("./application"));
+    void import("./application");
+    void appearanceReady.catch(() => undefined);
 }
