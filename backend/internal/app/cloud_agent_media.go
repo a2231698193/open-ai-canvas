@@ -225,6 +225,64 @@ func cloudAgentReference(repo *repository.Repository, userID string, node map[st
 	return map[string]any{"id": node["id"], "name": node["title"], "storageKey": key, "type": resource.MimeType, "mimeType": resource.MimeType, "bytes": resource.Size, "width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs, "inputKind": descriptor.InputKind}, adapter.PayloadField, nil
 }
 
+// cloudAgentAttachResource 把账号资源库里的素材挂到媒体节点上，返回要写进节点 metadata 的字段。
+//
+// 命令行只能"先 asset upload、再用 canvas_apply_ops 建节点"，所以这是资源进入画布的唯一入口，
+// 校验口径与生成时的参考素材保持一致：资源必须属于当前用户、状态就绪、MIME 与节点类型匹配；
+// 不提供"拿任意 URL 当素材"的通道（参考素材解析也不认外部地址）。
+func cloudAgentAttachResource(repo *repository.Repository, userID, nodeType, resourceID string) (map[string]any, error) {
+	descriptor, known := cloudAgentNodeCapabilityForType(nodeType)
+	// 与 cloudAgentReferenceDescriptor 同一口径：只有能当参考素材的媒体节点才收资源，
+	// 文本等节点给的也是同一句"只有图片、视频、音频节点"的提示。
+	if !known || !descriptor.Connection.CanReference || descriptor.InputKind == "" {
+		return nil, BadAuthRequest("只有图片、视频、音频节点可以挂载素材")
+	}
+	adapter, supported := cloudAgentReferenceAdapters[descriptor.InputKind]
+	if !supported {
+		return nil, BadAuthRequest("只有图片、视频、音频节点可以挂载素材")
+	}
+	id := strings.TrimPrefix(strings.TrimSpace(resourceID), "resource:")
+	if id == "" {
+		return nil, BadAuthRequest("缺少资源ID")
+	}
+	resource, err := repo.ResourceForUser(userID, id)
+	if err != nil {
+		return nil, BadAuthRequest("资源不存在或不属于当前用户")
+	}
+	if resource.Status != model.ResourceStatusReady || !strings.HasPrefix(strings.ToLower(resource.MimeType), adapter.MIMEMajor+"/") {
+		return nil, BadAuthRequest("资源尚未就绪，或媒体类型与节点类型不匹配")
+	}
+	// 字段与生成结果回写保持同一套：网页、canvas state 和参考素材解析读到的形态一致。
+	return map[string]any{
+		"content": resourceFileURL(id), "storageKey": "resource:" + id, "status": "success",
+		"mimeType": resource.MimeType, "bytes": resource.Size,
+		"width": resource.Width, "height": resource.Height, "durationMs": resource.DurationMs,
+		"naturalWidth": resource.Width, "naturalHeight": resource.Height,
+	}, nil
+}
+
+// attachCloudAgentResource 是画布写入路径上的挂载入口：resourceId 为空即空操作。
+// 已关联生成任务的节点不接受素材覆盖——那是生成结果，不是等待填充的草稿。
+func attachCloudAgentResource(repo *repository.Repository, userID, nodeType, resourceID string, metadata map[string]any) error {
+	if strings.TrimSpace(resourceID) == "" {
+		return nil
+	}
+	if metadata == nil {
+		return BadAuthRequest("节点缺少可写入的媒体信息")
+	}
+	if stringValue(metadata["taskId"]) != "" || stringValue(metadata["generationTaskId"]) != "" {
+		return BadAuthRequest("该节点已关联生成任务，不能用素材覆盖")
+	}
+	attached, err := cloudAgentAttachResource(repo, userID, nodeType, resourceID)
+	if err != nil {
+		return err
+	}
+	for key, value := range attached {
+		metadata[key] = value
+	}
+	return nil
+}
+
 // Shared by the read projection and generation admission. Ownership of an
 // otherwise eligible draft remains a separate, transactional admission check.
 func cloudAgentMediaTargetIssue(node map[string]any, nodeType string) (string, string) {

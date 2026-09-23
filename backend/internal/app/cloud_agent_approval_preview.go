@@ -70,7 +70,15 @@ func prepareCloudAgentCanvasMutation(repo *repository.Repository, userID, canvas
 	if beforeHash != args.SnapshotHash {
 		return nil, &cloudAgentFieldArgumentError{error: &cloudAgentArgumentError{creationConflict("画布已变化，本次未写入；请重新读取并重新申请审批")}, Field: "snapshotHash", Issue: "stale_snapshot"}
 	}
-	items, err := applyCloudAgentCanvasPlan(doc, args.Ops)
+	items, err := applyCloudAgentCanvasPlan(doc, args.Ops, func(nodeType, resourceID string, metadata map[string]any) (bool, error) {
+		if strings.TrimSpace(resourceID) == "" {
+			return false, nil
+		}
+		if err := attachCloudAgentResource(repo, userID, nodeType, resourceID, metadata); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +92,16 @@ func prepareCloudAgentCanvasMutation(repo *repository.Repository, userID, canvas
 	}, nil
 }
 
-func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloudAgentApprovalPreviewItem, error) {
+// cloudAgentResourceAttacher 把 ops 里的 resourceId 解析成节点 metadata 字段。
+// 它需要仓储和当前用户，而计划器本身不依赖两者，所以作为可选依赖传入；返回是否真的挂上了
+// 素材（用于审批摘要）。直接调用计划器的单元测试可以不传，此时 resourceId 不生效。
+type cloudAgentResourceAttacher func(nodeType, resourceID string, metadata map[string]any) (bool, error)
+
+func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp, attachers ...cloudAgentResourceAttacher) ([]cloudAgentApprovalPreviewItem, error) {
+	var attach cloudAgentResourceAttacher
+	if len(attachers) > 0 {
+		attach = attachers[0]
+	}
 	nodes := creationMaps(doc["nodes"])
 	edges := creationMaps(doc["connections"])
 	items := make([]cloudAgentApprovalPreviewItem, 0, len(ops))
@@ -154,12 +171,22 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 					nodeMetadata[key] = value
 				}
 			}
+			fields := cloudAgentGenerationFieldNames(op.Generation)
+			if attach != nil {
+				attached, attachErr := attach(op.NodeType, op.ResourceID, nodeMetadata)
+				if attachErr != nil {
+					return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d].resourceId", opIndex), "invalid_resource", cloudAgentSafeToolError(attachErr))
+				}
+				if attached {
+					fields = append(fields, "素材")
+				}
+			}
 			nodes = append(nodes, node)
 			nodeTitle := cloudAgentApprovalNodeTitle(node, capability.Label)
 			items = append(items, cloudAgentApprovalPreviewItem{
 				Operation: "add_node", NodeID: op.ID, NodeTitle: nodeTitle,
 				NodeType: capability.Type, NodeTypeLabel: capability.Label,
-				Fields:  cloudAgentGenerationFieldNames(op.Generation),
+				Fields:  fields,
 				Summary: fmt.Sprintf("新增%s《%s》", capability.Label, nodeTitle),
 			})
 		case "connect_nodes":
@@ -211,11 +238,11 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 				Summary: fmt.Sprintf("删除空节点%s《%s》", capability.Label, deletedTitle),
 			})
 		case "update_node":
-			if len(op.Patch) == 0 && len(op.Generation) == 0 {
+			if len(op.Patch) == 0 && len(op.Generation) == 0 && strings.TrimSpace(op.ResourceID) == "" {
 				// 漏字段是模型照 schema 就能自己修好的参数错误：当成工具结果回给它重试，
 				// 而不是判整轮失败（用户只在失败提示里看到一句"必须提供 patch"）。
 				// 未知操作类型仍按准入失败终止（cloud_agent_test.go 有用例断言这一行为）。
-				return nil, &cloudAgentArgumentError{BadAuthRequest("更新节点必须提供 patch 或 generation 中至少一项")}
+				return nil, &cloudAgentArgumentError{BadAuthRequest("更新节点必须提供 patch、generation 或 resourceId 中至少一项")}
 			}
 			if index < 0 {
 				return nil, BadAuthRequest("只能更新现有且受 Agent 支持的节点")
@@ -247,6 +274,15 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp) ([]cloud
 					nodeMetadata[key] = value
 				}
 				fields = append(fields, cloudAgentGenerationFieldNames(op.Generation)...)
+			}
+			if attach != nil {
+				attached, attachErr := attach(capability.Type, op.ResourceID, metadata)
+				if attachErr != nil {
+					return nil, cloudAgentFieldError(fmt.Sprintf("ops[%d].resourceId", opIndex), "invalid_resource", cloudAgentSafeToolError(attachErr))
+				}
+				if attached {
+					fields = append(fields, "素材")
+				}
 			}
 			afterTitle := cloudAgentApprovalNodeTitle(nodes[index], capability.Label)
 			resultTitle := ""

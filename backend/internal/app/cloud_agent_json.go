@@ -84,7 +84,8 @@ func decodeCloudAgentCanvasArgs(raw string) (agentCanvasArgs, error) {
 			required = "id"
 		case op.Type == "add_node" && op.NodeType == "":
 			required = "nodeType"
-		case op.Type == "update_node" && len(op.Patch) == 0:
+		case op.Type == "update_node" && len(op.Patch) == 0 && len(op.Generation) == 0 && strings.TrimSpace(op.ResourceID) == "":
+			// patch / generation / resourceId 三者至少给一个；一个都没给时报 patch 这个主字段。
 			required = "patch"
 		case op.Type == "connect_nodes" && op.FromNodeID == "":
 			required = "fromNodeId"

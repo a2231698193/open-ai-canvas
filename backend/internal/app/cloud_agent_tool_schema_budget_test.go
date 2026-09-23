@@ -39,7 +39,7 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 		opItem, _ := items["items"].(map[string]any)
 		want := []map[string]any{
 			{"properties": map[string]any{"type": map[string]any{"const": "add_node"}}, "required": []string{"nodeType"}},
-			{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}}},
+			{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}, {"required": []string{"resourceId"}}}},
 			{"properties": map[string]any{"type": map[string]any{"const": "connect_nodes"}}, "required": []string{"fromNodeId", "toNodeId"}},
 			{"properties": map[string]any{"type": map[string]any{"const": "delete_node"}}},
 		}

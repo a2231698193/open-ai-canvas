@@ -16,6 +16,9 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] 服务端测试覆盖：`canvas_inspect_media` 返回时长、分辨率、格式与就绪状态，未就绪时说明原因且不签发链接；非媒体节点被拒绝；`canvas_inspect_image` 支持 `nodeIds` 一次读多张、图片由服务端读取真实字节交付（检查点只存 `resource:ID`），并在一条 user 消息里合并。
 - [x] 服务端测试覆盖：画布不存在或不属于当前账号时，`canvas state`、`canvas tool`（含 `canvas_inspect_image`/`canvas_inspect_media`/`model_list`）、`canvas apply`、`canvas quote` 与画布 Agent 共用的画布加载都返回 404 `not_found`，不再落到 500。
 - [ ] 线上确认：对着一个已不存在的画布 ID 执行 `linggan canvas state`，命令行输出「画布不存在或无权访问」而不是「系统处理失败，请稍后重试」。
+- [x] 服务端测试覆盖：`asset upload` 得到的资源可以用 `canvas apply` 的 `resourceId` 挂到图片/视频/音频节点上（`add_node` 与 `update_node` 都支持，只带 `resourceId` 的更新不再被 patch 字段校验拦下）；资源归属、就绪状态、媒体类型与节点类型逐项校验，已关联生成任务的节点拒绝覆盖；挂载后的节点能直接作为参考素材解析，并可经 `CLIQuoteMedia` 走完首帧参考的准入与报价。
+- [ ] 真实账号确认：上传一张自己的图片 → `canvas apply` 挂成图片节点 → 网页上能看到它 → 用 `first_frame` 生成一段视频。
+- [ ] 真实账号确认：上传后立刻挂载（资源还在 `pending`）会被拒绝并提示就绪状态，稍后重试成功。
 - [ ] 用真实账号执行 `linggan login`、创建画布、打开已有画布、读取摘要、新增一个文本节点、上传一张图片。生成命令在 Agent 未获用户同意前不得创建任务。
 - [ ] 真实账号确认生成前的 `estimatedCredits` 与最终扣费一致；用 `linggan confirm --list` 看到挂起项，用 `--cancel` 取消后确认没有创建任务和扣费，超过 30 分钟后同一条确认作废。
 - [ ] 真实画布确认 Agent 新建的空节点能在界面上被撤销，且用户手工建的节点、已生成过的节点仍然删不掉。

@@ -57,6 +57,21 @@ linggan canvas apply --file ops.json
 {"type": "update_node", "id": "video-1", "generation": {"size": "9:16", "seconds": 5}}
 ```
 
+### 挂载已上传的素材
+
+`add_node` 和 `update_node` 都接受 `resourceId`（`linggan asset upload` 返回的 `resource.id`，可带 `resource:` 前缀）：只有图片、视频、音频节点能挂，服务端校验归属、就绪状态与媒体类型，已关联生成任务的节点不接受覆盖。
+
+```json
+{
+  "snapshotHash": "<canvas state 返回的 snapshotHash>",
+  "ops": [
+    {"type": "add_node", "id": "ref-1", "nodeType": "image", "title": "首帧参考", "resourceId": "<资源ID>"}
+  ]
+}
+```
+
+挂载后的节点就是普通画布素材，可以直接用 `references`（如 `first_frame`）当参考图提交生成。完整流程见 `commands/asset.md`；`resourceId` 只认账号资源库，不接受本地路径或任意 URL。
+
 ### 准备生成规格
 
 媒体节点可以用 `generation` 一次写好模型和生成参数，不必让用户事后在网页上补。`add_node` 和 `update_node` 都接受它：

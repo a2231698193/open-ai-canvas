@@ -504,6 +504,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"content":    str("文本正文或媒体提示词；更新操作可选"),
 			"patch":      cloudAgentPatchSchema(),
 			"generation": map[string]any{"type": "object", "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝"},
+			"resourceId": str("账号资源库的媒体资源ID（asset upload 返回值，可带 resource: 前缀）：add_node/update_node 用它把图片/视频/音频挂到媒体节点，服务端校验归属、就绪与类型"),
 			"fromNodeId": str("连线来源节点ID"),
 			"toNodeId":   str("连线目标节点ID"),
 			"x":          map[string]any{"type": "number"},
@@ -516,12 +517,12 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"additionalProperties": false,
 			"oneOf": []map[string]any{
 				{"properties": map[string]any{"type": map[string]any{"const": "add_node"}}, "required": []string{"nodeType"}},
-				{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}}},
+				{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}, {"required": []string{"resourceId"}}}},
 				{"properties": map[string]any{"type": map[string]any{"const": "connect_nodes"}}, "required": []string{"fromNodeId", "toNodeId"}},
 				{"properties": map[string]any{"type": map[string]any{"const": "delete_node"}}},
 			},
 		}
-		add("canvas_apply_ops", "创建节点、修改提示词、建立引用连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不允许任意 metadata 和媒体 URL。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y 移动节点），connect_nodes 还要 fromNodeId 与 toNodeId，delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind，能力以注册表为准。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
+		add("canvas_apply_ops", "创建节点、挂载账号素材、改提示词、连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不接受任意 metadata 和媒体 URL：上传好的图片/视频/音频用 resourceId 挂到媒体节点。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y），connect_nodes 还要 fromNodeId 与 toNodeId，delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
 		add("canvas_arrange_nodes", "整理画布节点位置：只改坐标，不改内容、不建连线、不增删节点，先读画布并传 snapshotHash。mode 省略即 auto（有连线按依赖分层，否则按媒体类型分区）。groups 为横向分带（label 展示名，可覆盖整组 mode）。nodeIds 省略则整理全部可整理节点（跳过锁定节点、容器、批次子节点与已归属背板者）。align 对齐/等距，dryRun 只预演；一次最多 50 个节点，只挪单个节点用 update_node 的 x/y。", map[string]any{
 			"snapshotHash": str("最近一次画布读取的 snapshotHash"),
 			"nodeIds":      map[string]any{"type": "array", "maxItems": cloudAgentArrangeMaxNodes, "items": str("节点ID；省略=全部可整理")},
@@ -1070,6 +1071,9 @@ type agentCanvasOp struct {
 	// Generation 是受白名单约束的生成规格（模型、时长、画幅、分辨率、音频等），
 	// 让 Agent 能把节点准备到「用户只需确认」的状态；不含任意 metadata 通道。
 	Generation map[string]any `json:"generation"`
+	// ResourceID 是账号资源库里的媒体资源（命令行 asset upload 的返回值）。它和 Generation
+	// 一样是受控通道：只认资源库里的图片/视频/音频，不接受任意 URL，也不写任意 metadata。
+	ResourceID string `json:"resourceId"`
 	// X/Y 为指针：nil 表示模型没有指定坐标，服务端按画布内容自动落位（不再落到原点重叠）。
 	// 指针语义与 canvas/capability/builtin.go 的 positionPatchFields 一致（坐标是可选的数字）。
 	X          *float64 `json:"x"`
