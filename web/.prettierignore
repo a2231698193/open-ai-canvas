@@ -12,3 +12,6 @@ bun.lock
 *.gif
 *.webp
 *.svg
+
+# 随部署交付的第三方运行时（Cubism Core，压缩产物），不要重排
+public/live2d

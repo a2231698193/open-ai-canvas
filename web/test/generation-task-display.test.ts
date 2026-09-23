@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { generationTaskProgressText, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, mediaDeliverySummary } from "@/lib/generation-task-display";
+import { generationTaskProgressText, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, mediaDeliverySummary, statusLabel } from "@/lib/generation-task-display";
 import { resetGenerationTaskMetadata } from "@/lib/canvas/canvas-task-state";
-
-import { generationTaskProgressText, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, statusLabel } from "../src/lib/generation-task-display";
 
 // 后端会写入「等待队列调度 / 后端接管任务 / 正在连接上游 / 调用生成模型 / 上游生成中 / 等待上游任务同步」
 // 等阶段文案；前端不再回显这些措辞，进行中统一显示「生成中」并保留进度条。
