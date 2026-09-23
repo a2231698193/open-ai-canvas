@@ -115,7 +115,7 @@ func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloud
 	if err != nil {
 		return nil, err
 	}
-	doc, err := cloudAgentInspectionDocument(s.repo, userID, canvasID)
+	doc, revision, err := cloudAgentInspectionDocumentRevision(s.repo, userID, canvasID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloud
 		if node == nil {
 			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
 		}
-		inspection, err := s.cloudAgentInspectImageNode(userID, state, node, TextReferenceConfig{}, refresh)
+		inspection, err := s.cloudAgentInspectImageNode(userID, state, node, TextReferenceConfig{}, refresh, revision)
 		if err != nil {
 			return nil, err
 		}

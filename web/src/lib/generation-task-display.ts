@@ -8,7 +8,27 @@ export const statusLabel: Record<TaskStatus, string> = {
     cancelled: "已取消",
 };
 
-type GenerationTaskDisplayTarget = Pick<GenerationTask, "status" | "stage" | "mediaStage">;
+type GenerationTaskDisplayTarget = Pick<GenerationTask, "status" | "stage" | "mediaStage" | "progress" | "providerRequestId" | "providerCancelStatus">;
+
+const cancellablePreSubmissionStages = new Set(["queued", "等待队列调度", "后端接管任务", "正在准备创作"]);
+
+/**
+ * 只有在第三方请求尚未提交时允许取消。
+ *
+ * 一旦拿到 providerRequestId、进入取消协调状态，或提交结果不确定，
+ * 任务可能已经产生上游费用；所有画布入口必须共用这条规则，避免
+ * 活动面板、详情弹窗和任务列表出现不一致。
+ */
+export function canCancelGenerationTask(task: GenerationTaskDisplayTarget) {
+    if (task.status !== "queued" && task.status !== "running") return false;
+    if (task.providerRequestId || task.providerCancelStatus || task.mediaStage) return false;
+    const stage = (task.stage || "").trim().toLowerCase();
+    // Unknown running stages are treated as already submitted. A provider may
+    // return a custom stage name, and showing a cancel button in that state is
+    // more dangerous than conservatively hiding it after billing may begin.
+    if (!stage) return task.status === "queued";
+    return cancellablePreSubmissionStages.has(stage);
+}
 
 export function mediaDeliverySummary(status: TaskStatus | undefined, stage: GenerationTask["mediaStage"]) {
     if (!stage) return "";
@@ -40,18 +60,10 @@ export function generationTaskStageLabel(task: GenerationTaskDisplayTarget) {
 export function generationTaskShowsProgress(task: GenerationTaskDisplayTarget) {
     if (task.mediaStage && task.mediaStage !== "completed") return false;
     if (isGenerationTaskSubmissionUncertain(task)) return false;
-    // 进行中一律带进度条：文案已统一为「生成中」，不再按阶段隐藏进度。
-    return true;
-}
-
-type GenerationTaskProgressTarget = GenerationTaskDisplayTarget & { progress?: number };
-
-/** 进度行文案：阶段与状态一致时只保留百分比，避免同一句「生成中」出现两次。 */
-export function generationTaskProgressText(task: GenerationTaskProgressTarget) {
-    const stage = generationTaskStageLabel(task);
-    const status = generationTaskStatusLabel(task);
-    const percent = typeof task.progress === "number" ? `${Math.max(0, Math.min(100, Math.round(task.progress)))}%` : "";
-    return [stage === status ? "" : stage, percent].filter(Boolean).join(" · ");
+    // 文案统一成「生成中」不等于进度条可以随便显示：排队、后端接管和连接供应商都还没有
+    // 真实百分比，照旧显示只会让所有图片/视频长期停在同一个假数值（例如 0%）。
+    if (["queued", "等待队列调度", "后端接管任务", "正在准备参考素材", "正在连接上游", "调用生成模型", "作品创作中", "submitting", "submitted"].includes(task.stage || "")) return false;
+    return typeof task.progress === "number" && task.progress > 0;
 }
 
 export const operationOptions = [

@@ -588,7 +588,8 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	if err := normalizeCloudAgentMediaReferences(&a); err != nil {
 		return CreateTaskRequest{}, nil, err
 	}
-	if state.Approval != nil && state.Approval.Call.ID == call.ID {
+	if state.Approval != nil && state.Approval.Prepared != nil &&
+		state.Approval.CallHash == cloudAgentApprovalCallHash(call) {
 		a.Prepared = state.Approval.Prepared
 	}
 	if err := s.fillCloudAgentMediaSnapshotHash(run.UserID, state.Request.CanvasID, &a); err != nil {

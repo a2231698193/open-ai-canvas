@@ -22,6 +22,7 @@ import { formatVideoResolutionLabel } from "@/lib/video-generation-options";
 import { submitBackendGenerationTask } from "@/services/api/generation-task";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
 import { type GenerationTask } from "@/services/api/task-center";
+import { downloadBrowserMedia } from "@/services/browser-download";
 import {
     createUnitWorkflow,
     deleteProjectShot,
@@ -37,8 +38,7 @@ import {
     type ShotRevisionInput,
     type WorkflowStep,
 } from "@/services/api/projects";
-import { resourceFileUrl, resourceIdFromStorageKey } from "@/services/api/resources";
-import { downloadNamedFile } from "@/lib/download-file";
+import { resourceFileUrl, resourceIdFromStorageKey, resourceStorageKey } from "@/services/api/resources";
 import { skillRuntime } from "@/services/skill-runtime";
 import { configuredModelMatchesCapability, modelDisplayName, modelOptionName, resolveModelChannel, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -759,7 +759,10 @@ async function downloadArtifact(artifact: ShotArtifact, shotTitle: string, onErr
     if (!artifact.resourceId) return;
     const fileName = `${shotTitle || "shot"}-v${artifact.version}.${artifact.type === "video" ? "mp4" : "png"}`;
     try {
-        await downloadNamedFile(resourceFileUrl(artifact.resourceId), fileName);
+        await downloadBrowserMedia({
+            storageKey: resourceStorageKey(artifact.resourceId),
+            fileName: `${shotTitle || "shot"}-v${artifact.version}.${artifact.type === "video" ? "mp4" : "png"}`,
+        });
     } catch (error) {
         onError(error instanceof Error ? `下载失败：${error.message}` : "下载失败");
     }
