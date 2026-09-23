@@ -32,7 +32,8 @@ func TestPluginViewIncludesDocumentationForEveryOfficialProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundledCount := len(bundledWorkflowPluginManifests())
+	// 期望值就是"官方包 ∪ 内置插件"的并集：内置支付/短信/工作流插件没有包文件，
+	// 只按 bundledWorkflow + bundledPayment 相加会漏掉短信插件（上游加短信通知后就漏了）。
 	packageIDs := make(map[string]bool, len(packages))
 	for _, packagePath := range packages {
 		data, err := os.ReadFile(packagePath)
@@ -45,13 +46,22 @@ func TestPluginViewIncludesDocumentationForEveryOfficialProtocol(t *testing.T) {
 		}
 		packageIDs[pkg.Manifest.Metadata.ID] = true
 	}
-	for _, manifest := range bundledPaymentPluginManifests() {
-		if !packageIDs[manifest.Metadata.ID] {
-			bundledCount++
+	expectedIDs := make(map[string]bool, len(packageIDs)+4)
+	for id := range packageIDs {
+		expectedIDs[id] = true
+	}
+	for _, group := range [][]protocol.Manifest{bundledWorkflowPluginManifests(), bundledPaymentPluginManifests(), bundledSMSPluginManifests()} {
+		for _, manifest := range group {
+			expectedIDs[manifest.Metadata.ID] = true
 		}
 	}
-	if len(plugins) != len(packages)+bundledCount {
-		t.Fatalf("plugin views = %d, official packages plus bundled plugins = %d", len(plugins), len(packages)+bundledCount)
+	if len(plugins) != len(expectedIDs) {
+		t.Fatalf("plugin views = %d, official packages plus bundled plugins = %d", len(plugins), len(expectedIDs))
+	}
+	for id := range expectedIDs {
+		if _, ok := pluginsByID[id]; !ok {
+			t.Errorf("fresh runtime did not install official plugin %q", id)
+		}
 	}
 	for _, packagePath := range packages {
 		data, err := os.ReadFile(packagePath)
