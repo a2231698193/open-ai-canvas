@@ -362,6 +362,12 @@ func TestCloudAgentAdmissionAcceptsTokenPricingWithQuotedChargeLimit(t *testing.
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 这条用例验证的是"token 计费会带出报价与硬上限"，不是余额边界：夹具默认只有 0.01 积分，
+	// 而 token 预授权按系统提示（约 6k input tokens）+ 默认输出上限估算，正好卡在余额上下。
+	// 系统提示每长几十个 token 就会让这条用例变成"积分不足"，与它想断言的行为无关。
+	if err := db.Model(&model.CreditAccount{}).Where("user_id = ?", "user").Update("available_microcredits", CreditScale).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	run, err := s.CreateCloudAgentRun("user", agentTestRequest(), "")
 	if err != nil {

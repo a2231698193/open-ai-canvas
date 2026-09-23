@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"infinite-canvas/backend/internal/model"
 )
@@ -98,6 +99,56 @@ func (s *Service) CLIQuoteMedia(userID, canvasID string, raw json.RawMessage) (a
 	return result, nil
 }
 
+// CLICanvasImageInspection 是命令行的看图：校验口径与画布 Agent 完全一致，但交付方式不同。
+//
+// 画布 Agent 的图片由服务端在任务执行前读成字节（检查点只存 resource:ID）；命令行面向的是
+// 外部 Agent，它得自己取图，所以这里把 resource:ID 换回短时签名链接再返回。外部 Agent 用
+// 自己的模型看图，服务端不知道它的图片数量/体积上限，因此不套用渠道模型的限制。
+func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloudAgentRuntime, call cloudAgentCall) (any, error) {
+	targets, refresh, err := cloudAgentInspectTargets(call.Function.Arguments, true)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := cloudAgentInspectionDocument(s.repo, userID, canvasID)
+	if err != nil {
+		return nil, err
+	}
+	inspections := make(cloudAgentImageInspections, 0, len(targets))
+	for _, nodeID := range targets {
+		node := cloudAgentCanvasNode(doc, nodeID)
+		if node == nil {
+			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
+		}
+		inspection, err := s.cloudAgentInspectImageNode(userID, state, node, TextReferenceConfig{}, refresh)
+		if err != nil {
+			return nil, err
+		}
+		if inspection.ImageURL != "" {
+			url, err := s.signedInspectionResourceURL(userID, inspection.ImageURL)
+			if err != nil {
+				return nil, err
+			}
+			inspection.ImageURL = url
+		}
+		inspections = append(inspections, inspection)
+	}
+	return cloudAgentImageInspectionWithURLs(inspections), nil
+}
+
+// signedInspectionResourceURL 把 resource:ID 换成短时签名链接；链接要跨越外部 Agent 的一次
+// 往返，用比浏览器直连更长的有效期。
+func (s *Service) signedInspectionResourceURL(userID, storageKey string) (string, error) {
+	resourceID := strings.TrimPrefix(storageKey, "resource:")
+	if resourceID == "" || resourceID == storageKey {
+		return "", BadAuthRequest("看图记录不是账号资源引用，请重新读取节点")
+	}
+	resource, err := s.repo.ResourceForUser(userID, resourceID)
+	if err != nil {
+		return "", BadAuthRequest("该节点的图片资源不存在或不属于当前用户")
+	}
+	return s.providerResourceURL(resource, time.Now().Add(providerResourceURLTTL))
+}
+
 // CLICanvasTool 执行画布 Agent 的画布工具。它不创建 Agent 运行，也不调用语言模型。
 // 生成工具会创建计费任务；调用方必须先完成用户确认。
 func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessage) (any, error) {
@@ -140,12 +191,7 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 		}
 		return applyCloudAgentArrangeNodes(s.repo, userID, canvasID, call, policy)
 	case "canvas_inspect_image":
-		inspections, err := s.prepareCloudAgentImageInspection(userID, canvasID, state, call)
-		if err != nil {
-			return nil, err
-		}
-		batch, _ := inspections.(cloudAgentImageInspections)
-		return cloudAgentImageInspectionWithURLs(batch), nil
+		return s.CLICanvasImageInspection(userID, canvasID, state, call)
 	case "canvas_inspect_media":
 		return cloudAgentMediaInspection(s.repo, userID, canvasID, call, s)
 	case "model_list":
