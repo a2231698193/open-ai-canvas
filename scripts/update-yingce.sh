@@ -409,6 +409,8 @@ main() {
     compose ps
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# 同 install-linggan.sh：管道执行时 BASH_SOURCE 未定义，直接展开会被 set -u 打死；
+# 回落到 $0，既支持 `… | bash`，又保证被 source（测试）时不自动执行 main。
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
     main "$@"
 fi

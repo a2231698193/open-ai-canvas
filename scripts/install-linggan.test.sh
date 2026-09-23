@@ -65,3 +65,33 @@ if linggan_release_urls linggan-darwin-arm64.zip "$fixture" >/dev/null 2>&1; the
 fi
 
 printf 'install-linggan release selection: ok\n'
+
+# 执行方式守卫：文档里的安装命令是 `curl … | bash`，此时 bash 从标准输入读脚本，
+# BASH_SOURCE 未定义；守卫必须回落到 $0 继续安装，而不是被 set -u 报 unbound variable。
+# 用一个只打标记的假 curl 证明脚本确实走进了安装流程（真 curl 需要网络）。
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+mkdir -p "${work}/bin"
+cat >"${work}/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+: >"${LINGGAN_TEST_MARKER}"
+exit 22
+STUB
+chmod +x "${work}/bin/curl"
+
+PATH="${work}/bin:$PATH" LINGGAN_TEST_MARKER="${work}/piped.marker" \
+    bash <"${ROOT}/install-linggan.sh" >/dev/null 2>&1 || true
+[[ -f "${work}/piped.marker" ]] || {
+    printf '管道执行没有进入安装流程：%s\n' "${ROOT}/install-linggan.sh" >&2
+    exit 1
+}
+printf 'install-linggan piped execution: ok\n'
+
+# 被 source 时必须只定义函数，不能自动安装（update-yingce.test.sh 用同样方式复用脚本）。
+PATH="${work}/bin:$PATH" LINGGAN_TEST_MARKER="${work}/sourced.marker" \
+    bash -c "source '${ROOT}/install-linggan.sh'" >/dev/null 2>&1 || true
+[[ ! -f "${work}/sourced.marker" ]] || {
+    printf 'source 脚本时不应触发安装\n' >&2
+    exit 1
+}
+printf 'install-linggan sourced execution: ok\n'

@@ -117,6 +117,8 @@ install_linggan() {
     printf '已安装 %s\n' "${INSTALL_DIR}/linggan"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# 管道执行（文档里的 curl … | bash）时 bash 从标准输入读脚本，BASH_SOURCE 未定义，
+# 直接展开会被 set -u 打死；回落到 $0 才能既跑管道又不在 source 时自动安装。
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
     install_linggan
 fi
