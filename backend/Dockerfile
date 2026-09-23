@@ -13,7 +13,9 @@ RUN --mount=type=cache,target=/var/cache/apk \
     fi; \
     apk add --cache-dir /var/cache/apk nodejs unzip zip
 
-ARG GOPROXY=https://goproxy.cn,direct
+# 依赖里有 aws-sdk-go 这类大模块：单一镜像偶发 GOAWAY 会让整条发布流水线失败，
+# 因此按顺序加一个公共代理兜底，direct 仍然放最后。
+ARG GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /src
