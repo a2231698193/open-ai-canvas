@@ -14,7 +14,7 @@ func (s *Service) CLICanvasState(userID, canvasID string, offset int, connection
 	if err := validateCloudAgentID(strings.TrimSpace(canvasID), "画布 ID", 80); err != nil {
 		return nil, err
 	}
-	canvas, err := s.repo.CanvasProjectForUser(userID, canvasID)
+	canvas, err := canvasProjectForUser(s.repo, userID, canvasID)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +45,9 @@ func (s *Service) CLIApplyCanvasOps(userID, canvasID string, raw json.RawMessage
 	if len(raw) == 0 || !json.Valid(raw) {
 		return nil, BadAuthRequest("画布操作必须是 JSON 对象")
 	}
+	if _, err := canvasProjectForUser(s.repo, userID, canvasID); err != nil {
+		return nil, err
+	}
 	policy, err := s.RuntimePolicy()
 	if err != nil {
 		return nil, err
@@ -68,6 +71,9 @@ func (s *Service) CLIQuoteMedia(userID, canvasID string, raw json.RawMessage) (a
 	}
 	if len(raw) == 0 || !json.Valid(raw) {
 		return nil, BadAuthRequest("生成参数必须是 JSON 对象")
+	}
+	if _, err := canvasProjectForUser(s.repo, userID, canvasID); err != nil {
+		return nil, err
 	}
 	call := cloudAgentCall{ID: newID()}
 	call.Function.Name = "generate_media"
@@ -160,6 +166,11 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 	}
 	if !json.Valid(raw) {
 		return nil, BadAuthRequest("工具参数必须是 JSON 对象")
+	}
+	// 画布不存在时在这里就返回 404。否则每个工具各自撞上仓储的"记录不存在"，命令行只能
+	// 看到 500「系统处理失败」，既看不出原因也没有可执行的下一步。
+	if _, err := canvasProjectForUser(s.repo, userID, canvasID); err != nil {
+		return nil, err
 	}
 	call := cloudAgentCall{ID: newID()}
 	call.Function.Name = tool

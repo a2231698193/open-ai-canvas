@@ -2,6 +2,8 @@
 
 `canvas create` 和 `canvas use` 会把画布记为当前画布。之后的 `state`、`apply` 和 `task create` 默认使用它。临时指定用 `--canvas <画布ID>`。
 
+画布不存在或不属于当前账号时，画布相关命令（`state`、`apply`、`tool`、`quote`）都返回 404 `not_found`「画布不存在或无权访问」。这不是网络或服务端故障，不要对同一个画布 ID 反复重试：先用 `canvas list` 看当前账号有哪些画布，或 `canvas create` 新建一个，再 `canvas use <画布ID>` 切过去。`canvas list` 返回的 `projects` 数组里每一项就是一张画布，`id` 字段直接给 `canvas use` 用。
+
 ```bash
 linggan canvas list
 linggan canvas create --title "产品广告"

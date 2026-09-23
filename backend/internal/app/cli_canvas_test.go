@@ -2,11 +2,21 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
 )
+
+// requireCannotReadCanvas 断言错误是命令行能读懂的 404，而不是承载不了语义的 500。
+func requireCannotReadCanvas(t *testing.T, label string, err error) {
+	t.Helper()
+	var appErr *AppError
+	if !errors.As(err, &appErr) || appErr.Status != CodeNotFound || appErr.Reason != ReasonNotFound {
+		t.Fatalf("%s：期望 404 %s，实际 %v", label, ReasonNotFound, err)
+	}
+}
 
 func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 	s, db, _, _ := creationTestService(t)
@@ -60,10 +70,74 @@ func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 	}
 	if _, err := s.CLICanvasState("other", "cli-canvas", 0); err == nil {
 		t.Fatal("foreign canvas state leaked")
+	} else {
+		requireCannotReadCanvas(t, "别人画布的 state", err)
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil || strings.Contains(string(encoded), "http://") {
 		t.Fatalf("result leaked a URL or failed to encode: %s %v", encoded, err)
+	}
+}
+
+// 画布不存在或不属于当前账号时，命令行每个入口都必须给出一致的 404。
+//
+// 服务端原样抛出仓储的"记录不存在"时，HTTP 投影只能落到 500「系统处理失败，请稍后重试」：
+// 命令行用户看不到服务端日志，既不知道画布不存在，也没有可执行的下一步。
+func TestCLICanvasEntriesReportMissingCanvasAsNotFound(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	canvas := model.CanvasProject{ID: "cli-canvas", UserID: "user", Title: "命令行画布", PayloadJSON: `{"nodes":[],"connections":[]}`}
+	if err := db.Create(&canvas).Error; err != nil {
+		t.Fatal(err)
+	}
+	checks := []struct {
+		label string
+		run   func() error
+	}{
+		{"canvas state", func() error {
+			_, err := s.CLICanvasState("user", "ghost-canvas", 0)
+			return err
+		}},
+		{"canvas state 带分页", func() error {
+			_, err := s.CLICanvasState("user", "ghost-canvas", 20, 40)
+			return err
+		}},
+		{"canvas tool canvas_get_state", func() error {
+			_, err := s.CLICanvasTool("user", "ghost-canvas", "canvas_get_state", []byte(`{}`))
+			return err
+		}},
+		{"canvas tool canvas_inspect_media", func() error {
+			_, err := s.CLICanvasTool("user", "ghost-canvas", "canvas_inspect_media", []byte(`{"nodeId":"vid-1"}`))
+			return err
+		}},
+		{"canvas tool canvas_inspect_image", func() error {
+			_, err := s.CLICanvasTool("user", "ghost-canvas", "canvas_inspect_image", []byte(`{"nodeId":"image-1"}`))
+			return err
+		}},
+		{"canvas tool model_list", func() error {
+			_, err := s.CLICanvasTool("user", "ghost-canvas", "model_list", []byte(`{}`))
+			return err
+		}},
+		{"canvas apply", func() error {
+			_, err := s.CLIApplyCanvasOps("user", "ghost-canvas", []byte(`{"snapshotHash":"stale","ops":[]}`))
+			return err
+		}},
+		{"canvas quote", func() error {
+			_, err := s.CLIQuoteMedia("user", "ghost-canvas", []byte(`{"mode":"image","prompt":"海报","nodeId":"image-1"}`))
+			return err
+		}},
+		// 归属别人的画布走同一条查询：同样 404，不暴露画布是否存在。
+		{"画布属于别人", func() error {
+			_, err := s.CLIApplyCanvasOps("other", "cli-canvas", []byte(`{"snapshotHash":"stale","ops":[]}`))
+			return err
+		}},
+		// 画布 Agent 与命令行共用这份加载口径，两条路都不能漏。
+		{"cloudAgentInspectionDocument", func() error {
+			_, err := cloudAgentInspectionDocument(s.repo, "user", "ghost-canvas")
+			return err
+		}},
+	}
+	for _, check := range checks {
+		requireCannotReadCanvas(t, check.label, check.run())
 	}
 }
 

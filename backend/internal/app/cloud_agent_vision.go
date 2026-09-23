@@ -112,7 +112,7 @@ func cloudAgentImageInspectionResult(inspections cloudAgentImageInspections) any
 
 // cloudAgentInspectionDocument 读取画布文档，查看类工具共用同一份加载与解析口径。
 func cloudAgentInspectionDocument(repo *repository.Repository, userID, canvasID string) (map[string]any, error) {
-	canvas, err := repo.CanvasProjectForUser(userID, canvasID)
+	canvas, err := canvasProjectForUser(repo, userID, canvasID)
 	if err != nil {
 		return nil, err
 	}
