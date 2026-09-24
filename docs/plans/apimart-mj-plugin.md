@@ -99,7 +99,7 @@
 ### 4.5 结果映射
 
 - `images` ← `image_urls`（4 张单图，全部落库）。
-- `grid_image_url` 与 `buttons` **P0 不落库**：`protocol.Result` 只有 images/videos/audios/text/reasoning/usage（`types.go:147-154`），没有放元数据的位置。P1 需要时再定承载（候选：`PollContext.Metadata`，见 `types.go:106-112`）。
+- `grid_image_url` 与 `buttons` **不落库、也不展示**（已确认的取舍）：`protocol.Result` 只有 images/videos/audios/text/reasoning/usage（`types.go:147-154`），没有放元数据的位置；而把四宫格当结果返回会多下载/多物化一张约 5.6MB 的合成图。批量根节点保持画布既有语义——**子节点的投影**（`reconcileImageBatchRoot` 取主图子节点的图与尺寸），所以根节点显示的是 4 张里的某一张，不是四宫格合成图。将来要做「根节点=四宫格」见第 10 节 backlog。
 - 失败路径沿用 `asyncResponse` 的 `errorPaths` / `messagePaths` 写法。
 
 ### 4.6 生成器改动
@@ -177,6 +177,7 @@ MJ 一次 imagine 固定回 4 张。画布原本的批量语义是「每个子�
 - **P1 二次操作**（upscale / variation / reroll，入口 = 图片节点工具栏）。前置改造：请求侧支持自定义 `operation`（现在图片任务恒为 `image`）、把任务的上游 `task_id`（`Task.ProviderRequestID`，`models_task.go:36`）暴露给前端、`buttons[]` 持久化承载、工具栏入口与参数弹窗。
 - **P2 其余路由**：blend / describe / edits / high-variation / low-variation / zoom / pan / inpaint / modal / remix-strong / remix-subtle，以及 `apimart-mj-video`（video capability，图生视频）。describe 若要可用，需接画布的「反推提示词」并处理文本结果。
 - **P3 定价对齐**：价格档选择器白名单扩展 `version` / `speed`，并补一个 MJ 价格导入器（现有 `import-apimart-video-pricing` 只认视频，不认 `action_version_speed`）。
+- **可选：根节点显示四宫格**（本轮已决定不做）。实现方式：协议把 `grid_image_url` 作为第 1 张结果返回，画布把它挂到批量根节点、4 张单图挂子节点；代价是每次生成多下载并物化一张约 5.6MB 的合成图（素材库多一条），若要「只作封面不进素材库」需要后端支持按输出跳过资产物化。`buttons[]` 的持久化可以和它一起做（都要走结果元数据承载）。
 
 ## 11. 实现时需同步的文档
 

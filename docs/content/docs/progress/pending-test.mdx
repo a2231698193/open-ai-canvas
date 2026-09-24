@@ -14,6 +14,7 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - 后台「能力与参数」的预期默认值：尺寸参数 `aspect_ratio`、支持尺寸为 13 个比例、允许自定义关闭，「图片质量 / 透明背景 / response_format / output_format」全部关闭，单次生成张数 4，最大参考图 4，蒙版编辑关闭。选完协议会自动填成这组值，管理员通常不用改。
 - 比例要用画布 picker 真正提交的字符串：1K 预设会把 `9:21` 归一化成 `3:7`（`7:3` → `21:9`），所以能力配置与协议白名单都写 `3:7`。写 `9:21` 时画布提交 `3:7` 而协议不认，`size` 会被静默省略、回落上游默认比例。质量档关闭后 picker 只有 1K 有瓦片，2K/3K/4K 为空，不会出现像素尺寸提交（MJ 的 `size` 只接受 `w:h`）。
 - 固定批量：MJ 一次调用固定回 4 张，能力字段 `batchOutputs = 4` 让画布只发**一次**上游请求并把 4 张按输出序号铺成 4 个节点（此前画布批量是"每个子节点各发一次请求"，用在这里会 4 倍计费）。子节点 metadata 记 `batchOutputIndex`，恢复/重试/重新加载资源都按它取图。固定批量模型不再显示张数选择器。
+- 四宫格取舍（已定）：`grid_image_url` 不落库、画布不展示；批量根节点保持「子节点投影」语义（显示主图子节点那张，不是 2×2 合成图），因此每次生成不会多下载/多存约 5.6MB 的合成图。要改成「根节点=四宫格」需重新决定下载与素材库成本。
 - 本轮只覆盖 imagine；upscale / variation / high-low-variation / reroll / blend / describe / edits / zoom / pan / inpaint / modal / video / remix 未实现，按仓库约定必须另立 provider。
 - [ ] 系统渠道模型协议选 `APIMart Midjourney`（模型键建议 `midjourney`）后，画布文生图能提交并轮询出 4 张单图。
 - [ ] 生成设置里依次选 v8.2、Niji、Fast，确认上游请求体分别出现 `version="8.2"`、`niji=true`、`speed="fast"`，且计费命中对应 key。
