@@ -5,6 +5,16 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 上游合并（b701b3ef..56b1e36d）的取舍与验证
+
+- 本次并入官方 4 个提交：注册服务协议后台可配置、Agent 上下文计量读数（`cloud_agent_context_pressure.go` / `cloud_agent_usage_anchor.go`）、v35 认证通知增量迁移、注册页与后台设置样式调整。
+- 冲突解决 4 处：`pending-test.mdx` 双方都在顶部新增章节 → 都保留；`http-api.mdx` 官方那侧是**更旧的单图** `canvas_inspect_image(nodeId)` 描述与旧工具清单，我方已是多图 `nodeIds` 版本（与 `cloudAgentInspectTargets` 及用例一致，官方尚未合并该能力），因此保留我方描述、只取官方新增的 `context_pressure` / 窗口口径 / `context_transition` 段落；两个注册页文件我方只有上次合并后的 prettier 格式化（已核对无功能差异），取官方实现后按本仓库 prettier 配置重新格式化。
+- 二次开发品牌适配：`auth_registration_test.go` 里官方把同意提示写死成「请先同意影策服务协议」，而提示语由 `AgreementTitleForMessage()` 跟随后台品牌名（本仓库是「灵感」），改为从服务派生，换品牌不会再断。
+- 验证：`go build ./...`、`go test ./... -count=1` 全量无失败；前端 `bun run typecheck` / `bun run build` / `bun run lint` 通过、`bun test` 2122 通过 / 0 失败。
+- [ ] 真机验收（注册协议）：后台「登录与注册」第 3 区块改协议名称与正文 → 用未登录浏览器确认注册页勾选框与弹窗在明暗主题下显示正确、留空时的占位提示、关闭注册时的拦截文案；再确认「注册开关」与「协议」两次保存互不覆盖。
+- [ ] 升级验收（v35 迁移）：用生产库快照跑一次 `migrate-schema`，确认认证通知增量迁移幂等、老库可正常登录发信。
+- [ ] 助手运行记录里的 `context_pressure` 读数目前**只在后端事件里**（前端没有消费与展示）；要在界面上看上下文占用，需要另做前端展示。
+
 ## 视频生成模式下拉按模型能力过滤
 
 - 画布节点面板与创作工作区的「视频生成模式」此前**无条件列出 4 项**（文生视频 / 图生视频 / 首尾帧参考 / 全能参考），完全不读模型能力：管理员只勾了「首帧」，用户仍能选到首尾帧与全能参考，提交时才被 `modelCompatibilityError` 拦下（「不支持尾帧参考」/「不支持全能参考」）。
