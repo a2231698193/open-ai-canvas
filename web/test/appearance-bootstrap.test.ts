@@ -76,7 +76,9 @@ test("auth scene consumes resolved appearance instead of hardcoded media constan
     expect(source).toContain("appearance.brandName");
     expect(source).toContain("appearance.authHeroTitle");
     expect(source).toContain("appearance.authHeroDescription");
-    expect(source).toContain('theme="dark"');
+    // 登录页跟随解析后的外观与明暗主题，而不是写死深色。
+    expect(source).toContain("theme={theme}");
+    expect(source).toContain("useThemeStore");
     expect(source).not.toContain("让一个故事，");
     expect(source).not.toContain("AUTH_VIDEO_URL");
     expect(source).not.toContain("AUTH_VIDEO_POSTER");

@@ -7,6 +7,7 @@ export type BackendEnvelope<T> = {
     data: T;
     msg: string;
     reason?: string;
+    details?: Record<string, unknown>;
 };
 
 /**
@@ -18,16 +19,18 @@ export class ApiError extends Error {
     readonly status?: number;
     readonly code?: number;
     readonly reason?: string;
+    readonly details?: Record<string, unknown>;
     readonly retryable: boolean;
     readonly retryAfterMs?: number;
     readonly cause?: unknown;
 
-    constructor(message: string, options: { status?: number; code?: number; reason?: string; retryable?: boolean; retryAfterMs?: number; cause?: unknown } = {}) {
+    constructor(message: string, options: { status?: number; code?: number; reason?: string; details?: Record<string, unknown>; retryable?: boolean; retryAfterMs?: number; cause?: unknown } = {}) {
         super(message);
         this.name = "ApiError";
         this.status = options.status;
         this.code = options.code;
         this.reason = options.reason;
+        this.details = options.details;
         this.retryable = options.retryable ?? isRetryableStatus(options.status ?? options.code);
         this.retryAfterMs = options.retryAfterMs;
         this.cause = options.cause;
@@ -51,6 +54,7 @@ export async function request<T>(promise: Promise<{ data: BackendEnvelope<T>; st
                 status: response.status,
                 code: response.data.code,
                 reason: response.data.reason,
+                details: response.data.details,
                 retryable: isRetryableStatus(response.status) || isRetryableStatus(response.data.code),
                 retryAfterMs: retryAfterMilliseconds(response.headers),
             });
@@ -76,6 +80,7 @@ function unwrapTransportError(error: unknown): never {
             status,
             code: envelope?.code,
             reason: envelope?.reason,
+            details: backendErrorDetails(response.data),
             retryable: isRetryableStatus(status) || isRetryableStatus(envelope?.code),
             retryAfterMs: retryAfterMilliseconds(response.headers),
             cause: error,
@@ -116,6 +121,13 @@ function backendErrorEnvelope(data: unknown): { code?: number; reason?: string }
     const reason = typeof record.reason === "string" ? record.reason : undefined;
     if (code === undefined && reason === undefined) return undefined;
     return { code, reason };
+}
+
+// 结构化失败详情（例如配额、字段名）只在确实是对象时透传，避免把字符串塞进 ApiError.details。
+function backendErrorDetails(data: unknown): Record<string, unknown> | undefined {
+    if (!data || typeof data !== "object") return undefined;
+    const details = (data as { details?: unknown }).details;
+    return details && typeof details === "object" && !Array.isArray(details) ? (details as Record<string, unknown>) : undefined;
 }
 
 function readBackendErrorMessage(data: unknown): string {

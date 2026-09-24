@@ -48,6 +48,8 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     ports:
       - "3000:3000"
+    volumes:
+      - web-data:/usr/share/nginx/html
     depends_on:
       backend:
         condition: service_healthy
@@ -71,3 +73,4 @@ services:
 
 volumes:
   backend-data:
+  web-data:

@@ -35,6 +35,24 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] 专项测试覆盖：点击画布空白或其它节点会暂停正在播放的视频；点击当前节点、工具条、提示词面板和页面弹层不暂停；已暂停的视频不会被重复操作。
 - [ ] 在真实画布播放视频节点，分别点击空白、其它节点、当前节点控件、节点工具条和提示词面板，确认只有前两种会暂停且进度不回到开头。
 
+上游主线合并（12 个提交：平台稳定性与会话隔离、画布渲染降热点、部署保留旧前端分片、万相3.0 分辨率与错误解析、资源引用递归校验与断链修复、登录主题跟随外观、角色卡封面、docker third_party 复制、测试补强）：12 个文件冲突，其余自动合并。
+
+合并取舍：部署镜像行保留本仓库的 `${CANVAS_IMAGE_TAG}` 方案（上游改成"必须带 digest 的 `CANVAS_BACKEND_IMAGE`/`CANVAS_WEB_IMAGE`"，那是配它 host-updater 镜像链路的形态；本仓库生产是 `update-yingce` + build overlay 源码构建，而 compose 解析时 `:?` 会直接报错）；`web/src/main.tsx` 保留本仓库"先等外观再挂应用"的门控（首屏 HTML 品牌中性，避免先闪默认品牌；`bootstrapAppearance` 自带 4 秒超时与默认外观兜底，不会白屏），只收下上游新增的 `installChunkRecovery()`；登录/注册页采用上游的主题 token（`auth-scene-icon`/`auth-scene-link`），不再写死深色配色。
+
+顺带修掉上游这版引用收集的一个漏项：`ResourceReferenceSnapshotExcludingAssets` 只把其他素材的 `assets.payload_json` 纳入扫描，漏了版本的 `definition_json` 与表现层的 `metadata_json`/`resource_id`，导致"只被其他素材的版本或表现引用"的资源在批量删除时被误判为无引用而物理删除（`TestPurgeAssetsBatchSharedResourcesAndHistory` 复现）。本仓库在 `internal/repository/resource_reference.go` 补齐这三类文档，并按上游新的删除保护契约改造了该用例：被任务/画布引用整批拒绝并列出来源 → 解除后仍被历史版本引用则指名历史版本 → 引用全部解除后才删除。
+
+验证：后端 `gofmt -l` 干净、`go build ./...`、`go test ./... -count=1` 全量通过（0 个 FAIL）。前端 `bun run typecheck`、`bun run lint`、`bun run build`、`bun run test` 2096 项通过、改动文件 prettier 检查通过（上游新增与改写的若干前端文件按本仓库 prettier 配置重新格式化）。按新机制更新了三条本仓库守护断言：`main.tsx` 启动门控（含 `installChunkRecovery` 的测试脚手架 stub）、未激活视频节点的"视口门控静态首帧"（改用 `hydrateCanvasVideoPreview` + `CanvasVideoPreviewImage` 断言）、登录页主题感知（`theme={theme}`）。仍待真实环境验收：连续发布三版以上验证旧标签页分片恢复、`repair-canvas-resources` dry-run/apply 幂等、真实大画布的性能表现。
+
+## 画布资源断链、前端发布兼容与画布热点
+
+- 已实现：统一递归识别持久资源字段（含嵌套 `videoPreview`）；保存前和历史快照保存时校验当前资源归属/ready 状态，资源缺失返回带路径和 ID 的结构化 409。显式修复保留坏版本历史但要求新版本完整且 revision CAS 成功。后台 `repair-canvas-resources` 默认只读，仅可清除确认缺失的派生视频预览；主媒体问题报告为 unresolved。
+- 已实现：哈希 chunk 采用长缓存，缺失资源不缓存；HTML 显式 `no-cache, must-revalidate`。静态容器发布保留当前与上一发布 chunk，并在保留窗口内清理更旧资源；Vite preload 失败只自动恢复一次，之后交由路由错误页，用户手动重试仍可用。已有数据卷不会凭空恢复首次部署前已删的 chunk。
+- 已实现：同步显式 repair/force 请求不会被正在运行的普通同步吞掉；素材元数据请求按账号 scope/generation 隔离迟到响应。画布内容 hash 对 viewport/revision-only 副本复用；视口更新走轻量路径；loading 节点共享画布级 ticker，页面隐藏时暂停该 ticker。
+- [ ] 先备份隔离/测试数据库，验证 `repair-canvas-resources` dry-run、`--apply`、重复运行幂等、并发 revision 冲突、只清派生 preview、不改主媒体；检查 unresolved 后人工恢复历史或重传。未扫描或改写生产数据库。
+- [ ] 使用发布测试卷连续发布三版以上：旧 tab 延迟触发旧 chunk 后仍可加载；验证 HTML 与哈希资源 Cache-Control、旧 chunk 404 不被 SPA fallback 改写，以及浏览器一次性恢复不循环。当前没有 CDN/Ingress 线上响应证据，Firefox MIME 具体响应类型未确认。
+- [ ] Firefox/Chrome/Safari 实际页面走关键 lazy route；检查离线草稿、登录切换和错误重试行为。尚未做真实浏览器/CDN 验收。
+- [ ] 使用 React Profiler 与长时间运行的大画布记录任务更新、节点数/可见数、主线程长任务和页面隐藏行为。当前只做结构性降热点，不推断整画布必然全量重渲染或已达到某个帧率。
+
 ## 原任务 ID 媒体保存恢复
 
 - [x] 故障注入：下载 503 后服务实例重建继续原任务、OSS 上传失败保留暂存文件及资源 ID、素材登记异常使任务成功事务回滚，登记恢复无需再次下载。

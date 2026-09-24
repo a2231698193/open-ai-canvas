@@ -14,11 +14,16 @@ async function prepareEntry(dev, pathname) {
             {
                 name: "entry-side-effects",
                 setup(builder) {
-                    builder.onResolve({ filter: /^(@fontsource-variable\/|@\/services\/appearance-bootstrap$|\.\/(welcome-)?application$)/ }, ({ path }) => ({ path, namespace: "entry-test" }));
+                    // chunk-recovery 只是注册 preload 失败兜底，和入口加载顺序无关；VM 里的假 window 没有
+                    // addEventListener，真实实现会在这里抛错，所以连同字体一起替换成空实现。
+                    builder.onResolve({ filter: /^(@fontsource-variable\/|@\/services\/appearance-bootstrap$|@\/lib\/chunk-recovery$|\.\/(welcome-)?application$)/ }, ({ path }) => ({ path, namespace: "entry-test" }));
                     builder.onLoad({ filter: /.*/, namespace: "entry-test" }, ({ path }) => {
                         if (path.startsWith("@fontsource-variable/")) return { contents: "", loader: "js" };
                         if (path === "@/services/appearance-bootstrap") {
                             return { contents: 'export function bootstrapAppearance() { events.push("appearance"); return appearanceReady; }', loader: "js" };
+                        }
+                        if (path === "@/lib/chunk-recovery") {
+                            return { contents: "export function installChunkRecovery() {}", loader: "js" };
                         }
                         return { contents: `events.push(${JSON.stringify(path)}); entryLoaded();`, loader: "js" };
                     });

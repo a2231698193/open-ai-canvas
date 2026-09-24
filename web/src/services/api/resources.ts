@@ -119,6 +119,21 @@ export type ResourceAccess = {
 
 const accessCache = new Map<string, { value: ResourceAccess; expiresAt: number }>();
 const accessRequests = new Map<string, Promise<ResourceAccess>>();
+let accessGeneration = 0;
+
+/**
+ * Drop every in-memory access descriptor when the authenticated scope changes.
+ * Signed URLs are credentials, so an old request must not be allowed to publish
+ * its result into the next account's cache after a logout/login race.
+ */
+export function clearResourceAccessCache() {
+    accessGeneration += 1;
+    accessCache.clear();
+    accessRequests.clear();
+    resourceCache.clear();
+    resourceRequests.clear();
+    missingResourceIds.clear();
+}
 
 export function resourceStorageKey(id: string) {
     return `resource:${id}`;
@@ -261,6 +276,8 @@ function uploadRequestConfig(idempotencyKey?: string) {
 }
 
 export function getResource(id: string): Promise<RemoteResource> {
+    const generation = accessGeneration;
+    const scope = getActiveUserScope();
     const cacheKey = resourceCacheKey(id);
     const cached = resourceCache.get(cacheKey);
     if (cached) return Promise.resolve(cached);
@@ -270,39 +287,58 @@ export function getResource(id: string): Promise<RemoteResource> {
     const task = http
         .get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`)
         .then((data) => {
+            assertResourceRequestCurrent(generation, scope);
             resourceCache.set(cacheKey, data.resource);
             return data.resource;
         })
         .catch((error) => {
+            assertResourceRequestCurrent(generation, scope);
             if (error instanceof ApiError && error.status === 404) missingResourceIds.add(cacheKey);
             throw error;
         })
-        .finally(() => resourceRequests.delete(cacheKey));
+        .finally(() => {
+            if (resourceRequests.get(cacheKey) === task) resourceRequests.delete(cacheKey);
+        });
     resourceRequests.set(cacheKey, task);
     return task;
 }
 
 // refreshResource 绕过缓存强制拉取资源最新状态（转码副本就绪轮询用），并回写缓存。
 export function refreshResource(id: string): Promise<RemoteResource> {
+    const generation = accessGeneration;
+    const scope = getActiveUserScope();
     const cacheKey = resourceCacheKey(id);
     return http.get<{ resource: RemoteResource }>(`/resources/${encodeURIComponent(id)}`).then((data) => {
+        assertResourceRequestCurrent(generation, scope);
         resourceCache.set(cacheKey, data.resource);
         missingResourceIds.delete(cacheKey);
         return data.resource;
     });
 }
 
+function assertResourceRequestCurrent(generation: number, scope: string) {
+    if (generation !== accessGeneration || scope !== getActiveUserScope()) {
+        throw new DOMException("资源请求已因账号切换失效", "AbortError");
+    }
+}
+
 export async function getResourceAccess(storageKey: string | undefined, purpose: ResourceAccessPurpose = "display", variant: ResourceAccessVariant = "original", downloadName = "") {
     const id = resourceIdFromStorageKey(storageKey);
     if (!id) throw new Error("当前媒体尚未上传到后端资源存储");
-    const key = `${resourceCacheKey(id)}:${purpose}:${variant}:${downloadName}`;
+    const scope = getActiveUserScope();
+    const generation = accessGeneration;
+    const key = `${scope}:${id}:${purpose}:${variant}:${downloadName}`;
     const cached = accessCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
     const pending = accessRequests.get(key);
     if (pending) return pending;
-    const request = (async () => {
+    let request!: Promise<ResourceAccess>;
+    request = (async () => {
         try {
             const data = await http.post<{ items: Array<{ resourceId: string; access?: ResourceAccess; error?: { msg?: string } }> }>("/resources/access", [{ resourceId: id, purpose, variant, ...(downloadName ? { downloadName } : {}) }]);
+            if (generation !== accessGeneration || scope !== getActiveUserScope()) {
+                throw new DOMException("资源访问请求已因账号切换失效", "AbortError");
+            }
             const item = data.items?.[0];
             if (!item?.access?.url) throw new Error(item?.error?.msg || "后端未返回资源访问地址");
             const value = item.access;
@@ -313,7 +349,7 @@ export async function getResourceAccess(storageKey: string | undefined, purpose:
             if (error instanceof ApiError) throw new Error(error.message || "获取对象存储地址失败");
             throw error;
         } finally {
-            accessRequests.delete(key);
+            if (accessRequests.get(key) === request) accessRequests.delete(key);
         }
     })();
     accessRequests.set(key, request);

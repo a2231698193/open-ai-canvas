@@ -119,6 +119,10 @@ func (r *Repository) ResourceStorageReferenceCount(resource *model.Resource, exc
 }
 
 func (r *Repository) ResourceReferenceSnapshot(userID string, excludingAssetID string, resourceIDs []string) (ResourceReferenceSnapshot, error) {
+	return r.ResourceReferenceSnapshotExcludingAssets(userID, []string{excludingAssetID}, resourceIDs)
+}
+
+func (r *Repository) ResourceReferenceSnapshotExcludingAssets(userID string, excludingAssetIDs []string, resourceIDs []string) (ResourceReferenceSnapshot, error) {
 	snapshot := ResourceReferenceSnapshot{Documents: []ResourceReferenceDocument{}, Direct: []ResourceDirectReference{}}
 	if len(resourceIDs) == 0 {
 		return snapshot, nil
@@ -154,12 +158,58 @@ func (r *Repository) ResourceReferenceSnapshot(userID string, excludingAssetID s
 		snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "工具", ID: strconv.FormatInt(tool.ID, 10), Title: tool.Label, PrimaryJSON: string(payload)})
 	}
 	var assets []model.Asset
-	assetQuery := r.db.Where("user_id = ? AND id <> ?", userID, excludingAssetID)
+	assetQuery := r.db.Where("user_id = ?", userID)
+	if len(excludingAssetIDs) > 0 {
+		assetQuery = assetQuery.Where("id NOT IN ?", excludingAssetIDs)
+	}
 	if err := assetQuery.Find(&assets).Error; err != nil {
 		return snapshot, err
 	}
+	// 素材引用不只在 assets.payload_json 里：版本的 definition 与表现层的 metadata/resource_id
+	// 同样会引用资源。只扫 payload 会让"仅被其他素材的版本或表现引用"的资源被误判为无引用，
+	// 进而在批量删除时被物理删掉（resource_batch_delete_test.go 覆盖了这个场景）。
+	assetDocumentExtras := map[string][]string{}
+	if len(assets) > 0 {
+		assetIDs := make([]string, 0, len(assets))
+		for _, asset := range assets {
+			assetIDs = append(assetIDs, asset.ID)
+		}
+		var versions []model.AssetVersion
+		if err := r.db.Where("asset_id IN ?", assetIDs).Find(&versions).Error; err != nil {
+			return snapshot, err
+		}
+		versionAssetIDs := make(map[string]string, len(versions))
+		versionIDs := make([]string, 0, len(versions))
+		for _, version := range versions {
+			versionIDs = append(versionIDs, version.ID)
+			versionAssetIDs[version.ID] = version.AssetID
+			assetDocumentExtras[version.AssetID] = append(assetDocumentExtras[version.AssetID], version.DefinitionJSON)
+		}
+		if len(versionIDs) > 0 {
+			var representations []model.AssetRepresentation
+			if err := r.db.Where("asset_version_id IN ?", versionIDs).Find(&representations).Error; err != nil {
+				return snapshot, err
+			}
+			for _, representation := range representations {
+				assetID := versionAssetIDs[representation.AssetVersionID]
+				if assetID == "" {
+					continue
+				}
+				assetDocumentExtras[assetID] = append(assetDocumentExtras[assetID], representation.MetadataJSON)
+				if resourceID := strings.TrimSpace(representation.ResourceID); resourceID != "" {
+					assetDocumentExtras[assetID] = append(assetDocumentExtras[assetID], `{"resourceId":"`+resourceID+`"}`)
+				}
+			}
+		}
+	}
 	for _, asset := range assets {
 		snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "素材", ID: asset.ID, Title: asset.Title, PrimaryJSON: asset.PayloadJSON})
+		for _, raw := range assetDocumentExtras[asset.ID] {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			snapshot.Documents = append(snapshot.Documents, ResourceReferenceDocument{Kind: "素材", ID: asset.ID, Title: asset.Title, PrimaryJSON: raw})
+		}
 	}
 
 	var canvases []model.CanvasProject
@@ -240,7 +290,10 @@ func (r *Repository) ResourceReferenceSnapshot(userID string, excludingAssetID s
 	versionQuery := r.db.Table("asset_versions").
 		Select("asset_versions.id, assets.title, asset_versions.definition_json AS primary_json").
 		Joins("JOIN assets ON assets.id = asset_versions.asset_id").
-		Where("assets.user_id = ? AND assets.id <> ?", userID, excludingAssetID)
+		Where("assets.user_id = ?", userID)
+	if len(excludingAssetIDs) > 0 {
+		versionQuery = versionQuery.Where("assets.id NOT IN ?", excludingAssetIDs)
+	}
 	if err := versionQuery.Scan(&versions).Error; err != nil {
 		return snapshot, err
 	}
@@ -292,12 +345,15 @@ func (r *Repository) ResourceReferenceSnapshot(userID string, excludingAssetID s
 		ResourceID string
 	}
 	var representations []joinedRepresentation
-	if err := r.db.Table("asset_representations").
+	representationQuery := r.db.Table("asset_representations").
 		Select("asset_representations.id, assets.title, asset_representations.resource_id").
 		Joins("JOIN asset_versions ON asset_versions.id = asset_representations.asset_version_id").
 		Joins("JOIN assets ON assets.id = asset_versions.asset_id").
-		Where("assets.user_id = ? AND assets.id <> ? AND asset_representations.resource_id IN ?", userID, excludingAssetID, resourceIDs).
-		Scan(&representations).Error; err != nil {
+		Where("assets.user_id = ? AND asset_representations.resource_id IN ?", userID, resourceIDs)
+	if len(excludingAssetIDs) > 0 {
+		representationQuery = representationQuery.Where("assets.id NOT IN ?", excludingAssetIDs)
+	}
+	if err := representationQuery.Scan(&representations).Error; err != nil {
 		return snapshot, err
 	}
 	for _, representation := range representations {
@@ -403,23 +459,9 @@ func (r *Repository) DeleteAssetsAndResources(userID string, assetIDs []string, 
 		if len(assetIDs) == 0 || len(ownedAssets) != len(assetIDs) {
 			return gorm.ErrRecordNotFound
 		}
-		if deleteReferencedResources {
-			if len(resourceIDs) > 0 {
-				// 与历史快照写入串行化，避免清除索引后又插入外键引用。
-				if r.Dialect() == "postgres" {
-					var resources []model.Resource
-					if err := tx.Select("id").Where("id IN ?", resourceIDs).Order("id").Clauses(clause.Locking{Strength: "UPDATE"}).Find(&resources).Error; err != nil {
-						return err
-					}
-				}
-				if err := tx.Where("resource_id IN ?", resourceIDs).Delete(&model.CanvasSnapshotResource{}).Error; err != nil {
-					return err
-				}
-			}
-		} else {
-			if err := New(tx).RequireNoCanvasHistoryReferences(resourceIDs); err != nil {
-				return err
-			}
+		// Explicit deletion and archive expiry must never invalidate a snapshot.
+		if err := New(tx).RequireNoCanvasHistoryReferences(resourceIDs); err != nil {
+			return err
 		}
 		versionIDs := tx.Model(&model.AssetVersion{}).Select("id").Where("asset_id IN ?", assetIDs)
 		if err := tx.Where("asset_version_id IN (?)", versionIDs).Delete(&model.ShotAssetReference{}).Error; err != nil {

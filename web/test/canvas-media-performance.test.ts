@@ -83,20 +83,18 @@ describe("large canvas media rendering", () => {
 
     test("keeps inactive video nodes on a viewport-gated static first frame", () => {
         const inactivePreviewSource = canvasNodeContentSource.match(/function InactiveVideoPreview[\s\S]*?\n}\n\nfunction VideoPreviewPlayButton/)?.[0] || "";
-        expect(canvasNodeContentSource).toContain("if (hasPersistedPreview || !nearViewport || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current)");
-        expect(canvasNodeContentSource).not.toContain("hydrateMediaPreview");
-        expect(inactivePreviewSource).toContain("hasPersistedPreview || localPreviewUrl || !nearViewport");
-        expect(inactivePreviewSource).toContain("<video");
-        expect(inactivePreviewSource).toContain("muted");
-        expect(inactivePreviewSource).toContain('preload="auto"');
-        expect(inactivePreviewSource).toContain("video.currentTime = Math.min(0.001, video.duration / 2)");
-        expect(inactivePreviewSource).toContain("onCanPlay={() => setPassiveVideoReady(true)}");
-        expect(inactivePreviewSource).not.toContain("autoPlay");
+        // 视口门控：不在视口内就不去取首帧，也不把它升级成活动播放器。
+        expect(inactivePreviewSource).toContain("if (hasPersistedPreview || !nearViewport || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current)");
+        // 静态首帧来自持久化/水合出来的预览图，并把结果写回 videoPreview 供下次直接使用。
+        expect(inactivePreviewSource).toContain("hydrateCanvasVideoPreview(node, controller.signal)");
+        expect(inactivePreviewSource).toContain("updateMetadataRef.current?.(node.id, { videoPreview })");
+        expect(inactivePreviewSource).toContain("<CanvasVideoPreviewImage");
+        // 未激活的节点不能是活的 <video>（那等于自动播放/自动解码）。
+        expect(inactivePreviewSource).not.toContain("<video");
         expect(inactivePreviewSource).toContain("<VideoPreviewPlayButton");
+        // 活动播放器只按 mediaActive 挂载；旧的内联首帧实现不应残留。
         expect(canvasNodeContentSource).toContain("useVideoPlaybackUrl(node, mediaActive)");
-        expect(canvasNodeContentSource).toContain("onMediaPlayRequest?.(node.id)");
-        expect(canvasNodeContentSource).toContain('autoPlay preload="metadata"');
-        expect(canvasNodeContentSource).toContain("scheduleResourceBlobCache(node.metadata?.storageKey || \"\")");
+        expect(canvasNodeContentSource).not.toContain("hydrateMediaPreview");
     });
 
     test("downloads OSS media by browser navigation without fetching it into a Blob", () => {
@@ -216,7 +214,8 @@ describe("video canvas controls", () => {
         expect(videoPlayerSource).not.toContain("onPointerDownCapture={stopCanvasControlInteraction}");
         expect(videoPlayerSource).not.toContain("onMouseDownCapture={stopCanvasControlInteraction}");
         expect(videoPlayerSource).not.toContain("onClickCapture={stopCanvasControlClick}");
-        expect(canvasNodeContentSource).toContain('hasAudio={inferVideoHasAudio(node.metadata)} autoPlay preload="metadata"');
+        // 格式化会改变换行与缩进：只钉住"把音轨事实交给播放器 + 自动播放 + 元数据预载"这层语义。
+        expect(canvasNodeContentSource).toMatch(/hasAudio=\{inferVideoHasAudio\(node\.metadata\)\}\s+autoPlay\s+preload="metadata"/);
         expect(canvasNodeContentSource).toContain('if (["false", "0", "off", "no", "disabled"].includes(value || "")) return false;');
     });
 

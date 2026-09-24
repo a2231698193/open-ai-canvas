@@ -106,7 +106,7 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 | `prompts` | 提示词模板、用户定制、风格档案、JSON 抽取 | **已抽出**：`internal/prompts` |
 | `auth` | 登录注册、OAuth、邮件验证码、LibTV/TapNow 导入 | **已抽出**：`internal/auth` |
 | `canvas` | 画布公开分享、媒体引用守卫、用户画布/素材库同步 | **已抽出**：`internal/canvas` |
-| `assets` | 资源访问合同（用途/变体/交付方式）、URL 与引用解析 | **已抽出**：`internal/assets`（`ResolveAccess`）；配额、转码与任务编排仍在 `app` |
+| `assets` | 资源访问合同（用途/变体/交付方式）、URL 与引用解析、文档内资源引用扫描 | **已抽出**：`internal/assets`（`ResolveAccess`、`references.go` 的 `DocumentReferencedIDs`）；配额、转码与任务编排仍在 `app` |
 | `storage` | 对象存储实现（S3/COS/OSS/Kodo）、URL 签名与 CDN、range 读取、分发设置 | **已抽出**：`internal/storage`；`app/storage_adapters.go` 只做别名 |
 | `sms` | 短信通道与通知插件（阿里云/腾讯云等），组合验证与验证码下发 | **已抽出**：`internal/sms`；`app/sms_plugins.go` 注册内置插件，默认关闭 |
 
@@ -121,8 +121,8 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 | 资源与请求策略 | `handler/auth.go`、`handler/security.go` | `internal/platform`、`internal/app/upload_quota.go`、`storage_quota.go`、`coordination.go` |
 | 模型响应拦截 | `handler/response_interception.go`、`handler/custom_proxy.go` | `internal/app/response_interception.go`、`repository/repository.go` |
 | 异步任务、文本 SSE 与 Agent | `handler/routes.go` | `internal/app` 组合根（`provider_*` 仍在此）+ `internal/generation` + `internal/outbound` + `task_text_stream.go`、`text_replay.go` |
-| 用户画布与素材 | `handler/user_data.go` | `internal/canvas` |
-| 文件和对象存储 | `handler/routes.go`、`handler/resource_delivery.go` | `internal/app/resource.go`、`resource_access.go`、`internal/storage`（签名/CDN/range）、`internal/assets`（访问合同） |
+| 用户画布与素材 | `handler/user_data.go` | `internal/canvas`（含 `canvas_asset_guard.go` 的引用守卫与 `repair_resources.go` 的 `repair-canvas-resources`） |
+| 文件和对象存储 | `handler/routes.go`、`handler/resource_delivery.go` | `internal/app/resource.go`、`resource_delete.go`（删除前的引用占用校验）、`resource_access.go`、`repository/resource_reference.go`、`internal/storage`（签名/CDN/range）、`internal/assets`（访问合同） |
 | 画布分享 | `handler/canvas_share.go` | `internal/canvas` |
 | 技能库与场景预设 | `handler/skills.go` | `internal/skills`（含只读场景预设目录 `GET /skills/presets`）、`repository/skills.go` |
 | Agent 技能用量 | `handler/agent.go` | `internal/app/cloud_agent_skill_usage.go`（按运行日志统计检索与读取）、`repository/cloud_agent.go` |
