@@ -91,3 +91,26 @@ if (BUILD_CACHE_MIN_FREE_MB=abc prune_build_cache) >/dev/null 2>&1; then
 fi
 
 printf 'update-yingce build cache retention: ok\n'
+
+# 部署 Compose 只能用源码构建流程能提供的变量：上线时 `compose build backend` 之前会先解析整个
+# 文件，任何 `${VAR:?}` 缺失都会当场报错并中止更新。上游曾把三个服务的镜像改成"必须带 digest 的
+# CANVAS_BACKEND_IMAGE/CANVAS_WEB_IMAGE"，合并时漏改就让线上更新直接失败——这里钉住这条边界。
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+COMPOSE_FILE="${REPO_ROOT}/docker-compose.deploy.yml"
+[[ -f "$COMPOSE_FILE" ]] || { printf 'missing %s\n' "$COMPOSE_FILE" >&2; exit 1; }
+
+required="$(grep -o '\${[A-Z_]*:?' "$COMPOSE_FILE" | sed 's/^\${//; s/:?$//' | sort -u)"
+expected=$'DATABASE_URL\nPOSTGRES_PASSWORD'
+if [[ "$required" != "$expected" ]]; then
+    printf 'docker-compose.deploy.yml 新增了必填变量（源码构建流程提供不了，会让更新在解析阶段失败）：\n%s\n' "$required" >&2
+    exit 1
+fi
+for service in migrate backend web; do
+    line="$(awk -v service="  ${service}:" '$0 == service {found=1; next} found && /^    image:/ {print; exit}' "$COMPOSE_FILE")"
+    [[ "$line" == *'${CANVAS_IMAGE_TAG:-latest}'* ]] || {
+        printf '%s 的镜像必须是带默认值的 ${CANVAS_IMAGE_TAG}：%s\n' "$service" "$line" >&2
+        exit 1
+    }
+done
+
+printf 'update-yingce deploy compose contract: ok\n'
