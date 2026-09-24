@@ -5,6 +5,19 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## APIMart Midjourney 协议插件（imagine）
+
+- 新增官方声明式协议 `apimart-mj`：创建 `POST /v1/midjourney/generations`，查询 `GET /v1/midjourney/{task_id}`。上游按路由自动注入 `model=midjourney`，所以协议**不提交 `model`**，也不使用 APIMart 图片统一接口。
+- 请求映射：`prompt` → `prompt`，参考图（排除 mask 角色）→ `image_urls`，画布比例命中白名单 → `size`，`providerOptions.apimart-mj` 的 `version` / `niji` / `speed` → 同名上游字段。
+- 上游**不校验版本**：非法版本会先建任务再 FAILURE（原话 `upstream code=4: --v 必须是 [...]`），因此协议 `validations` 与前端面板都收敛到 MJ 引擎真实版本集 `8.2 / 8.1 / 8 / 7 / 6.1 / 6 / 5.2 / 5.1 / 5`（比 APIMart 文档多出 `5`、`6`、`8`）；Niji 模式只保留 v6 / v7。
+- 能力配置：垫图上限 4 张、一次固定返回 4 张单图、关闭画布蒙版与 1k/2k/4k 质量档位（MJ 的 `--q` 与画布质量档不是同一概念）。
+- 本轮只覆盖 imagine；upscale / variation / high-low-variation / reroll / blend / describe / edits / zoom / pan / inpaint / modal / video / remix 未实现，按仓库约定必须另立 provider。
+- [ ] 系统渠道模型协议选 `APIMart Midjourney`（模型键建议 `midjourney`）后，画布文生图能提交并轮询出 4 张单图。
+- [ ] 生成设置里依次选 v8.2、Niji、Fast，确认上游请求体分别出现 `version="8.2"`、`niji=true`、`speed="fast"`，且计费命中对应 key。
+- [ ] 垫图 1～4 张时上游请求出现 `image_urls`；超过 4 张被能力配置拒绝。
+- [ ] 结果媒体实测落在 `getapib.org`（非文档示例的 `cdn.apimart.ai`），确认后端出站下载与资源转存未被 SSRF 策略拦截。
+- [ ] 后台价格档按 `{"operation":"image"}` 配置一次 imagine 价格，并与 APIMart 用量接口（`GET /v1/dashboard/billing/usage`）核对实扣口径：turbo 约为 relax 的 2.2 倍，本协议暂不区分 version / speed 定价。
+
 ## 大文件上传的边缘超时与「尚未建立云端同步会话」
 
 现象（生产 linggan.mnix.cn，48MB 视频拖入画布）：`POST /api/resources` 先 524（Origin Time-out），随后同一请求 409，界面提示「生成结果已保留，但项目资产同步失败：尚未建立云端同步会话，本地内容尚未保存到云端」。根因是两个叠加问题，均已修复：

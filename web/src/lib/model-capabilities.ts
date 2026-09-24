@@ -280,6 +280,23 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         image.outputFormat = { supported: false };
         image.maxOutputs = 4;
     }
+    if (protocol === "apimart-mj") {
+        // Midjourney 一次固定返回四张单图，垫图最多 4 张；局部重绘走上游 inpaint + modal，
+        // 不用画布蒙版。比例枚举必须与插件请求模板的白名单一致，否则选中的比例会被协议丢弃。
+        image.references.maskSupported = false;
+        image.references.maxImages = 4;
+        image.size = {
+            parameter: "aspect_ratio",
+            values: ["1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"],
+            default: "1:1",
+            allowCustom: false,
+        };
+        image.quality.supported = false;
+        image.transparentBackground = { supported: false, default: false };
+        image.responseFormat = { supported: false };
+        image.outputFormat = { supported: false };
+        image.maxOutputs = 4;
+    }
     if (protocol === "agnes-image") {
         // Agnes 图像：size 必填，取 1K/2K/3K/4K 档位或 WxH 精确尺寸，画面比例走独立的 ratio 字段；
         // 参考图放 extra_body.image，支持多图合成，但没有蒙版端点。

@@ -273,6 +273,67 @@ func TestAPIMartImageProfile(t *testing.T) {
 	}
 }
 
+func TestAPIMartMJProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "apimart-mj.yingce-plugin", "apimart-mj")
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "midjourney", Prompt: "a cat", AspectRatio: "16:9",
+		Images:          []MediaReference{{URL: "https://cdn.example/ref.png", Role: "edit_source"}},
+		ProviderOptions: map[string]map[string]any{"apimart-mj": {"version": "8.2", "niji": true, "speed": "fast"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	images, _ := body["image_urls"].([]any)
+	if create.Method != "POST" || create.Path != "/v1/midjourney/generations" || body["prompt"] != "a cat" || body["size"] != "16:9" ||
+		body["version"] != "8.2" || body["niji"] != true || body["speed"] != "fast" || len(images) != 1 || images[0] != "https://cdn.example/ref.png" {
+		t.Fatalf("APIMart Midjourney create = %#v, body = %#v", create, body)
+	}
+	if _, ok := body["model"]; ok {
+		t.Fatalf("Midjourney 由上游路由注入 model，创建体不得提交：%#v", body)
+	}
+
+	plain, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "midjourney", Prompt: "still"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainBody := manifestTestBody(t, plain)
+	for _, key := range []string{"version", "niji", "speed", "size", "image_urls"} {
+		if _, ok := plainBody[key]; ok {
+			t.Fatalf("未配置 %s 时必须省略：%#v", key, plainBody)
+		}
+	}
+
+	if _, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "midjourney", Prompt: "bad", ProviderOptions: map[string]map[string]any{"apimart-mj": {"version": "9.9"}},
+	}}); err == nil {
+		t.Fatal("上游不校验 version，非法版本必须在提交前被 validations 拦截")
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task-mj-1"}]}`))
+	if err != nil || created.TaskID != "task-mj-1" || created.Status != StatusPending {
+		t.Fatalf("APIMart Midjourney create response = %#v, err = %v", created, err)
+	}
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "task-mj-1"})
+	if err != nil || poll.Path != "/v1/midjourney/task-mj-1" {
+		t.Fatalf("APIMart Midjourney poll = %#v, err = %v", poll, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "task-mj-1"}, []byte(`{"id":"task-mj-1","status":"SUCCESS","action":"IMAGINE","progress":"100%","grid_image_url":"https://cdn.example/grid.png","image_urls":["https://cdn.example/0.png","https://cdn.example/1.png","https://cdn.example/2.png","https://cdn.example/3.png"],"buttons":[{"customId":"MJ::JOB::upsample::1::abc","label":"U1"}],"prompt_en":"a cat"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Images) != 4 || result.Result.Images[3].URL != "https://cdn.example/3.png" {
+		t.Fatalf("APIMart Midjourney response = %#v", result)
+	}
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "task-mj-1"}, []byte(`{"id":"task-mj-1","status":"FAILURE","fail_reason":"Banned prompt detected"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != StatusFailed || failed.Message != "Banned prompt detected" {
+		t.Fatalf("APIMart Midjourney failure = %#v", failed)
+	}
+}
+
 func TestOfficialAgentProfilesMapToolRequestsAndResponses(t *testing.T) {
 	requests := map[string]any{
 		"chatCompletion": map[string]any{"messages": []any{map[string]any{"role": "user", "content": "inspect"}}, "tools": []any{map[string]any{"type": "function"}}, "tool_choice": "required", "marker": "chat"},

@@ -741,6 +741,58 @@ add({
   })
 });
 
+// Midjourney 走独立的 /v1/midjourney/* 路由家族，与 APIMart 图片统一接口不共享创建路径；
+// 上游还会在路由层自动注入 model=midjourney，因此必须独立协议。当前 profile 只覆盖 imagine。
+const apimartMjVersionSource = lower(trim({ $toString: ref("request.providerOptions.apimart-mj.version") }));
+const apimartMjSpeedSource = lower(trim({ $toString: ref("request.providerOptions.apimart-mj.speed") }));
+const apimartMjNijiSource = lower(trim({ $toString: ref("request.providerOptions.apimart-mj.niji") }));
+const apimartMjSizeSource = trim(ref("request.aspectRatio"));
+// 版本白名单取自 MJ 引擎自身的校验报错，比上游文档多出 5 / 6 / 8；非法版本会让任务 FAILURE。
+const apimartMjVersions = ["8.2", "8.1", "8", "7", "6.1", "6", "5.2", "5.1", "5"];
+const apimartMjSpeeds = ["relax", "fast", "turbo"];
+const apimartMjTrueValues = ["true", "1", "yes", "on"];
+const apimartMjSizes = ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"];
+const apimartMjParams = [
+  ["model", "string", true, "不提交", "该协议不提交 model；上游按 /v1/midjourney 路由自动注入 model=midjourney。"],
+  ["prompt", "string", true, "prompt", "提示词，支持原生 MJ 参数（如 --ar 16:9）。"],
+  ["images", "media[]", false, "image_urls", "垫图参考，按 order 排序提交；上游单图上限 12MiB。"],
+  ["aspectRatio", "string", false, "size", "画面比例，命中枚举时写入 size，否则交由上游默认。"],
+  ["providerOptions", "object", false, "version / niji / speed", "命名空间 apimart-mj 的扩展字段。"]
+];
+
+add({
+  id: "apimart-mj", providerId: "apimart-mj", name: "APIMart Midjourney", vendor: "APIMart", capability: "image",
+  baseUrl: "https://api.apimart.ai", auth: bearer, params: apimartMjParams, requiresPublicMediaUrls: true,
+  notes: "APIMart Midjourney 独立路由协议，当前 profile 只覆盖 imagine（文生图与垫图）。创建 POST /v1/midjourney/generations，不提交 model；查询 GET /v1/midjourney/{task_id} 读取 image_urls 的四张单图。上游不校验 version，非法版本会先建任务再 FAILURE，因此版本与速度在 validations 层拦截。upscale / variation / blend / describe / edits / zoom / pan / inpaint / modal / video / remix 属于其他路由，必须另立 provider。",
+  validations: [
+    { assert: { $or: [eq(apimartMjVersionSource, ""), { $in: [apimartMjVersionSource, apimartMjVersions] }] }, message: `Midjourney version 必须是 ${apimartMjVersions.join(" / ")} 之一` },
+    { assert: { $or: [eq(apimartMjSpeedSource, ""), { $in: [apimartMjSpeedSource, apimartMjSpeeds] }] }, message: "Midjourney speed 必须是 relax / fast / turbo 之一" }
+  ],
+  create: jsonCreate("/v1/midjourney/generations", {
+    prompt: omit(ref("request.prompt")),
+    image_urls: omit(map(filter(sorted(ref("request.images")), "media", ne(ref("media.role"), "mask")), "media", ref("media.value"))),
+    size: omit(conditional({ $in: [apimartMjSizeSource, apimartMjSizes] }, apimartMjSizeSource)),
+    version: omit(conditional({ $in: [apimartMjVersionSource, apimartMjVersions] }, apimartMjVersionSource)),
+    niji: omit(conditional({ $in: [apimartMjNijiSource, apimartMjTrueValues] }, true)),
+    speed: omit(conditional({ $in: [apimartMjSpeedSource, apimartMjSpeeds] }, apimartMjSpeedSource))
+  }),
+  poll: { method: "GET", path: "/v1/midjourney/{{taskId}}" },
+  response: asyncResponse("image", {
+    taskId: coalesce(ref("response.data.0.task_id"), ref("response.data.0.taskId"), ref("response.data.task_id"), ref("response.id"), ref("taskId")),
+    status: coalesce(ref("response.data.0.status"), ref("response.status"), "pending"),
+    message: coalesce(ref("response.fail_reason"), ref("response.error.message"), ref("response.message")),
+    images: coalesce(
+      map(ref("response.image_urls"), "image", ref("image")),
+      map(ref("response.data.0.image_urls"), "image", ref("image")),
+      map(ref("response.data.result.images"), "image", { $at: [{ $ref: "image.url" }, 0] }),
+      map(ref("response.data.images"), "image", { $at: [{ $ref: "image.url" }, 0] }),
+      ref("response.grid_image_url"), ref("response.data.result.image_url"), ref("response.data.image_url"), ref("response.image_url")
+    ),
+    errorPaths: ["error.code", "error.message", "response.error.message"],
+    messagePaths: ["fail_reason", "error.message", "response.error.message"]
+  })
+});
+
 add({
   id: "newapi-video-generations-v1", providerId: "newapi-channel-2", name: "NewAPI Video Generations Channel 2", vendor: "NewAPI", capability: "video",
   baseUrl: "http://127.0.0.1:3000", auth: bearer, params: videoParams, requiresPublicMediaUrls: true,

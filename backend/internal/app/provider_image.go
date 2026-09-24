@@ -18,8 +18,23 @@ import (
 	"infinite-canvas/backend/internal/model"
 )
 
+// apimartDeclarativeImagePluginMessage 标记必须由官方声明式插件执行的 APIMart 图片协议。
+// 这些协议没有手写实现，适配器缺失时必须显式失败；否则 Midjourney 模型会被发到
+// OpenAI 图片路径（/v1/images/generations），既拿不到结果也可能产生上游计费。
+func apimartDeclarativeImagePluginMessage(interfaceType string) (string, bool) {
+	switch model.ChannelInterfaceType(strings.TrimSpace(interfaceType)) {
+	case model.ChannelInterfaceAPIMartImage:
+		return "APIMart 图片插件未安装", true
+	case model.ChannelInterfaceAPIMartMJ:
+		return "APIMart Midjourney 插件未安装", true
+	default:
+		return "", false
+	}
+}
+
 func runImageTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
-	if input.Config.InterfaceType == string(model.ChannelInterfaceAPIMartImage) {
+	pluginMissingMessage, requiresOfficialPlugin := apimartDeclarativeImagePluginMessage(input.Config.InterfaceType)
+	if requiresOfficialPlugin {
 		ctx = ensureOfficialProtocolAdapter(ctx, input.Config.InterfaceType)
 	}
 	if input.Config.InterfaceType == string(model.ChannelInterfaceOpenAIImage) {
@@ -30,8 +45,8 @@ func runImageTask(ctx context.Context, input canvasGenerationInput) (map[string]
 	if _, ok := declarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
 		return runDeclarativeProtocolTask(ctx, input)
 	}
-	if input.Config.InterfaceType == string(model.ChannelInterfaceAPIMartImage) {
-		return nil, errors.New("APIMart 图片插件未安装")
+	if requiresOfficialPlugin {
+		return nil, errors.New(pluginMissingMessage)
 	}
 	if input.Config.InterfaceType == string(model.ChannelInterfaceGrokImage) {
 		return runGrokImageTask(ctx, input)

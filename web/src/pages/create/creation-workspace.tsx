@@ -1,4 +1,7 @@
 import { ImageSizePicker } from "@/components/image-size-picker";
+import { ApimartMjOptionsPanel } from "@/components/apimart-mj-options-panel";
+import { isApimartMjProtocol, apimartMjSummary } from "@/lib/apimart-mj-options";
+import { useApimartMjOptionsStore } from "@/stores/use-apimart-mj-options-store";
 import { Lk888MjOptionsPanel } from "@/components/lk888-mj-options-panel";
 import { isLk888MjProtocol, lk888MjSummary } from "@/lib/lk888-mj-options";
 import { useLk888MjOptionsStore } from "@/stores/use-lk888-mj-options-store";
@@ -800,6 +803,7 @@ function ModePicker({ mode, onModeChange }: { mode: CreationMode; onModeChange: 
 function GenerationSettingsMenu(props: ComposerProps) {
     const [open, setOpen] = useState(false);
     const mjOptions = useLk888MjOptionsStore((state) => state.options);
+    const apimartMjOptions = useApimartMjOptionsStore((state) => state.options);
     const tt25Options = useLk888ImageOptionsStore((state) => state.options);
     const activeQualityOptions = props.imageProfile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value.toUpperCase(), description: "模型支持的质量/分辨率" });
     const qualityLabel = activeQualityOptions.find((item) => item.value === props.quality)?.label || qualityOptions.find((item) => item.value === props.quality)?.label || props.quality || "自动";
@@ -807,6 +811,7 @@ function GenerationSettingsMenu(props: ComposerProps) {
     const mergedProfile = mergedImageCapabilityConfig(props.config, props.model || props.config.imageModel);
     const modelProtocol = resolveModelChannel(props.config, props.model).modelCosts?.find((item) => item.model === modelOptionName(props.model))?.protocol || resolveModelChannel(props.config, props.model).interfaceType;
     const showMjOptions = props.mode === "image" && isLk888MjProtocol(modelProtocol);
+    const showApimartMjOptions = props.mode === "image" && isApimartMjProtocol(modelProtocol);
     const showTt25Options = props.mode === "image" && isTtImage25(modelProtocol, modelOptionName(props.model));
     const usesImageResolutionPicker = props.mode === "image" && supportsImageResolutionPresets(mergedProfile.size);
     const imageResolutionOptions = usesImageResolutionPicker ? buildImageResolutionOptions(mergedProfile.size.values) : [];
@@ -827,10 +832,11 @@ function GenerationSettingsMenu(props: ComposerProps) {
         ...(props.imageProfile.maxOutputs > 1 ? [props.count] : []),
     ].join(" · ");
     const videoRatioSupported = props.mode === "video" && ratios.length > 0;
-    const summary = props.mode === "video" ? [...(videoRatioSupported ? [props.ratio] : []), ...(videoResolutionSupported ? [videoResolutionLabel(props.videoQuality)] : [])].join(" · ") : [imageSummary, showMjOptions ? lk888MjSummary(mjOptions) : "", showTt25Options ? lk888Image25Summary(tt25Options) : ""].filter(Boolean).join(" · ");
+    const summary = props.mode === "video" ? [...(videoRatioSupported ? [props.ratio] : []), ...(videoResolutionSupported ? [videoResolutionLabel(props.videoQuality)] : [])].join(" · ") : [imageSummary, showMjOptions ? lk888MjSummary(mjOptions) : "", showApimartMjOptions ? apimartMjSummary(apimartMjOptions) : "", showTt25Options ? lk888Image25Summary(tt25Options) : ""].filter(Boolean).join(" · ");
     const panel = <div className="creation-parameter-menu">
         {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} onChange={(size, quality) => { props.setRatio(size); if (quality) props.setQuality(quality); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={props.ratio}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{value}</span></button>)}</div></SettingSection> : null}
         {showMjOptions ? <Lk888MjOptionsPanel /> : null}
+        {showApimartMjOptions ? <ApimartMjOptionsPanel /> : null}
         {showTt25Options ? <Lk888Image25OptionsPanel /> : null}
         {props.mode === "image" && referenceImageSizeValue ? <button type="button" className="creation-custom-trigger" onClick={selectReferenceImageSize}>使用参考图尺寸 · {referenceImageSizeLabel}</button> : null}
         {props.mode === "video" ? (videoResolutionSupported ? <SettingSection title="清晰度" value={videoResolutionLabel(props.videoQuality)}><div className="creation-choice-grid is-resolution">{resolutions.map((option) => <button key={option.value} type="button" aria-pressed={option.value === props.videoQuality} className={option.value === props.videoQuality ? "is-selected" : ""} onClick={() => props.setVideoQuality(option.value)}>{option.label}</button>)}</div></SettingSection> : null) : <>
