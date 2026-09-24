@@ -4,7 +4,35 @@ import { Tooltip } from "@/components/ui/base/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowUp, AtSign, Bookmark, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleDot, Clapperboard, Eye, HelpCircle, ImagePlus, Layers3, ListChecks, LoaderCircle, Palette, Pencil, Plus, RotateCcw, Shapes, Share2, ShoppingBag, Sparkles, Square, X, XCircle } from "lucide-react";
+import {
+    ArrowLeft,
+    ArrowUp,
+    AtSign,
+    Bookmark,
+    CheckCircle2,
+    ChevronDown,
+    ChevronUp,
+    CircleAlert,
+    CircleDot,
+    Clapperboard,
+    Eye,
+    HelpCircle,
+    ImagePlus,
+    Layers3,
+    ListChecks,
+    LoaderCircle,
+    Palette,
+    Pencil,
+    Plus,
+    RotateCcw,
+    Shapes,
+    Share2,
+    ShoppingBag,
+    Sparkles,
+    Square,
+    X,
+    XCircle,
+} from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { AIMessageMarkdown } from "@/components/ai/ai-message-markdown";
