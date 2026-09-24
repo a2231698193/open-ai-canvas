@@ -130,8 +130,11 @@
 ## 7. 计费配置（管理员操作，不改代码）
 
 - 渠道模型 key 建议 `midjourney`（与 APIMart 控制台一致）；协议选 `apimart-mj`。
-- 价格档 selector 填 `{"operation":"image"}`：画布图片任务的 `operation` 恒为 `image`（`web/src/services/api/generation-task.ts:295`），`skuSelectorForIntent` 会把它带进选择器（`backend/internal/app/model_router.go:839-843`）。
 - `billingMode = fixed_request`，一次 imagine（4 张单图）计一次费。
+- **价格档怎么配**：图片能力下 `skuSelectorForIntent` 会**覆盖** `operation`——有参考图取 `image_to_image`，没有取 `text_to_image`（`backend/internal/app/model_router.go:872-877`），后台的「生成方式」选项正好是这两个值加「任意生成方式」。因此：
+  - 最省事：价格档用**「默认价格」**模式（不写匹配条件，selector 为空 → 匹配所有请求，`channel-model-price-tier-form.ts:108-117` 只在值非 `*` 时才写入 selector）。
+  - 要区分文生图/图生图：用「按规格定价」，生成方式选具体值，「质量/分辨率」**必须选「任意质量」**，「画幅/尺寸」留空。
+  - **不要**按 1K/2K/4K 配价格档：协议的画布质量档是关闭的，请求侧不会带 `quality`，写了就永不命中，报「当前模型尚未配置所选规格的价格」。`operation` 也不能填 `image`——它在图片分支会被覆盖成 `text_to_image`/`image_to_image`。
 - 已知口径偏差：`turbo` 的实扣约为 `relax` 的 2.2 倍（`docs/plans/apimart-pricing.json` 中 `imagine` 0.0563 / `imagine-turbo` 0.125），P0 用统一价，需要在模型描述里向用户说明。
 - 对账手段：`GET /v1/dashboard/billing/usage`（实测可用）取调用前后 `total_usage` 差值，即可核对单次 imagine 的真实成本。
 

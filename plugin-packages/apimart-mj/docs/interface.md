@@ -37,7 +37,7 @@
 | `create.contentType` | `"application/json"` |
 | `create.body.prompt` | `{"$omitEmpty":{"$ref":"request.prompt"}}` |
 | `create.body.image_urls` | `{"$omitEmpty":{"$map":{"from":{"$filter":{"from":{"$sortByOrder":{"$ref":"request.images"}},"as":"media","where":{"$ne":[{"$ref":"media.role"},"mask"]}}},"as":"media","in":{"$ref":"media.value"}}}}` |
-| `create.body.size` | `{"$omitEmpty":{"$if":{"condition":{"$in":[{"$trim":{"$ref":"request.aspectRatio"}},["1:1","2:1","1:2","3:2","2:3","4:3","3:4","5:4","4:5","16:9","9:16","21:9","9:21"]]},"then":{"$trim":{"$ref":"request.aspectRatio"}},"else":null}}}` |
+| `create.body.size` | `{"$omitEmpty":{"$if":{"condition":{"$in":[{"$trim":{"$ref":"request.aspectRatio"}},["1:1","2:1","1:2","3:2","2:3","4:3","3:4","5:4","4:5","16:9","9:16","21:9","3:7"]]},"then":{"$trim":{"$ref":"request.aspectRatio"}},"else":null}}}` |
 | `create.body.version` | `{"$omitEmpty":{"$if":{"condition":{"$in":[{"$lower":{"$trim":{"$toString":{"$ref":"request.providerOptions.apimart-mj.version"}}}},["8.2","8.1","8","7","6.1","6","5.2","5.1","5"]]},"then":{"$lower":{"$trim":{"$toString":{"$ref":"request.providerOptions.apimart-mj.version"}}}},"else":null}}}` |
 | `create.body.niji` | `{"$omitEmpty":{"$if":{"condition":{"$in":[{"$lower":{"$trim":{"$toString":{"$ref":"request.providerOptions.apimart-mj.niji"}}}},["true","1","yes","on"]]},"then":true,"else":null}}}` |
 | `create.body.speed` | `{"$omitEmpty":{"$if":{"condition":{"$in":[{"$lower":{"$trim":{"$toString":{"$ref":"request.providerOptions.apimart-mj.speed"}}}},["relax","fast","turbo"]]},"then":{"$lower":{"$trim":{"$toString":{"$ref":"request.providerOptions.apimart-mj.speed"}}}},"else":null}}}` |
@@ -310,7 +310,7 @@ APIMart Midjourney 独立路由协议，当前 profile 只覆盖 imagine（文�
                         "16:9",
                         "9:16",
                         "21:9",
-                        "9:21"
+                        "3:7"
                       ]
                     ]
                   },

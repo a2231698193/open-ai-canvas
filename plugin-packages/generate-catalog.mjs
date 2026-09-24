@@ -751,7 +751,9 @@ const apimartMjSizeSource = trim(ref("request.aspectRatio"));
 const apimartMjVersions = ["8.2", "8.1", "8", "7", "6.1", "6", "5.2", "5.1", "5"];
 const apimartMjSpeeds = ["relax", "fast", "turbo"];
 const apimartMjTrueValues = ["true", "1", "yes", "on"];
-const apimartMjSizes = ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"];
+// 比例白名单必须与画布 picker 实际提交的字符串一致：画布的 1K 预设会把 9:21 归一化成
+// 3:7（7:3 归一化成 21:9），这里写 3:7 才能命中；不一致时会静默省略 size 落回上游默认比例。
+const apimartMjSizes = ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "3:7"];
 const apimartMjParams = [
   ["model", "string", true, "不提交", "该协议不提交 model；上游按 /v1/midjourney 路由自动注入 model=midjourney。"],
   ["prompt", "string", true, "prompt", "提示词，支持原生 MJ 参数（如 --ar 16:9）。"],

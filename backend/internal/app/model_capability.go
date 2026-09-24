@@ -192,9 +192,10 @@ func DefaultImageCapabilityConfig(protocol string, modelName string) *ImageCapab
 		// Midjourney 一次固定返回四张单图，垫图最多 4 张。局部重绘走上游 inpaint + modal，
 		// 不使用画布蒙版；画布的 1k/2k/4k 档位也不是 MJ 的 --q，因此质量档位整体关闭。
 		// 比例枚举必须与插件请求模板的白名单一致，否则画布选中的比例会被协议丢弃。
+		// 画布 1K 预设会把 9:21 归一化成 3:7，因此这里用 3:7 而不是 9:21。
 		image.References.MaskSupported = false
 		image.References.MaxImages = 4
-		image.Size = ImageSizeConfig{Parameter: "aspect_ratio", Values: []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"}, Default: "1:1", AllowCustom: false}
+		image.Size = ImageSizeConfig{Parameter: "aspect_ratio", Values: []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "3:7"}, Default: "1:1", AllowCustom: false}
 		image.Quality.Supported = false
 		image.TransparentBackground.Supported = false
 		image.ResponseFormat.Supported = false

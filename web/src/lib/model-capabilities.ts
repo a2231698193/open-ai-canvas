@@ -285,9 +285,10 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         // 不用画布蒙版。比例枚举必须与插件请求模板的白名单一致，否则选中的比例会被协议丢弃。
         image.references.maskSupported = false;
         image.references.maxImages = 4;
+        // 画布 1K 预设会把 9:21 归一化成 3:7，因此用 3:7 而不是 9:21，才能与协议白名单命中。
         image.size = {
             parameter: "aspect_ratio",
-            values: ["1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"],
+            values: ["1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "3:7"],
             default: "1:1",
             allowCustom: false,
         };
