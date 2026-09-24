@@ -9,6 +9,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { loadAssetsForUse } from "@/services/user-data-sync";
 import { canvasAssetHandoffIds } from "@/lib/canvas/canvas-asset-handoff";
 import { useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { uploadMediaFile } from "@/services/file-storage";
 import { createCanvasGenerationLiveProjectAdapter, registerCanvasGenerationLiveProject } from "@/services/canvas-generation-consumer";
 import { getActiveUserScope } from "@/lib/user-scope";
@@ -2191,6 +2192,7 @@ function InfiniteCanvasPage() {
                     skillReferences={skillMentionReferences}
                     generationMode={panelNode.metadata?.generationMode}
                     metadata={panelNode.metadata}
+                    videoProfile={modelCapabilityConfigFor(effectiveConfig, panelNode.metadata?.model || effectiveConfig.model).video}
                     workspaceMode={workspaceMode}
                     onChange={(composerContent) => handleConfigNodeChange(panelNode.id, { composerContent })}
                     onMetadataChange={(patch) => handleConfigNodeChange(panelNode.id, patch)}

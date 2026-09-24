@@ -33,6 +33,37 @@ export function normalizeVideoGenerationMode(value: unknown): VideoGenerationMod
     return value === "text" || value === "image" || value === "keyframes" || value === "reference" ? value : undefined;
 }
 
+// 只取判定模式所需的最小结构，避免 lib 之间互相 import 造成循环依赖。
+export type VideoModeCapabilityLike = {
+    operations?: string[];
+    references?: { imageRoles?: string[]; maxImages?: number; maxVideos?: number; maxAudios?: number };
+};
+
+/**
+ * 模型能力允许的视频模式。模式到能力的映射必须和 videoModeOperation / videoModeImageRoles 一致：
+ * 首尾帧参考走 image_to_video 但需要 last_frame 角色，全能参考需要 reference_to_video 与参考输入槽位。
+ * 能力缺失（模型未配置/未解析）时保留全部模式，不能把可选项清空。
+ */
+export function supportedVideoGenerationModes(profile?: VideoModeCapabilityLike | null): VideoGenerationMode[] {
+    const all = VIDEO_GENERATION_MODE_OPTIONS.map((option) => option.value);
+    if (!profile) return all;
+    const operations = profile.operations?.length ? profile.operations : ["text_to_video", "image_to_video"];
+    const roles = profile.references?.imageRoles?.length ? profile.references.imageRoles : ["first_frame"];
+    const referenceInputs = (profile.references?.maxVideos ?? 0) > 0 || (profile.references?.maxAudios ?? 0) > 0;
+    return all.filter((mode) => {
+        if (mode === "text") return operations.includes("text_to_video");
+        if (mode === "image") return operations.includes("image_to_video") && roles.includes("first_frame");
+        if (mode === "keyframes") return operations.includes("image_to_video") && roles.includes("first_frame") && roles.includes("last_frame");
+        return operations.includes("reference_to_video") && (roles.includes("reference_image") || referenceInputs);
+    });
+}
+
+/** 把模式收敛到能力支持的第一项；已支持或没有任何可选项时原样返回。 */
+export function clampVideoGenerationMode(mode: VideoGenerationMode, profile?: VideoModeCapabilityLike | null): VideoGenerationMode {
+    const allowed = supportedVideoGenerationModes(profile);
+    return allowed.includes(mode) || !allowed.length ? mode : allowed[0];
+}
+
 export function videoModeInputSummary(mode: VideoGenerationMode, input: ModelInputSummary): ModelInputSummary {
     if (mode === "text") return { ...input, imageCount: 0, videoCount: 0, audioCount: 0, characterCount: 0 };
     if (mode === "image") return { ...input, imageCount: Math.min(1, input.imageCount), videoCount: 0, audioCount: 0, characterCount: 0 };

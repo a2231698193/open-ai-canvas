@@ -12,6 +12,7 @@ import { clampPromptEditorModalSize, PROMPT_EDITOR_VIEWPORT_MARGIN } from "@/lib
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { normalizeVideoDuration, normalizeVideoResolution } from "@/lib/video-generation-options";
 import { modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefaults, defaultImageParamsForModel, type ModelRequirements } from "@/lib/model-selection";
 import { navigateToSettings } from "@/lib/settings-navigation";
@@ -468,7 +469,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     </div>
                     {hasVideoModePicker ? (
                         <div className="w-28 min-w-0 shrink-0 border-l pl-1" style={{ borderColor: "color-mix(in srgb, currentColor 14%, transparent)" }}>
-                            <CanvasVideoModePicker metadata={node.metadata} referenceSummary={videoReferenceSummary} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
+                            <CanvasVideoModePicker metadata={node.metadata} referenceSummary={videoReferenceSummary} videoProfile={modelCapabilityConfigFor(config, config.model).video} onMetadataChange={(patch) => onConfigChange(node.id, patch)} />
                         </div>
                     ) : null}
                 </div>

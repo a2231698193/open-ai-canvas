@@ -48,7 +48,7 @@ import type { Skill } from "@/services/api/skills";
 import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-models";
 import { resolveResourceUrl } from "@/services/api/resources";
 import { modelOptionName, resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
-import { VIDEO_GENERATION_MODE_OPTIONS, type VideoGenerationMode } from "@/lib/video-generation-mode";
+import { VIDEO_GENERATION_MODE_OPTIONS, supportedVideoGenerationModes, type VideoGenerationMode, type VideoModeCapabilityLike } from "@/lib/video-generation-mode";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
@@ -674,7 +674,7 @@ export function CreationComposer(props: ComposerProps) {
                     </button>
                 </Tooltip> : null}
 				<ModelPicker config={props.config} value={props.model} onChange={props.onModelChange} capability={props.mode} requirements={props.modelRequirements} className="creation-model-picker" placeholder={`选择${modeLabels[props.mode]}模型`} showSelectedPrice={false} showOptionPrices variant="creation" />
-                {props.mode === "video" ? <VideoModeMenu value={props.videoMode} onChange={props.setVideoMode} /> : null}
+                {props.mode === "video" ? <VideoModeMenu value={props.videoMode} onChange={props.setVideoMode} videoProfile={modelCapabilityConfigFor(props.config, props.model).video} /> : null}
                 {props.mode === "video" || (props.mode === "image" && imageSettingsSupported) ? <GenerationSettingsMenu {...props} /> : null}
                 {props.mode === "video" ? <DurationMenu profile={props.videoProfile} seconds={props.seconds} onChange={props.setSeconds} /> : null}
                 {props.mode === "text" ? <>
@@ -725,9 +725,18 @@ export function CreationComposer(props: ComposerProps) {
     );
 }
 
-function VideoModeMenu({ value, onChange }: { value: VideoGenerationMode; onChange: (value: VideoGenerationMode) => void }) {
+function VideoModeMenu({ value, onChange, videoProfile }: { value: VideoGenerationMode; onChange: (value: VideoGenerationMode) => void; videoProfile?: VideoModeCapabilityLike | null }) {
     const [open, setOpen] = useState(false);
-    const selected = VIDEO_GENERATION_MODE_OPTIONS.find((item) => item.value === value) || VIDEO_GENERATION_MODE_OPTIONS[0];
+    // 只列出模型支持的模式；当前模式不被支持时收敛到第一个可用项，避免选完到提交才报「不支持」。
+    const allowedModes = supportedVideoGenerationModes(videoProfile);
+    const modeOptions = allowedModes.length ? VIDEO_GENERATION_MODE_OPTIONS.filter((option) => allowedModes.includes(option.value)) : VIDEO_GENERATION_MODE_OPTIONS;
+    const allowedKey = modeOptions.map((option) => option.value).join(",");
+    const selected = modeOptions.find((item) => item.value === value) || modeOptions[0];
+    useEffect(() => {
+        if (modeOptions.some((item) => item.value === value)) return;
+        onChange(modeOptions[0].value);
+        // allowedKey 代替 modeOptions 作为依赖：数组每次渲染都是新引用。
+    }, [allowedKey, value, onChange]); // eslint-disable-line react-hooks/exhaustive-deps
     return <Popover
         open={open}
         onOpenChange={setOpen}
@@ -736,7 +745,7 @@ function VideoModeMenu({ value, onChange }: { value: VideoGenerationMode; onChan
         arrow={false}
         classNames={{ root: "creation-control-popover", container: "creation-control-popover-surface", content: "creation-control-popover-content" }}
         content={<div className="creation-video-mode-menu" role="radiogroup" aria-label="视频生成模式">
-            {VIDEO_GENERATION_MODE_OPTIONS.map((option) => <button
+            {modeOptions.map((option) => <button
                 key={option.value}
                 type="button"
                 role="radio"

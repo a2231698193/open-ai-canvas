@@ -9,6 +9,7 @@ import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { generationInputMentionLabel, normalizeGenerationNodeMentionTokens, type NodeGenerationInput } from "./canvas-node-generation";
 import { CanvasVideoModePicker, CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
+import type { VideoModeCapabilityLike } from "@/lib/video-generation-mode";
 import { CanvasPresetPicker, type CanvasPromptPreset } from "./canvas-preset-picker";
 import type { CanvasGenerationMode, CanvasNodeMetadata, CanvasWorkspaceMode } from "@/types/canvas";
 
@@ -18,6 +19,8 @@ type CanvasConfigComposerProps = {
     skillReferences?: CanvasResourceReference[];
     generationMode?: CanvasGenerationMode;
     metadata?: CanvasNodeMetadata;
+    /** 当前模型的视频能力：模式下拉据此只列出支持的模式。 */
+    videoProfile?: VideoModeCapabilityLike | null;
     onChange: (value: string) => void;
     onMetadataChange?: (patch: Partial<CanvasNodeMetadata>) => void;
     onClose: () => void;
@@ -44,7 +47,7 @@ type ComposerCandidate =
 
 export const CONFIG_REFERENCE_PATTERN = /@\[node:([^\]]+)\]|@(图片|视频|音频|文本|角色|绘图)(\d+)/g;
 
-export function CanvasConfigComposer({ value, inputs, skillReferences = [], generationMode, metadata, onChange, onMetadataChange, onClose, workspaceMode = "professional" }: CanvasConfigComposerProps) {
+export function CanvasConfigComposer({ value, inputs, skillReferences = [], generationMode, metadata, videoProfile, onChange, onMetadataChange, onClose, workspaceMode = "professional" }: CanvasConfigComposerProps) {
     const theme = canvasThemes[useActiveTheme()];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
@@ -199,7 +202,7 @@ export function CanvasConfigComposer({ value, inputs, skillReferences = [], gene
                         />
                     ) : (
                         <div className="grid min-w-0 gap-1">
-                            <CanvasVideoModePicker metadata={metadata} referenceSummary={videoReferenceSummary} onMetadataChange={onMetadataChange} />
+                            <CanvasVideoModePicker metadata={metadata} referenceSummary={videoReferenceSummary} videoProfile={videoProfile} onMetadataChange={onMetadataChange} />
                             <CanvasVideoPromptTools metadata={metadata} frameOptions={videoFrameOptions} referenceSummary={videoReferenceSummary} onMetadataChange={onMetadataChange} />
                         </div>
                     )}

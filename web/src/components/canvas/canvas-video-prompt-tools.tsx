@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Images, Image as ImageIcon } from "lucide-react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
-import { VIDEO_GENERATION_MODE_OPTIONS, videoFrameSelectionPatch, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
+import { VIDEO_GENERATION_MODE_OPTIONS, clampVideoGenerationMode, normalizeVideoGenerationMode, supportedVideoGenerationModes, videoFrameSelectionPatch, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode, type VideoModeCapabilityLike } from "@/lib/video-generation-mode";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
 
@@ -34,11 +34,21 @@ const MENU_MARGIN = 8;
 const MENU_ITEM_HEIGHT = 28;
 const CONTROL_TEXT_STYLE: CSSProperties = { fontFamily: "inherit", fontSize: 11, fontWeight: 400, letterSpacing: 0, lineHeight: 1 };
 
-export function CanvasVideoModePicker({ metadata, referenceSummary, onMetadataChange }: Pick<CanvasVideoPromptToolsProps, "metadata" | "referenceSummary" | "onMetadataChange">) {
+export function CanvasVideoModePicker({ metadata, referenceSummary, videoProfile, onMetadataChange }: Pick<CanvasVideoPromptToolsProps, "metadata" | "referenceSummary" | "onMetadataChange"> & { videoProfile?: VideoModeCapabilityLike | null }) {
     const theme = canvasThemes[useActiveTheme()];
-    const videoMode = selectedVideoMode(metadata, referenceSummary);
-    const modeItems = VIDEO_GENERATION_MODE_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
-    const modeLabel = VIDEO_GENERATION_MODE_OPTIONS.find((option) => option.value === videoMode)?.label || VIDEO_GENERATION_MODE_OPTIONS[0].label;
+    // 只列出模型支持的模式：管理员在能力里关掉的模式不该出现在下拉里（否则选中后提交才报「不支持」）。
+    const allowedModes = supportedVideoGenerationModes(videoProfile);
+    const modeOptions = allowedModes.length ? VIDEO_GENERATION_MODE_OPTIONS.filter((option) => allowedModes.includes(option.value)) : VIDEO_GENERATION_MODE_OPTIONS;
+    const videoMode = clampVideoGenerationMode(selectedVideoMode(metadata, referenceSummary), videoProfile);
+    const modeItems = modeOptions.map((option) => ({ value: option.value, label: option.label }));
+    const modeLabel = modeOptions.find((option) => option.value === videoMode)?.label || modeOptions[0].label;
+    // 只有「显式存过」的不支持模式才回写：派生出来的模式（比如连了两张图推导成首尾帧）交给提交前的
+    // 能力校验报错，不在这里反复改写 metadata。
+    const storedMode = normalizeVideoGenerationMode(metadata?.videoMode);
+    useEffect(() => {
+        if (!storedMode || storedMode === videoMode) return;
+        onMetadataChange({ videoMode, videoEditOperation: videoModeOperation(videoMode) });
+    }, [storedMode, videoMode, onMetadataChange]);
     return <CompactMenuButton
         theme={theme}
         title="视频生成模式"
