@@ -40,7 +40,8 @@ func TestRegisterRequiresAcceptedTermsBeforeWriting(t *testing.T) {
 		}
 		_, err := svc.Register(req)
 		var authErr *AuthError
-		if !errors.As(err, &authErr) || authErr.Status != 400 || authErr.Message != "请先同意影策服务协议" {
+		// 协议标题跟随后台品牌名，本仓库是二次开发品牌，不能像上游那样写死品牌名。
+		if !errors.As(err, &authErr) || authErr.Status != 400 || authErr.Message != "请先同意"+svc.AgreementTitleForMessage() {
 			t.Fatalf("Register() error = %v", err)
 		}
 		for _, entity := range []any{&model.User{}, &model.AuthSession{}} {
@@ -108,13 +109,14 @@ func TestLinuxDORegistrationAgreement(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, tc := range []struct {
-		name         string
-		accepted     bool
-		existing     bool
-		registration bool
-		wantError    string
+		name              string
+		accepted          bool
+		existing          bool
+		registration      bool
+		wantError         string
+		wantAgreementDeny bool
 	}{
-		{name: "new user without agreement", registration: true, wantError: "请先同意影策服务协议"},
+		{name: "new user without agreement", registration: true, wantAgreementDeny: true},
 		{name: "new user with agreement", accepted: true, registration: true},
 		{name: "existing user without agreement", existing: true, registration: true},
 		{name: "existing user with registration closed", existing: true},
@@ -159,10 +161,15 @@ func TestLinuxDORegistrationAgreement(t *testing.T) {
 				t.Fatalf("saved consent = %v, err=%v", saved.AcceptedTerms, err)
 			}
 			result, err := svc.CompleteLinuxDOLogin(stateValue, "test-code")
+			wantError := tc.wantError
+			if tc.wantAgreementDeny {
+				// 协议标题跟随后台品牌名，本仓库是二次开发品牌，不能像上游那样写死品牌名。
+				wantError = "请先同意" + svc.AgreementTitleForMessage()
+			}
 			wantUsers, wantRecords := int64(2), int64(1)
-			if tc.wantError != "" {
+			if wantError != "" {
 				var authErr *AuthError
-				if !errors.As(err, &authErr) || authErr.Message != tc.wantError {
+				if !errors.As(err, &authErr) || authErr.Message != wantError {
 					t.Fatalf("CompleteLinuxDOLogin() error = %v", err)
 				}
 				wantUsers, wantRecords = 1, 0

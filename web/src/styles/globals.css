@@ -302,6 +302,10 @@
     --auth-card-bg: #ffffff;
     --auth-accent: #2563eb;
     --auth-muted: #737373;
+    /* 协议勾选框的填充色与对勾色。必须成对维护：两者相近会在某一主题下
+       退化成看不见的勾选态。深色主题下这里与 --foreground 的白色相反。 */
+    --auth-check-bg: #171717;
+    --auth-check-fg: #ffffff;
 
     /* 可配置皮肤的组件入口。经典主题保持这些项目原始值；自定义主题在
        React 启动前由公开外观配置覆盖，页面和组件只消费这些语义变量。 */
@@ -473,6 +477,162 @@
     border-color: var(--input);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
+}
+
+/* --- 注册页协议同意行 ---------------------------------------------------------
+   勾选热区必须覆盖“文字 + 协议名”整段，但协议名同时是可点击的阅读入口，
+   因此热区由 label 承担，协议名按钮用 stopPropagation 之外的方式独立可点：
+   这里只做视觉与排布，行为仍由 React 侧控制。 */
+.auth-agreement-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: var(--control-border-width) solid transparent;
+    border-radius: var(--r-sm);
+    color: var(--auth-muted);
+    font-size: var(--fs-label);
+    line-height: 1.65;
+    transition:
+        border-color var(--motion-instant) ease-out,
+        background-color var(--motion-instant) ease-out,
+        color var(--motion-instant) ease-out;
+}
+
+.auth-agreement-row:hover {
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+/* 已勾选时用极轻的强调底色标记“这一步已完成”，不做成第二主色。 */
+.auth-agreement-row[data-accepted="true"] {
+    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: color-mix(in srgb, var(--foreground) 4.5%, transparent);
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+/* 未勾选时给协议名一个克制的提示底色，指向“这里还没有同意”。 */
+.auth-agreement-row[data-accepted="false"] .auth-agreement-link {
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in srgb, var(--auth-accent) 42%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+.auth-agreement-row .ant-checkbox-wrapper {
+    flex: 0 0 auto;
+    margin-inline-end: 0;
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+/* AntD 默认把 checkbox 行高 22px 与文案首行错开 1px 左右，这里统一到首行。 */
+.auth-agreement-row .ant-checkbox {
+    align-self: flex-start;
+    top: 0.1em;
+}
+
+.auth-agreement-row .ant-checkbox + span {
+    padding-inline-start: var(--space-2);
+    padding-inline-end: 0;
+}
+
+.auth-agreement-label {
+    color: inherit;
+}
+
+.auth-agreement-link {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--auth-accent);
+    font: inherit;
+    line-height: inherit;
+    text-align: start;
+    transition: color var(--motion-instant) ease-out;
+}
+
+.auth-agreement-link:hover {
+    color: var(--foreground);
+}
+
+.auth-agreement-link:focus-visible {
+    border-radius: 3px;
+    outline: var(--focus-ring-width) solid var(--ring);
+    outline-offset: 3px;
+}
+
+/* --- 协议阅读弹窗 -------------------------------------------------------------
+   长条款需要稳定的阅读列宽和可预期的滚动边界；正文段落之间用间距而不是
+   空行撑开，避免后台多段文本被渲染成松散的空洞。 */
+.auth-agreement-modal .ant-modal-container {
+    border-radius: var(--r-lg);
+}
+
+.auth-agreement-modal .ant-modal-header {
+    margin-bottom: var(--space-1);
+}
+
+.auth-agreement-modal .ant-modal-title {
+    font-size: var(--fs-title-sm, 16px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.5;
+}
+
+.auth-agreement-body {
+    max-height: min(56vh, 460px);
+    overflow-y: auto;
+    padding-inline-end: var(--space-3);
+    overscroll-behavior: contain;
+    color: color-mix(in srgb, var(--foreground) 74%, transparent);
+    font-size: var(--fs-body, 13px);
+    line-height: 1.85;
+}
+
+.auth-agreement-body p {
+    margin: 0;
+}
+
+.auth-agreement-body p + p {
+    margin-top: var(--space-4);
+}
+
+/* 启用“一、二、三”式条目标题时，标题段单独加重，正文段保持常规字重。 */
+.auth-agreement-body p[data-role="heading"] {
+    margin-top: var(--space-5);
+    color: var(--foreground);
+    font-weight: 600;
+}
+
+.auth-agreement-body p[data-role="heading"]:first-child {
+    margin-top: 0;
+}
+
+.auth-agreement-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-3);
+    border: var(--control-border-width) dashed color-mix(in srgb, var(--foreground) 16%, transparent);
+    border-radius: var(--r-md);
+    color: var(--auth-muted);
+    font-size: var(--fs-label);
+    justify-content: center;
+}
+
+.auth-agreement-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: var(--control-border-width) solid var(--border);
+    color: var(--auth-muted);
+    font-size: var(--fs-micro, 11px);
+    letter-spacing: 0.01em;
 }
 
 .site-compliance-footer {
@@ -800,6 +960,10 @@
     --auth-card-bg: #121318;
     --auth-accent: #93c5fd;
     --auth-muted: #8a8b91;
+    /* 深色主题下勾选框用浅底 + 深勾，与浅色主题的深底 + 白勾形成互补；
+       直接复用 --foreground 会得到白底白勾。 */
+    --auth-check-bg: #e5e5e5;
+    --auth-check-fg: #171717;
     --foreground: #ffffff;
     --border: #222222;
     --ring: oklch(0.556 0 0);
@@ -6996,6 +7160,125 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
         box-shadow: 0 0 0 1000px var(--auth-card-bg) inset !important;
         -webkit-text-fill-color: var(--foreground) !important;
         caret-color: var(--foreground);
+    }
+
+    /* 验证码输入行：输入框与获取按钮同排，按钮贴右侧并用竖线分隔。
+       倒计时/禁用时按钮降到弱化态，避免和主提交按钮争夺注意力。 */
+    .auth-code-field {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        border: var(--control-border-width) solid transparent;
+        border-radius: var(--radius, var(--r-sm));
+        background: color-mix(in srgb, var(--foreground) 5.5%, transparent);
+        transition:
+            border-color var(--motion-instant) ease-out,
+            background-color var(--motion-instant) ease-out,
+            box-shadow var(--motion-instant) ease-out;
+    }
+
+    .auth-code-field:hover {
+        border-color: var(--border);
+        background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    }
+
+    /* 焦点环挂在整行容器上，内部输入框不再叠加第二层高亮。 */
+    .auth-code-field:focus-within {
+        border-color: var(--ring);
+        background: color-mix(in srgb, var(--foreground) 8.5%, transparent);
+        box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--ring) 18%, transparent);
+    }
+
+    .auth-code-field .ant-input,
+    .auth-code-field .ant-input-affix-wrapper {
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    .auth-code-field .ant-input:focus,
+    .auth-code-field .ant-input-affix-wrapper-focused {
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    .auth-code-send {
+        flex: 0 0 auto;
+        align-self: center;
+        height: auto;
+        min-height: 26px;
+        margin-inline-end: 5px;
+        padding-inline: var(--space-3);
+        border: 0;
+        border-inline-start: var(--control-border-width) solid color-mix(in srgb, var(--foreground) 12%, transparent);
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        color: var(--auth-accent);
+        font-size: var(--fs-label);
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .auth-code-send:hover:not(:disabled) {
+        background: transparent;
+        color: var(--foreground);
+    }
+
+    /* 倒计时/发送中：保持排版稳定，只做颜色降级，不改变宽度导致输入框跳动。 */
+    .auth-code-send:disabled,
+    .auth-code-send[data-counting="true"] {
+        border-inline-start-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+        background: transparent !important;
+        color: var(--auth-muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .auth-code-field.is-busy .ant-input {
+        color: var(--auth-muted);
+    }
+
+    /* 协议勾选框：圆角方框 + 主题主色填充。
+       注意 AntD 6 把方框样式渲染在 .ant-checkbox 本身（对齐 antd/es/checkbox/style），
+       .ant-checkbox-inner 在内联样式阶段已被移除，因此所有规则必须打在外层元素上，
+       否则样式不会生效。
+       另外方框尺寸来自 checkboxSize = controlHeight / 2（本主题下为 18px），
+       由 cssinjs 生成，选择器权重不低于这里的规则，所以尺寸必须用 !important 收敛到 16px，
+       否则视觉上会是一个偏大的方块。对勾是 .ant-checkbox::after 的边框，
+       默认取 colorWhite，深色主题下 colorPrimary 也是近白，会退化成白底白勾，需单独覆盖。 */
+    .auth-agreement-row .ant-checkbox {
+        align-self: center;
+        width: 16px !important;
+        height: 16px !important;
+        border-color: color-mix(in srgb, var(--foreground) 32%, transparent) !important;
+        border-radius: var(--checkbox-radius, 4px);
+        background: color-mix(in srgb, var(--foreground) 3%, transparent) !important;
+        transition:
+            border-color var(--motion-instant) ease-out,
+            background-color var(--motion-instant) ease-out;
+    }
+
+    .auth-agreement-row .ant-checkbox::after {
+        border-color: var(--auth-check-fg) !important;
+        border-width: 2px !important;
+    }
+
+    .auth-agreement-row .ant-checkbox-wrapper:hover .ant-checkbox:not(.ant-checkbox-checked),
+    .auth-agreement-row .ant-checkbox:hover:not(.ant-checkbox-checked) {
+        border-color: color-mix(in srgb, var(--foreground) 55%, transparent) !important;
+        background: color-mix(in srgb, var(--foreground) 6%, transparent) !important;
+    }
+
+    .auth-agreement-row .ant-checkbox-checked,
+    .auth-agreement-row .ant-checkbox-wrapper:hover .ant-checkbox-checked,
+    .auth-agreement-row .ant-checkbox-checked:hover {
+        border-color: var(--auth-check-bg) !important;
+        background: var(--auth-check-bg) !important;
+    }
+
+    .auth-agreement-row .ant-checkbox:has(.ant-checkbox-input:focus-visible) {
+        outline: none;
+        box-shadow: 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--ring) 20%, transparent);
     }
 
 :where(.ant-modal, .ant-drawer, .ant-select-dropdown, .ant-dropdown, .ant-popover) {
