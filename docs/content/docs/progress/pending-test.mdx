@@ -2985,6 +2985,14 @@ SSE 现在按 revision 变化发送紧凑快照，无变化只 heartbeat；客�
 
 验证：后端 `gofmt -l` 干净、`go build ./...`、`go test ./... -count=1` 全量通过（0 个 FAIL，含上游新增的场景预设与技能用量用例）；前端 `bun run typecheck`、`bun run lint`、`bun run build`、`bun run test` 2084 项通过、改动文件 prettier 检查通过（上游新增的 `canvas-cloud-agent-chat-ui.tsx`、`skills-api.test.ts` 按本仓库 prettier 配置重新格式化）。仍待真实环境验收：场景胶囊在真实技能库上的挂载与自动补装、技能用量在后台的展示口径、云端图片裁剪在真实 OSS/CDN 资源上的表现（跨域图片依赖前端取回字节后裁剪）。
 
+上游主线合并（4 个提交：媒体产出模型与选用模型分离、创作工作区界面密度收紧与 Agent 镂空标签、Agent 上下文压缩检查点、Agent 运行详情分页与增量读取）：合并前本仓库领先 206 个提交，上游新增改动 56 个文件，其中 6 个冲突（后端 1、前端 1、文档 4），其余 20 个共同改动文件自动合并。
+
+合并取舍：技能场景胶囊取上游的 CSS 类实现（`agent-scene-capsule-label`/`agent-scene-capsule-meta` + `Layers3` 图标，配套 CSS 已自动合并），不再保留本仓库的 Tailwind 内联类版本。`repository/cloud_agent.go` 收下上游的 `CloudAgentJournalWindow`（载入窗口 40 条），同时保留本仓库 `CloudAgentForActiveTask` 的 `updated_at DESC`（同一任务有多个活动轮次时取最新）。文档四处都是插入位置与版本取舍：code-map 保留本仓库 assets 已抽出并新增的 storage/sms 两行、再补上游的 agentcontext 行，不接受上游把 assets 退回「部分抽出」；http-api 保留本仓库 `canvas_inspect_image` 的 `nodeIds` 批量与工具全集里的 `canvas_inspect_media`，收下上游两条上下文压缩说明、丢掉上游旧版单张看图描述；features 与 pending-test 两侧章节都保留（产出模型、界面密度与本仓库的视频生成模式/视频超分/音频 Token 计费并存）。
+
+语义核查（自动合并成功但必须人工确认的调用点）：上游 #597 的做法是在每个媒体写入路径上挂 `commitProducedModel`，本仓库在同一批文件里新增过路径，逐个核对后的结论是——「视频超分」（`use-canvas-media-tools.ts` 的 `enhanceVideoNode`）经 `runCanvasGenerationTaskToConsumer` → `buildGenerationTaskNodeResult` → `applyGeneratedMediaResultMetadata(..., task.model)`，产出模型由上游新增的 `task.model` 兜底参数记录；视频生成模式（含本仓库 `buildVideoGenerationMetadata` 的 mode 分支）走的 `executeVideoGeneration` 占位 metadata 已带 `producedModelCandidate`；上传、导演台与命令行出图按上游口径显式清空产出模型。界面密度变量核对后仍只有一处生效定义：`@theme inline` 的 250px 是全局默认，`.app-user-workspace` 覆盖为 200px，画布壳覆盖顶栏 56px；本仓库 `globals.css` 在分叉点之后只加过 antd reset 导入，不存在第二套几何值。
+
+验证：后端 `gofmt`、`go build ./...`、`go test ./... -count=1` 全量通过（0 个 FAIL，`internal/app` 约 322s，含上游新增的 `internal/agentcontext`、`cloud_agent_event_store` 与 handler 分页用例）；前端 `bun run build`（含 `tsc --noEmit`）、`bun run lint` 通过，`bun test` 2106 项全通过（276 个文件，含上游新增的 `produced-model.test.tsx`），改动文件 prettier 检查通过。本轮没有 schema 迁移：检查点存进既有 `state_json`，分页读的是既有的 `cloud_agent_event_records`。仍待真实环境验收：界面密度在 100% 缩放下的明暗主题/窄屏/触屏表现（沿用上游自带的待验收项）、真实长会话触发一次上下文压缩后的续轮效果与记费增量。部署注意：上游注明渠道未填真实 `contextWindowTokens` 时压缩会按字节/条数兜底过早触发，每次压缩多花一次模型调用并额外计费，生产需给画布 Agent 所用渠道模型/逻辑模型填写真实窗口。
+
 ## 画布媒体交互与 Agent 循环止损复测（2026-09-23）
 
 本轮针对画布媒体节点、生成任务状态及云端 Agent 重复读取问题完成实现和复测。代码仍未提交，以下结论基于当前工作区的专项测试与隔离本地浏览器环境，不代表已部署生产。
