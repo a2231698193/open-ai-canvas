@@ -395,6 +395,28 @@ export function hasRemoteUserDataSyncSession() {
 }
 
 /**
+ * 画布是本地秒开的：`use-canvas-project-lifecycle` 先用本地缓存渲染并置 `projectLoaded`，
+ * 云端同步会话由后台的 `hydrateUserSessionData` 稍后建立。素材落库是用户动作的直接后果，
+ * 在这段窗口里直接落库会得到"尚未建立云端同步会话"——它与事实不符（用户已登录，只是会话
+ * 还在建），所以这里等一个有界窗口。
+ *
+ * 返回 false 表示窗口内没等到（未登录、基线拉取失败或初始化过慢），调用方继续走原有报错
+ * 路径：等待本身不能变成新的失败，也不能把沉默拖成"看起来卡住了"。
+ */
+export async function waitForRemoteUserDataSyncSession(timeoutMs: number, signal?: AbortSignal) {
+    if (hasRemoteUserDataSyncSession()) return true;
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (Date.now() < deadline) {
+        if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
+        // failed 不会自愈（基线拉取已经失败），继续等只是把报错往后推。
+        if (remoteUserDataPhase === "failed") return false;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        if (hasRemoteUserDataSyncSession()) return true;
+    }
+    return hasRemoteUserDataSyncSession();
+}
+
+/**
  * 串行执行用户数据同步、账号切换和登出相关的远端操作。
  *
  * 前一个操作失败只影响它自己，不能让后续操作永远停在 rejected tail；当前操作的

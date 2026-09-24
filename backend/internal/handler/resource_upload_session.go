@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,6 +111,16 @@ func dropChunkSession(id string) {
 	}
 }
 
+// chunkUploadIdempotencyKey 解析分片会话的幂等键：请求头与单请求直传同源
+// （`POST /resources` 也读 `X-Idempotency-Key`），正文同名字段只在没有头时兜底。
+// 合并落库用它去重，所以这里返回空串等于放弃幂等，不能靠正文默认值静默通过。
+func chunkUploadIdempotencyKey(c *gin.Context, bodyValue string) string {
+	if headerKey := strings.TrimSpace(c.GetHeader("X-Idempotency-Key")); headerKey != "" {
+		return headerKey
+	}
+	return strings.TrimSpace(bodyValue)
+}
+
 // RegisterChunkedUploadRoutes 注册本地媒体分片上传三条接口（POST 开始 / PUT 上传片 / POST 合并）。
 func RegisterChunkedUploadRoutes(r *gin.RouterGroup, svc *service.Service) {
 	r.POST("/resources/uploads", func(c *gin.Context) {
@@ -136,6 +147,10 @@ func RegisterChunkedUploadRoutes(r *gin.RouterGroup, svc *service.Service) {
 			fail(c, http.StatusBadRequest, err)
 			return
 		}
+		// 幂等键与单请求直传保持同一处约定：客户端按 `X-Idempotency-Key` 头发送，
+		// 合并落库时复用它做去重。只读正文会让分片链路完全失去幂等——响应丢失后重传
+		// 会再落一份对象并重复计配额，所以头部优先，正文同名字段仅作兼容。
+		req.IdempotencyKey = chunkUploadIdempotencyKey(c, req.IdempotencyKey)
 		if req.FileName == "" || len(req.FileName) > 255 {
 			fail(c, http.StatusBadRequest, fmt.Errorf("文件名不能为空且不能超过 255 个字符"))
 			return

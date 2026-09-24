@@ -26,20 +26,21 @@ const (
 type ErrorReason string
 
 const (
-	ReasonInvalidArgument        ErrorReason = "invalid_argument"
-	ReasonUnauthorized           ErrorReason = "unauthorized"
-	ReasonForbidden              ErrorReason = "forbidden"
-	ReasonNotFound               ErrorReason = "not_found"
-	ReasonConflict               ErrorReason = "conflict"
-	ReasonCanvasResourcesMissing ErrorReason = "canvas_history_resources_missing"
-	ReasonFailedPrecondition     ErrorReason = "failed_precondition"
-	ReasonQuotaExceeded          ErrorReason = "quota_exceeded"
-	ReasonRateLimited            ErrorReason = "rate_limited"
-	ReasonUnavailable            ErrorReason = "unavailable"
-	ReasonTimeout                ErrorReason = "timeout"
-	ReasonInternal               ErrorReason = "internal"
-	ReasonBadGateway             ErrorReason = "bad_gateway"
-	ReasonUpstreamDNSFailed      ErrorReason = "upstream_dns_failed"
+	ReasonInvalidArgument          ErrorReason = "invalid_argument"
+	ReasonUnauthorized             ErrorReason = "unauthorized"
+	ReasonForbidden                ErrorReason = "forbidden"
+	ReasonNotFound                 ErrorReason = "not_found"
+	ReasonConflict                 ErrorReason = "conflict"
+	ReasonResourceUploadInProgress ErrorReason = "resource_upload_in_progress"
+	ReasonCanvasResourcesMissing   ErrorReason = "canvas_history_resources_missing"
+	ReasonFailedPrecondition       ErrorReason = "failed_precondition"
+	ReasonQuotaExceeded            ErrorReason = "quota_exceeded"
+	ReasonRateLimited              ErrorReason = "rate_limited"
+	ReasonUnavailable              ErrorReason = "unavailable"
+	ReasonTimeout                  ErrorReason = "timeout"
+	ReasonInternal                 ErrorReason = "internal"
+	ReasonBadGateway               ErrorReason = "bad_gateway"
+	ReasonUpstreamDNSFailed        ErrorReason = "upstream_dns_failed"
 )
 
 func ReasonForStatus(status int) ErrorReason {

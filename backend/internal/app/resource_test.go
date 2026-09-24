@@ -962,6 +962,35 @@ func TestStoreResourceReusesReadyUploadIdentity(t *testing.T) {
 	}
 }
 
+// 幂等键命中"正在上传"的记录时必须给出可重试的机器可读原因：前端只有靠 reason 才能把
+// 它与"幂等键已被其他文件占用"区分开，否则一次即将成功的上传会被报成永久失败。
+func TestStoreResourceRejectsConcurrentUploadWithRetryableReason(t *testing.T) {
+	svc := newResourceTestService(t)
+	uploadKey := normalizedResourceUploadKey([]string{"video:user-1:in-flight"})
+	pending := &model.Resource{
+		ID: "resource-pending", UserID: "user-1", Kind: "video", Status: model.ResourceStatusPending,
+		Provider: "local", ObjectKey: "users/user-1/video/in-flight.mp4", MimeType: "video/mp4", Size: 11,
+		UploadKey: uploadKey, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := svc.repo.CreateResource(pending); err != nil {
+		t.Fatal(err)
+	}
+	_, stored, err := svc.storeResource("user-1", "video", "in-flight.mp4", "video/mp4", 11, 0, 0, 0, bytes.NewReader([]byte("payload")), uploadKey, false)
+	if err == nil {
+		t.Fatal("同一幂等键的并发上传本应被拒绝")
+	}
+	if stored {
+		t.Fatal("并发上传不得写入新对象")
+	}
+	var appErr *AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("错误类型 = %T，期望 *AppError", err)
+	}
+	if appErr.Status != http.StatusConflict || appErr.Reason != ReasonResourceUploadInProgress || !appErr.Retryable {
+		t.Fatalf("并发上传错误 = %#v，期望 409 / %s 且可重试", appErr, ReasonResourceUploadInProgress)
+	}
+}
+
 func TestRetryStoredResourceKeepsOriginalObjectKey(t *testing.T) {
 	svc := newResourceTestService(t)
 	uploadKey := normalizedResourceUploadKey([]string{"image:user-1:retry-upload"})

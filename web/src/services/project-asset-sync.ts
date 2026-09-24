@@ -14,16 +14,30 @@ import { getImageBlob, resolveImageUrl, setImageBlob } from "@/services/image-st
 import { generationArtifactStorageKey, loadOrStoreGenerationArtifact } from "@/services/generation-artifact-sink";
 import { createProviderNeutralGenerationTaskEffectStore } from "@/services/provider-neutral-generation-effects";
 import { getCachedResourceBlob } from "@/services/resource-blob-cache";
-import { saveRemoteUserDataNow } from "@/services/user-data-sync";
+import { saveRemoteUserDataNow, waitForRemoteUserDataSyncSession } from "@/services/user-data-sync";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { normalizeAssetCategory } from "@/lib/asset-category";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
 import { useAssetStore, type AssetCategory, type AssetStatus, type NewAsset } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { useUserStore } from "@/stores/use-user-store";
 import type { CanvasNodeData } from "@/types/canvas";
 
 function throwIfAborted(signal?: AbortSignal) {
     if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
+}
+
+// 画布本地秒开到云端会话就绪之间的等待上限。会话由后台初始化，正常在秒级完成；
+// 超过这个窗口仍没就绪就按原有报错路径处理，不让等待伪装成"正在保存"。
+const ASSET_SYNC_SESSION_WAIT_MS = 10_000;
+
+/**
+ * 素材落库前确认云端会话：本地秒开期间会话仍在建立，这时报"尚未建立云端同步会话"
+ * 会让已经登录的用户以为自己的账号掉了。未登录（没有用户）时不等待，保持即时失败。
+ */
+async function saveRemoteUserDataWithSession(signal?: AbortSignal) {
+    if (useUserStore.getState().user?.id) await waitForRemoteUserDataSyncSession(ASSET_SYNC_SESSION_WAIT_MS, signal);
+    await saveRemoteUserDataNow();
 }
 
 type EnsureCanvasNodeAssetOptions = {
@@ -120,7 +134,7 @@ async function persistCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions): Pr
     }
     if (!options.domainProjectId) {
         // 个人画布也必须在返回成功前把素材提交到服务端，不能只依赖延迟自动同步。
-        await saveRemoteUserDataNow();
+        await saveRemoteUserDataWithSession(options.signal);
         throwIfAborted(options.signal);
         return { assetId: asset.id, created, linkedToProject: false };
     }
@@ -139,7 +153,7 @@ async function syncAssetToProject(assetId: string, domainProjectId: string, cate
     }
 
     // 项目关联依赖后端 assets 记录，先强制完成素材同步，不能依赖延迟自动同步的时序。
-    await saveRemoteUserDataNow();
+    await saveRemoteUserDataWithSession(signal);
     throwIfAborted(signal);
     const { asset: linkedAsset } = await linkProjectAsset(
         domainProjectId,

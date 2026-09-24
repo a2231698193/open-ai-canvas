@@ -296,8 +296,15 @@ func (s *Service) resourceForUploadKey(userID string, uploadKey *string) (*model
 	return resource, err
 }
 
+// resourceUploadInProgress 表示同一幂等键的上传仍在服务端进行中：它不是永久失败。
+// 客户端应当保留本地文件，并用同一幂等键稍后重试——命中已就绪资源时服务端直接返回该资源，
+// 不会重复落对象或重复计配额。
+//
+// reason 必须是机器可读的：HTTP 409 在前端默认被判成"重试不会自愈"，只有这个 reason
+// 能让上传链路把它当作瞬时失败，而不是把一次即将成功的上传报成失败。
 func resourceUploadInProgress() *AppError {
 	err := NewAppError(http.StatusConflict, "相同素材正在上传，请稍后重试")
+	err.Reason = ReasonResourceUploadInProgress
 	err.Retryable = true
 	return err
 }

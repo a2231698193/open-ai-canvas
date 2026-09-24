@@ -62,6 +62,18 @@ describe("资源直传失败分类", () => {
         expect((error as ResourceUploadError).permanent).toBe(false);
     });
 
+    // 边缘 524 之后按同一幂等键重传，很可能撞上服务端仍在处理的那一行：那次上传往往马上就成功，
+    // 把它当成永久失败会让用户以为文件丢了。reason 是这条边界唯一的机器可读信号。
+    test("服务端标记的「同一素材正在上传」是可重试冲突", async () => {
+        const inFlight = await uploadFailure({ status: 409, body: { code: 409, data: null, msg: "相同素材正在上传，请稍后重试", reason: "resource_upload_in_progress" } });
+        expect(inFlight).toBeInstanceOf(ResourceUploadError);
+        expect((inFlight as ResourceUploadError).permanent).toBe(false);
+
+        // 同样是 409，但原因不是"正在上传"（幂等键已被其它文件占用）时仍是永久失败。
+        const collision = await uploadFailure({ status: 409, body: { code: 409, data: null, msg: "上传幂等标识已用于其他文件", reason: "conflict" } });
+        expect((collision as ResourceUploadError).permanent).toBe(true);
+    });
+
     test("保留后端可读文案，并把 multipart 超限翻译成中文", async () => {
         const quota = await uploadFailure({ status: 403, body: { code: 403, data: null, msg: "存储配额不足" } });
         expect((quota as ResourceUploadError).message).toBe("存储配额不足");

@@ -29,7 +29,7 @@ description: 信封、错误码与 OpenAPI
 
 画布写入在保存历史快照前校验当前文档中的资源引用；引用须属于当前用户且处于 `ready`。引用收集器递归遍历受支持的资源字段，因此 `nodes[节点 ID].metadata.videoPreview.storageKey` 等嵌套派生封面也会参与检查。历史快照保存会一并校验新版本引用；若资源在保存期间缺失或状态变化，事务回滚，画布 revision 不递增。
 
-HTTP 409 不能一概解释为 revision 冲突：普通版本冲突使用 `reason: conflict`；资源完整性失败使用 `reason: canvas_history_resources_missing`，并在 `details` 中返回 `resourceIds` 和 `missingResources`（含资源 ID、JSON 路径、节点 ID、引用类型及 `source`）。客户端应按 `reason` 分流，不解析 `msg` 猜测原因。显式资源修复写入仅允许历史 preimage 存在缺失资源，不允许新画布仍引用缺失资源，也不绕过 revision CAS。
+HTTP 409 不能一概解释为 revision 冲突：普通版本冲突使用 `reason: conflict`；资源完整性失败使用 `reason: canvas_history_resources_missing`，并在 `details` 中返回 `resourceIds` 和 `missingResources`（含资源 ID、JSON 路径、节点 ID、引用类型及 `source`）；上传幂等键命中的素材仍在写入中使用 `reason: resource_upload_in_progress`，它是可重试的瞬时冲突（见「资源文件」）。客户端应按 `reason` 分流，不解析 `msg` 猜测原因，也不能只按 HTTP 状态判断重试。显式资源修复写入仅允许历史 preimage 存在缺失资源，不允许新画布仍引用缺失资源，也不绕过 revision CAS。
 
 运维扫描/修复仅处理当前画布中可安全清除的失效 `videoPreview`；不删除主媒体、不扫描并改写所有历史快照，也不替代备份。使用目标数据库对应的新版本二进制，先在维护窗口备份并执行只读扫描：
 
@@ -295,6 +295,10 @@ CSV 使用中文表头、UTF-8 BOM、CRLF；金额按整数分精确转换为两
 `POST /api/admin/channels/:id/duplicate` 需要管理员权限，会复制指定系统渠道的连接配置、加密凭证、请求头、模型和价格档，生成新的渠道与模型 ID；复制渠道名称自动追加“ - 副本”。原渠道及其前台供应线路不受影响。
 
 ## 资源文件
+
+上传有两条路：`POST /resources`（单请求 multipart，单文件受运行时策略 `ResourceUploadMB` 限制，默认 50MB 且是 `>=` 拒绝）和 `POST /resources/uploads` → `PUT /resources/uploads/:id/chunks/:index` → `POST /resources/uploads/:id/complete`（分片，单文件不受该上限约束，只受账号日/总量配额）。分片会话保存在后端进程内存里，因此部署上必须保持单副本或会话粘滞。
+
+两条路都接受 `X-Idempotency-Key`（分片链路在开始会话时传入，合并落库时复用）：键命中已就绪资源会直接返回该资源，不重复落对象、不重复计配额；键命中仍在写入中的资源返回 `409` 且 `reason: resource_upload_in_progress`。**这条 409 不是永久失败**：客户端应保留本地文件并用同一幂等键稍后重试，重试命中已就绪资源时立即返回而不必重传字节。只有 `reason: conflict` 的 409（幂等键已被其它文件占用）才按永久失败处理。边缘代理放弃等待时源站仍可能写完（Cloudflare 为 100s → `524`），所以 `524`、网络中断之后同样应当用原幂等键重试，而不是换键重新创建对象。
 
 `GET /resources/:id/file` 与 `/resources/access` 统一消费资源访问合同：出口（CDN 直连、对象存储签名源站、平台本地或平台代理）由服务端按资源与存储分发设置决定，客户端不能用 `direct=1` / `proxy=1` 之类的参数改写。支持的用途参数是 `purpose`（`display` / `copy` / `download` / `browser-process` / `provider-input`）与 `variant`（`original` / `playback`）；`download=1` 仍被映射成 `purpose=download`，`filename` 用作附件名。`access=1` 只返回访问描述，不返回字节。
 

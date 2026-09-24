@@ -5,6 +5,19 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 大文件上传的边缘超时与「尚未建立云端同步会话」
+
+现象（生产 linggan.mnix.cn，48MB 视频拖入画布）：`POST /api/resources` 先 524（Origin Time-out），随后同一请求 409，界面提示「生成结果已保留，但项目资产同步失败：尚未建立云端同步会话，本地内容尚未保存到云端」。根因是两个叠加问题，均已修复：
+
+- 已实现（上传阈值）：`CHUNK_UPLOAD_THRESHOLD` 由 50MB 降到 8MB。原值等于后端 multipart 上限（运行时策略 `ResourceUploadMB` 默认 50 且 `>=` 拒绝），于是 48MB 这类「刚好合法」的视频仍走单请求直传；慢上行下单请求传输本身就接近边缘代理的 100s 源站时限，Cloudflare 返回 524，而源站仍在继续写对象——客户端拿不到资源 ID，只能退回本机。降到与后端分片大小（8MB）同级后，8MB 以上的媒体一律走可续传的分片链路，单请求体积远离超时窗口。
+- 已实现（可重试冲突）：幂等键命中「仍在写入」的资源时返回 `409` + `reason: resource_upload_in_progress`（新增 `kernel.ReasonResourceUploadInProgress`，`app`/`service` 同步别名）。此前服务端只设了 `Retryable = true`，而该字段不进响应体，前端 `isRetryableStatus` 只认 408/425/429/5xx，于是这条 409 被判成永久失败——一次马上要成功的上传被报成失败。前端现在按 `reason` 把它归为瞬时失败：保留本地文件、稍后用同一幂等键重试，重试命中已就绪资源时服务端直接返回该资源，不重传字节也不重复计配额；`reason: conflict` 的 409（键被别的文件占用）仍是永久失败。
+- 已实现（会话竞态）：画布是本地秒开的（`use-canvas-project-lifecycle` 先用本地缓存置 `projectLoaded`），云端会话由后台 `hydrateUserSessionData` 稍后建立，素材落库正好落在这段窗口里就会报「尚未建立云端同步会话」——用户其实已经登录。现在 `persistCanvasNodeAsset` 在已登录时先等会话就绪（`waitForRemoteUserDataSyncSession`，上限 10s；phase 变 `failed` 立即返回），超时仍走原有报错；未登录不等待，保持即时失败。
+- 已实现（分片幂等键缺失，修阈值时才暴露）：`POST /resources/uploads` 只从 JSON 正文读 `idempotencyKey`，而客户端按 `X-Idempotency-Key` 头发送（与 `POST /resources` 同一约定），于是分片会话拿到的键恒为空，`complete` 落库时没有去重——`complete` 的响应一旦丢失，整传重试会再落一份对象并重复计配额。现在头部优先、正文同名字段兜底（`chunkUploadIdempotencyKey`）。阈值降到 8MB 后分片成为大文件默认路径，这个缺口必须先补。
+- 验证：后端新增 `TestStoreResourceRejectsConcurrentUploadWithRetryableReason`（写入 pending 行后同键上传必须得到 409 / `resource_upload_in_progress` / `Retryable`）与 `TestChunkUploadIdempotencyKeyPrefersHeader`（头部优先、正文兜底、空白归零），`go test ./internal/handler/ ./internal/app/ -count=1` 通过（`internal/app` 首轮出现过一次 SQLite `db busy` 抖动，单独重跑全绿）。前端新增 `resource-upload-boundary.test.ts` 的「同一素材正在上传是可重试冲突」用例（含 `reason: conflict` 仍为永久失败的对照）与 `user-data-sync-session-wait.test.ts` 四条（未就绪返回 false、窗口内建立要等到、已就绪零等待、取消按 AbortError 抛出）。
+- [ ] 真实环境验收（慢上行，约 4Mbps 以下）：拖入 40–50MB 视频，确认浏览器 Network 走 `/resources/uploads` + 8MB 分片 PUT 而不是单个 `/resources`，节点最终落云端且素材入库；弱网中断一片后确认整传重试仍能成功。
+- [ ] 真实环境验收：刚打开画布的数秒内拖入文件或在有生成结果的画布上等待自动保存，确认不再出现「尚未建立云端同步会话」；退出登录后同一路径仍应立刻报未登录，不能静默等 10 秒。
+- [ ] 部署注意：分片会话保存在后端进程内存中（`chunkUploadSessions`），后端必须保持单副本或会话粘滞；若将来扩容后端副本，分片上传需要改为共享会话状态。
+
 ## 工作区 100% 缩放下的界面密度
 
 - 已收紧用户工作区侧栏、顶栏和导航行、画布桌面端 Dock、Agent 内边距及默认浮窗尺寸；Agent 旧的手动调整尺寸仍保留，可点标题栏「恢复 Agent 紧凑窗口」自行重置。技能组合标签维持透明底和彩色描边。

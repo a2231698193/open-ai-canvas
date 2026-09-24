@@ -171,9 +171,26 @@ export function isResourceUrl(url?: string) {
     return path.startsWith(`${base}/resources/`) && path.endsWith("/file");
 }
 
-// 超过该阈值（与后端单请求 multipart 上限 50MB 一致）的本地媒体走分片上传，避免大视频导入失败。
-const CHUNK_UPLOAD_THRESHOLD = 50 << 20;
+/**
+ * 单请求上传的阈值。它同时受两道硬约束：
+ *
+ * - 后端 multipart 上限来自运行时策略 `ResourceUploadMB`（默认 50MB，且是 `>=` 拒绝），
+ *   超过就必须走分片链路；
+ * - 前端边缘代理对源站有响应时限（Cloudflare 100s → 524）。524 只代表边缘放弃等待，
+ *   源站仍在继续接收与落盘，客户端拿不到资源 ID，只能退回本机。
+ *
+ * 把阈值顶在后端上限上，等于让 48MB 这类"刚好合法"的视频仍然单请求直传：慢上行下
+ * 传输本身就接近甚至超过 100s，于是稳定复现"524 → 退回本机"。阈值与后端分片大小
+ * （8MB）同级后，媒体默认走可续传的分片链路，单请求体积远离边缘超时窗口。
+ */
+const CHUNK_UPLOAD_THRESHOLD = 8 << 20;
 const CHUNK_UPLOAD_RETRIES = 2;
+
+/**
+ * 服务端明确标记"同一素材仍在处理中"的冲突：HTTP 409 默认会被判成重试不会自愈，
+ * 但这一条恰恰相反——第一次请求只是还没落完，用同一幂等键重试会命中已就绪资源。
+ */
+const RETRYABLE_UPLOAD_CONFLICT_REASON = "resource_upload_in_progress";
 
 export async function uploadResourceFile(file: Blob, kind: "image" | "video" | "audio" | "file", meta?: ResourceUploadMeta, onProgress?: (uploadedBytes: number, totalBytes: number) => void): Promise<RemoteResource> {
     const name = meta?.fileName || (file instanceof File ? file.name : `${kind}.${extensionFromMime(file.type, kind)}`);
@@ -253,7 +270,10 @@ function normalizeUploadError(error: unknown): ResourceUploadError {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     if (error instanceof ApiError) {
         const status = error.status;
-        const permanent = status !== undefined && !error.retryable;
+        // 409 默认按永久失败处理，但服务端标记为"同一素材正在上传"时必须是瞬时的：
+        // 那次上传往往马上就成功，退回本机后按同一幂等键重试会直接命中已就绪资源。
+        const retryableConflict = error.reason === RETRYABLE_UPLOAD_CONFLICT_REASON;
+        const permanent = status !== undefined && !error.retryable && !retryableConflict;
         // 即使误超 50MB multipart 上限（后端 http.MaxBytesError），也给出可读中文而非英文裸错。
         if (status === 400 && /body too large|MaxBytes/i.test(error.message)) {
             return new ResourceUploadError("文件过大，请使用小于 50MB 的文件或稍后重试", { status, permanent: true, cause: error });
