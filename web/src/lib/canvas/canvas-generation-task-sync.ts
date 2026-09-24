@@ -122,14 +122,17 @@ export function applyGeneratedMediaResultMetadata(node: CanvasNodeData, media: C
     }, fallbackModel);
 }
 
-export async function buildGenerationTaskNodeResult(node: CanvasNodeData, task: GenerationTask, nodes: CanvasNodeData[] = [node]): Promise<CanvasNodeData> {
+export async function buildGenerationTaskNodeResult(node: CanvasNodeData, task: GenerationTask, nodes: CanvasNodeData[] = [node], imageIndex?: number): Promise<CanvasNodeData> {
     const mode = generationTaskMode(task, node.type === CanvasNodeType.Text ? "text" : node.type === CanvasNodeType.Video ? "video" : node.type === CanvasNodeType.Audio ? "audio" : "image");
     const prompt = node.metadata?.prompt || task.prompt;
     const result = parseBackendGenerationResult(task);
 
     if (mode === "image") {
-        const image = result.images?.[0];
-        if (!image?.dataUrl) throw new Error("后端任务没有返回图片");
+        // 固定批量协议（如 Midjourney 一次回四张）会把同一次任务的结果按序号分给多个节点；
+        // 节点自己记住序号，调用方没显式指定时按它取图。
+        const resolvedImageIndex = imageIndex ?? node.metadata?.batchOutputIndex ?? 0;
+        const image = result.images?.[resolvedImageIndex];
+        if (!image?.dataUrl) throw new Error(resolvedImageIndex > 0 ? `后端任务没有返回第 ${resolvedImageIndex + 1} 张图片` : "后端任务没有返回图片");
         let resultDataUrl = image.dataUrl;
         const emotionEdit = node.metadata?.emotionEdit;
         if (emotionEdit) {
@@ -230,10 +233,10 @@ async function cacheGeneratedRemoteVideo(result: GeneratedVideoResult & { storag
     };
 }
 
-export async function applyGenerationTaskResultToNodes(nodes: CanvasNodeData[], task: GenerationTask, targetNodeId?: string) {
+export async function applyGenerationTaskResultToNodes(nodes: CanvasNodeData[], task: GenerationTask, targetNodeId?: string, imageIndex?: number) {
     const node = findGenerationTaskNode(nodes, task, targetNodeId);
     if (!node) return { nodes, updated: false, nodeId: "", node: null };
-    const updatedNode = await buildGenerationTaskNodeResult(node, task, nodes);
+    const updatedNode = await buildGenerationTaskNodeResult(node, task, nodes, imageIndex);
     return {
         nodes: applySuccessfulVersionSelection(nodes, updatedNode),
         updated: true,

@@ -114,6 +114,16 @@
 | `backend/internal/app/model_capability.go:141` | `DefaultImageCapabilityConfig` 增加 `apimart-mj` 分支：size = MJ 比例枚举、`MaxOutputs = 4`、垫图 `MaxImages = 4`、`MaskSupported = false` |
 | `web/src/lib/model-capabilities.ts`（参照 `:269` 的 apimart-image 段） | 同步同名分支 |
 | `web/src/stores/use-config-store.ts:925` | 默认 baseUrl 加入 `apimart-mj`（`https://api.apimart.ai`） |
+| `model_capability.go` / `model-capabilities.ts` | 新增能力字段 `batchOutputs`（单次调用固定返回张数，MJ = 4） |
+
+### 5.1 固定批量：一次调用铺 N 个节点
+
+MJ 一次 imagine 固定回 4 张。画布原本的批量语义是「每个子节点各发一次上游请求」，用在这里会变成 **4 组生成、4 倍计费**，而且每次返回的其余 3 张被丢弃（实测：选 1 张 = 1 次调用留 1 张；选 4 张 = 4 次调用留 4 张）。因此新增 `batchOutputs` 能力字段并改动画布批量计划：
+
+- `web/src/lib/canvas/canvas-image-batch-plan.ts`：`resolveImageBatchPlan(requestedCount, batchOutputs)` 决定「铺几个节点 / 发几次上游请求」。普通模型仍是一张一次调用；固定批量恒为 1 次调用。有单测 `web/test/canvas-image-batch-plan.test.ts`。
+- `canvas-image-generation-executor.ts`：固定批量时只跑一个任务，把结果按输出序号分给子节点（`applyGenerationTaskResult(childId, task, index)`）。
+- 子节点在 metadata 上记 `batchOutputIndex`：4 个节点共享同一个 taskId，恢复、重试、重新加载资源都按它取图，否则会把第 1 张重复写进 4 个节点。
+- `image-settings-panel.tsx`：固定批量模型不再显示张数选择器，改为「该模型一次调用固定返回 N 张（按一次计费）」，避免用户以为选 4 会多花钱。
 
 ## 6. 前端改动点
 
@@ -131,6 +141,7 @@
 
 - 渠道模型 key 建议 `midjourney`（与 APIMart 控制台一致）；协议选 `apimart-mj`。
 - `billingMode = fixed_request`，一次 imagine（4 张单图）计一次费。
+- **张数不用也不能靠"多选"来换图**：固定批量协议下一次调用就回 4 张，画布现在只发一次请求并把 4 张铺成 4 个节点（见 5.1）。管理员不需要为此改价格档；价格档按"每次调用"定价即可。
 - **价格档怎么配**：图片能力下 `skuSelectorForIntent` 会**覆盖** `operation`——有参考图取 `image_to_image`，没有取 `text_to_image`（`backend/internal/app/model_router.go:872-877`），后台的「生成方式」选项正好是这两个值加「任意生成方式」。因此：
   - 最省事：价格档用**「默认价格」**模式（不写匹配条件，selector 为空 → 匹配所有请求，`channel-model-price-tier-form.ts:108-117` 只在值非 `*` 时才写入 selector）。
   - 要区分文生图/图生图：用「按规格定价」，生成方式选具体值，「质量/分辨率」**必须选「任意质量」**，「画幅/尺寸」留空。

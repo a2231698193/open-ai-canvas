@@ -48,6 +48,10 @@ type ImageCapabilityConfig struct {
 	ResponseFormat        ParameterSupport     `json:"responseFormat"`
 	OutputFormat          ParameterSupport     `json:"outputFormat"`
 	MaxOutputs            int                  `json:"maxOutputs"`
+	// BatchOutputs 是单次调用固定返回的图片张数。>1 表示一次请求就返回 N 张（例如 Midjourney
+	// 固定回四宫格）：画布必须只发一次上游请求，再把 N 张按顺序铺成 N 个节点。若按 MaxOutputs
+	// 发 N 次请求，上游会生成 N 组图并按 N 次计费。
+	BatchOutputs int `json:"batchOutputs,omitempty"`
 }
 
 type ImageReferenceConfig struct {
@@ -201,6 +205,8 @@ func DefaultImageCapabilityConfig(protocol string, modelName string) *ImageCapab
 		image.ResponseFormat.Supported = false
 		image.OutputFormat.Supported = false
 		image.MaxOutputs = 4
+		// Midjourney 一次 imagine 固定返回四张单图，画布只能发一次请求。
+		image.BatchOutputs = 4
 	}
 	if model.ChannelInterfaceType(protocol) != model.ChannelInterfaceGrokImage && strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "grok-imagine-image") {
 		image.References.MaxImages = 0

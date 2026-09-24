@@ -116,7 +116,14 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 {isLk888MjProtocol(protocol) ? <Lk888MjOptionsPanel compact /> : null}
                 {isApimartMjProtocol(protocol) ? <ApimartMjOptionsPanel compact /> : null}
                 {isTtImage25(protocol, modelOptionName(config.model || config.imageModel)) ? <Lk888Image25OptionsPanel compact /> : null}
-                {showCount && effectiveMaxCount > 1 ? (
+                {profile.batchOutputs && profile.batchOutputs > 1 ? (
+                    <div className="space-y-2">
+                        <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>
+                        <div className="text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
+                            该模型一次调用固定返回 {profile.batchOutputs} 张（按一次计费），张数由上游决定，不再按次数叠加。
+                        </div>
+                    </div>
+                ) : showCount && effectiveMaxCount > 1 ? (
                     <div className="space-y-2">
                         <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>
                         <div className="grid grid-cols-4 gap-1.5">

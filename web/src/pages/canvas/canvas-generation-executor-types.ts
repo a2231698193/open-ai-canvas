@@ -17,7 +17,7 @@ export type CanvasGenerationExecutorDependencies = {
     startGenerationRequest: (targetNodeId: string, originNodeId: string, runningId?: string, controller?: AbortController) => AbortController;
     finishGenerationRequest: (targetNodeId: string, controller: AbortController) => void;
     bindGenerationTask: (targetNodeId: string, task: GenerationTask) => void;
-    applyGenerationTaskResult: (targetNodeId: string, task: GenerationTask) => Promise<void>;
+    applyGenerationTaskResult: (targetNodeId: string, task: GenerationTask, outputIndex?: number) => Promise<void>;
     showError: (content: string) => void;
 };
 

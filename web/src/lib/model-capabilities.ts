@@ -60,6 +60,12 @@ export type ImageCapabilityConfig = {
     responseFormat: { supported: boolean };
     outputFormat: { supported: boolean };
     maxOutputs: number;
+    /**
+     * 单次调用固定返回的图片张数；>1 表示一次请求就返回 N 张（例如 Midjourney 固定回四宫格）。
+     * 画布据此只发一次上游请求，再把 N 张按顺序铺成 N 个节点；按 maxOutputs 发 N 次请求会变成
+     * N 组生成并按 N 次计费。
+     */
+    batchOutputs?: number;
 };
 
 export type VideoCapabilityConfig = {
@@ -119,6 +125,12 @@ function normalizeCapabilityStrings(values: string[]) {
     return Array.from(new Set(values.map(normalizeCapabilityString)));
 }
 
+// 单次调用固定返回张数只接受 >=2 的整数：1 等同于"不固定"，超过 15 的固定批量没有实际模型。
+function normalizeImageBatchOutputs(value: unknown): number | undefined {
+    const parsed = Math.floor(Number(value));
+    return Number.isFinite(parsed) && parsed > 1 ? Math.min(parsed, 15) : undefined;
+}
+
 export function normalizeModelCapabilityConfig(config: ModelCapabilityConfig): ModelCapabilityConfig {
     return {
         ...config,
@@ -143,6 +155,7 @@ export function normalizeModelCapabilityConfig(config: ModelCapabilityConfig): M
                       values: normalizeCapabilityStrings(config.image.quality.values),
                       default: normalizeCapabilityString(config.image.quality.default),
                   },
+                  batchOutputs: normalizeImageBatchOutputs(config.image.batchOutputs),
               }
             : undefined,
         video: config.video
@@ -297,6 +310,8 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         image.responseFormat = { supported: false };
         image.outputFormat = { supported: false };
         image.maxOutputs = 4;
+        // Midjourney 一次 imagine 固定返回四张单图，画布只发一次请求再铺成四个节点。
+        image.batchOutputs = 4;
     }
     if (protocol === "agnes-image") {
         // Agnes 图像：size 必填，取 1K/2K/3K/4K 档位或 WxH 精确尺寸，画面比例走独立的 ratio 字段；

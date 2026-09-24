@@ -6,6 +6,8 @@ import { cancelIncompleteImageBatch, hasImageBatchResult, reconcileImageBatchRoo
 import { buildImageGenerationNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { canvasImageReferenceLimitError, buildImageGenerationMetadata, getGenerationCount, isGenerationCanceled, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer } from "@/lib/canvas/canvas-project-generation";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { resolveImageBatchPlan } from "@/lib/canvas/canvas-image-batch-plan";
 import { imageGenerationReferenceConnections } from "@/lib/canvas/canvas-resource-references";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { commitProducedModel } from "@/lib/canvas/produced-model";
@@ -52,7 +54,13 @@ export async function executeImageGeneration({
         showError(referenceLimitError);
         return;
     }
-    const count = getGenerationCount(generationConfig.count);
+    const requestedCount = getGenerationCount(generationConfig.count);
+    // 固定批量协议（例如 Midjourney 一次 imagine 固定回四张）：节点数量取上游固定批量，并且只提交
+    // 一次上游请求，返回的 N 张按输出序号分给 N 个子节点。若按用户张数发 N 次请求，会变成 N 组
+    // 生成并按 N 次计费，同时丢掉每次返回的其余图片。
+    const batchPlan = resolveImageBatchPlan(requestedCount, modelCapabilityConfigFor(generationConfig, generationConfig.model).image?.batchOutputs);
+    const batchOutputs = batchPlan.batchOutputs;
+    const count = batchPlan.nodeCount;
     const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
     const isImageNode = sourceNode?.type === CanvasNodeType.Image;
     const isExistingImageNode = isImageNode && hasImageBatchResult(sourceNode);
@@ -129,6 +137,9 @@ export async function executeImageGeneration({
             status: NODE_STATUS_LOADING,
             size: generationConfig.size,
             batchRootId: rootId,
+            // 只有固定批量协议才让子节点记住输出序号：普通批量里每个子节点跑自己的任务，
+            // 记了序号反而会去取自己不存在的第 N 张。
+            ...(batchOutputs ? { batchOutputIndex: index } : {}),
             ...generationMetadata,
             ...styleMetadata,
             ...skillMetadata,
@@ -182,8 +193,10 @@ export async function executeImageGeneration({
     let hasFailure = false;
     let failureCount = 0;
     let representativeFailure: GenerationFailureMetadata | undefined;
+    // 固定批量协议只跑一次上游请求（任务挂在第一个子节点上），其余情况每个子节点各跑一次。
+    const runTargetIds = batchOutputs ? [childIds[0]] : targetIds;
     await Promise.all(
-        targetIds.map(async (targetId) => {
+        runTargetIds.map(async (targetId) => {
             try {
                 await runCanvasGenerationTaskToConsumer(
                     {
@@ -206,8 +219,13 @@ export async function executeImageGeneration({
                         },
                     },
                     {
-                        bindTask: (task) => bindGenerationTask(targetId, task),
-                        consumeTask: (task) => applyGenerationTaskResult(targetId, task),
+                        bindTask: (task) => (batchOutputs ? childIds.forEach((childId) => bindGenerationTask(childId, task)) : bindGenerationTask(targetId, task)),
+                        consumeTask: batchOutputs
+                            ? async (task) => {
+                                  // 同一次任务的第 i 张图落到第 i 个子节点；缺图时该节点报错，不影响其他张。
+                                  await Promise.all(childIds.map((childId, index) => applyGenerationTaskResult(childId, task, index)));
+                              }
+                            : (task) => applyGenerationTaskResult(targetId, task),
                     },
                 );
                 if (targetId !== rootId) {
@@ -258,15 +276,17 @@ export async function executeImageGeneration({
                 const failure = generationFailureMetadata(error, prompt);
                 if (!representativeFailure || failure.generationErrorCode === CONTENT_MODERATION_ERROR_CODE) representativeFailure = failure;
                 hasFailure = true;
-                failureCount += 1;
+                // 固定批量是一次调用产出整批：失败要镜像到所有子节点，不能只标一个。
+                const failedNodeIds = batchOutputs ? childIds : [targetId];
+                failureCount += failedNodeIds.length;
                 setNodes((current) => {
-                    const next = current.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, ...failure } } : node));
+                    const next = current.map((node) => (failedNodeIds.includes(node.id) ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, ...failure } } : node));
                     if (projectId) useCanvasStore.getState().updateProject(projectId, { nodes: next });
                     return next;
                 });
                 return false;
             } finally {
-                finishGenerationRequest(targetId, controller);
+                (batchOutputs ? childIds : [targetId]).forEach((pendingNodeId) => finishGenerationRequest(pendingNodeId, controller));
             }
         }),
     );

@@ -94,7 +94,7 @@ export async function recoverCanvasGenerationTaskNode(input: {
     continuationOnly: boolean;
     nodesRef: { current: CanvasNodeData[] };
     setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>;
-    applyGenerationTaskResult: (nodeId: string, task: GenerationTask) => Promise<void>;
+    applyGenerationTaskResult: (nodeId: string, task: GenerationTask, outputIndex?: number) => Promise<void>;
     signal: AbortSignal;
     isCurrentProject?: () => boolean;
     consumeContinuation?: typeof consumeCanvasGenerationContinuation;
@@ -285,12 +285,15 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
     );
 
     const applyGenerationTaskResult = useCallback(
-        async (nodeId: string, task: GenerationTask) => {
+        async (nodeId: string, task: GenerationTask, outputIndex?: number) => {
+            // 固定批量协议下多个子节点共享同一个任务，节点自己记住该取第几张；恢复、重试和
+            // 重新加载资源都不会显式传序号，必须回落到节点上的 batchOutputIndex。
+            const resolvedOutputIndex = outputIndex ?? nodesRef.current.find((node) => node.id === nodeId)?.metadata?.batchOutputIndex ?? 0;
             const applyStoredTaskResult = async () => {
                 const signal = consumerControllerRef.current.signal;
                 const before = nodesRef.current.find((node) => node.id === nodeId);
                 if (!before) throw new Error("画布中找不到对应任务节点");
-                const applied = await applyGenerationTaskResultToNodes(nodesRef.current, task, nodeId);
+                const applied = await applyGenerationTaskResultToNodes(nodesRef.current, task, nodeId, resolvedOutputIndex);
                 if (signal.aborted) throw new DOMException("The operation was aborted", "AbortError");
                 if (!applied.updated || !applied.node) throw new Error("画布中找不到对应任务节点");
                 setNodes((current) => commitCanvasGenerationResult(current, before, applied.node!, task.id));
@@ -303,7 +306,7 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
                 await consumeGenerationTaskNode(
                     task,
                     nodeId,
-                    0,
+                    resolvedOutputIndex,
                     async ({ task: materialized, output, effectKey, signal }) => {
                         await applyCanvasGenerationTaskNodeEffect({
                             projectId,

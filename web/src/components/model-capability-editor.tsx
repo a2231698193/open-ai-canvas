@@ -496,8 +496,16 @@ function ImageCapabilityEditor({ value, onChange, protocol, model, disabled, sec
                             </>
                         ) : null}
                     </ProtocolParameterCard>
-                    <ProtocolParameterCard step="02" title="输出数量" description="设置单次生成图片数量">
+                    <ProtocolParameterCard step="02" title="输出数量" description="设置单次生成图片数量；固定批量协议填写单次调用固定返回张数">
                         <NumberField label="单次生成张数" value={profile.maxOutputs} min={1} disabled={disabled} onChange={(maxOutputs) => update({ maxOutputs: maxOutputs || 1 })} />
+                        <NumberField
+                            label="单次调用固定返回张数（0 = 不固定）"
+                            value={profile.batchOutputs || 0}
+                            min={0}
+                            max={15}
+                            disabled={disabled}
+                            onChange={(batchOutputs) => update({ batchOutputs: batchOutputs && batchOutputs > 1 ? Math.min(batchOutputs, 15) : undefined })}
+                        />
                     </ProtocolParameterCard>
                     <ProtocolParameterCard step="03" title="可选参数" description="控制质量、背景与响应格式">
                         <ParameterField label="图片质量" description="发送 quality 参数" supported={profile.quality.supported} disabled={disabled} onChange={(supported) => updateQuality({ supported })} />
