@@ -18,6 +18,11 @@ export type CanvasGenerationExecutorDependencies = {
     finishGenerationRequest: (targetNodeId: string, controller: AbortController) => void;
     bindGenerationTask: (targetNodeId: string, task: GenerationTask) => void;
     applyGenerationTaskResult: (targetNodeId: string, task: GenerationTask, outputIndex?: number) => Promise<void>;
+    /**
+     * 有些协议（lk888 的 mj_imagine）只返回一张 2×2 合成宫格图，拿不到单图数组；
+     * 生成成功后按宫格自动切分成子节点，失败不影响本次生成结果。
+     */
+    splitGeneratedGrid?: (targetNodeId: string, grid: { rows: number; columns: number }) => Promise<void>;
     showError: (content: string) => void;
 };
 

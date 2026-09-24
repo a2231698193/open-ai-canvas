@@ -1935,6 +1935,11 @@ function InfiniteCanvasPage() {
         finishGenerationRequest,
         bindGenerationTask,
         applyGenerationTaskResult,
+        // lk888 的 mj_imagine 只回一张 2×2 合成宫格图，生成成功后自动切分成 4 个子节点。
+        splitGeneratedGrid: async (targetNodeId, grid) => {
+            const target = nodesRef.current.find((node) => node.id === targetNodeId);
+            if (target) await splitImageNode(target, { rows: grid.rows, columns: grid.columns }, { silent: true });
+        },
     });
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;

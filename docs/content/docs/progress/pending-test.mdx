@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 问鼎 MJ 四宫格自动切分 + 本地图像工具的跨域修复
+
+- 问鼎 `mj_imagine`（8.1）只返回**一张 2×2 合成宫格图**：协议里只有一个 `result_url`，上游也没有 U/V 单图路由，所以拿不到 4 张单图——此前画布只显示那张 2912×1632 的合成图。
+- 生成成功后现在按 2×2 自动切分：保留合成图作为来源节点，另铺 4 个子节点（复用 `splitImageNode` 的切分与布局，静默模式不弹成功提示）。判定抽成 `resolveResultGridSplit(protocol, batchOutputs)`：固定批量协议（apimart-mj）拿到的是 4 张单图，**永不切分**；切分失败不影响本次生成结果。
+- 顺手修掉一个真实缺口：本地图像工具里 **「宫格切分」与「调整尺寸」** 直接把 `node.metadata.content` 画到 canvas，跨域地址（或浏览器复用不带 CORS 头的缓存响应）会污染画布，`toDataURL` 抛 `Tainted canvases may not be exported`，用户看到「切分失败」。现在与裁剪统一走 `resolveReadableImageSource`：优先用本地缓存 Blob 造同源 object URL，其次 `fetch` 取一份同源副本，用完释放。
+- [ ] 用问鼎 MJ 模型生成一次：来源节点保留合成宫格图，同时出现 4 个单图子节点（约 1456×816），且不弹「已切分为 4 个子节点」的提示。
+- [ ] 对**跨域来源**的图片使用「宫格切分」与「调整尺寸」，确认不再报 Tainted canvases。
+- [ ] 回归：apimart-mj 固定批量仍只发一次调用、铺 4 个节点，且**不**被切分。
+
 ## APIMart Midjourney 协议插件（imagine）
 
 - 新增官方声明式协议 `apimart-mj`：创建 `POST /v1/midjourney/generations`，查询 `GET /v1/midjourney/{task_id}`。上游按路由自动注入 `model=midjourney`，所以协议**不提交 `model`**，也不使用 APIMart 图片统一接口。

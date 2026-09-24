@@ -7,13 +7,14 @@ import { buildImageGenerationNodeTitle } from "@/lib/canvas/canvas-generation-ti
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { canvasImageReferenceLimitError, buildImageGenerationMetadata, getGenerationCount, isGenerationCanceled, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer } from "@/lib/canvas/canvas-project-generation";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
-import { resolveImageBatchPlan } from "@/lib/canvas/canvas-image-batch-plan";
+import { resolveImageBatchPlan, resolveResultGridSplit } from "@/lib/canvas/canvas-image-batch-plan";
 import { imageGenerationReferenceConnections } from "@/lib/canvas/canvas-resource-references";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { commitProducedModel } from "@/lib/canvas/produced-model";
 import { CONTENT_MODERATION_ERROR_CODE, generationFailureMetadata, type GenerationFailureMetadata } from "@/lib/generation-error";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { resolveModelRequestConfig } from "@/stores/use-config-store";
 
 import type { CanvasGenerationExecution } from "./canvas-generation-executor-types";
 
@@ -42,6 +43,7 @@ export async function executeImageGeneration({
     finishGenerationRequest,
     bindGenerationTask,
     applyGenerationTaskResult,
+    splitGeneratedGrid,
     styleMetadata,
     skillMetadata,
     taskContext,
@@ -61,6 +63,9 @@ export async function executeImageGeneration({
     const batchPlan = resolveImageBatchPlan(requestedCount, modelCapabilityConfigFor(generationConfig, generationConfig.model).image?.batchOutputs);
     const batchOutputs = batchPlan.batchOutputs;
     const count = batchPlan.nodeCount;
+    // lk888 的 mj_imagine 只回一张 2×2 合成宫格图（协议里只有一个 result_url，拿不到单图数组），
+    // 且没有 U/V 单图路由，因此生成成功后按宫格自动切分成 4 个子节点。其它协议完全不碰。
+    const gridSplit = resolveResultGridSplit(resolveModelRequestConfig(generationConfig, generationConfig.model).interfaceType, batchOutputs);
     const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
     const isImageNode = sourceNode?.type === CanvasNodeType.Image;
     const isExistingImageNode = isImageNode && hasImageBatchResult(sourceNode);
@@ -268,6 +273,7 @@ export async function executeImageGeneration({
                         return updated;
                     });
                 }
+                if (gridSplit && splitGeneratedGrid) await splitGeneratedGrid(targetId, gridSplit).catch(() => {});
                 hasSuccess = true;
                 if (isConfigNode) setNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
                 return true;

@@ -43,6 +43,8 @@ type UseCanvasGenerationExecutorOptions = {
     finishGenerationRequest: (targetNodeId: string, controller: AbortController) => void;
     bindGenerationTask: (targetNodeId: string, task: GenerationTask) => void;
     applyGenerationTaskResult: (targetNodeId: string, task: GenerationTask) => Promise<void>;
+    /** 见 CanvasGenerationExecutorDependencies.splitGeneratedGrid：lk888 宫格图生成后自动切分。 */
+    splitGeneratedGrid?: (targetNodeId: string, grid: { rows: number; columns: number }) => Promise<void>;
 };
 
 const NODE_STATUS_IDLE = "idle" as const;
@@ -75,6 +77,7 @@ export function useCanvasGenerationExecutor({
     finishGenerationRequest,
     bindGenerationTask,
     applyGenerationTaskResult,
+    splitGeneratedGrid,
 }: UseCanvasGenerationExecutorOptions) {
     const { message, modal } = App.useApp();
     const effectiveConfig = useEffectiveConfig();
@@ -327,6 +330,7 @@ export function useCanvasGenerationExecutor({
                             options?.onTaskUpdate?.(task);
                         },
                         applyGenerationTaskResult,
+                        splitGeneratedGrid,
                         showError: (content: string) => message.error(content),
                         registerPendingNodeIds: (nodeIds: string[]) => {
                             pendingNodeIds = nodeIds;
