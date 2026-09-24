@@ -43,7 +43,7 @@ description: 从产品功能快速定位主要代码入口
 | 职责 | 代码位置 |
 | --- | --- |
 | 页面装配和跨域动作协调 | `web/src/pages/canvas/project.tsx` |
-| 画布领域规则和生成协议 | `web/src/lib/canvas/canvas-project-domain.ts`、`canvas-project-generation.ts` |
+| 画布领域规则和生成协议 | `web/src/lib/canvas/canvas-project-domain.ts`、`canvas-project-generation.ts`、`produced-model.ts` |
 | 项目恢复、持久化和项目级动作 | `web/src/pages/canvas/use-canvas-project-lifecycle.ts` |
 | 云端版本校验与冲突草稿 | `web/src/services/user-data-sync.ts`、`canvas-sync-drafts.ts`、`web/src/lib/canvas/canvas-content.ts`、`web/src/pages/canvas/canvas-sync-status.tsx` |
 | 历史树与独立只读预览 | `web/src/pages/canvas/canvas-version-history.tsx`、`canvas-version-preview.tsx`；后端 `internal/canvas/canvas_history.go` 与 `repository/canvas_history.go`，Agent 写入桥接在 `app/canvas_bridge.go` |
@@ -109,6 +109,7 @@ HTTP 请求 -> handler -> service（稳定导入面 / 别名）-> app（组合�
 | `assets` | 资源访问合同（用途/变体/交付方式）、URL 与引用解析、文档内资源引用扫描 | **已抽出**：`internal/assets`（`ResolveAccess`、`references.go` 的 `DocumentReferencedIDs`）；配额、转码与任务编排仍在 `app` |
 | `storage` | 对象存储实现（S3/COS/OSS/Kodo）、URL 签名与 CDN、range 读取、分发设置 | **已抽出**：`internal/storage`；`app/storage_adapters.go` 只做别名 |
 | `sms` | 短信通道与通知插件（阿里云/腾讯云等），组合验证与验证码下发 | **已抽出**：`internal/sms`；`app/sms_plugins.go` 注册内置插件，默认关闭 |
+| `agentcontext` | Agent 上下文检查点的编码、解析与压缩提示词（provider 中立，不含触发与调度） | **已抽出**：`internal/agentcontext`；触发、暂停与恢复在 `app/cloud_agent_context_compaction.go` |
 
 组合根原则：`service.New`（委托 `app.New`）组装各域服务；coordinator 不得再持有整个 `*Service` 回灌域包。
 
