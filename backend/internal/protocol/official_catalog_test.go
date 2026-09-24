@@ -1326,3 +1326,124 @@ func TestOfficialArkSeedreamParsesB64JSONAsDataURL(t *testing.T) {
 		})
 	}
 }
+
+// 豆包语音合成 2.0：文字转语音，同一套 /v1/media/generate + /v1/media/status。
+// 上游文档在"请求参数"表里用 voice_id、在模型专属页里用 speaker，本插件默认只发 voice_id，
+// speaker 留作显式逃生口；emotion/emotion_scale 只走 providerOptions（宿主统一字段没有对应项）。
+func TestLK888AudioProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-audio.yingce-plugin", "lk888-audio")
+
+	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Capability: CapabilityAudio, Model: "doubao-tts-2.0", Prompt: "大家好，欢迎来到今天的节目。",
+		Extra: map[string]any{"audioVoice": "zh_female_vv_uranus_bigtts", "audioFormat": "wav", "audioSpeed": "25"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := manifestTestBody(t, create)
+	params, _ := body["params"].(map[string]any)
+	if create.Method != "POST" || create.Path != "/v1/media/generate" || body["model"] != "doubao-tts-2.0" || body["prompt"] != "大家好，欢迎来到今天的节目。" {
+		t.Fatalf("lk888 audio create = %#v, body = %#v", create, body)
+	}
+	if params["voice_id"] != "zh_female_vv_uranus_bigtts" || params["format"] != "wav" || params["speech_rate"] != "25" || params["emotion"] != "auto" {
+		t.Fatalf("lk888 audio params = %#v", params)
+	}
+	if _, exists := params["speaker"]; exists {
+		t.Fatalf("speaker 只在显式设置时发送：%#v", params)
+	}
+	if _, exists := params["emotion_scale"]; exists {
+		t.Fatalf("emotion=auto 时不该发送 emotion_scale：%#v", params)
+	}
+	if _, exists := body["notify_url"]; exists {
+		t.Fatalf("未设置回调地址时不该发送 notify_url：%#v", body)
+	}
+
+	// 前端音频面板写死的是 OpenAI 风格取值：音色只能选 alloy 这类名字、格式里的 opus、
+	// 语速是 0.25~4 的倍速。这三个语义差必须在插件里对齐，否则请求会被上游拒掉。
+	frontend, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Capability: CapabilityAudio, Model: "doubao-tts-2.0", Prompt: "hi",
+		Extra: map[string]any{"audioVoice": "alloy", "audioFormat": "opus", "audioSpeed": "1.5"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontendParams, _ := manifestTestBody(t, frontend)["params"].(map[string]any)
+	if frontendParams["voice_id"] != "zh_female_vv_uranus_bigtts" {
+		t.Fatalf("OpenAI 风格音色名必须落回上游默认音色：%#v", frontendParams)
+	}
+	if frontendParams["format"] != "ogg_opus" {
+		t.Fatalf("opus 必须映射成上游的 ogg_opus：%#v", frontendParams)
+	}
+	if frontendParams["speech_rate"] != "25" {
+		t.Fatalf("倍速 1.5 必须映射成枚举 25：%#v", frontendParams)
+	}
+
+	// 空/非法语速不能落到"更慢"（$toFloat 失败会被当 0 比较），必须回默认。
+	for _, raw := range []string{"", "fast"} {
+		invalid, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+			Capability: CapabilityAudio, Model: "doubao-tts-2.0", Prompt: "hi",
+			Extra: map[string]any{"audioSpeed": raw},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		invalidParams, _ := manifestTestBody(t, invalid)["params"].(map[string]any)
+		if invalidParams["speech_rate"] != "0" {
+			t.Fatalf("语速 %q 应回默认 0，实际 %#v", raw, invalidParams)
+		}
+	}
+
+	defaults, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Capability: CapabilityAudio, Model: "doubao-tts-2.0", Prompt: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultParams, _ := manifestTestBody(t, defaults)["params"].(map[string]any)
+	if defaultParams["voice_id"] != "zh_female_vv_uranus_bigtts" || defaultParams["format"] != "mp3" || defaultParams["speech_rate"] != "0" {
+		t.Fatalf("lk888 audio defaults = %#v", defaultParams)
+	}
+
+	override, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Capability: CapabilityAudio, Model: "doubao-tts-2.0", Prompt: "hi",
+		ProviderOptions: map[string]map[string]any{"lk888-audio": {"speaker": "zh_male_x", "emotion": "happy", "emotion_scale": "4", "notify_url": "https://example.com/hook"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrideBody := manifestTestBody(t, override)
+	overrideParams, _ := overrideBody["params"].(map[string]any)
+	if overrideParams["speaker"] != "zh_male_x" || overrideParams["emotion"] != "happy" || overrideParams["emotion_scale"] != "4" || overrideBody["notify_url"] != "https://example.com/hook" {
+		t.Fatalf("lk888 audio provider options = %#v / %#v", overrideParams, overrideBody)
+	}
+
+	poll, err := adapter.BuildPoll(context.Background(), PollContext{TaskID: "123456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if poll.Method != "GET" || poll.Path != "/v1/media/status" || !reflect.DeepEqual(poll.Query["task_id"], []string{"123456"}) {
+		t.Fatalf("lk888 audio poll = %#v", poll)
+	}
+
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"success","is_final":true,"result_url":"https://cdn.example/voice.mp3","result_type":"audio"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TaskID != "123456" || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Audios) != 1 || result.Result.Audios[0].URL != "https://cdn.example/voice.mp3" {
+		t.Fatalf("lk888 audio success result = %#v", result)
+	}
+
+	running, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"running","is_final":false,"progress":"45%"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if running.Status == StatusSucceeded || running.Status == StatusFailed {
+		t.Fatalf("未终态不该判成终态：%#v", running)
+	}
+
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "123456"}, []byte(`{"task_id":123456,"state":"failed","is_final":true,"error":"上游拒绝"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != StatusFailed || !strings.Contains(failed.Message, "上游拒绝") {
+		t.Fatalf("lk888 audio failure result = %#v", failed)
+	}
+}

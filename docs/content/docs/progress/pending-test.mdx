@@ -43,6 +43,18 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 验证：后端 `gofmt -l` 干净、`go build ./...`、`go test ./... -count=1` 全量通过（0 个 FAIL）。前端 `bun run typecheck`、`bun run lint`、`bun run build`、`bun run test` 2096 项通过、改动文件 prettier 检查通过（上游新增与改写的若干前端文件按本仓库 prettier 配置重新格式化）。按新机制更新了三条本仓库守护断言：`main.tsx` 启动门控（含 `installChunkRecovery` 的测试脚手架 stub）、未激活视频节点的"视口门控静态首帧"（改用 `hydrateCanvasVideoPreview` + `CanvasVideoPreviewImage` 断言）、登录页主题感知（`theme={theme}`）。仍待真实环境验收：连续发布三版以上验证旧标签页分片恢复、`repair-canvas-resources` dry-run/apply 幂等、真实大画布的性能表现。
 
+## 问鼎 LK888 音频协议插件（豆包语音合成 2.0）
+
+- 已实现：新增声明式插件 `plugin-packages/lk888-audio`（协议 ID `lk888-audio`，能力 `audio`），走问鼎同一套 `POST /v1/media/generate` + `GET /v1/media/status?task_id=`，结果取 `result_url` 并按临时地址转存。宿主侧音频模型本来就是"空能力规格"（`CapabilitySpecFromModelCapabilityConfig` 对 audio 直接返回空 spec），所以新增音频协议**不需要改 Go 的能力配置分支**。
+- 顺手修掉一个真实缺口：`internal/app/provider_protocol.go` 的 `request.Extra` 只塞了 `audioVoice`/`audioFormat`，漏了 `audioSpeed` 与 `audioInstructions`。声明式音频协议的 manifest 就是引用 `request.extra.audioSpeed`（已上线的 `async-audio` 也这么写），键缺失时表达式静默落回默认值——用户设的语速一直没生效，且不会报错。补上后新增 `TestProtocolRequestCarriesAudioOptionsInExtra`（app 层）与端到端 `TestLK888AudioTaskMapsHostAudioOptionsToUpstreamBody`（宿主 `canvasGenerationInput` → manifest → 上游请求体，能测出"适配器单测测不到"的这一层）。
+- 宿主音频字段与上游语义差已在插件里对齐：前端的音色列表是 OpenAI 风格（`alloy` 等 13 个），命中时忽略并落回豆包默认音色 `zh_female_vv_uranus_bigtts`（命令行/Agent 写进去的 `zh_*` 音色原样透传）；前端的语速是 0.25~4 倍速，按阈值映射到上游枚举 `-50/-25/0/25/50/100`，取值本身是枚举时原样传，空值/非法值回 `0`；格式把 `opus` 映射成 `ogg_opus`，`aac/flac` 等落回 `mp3`。`emotion`/`emotion_scale`/`notify_url`/`speaker` 只通过 `providerOptions.lk888-audio` 传入（宿主统一字段里没有对应项）。
+- 上游文档本身有两处出入，已记录并留了逃生口：参数表用 `voice_id`、模型专属页用 `speaker`（默认发 `voice_id`）；`emotion` 取值两处不一致（`fearful` vs `fear/hate/neutral/chat`）。
+- 验证：`go test ./internal/protocol/ -run 'TestLK888|TestOfficialProtocolPackagesAreSelfContained'` 通过（含新增 `TestLK888AudioProfile`：创建映射/默认值/providerOptions 逃生口/轮询/成功-进行中-失败三态）；`go test ./internal/app/` 相关用例通过；`node plugin-packages/embed-documentation.mjs lk888-audio` 后按 `build-packages.sh` 同一命令打包，包内 README/docs/manifest 与源码目录一致。
+- [ ] 真实账号验收：在生产渠道加一条 `doubao-tts-2.0`（协议选「问鼎 LK888 Audio」，能力音频），用默认音色生成一句话，确认 `task_id` 轮询到 `is_final` 且音频能落成账号资源、画布音频节点可播放。
+- [ ] 真实账号验收：`GET /v1/skills/voices?model=doubao-tts-2.0` 拉音色清单后，用 `providerOptions.lk888-audio.voice_id`（或命令行节点 `audioVoice`）指定一个非默认音色，确认合成用的是该音色；顺带确认 `speaker` 在当前线路是否需要（若需要就把渠道扩展里的 `speaker` 填上）。
+- [ ] 真实账号验收：`providerOptions.lk888-audio.emotion`（如 `happy`）与 `emotion_scale` 是否被上游接受，以及 `notify_url` 回调是否按文档推送（当前只轮询兜底）。
+- [ ] 后续可选：把音色清单接到前端（需要渠道模型可编辑的音频能力 JSON，当前 audio 没有该配置面），这样画布上能直接选豆包音色，而不必走 `providerOptions`。
+
 ## 画布资源断链、前端发布兼容与画布热点
 
 - 已实现：统一递归识别持久资源字段（含嵌套 `videoPreview`）；保存前和历史快照保存时校验当前资源归属/ready 状态，资源缺失返回带路径和 ID 的结构化 409。显式修复保留坏版本历史但要求新版本完整且 revision CAS 成功。后台 `repair-canvas-resources` 默认只读，仅可清除确认缺失的派生视频预览；主媒体问题报告为 unresolved。

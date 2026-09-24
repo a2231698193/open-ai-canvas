@@ -1,0 +1,390 @@
+{
+  "apiVersion": "yingce.plugin/v2",
+  "id": "lk888-audio",
+  "name": "问鼎 LK888 Audio",
+  "version": "1.0.0",
+  "author": "问鼎数据 / 影策",
+  "description": "问鼎数据音频异步任务协议，覆盖 doubao-tts-2.0 豆包语音合成 2.0。",
+  "permissions": [
+    "generation.run",
+    "media.read"
+  ],
+  "configuration": {
+    "fields": [
+      {
+        "name": "apiKey",
+        "type": "secret",
+        "label": "API Key",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "providers": [
+      {
+        "id": "lk888-audio",
+        "label": "问鼎 LK888 Audio",
+        "capabilities": [
+          "audio"
+        ],
+        "scopes": [
+          "admin.system-channel",
+          "user.custom-channel",
+          "canvas",
+          "creation",
+          "agent"
+        ],
+        "baseUrl": "https://api.lk888.ai",
+        "requiresPublicMediaUrls": false,
+        "auth": {
+          "type": "bearer",
+          "field": "apiKey"
+        },
+        "description": "文字转语音：POST /v1/media/generate 建任务，GET /v1/media/status 轮询；终态看 is_final，结果在 result_url。默认音色 zh_female_vv_uranus_bigtts，音色清单见 GET /v1/skills/voices?model=doubao-tts-2.0。",
+        "parameters": [
+          {
+            "name": "model",
+            "type": "string",
+            "required": true,
+            "mapping": "model",
+            "description": "音频模型 ID：doubao-tts-2.0。"
+          },
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "prompt",
+            "description": "待合成文本，最长 10 万字符。"
+          },
+          {
+            "name": "providerOptions",
+            "type": "object",
+            "required": false,
+            "mapping": "params.voice_id / params.speaker / params.speech_rate / params.emotion / params.emotion_scale / params.format / notify_url",
+            "description": "命名空间 lk888-audio 的扩展字段：voice_id、speaker（上游两份文档分别用这两个名字，默认只发 voice_id）、speech_rate、emotion、emotion_scale、format、notify_url（顶层回调地址）。"
+          }
+        ],
+        "create": {
+          "method": "POST",
+          "path": "/v1/media/generate",
+          "contentType": "application/json",
+          "body": {
+            "model": {
+              "$ref": "request.model"
+            },
+            "prompt": {
+              "$ref": "request.prompt"
+            },
+            "params": {
+              "voice_id": {
+                "$switch": {
+                  "cases": [
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.extra.audioVoice"
+                              }
+                            }
+                          },
+                          [
+                            "alloy",
+                            "ash",
+                            "ballad",
+                            "coral",
+                            "echo",
+                            "fable",
+                            "nova",
+                            "onyx",
+                            "sage",
+                            "shimmer",
+                            "verse",
+                            "marin",
+                            "cedar"
+                          ]
+                        ]
+                      },
+                      "then": {
+                        "$coalesce": [
+                          {
+                            "$ref": "request.providerOptions.lk888-audio.voice_id"
+                          },
+                          "zh_female_vv_uranus_bigtts"
+                        ]
+                      }
+                    }
+                  ],
+                  "default": {
+                    "$coalesce": [
+                      {
+                        "$ref": "request.extra.audioVoice"
+                      },
+                      {
+                        "$ref": "request.providerOptions.lk888-audio.voice_id"
+                      },
+                      "zh_female_vv_uranus_bigtts"
+                    ]
+                  }
+                }
+              },
+              "speaker": {
+                "$omitEmpty": {
+                  "$coalesce": [
+                    {
+                      "$ref": "request.providerOptions.lk888-audio.speaker"
+                    }
+                  ]
+                }
+              },
+              "speech_rate": {
+                "$switch": {
+                  "cases": [
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.extra.audioSpeed"
+                              }
+                            }
+                          },
+                          [
+                            "-50",
+                            "-25",
+                            "0",
+                            "25",
+                            "50",
+                            "100"
+                          ]
+                        ]
+                      },
+                      "then": {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.extra.audioSpeed"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "$lte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          0
+                        ]
+                      },
+                      "then": {
+                        "$coalesce": [
+                          {
+                            "$ref": "request.providerOptions.lk888-audio.speech_rate"
+                          },
+                          "0"
+                        ]
+                      }
+                    },
+                    {
+                      "when": {
+                        "$gte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          2.5
+                        ]
+                      },
+                      "then": "100"
+                    },
+                    {
+                      "when": {
+                        "$gte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          1.75
+                        ]
+                      },
+                      "then": "50"
+                    },
+                    {
+                      "when": {
+                        "$gte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          1.25
+                        ]
+                      },
+                      "then": "25"
+                    },
+                    {
+                      "when": {
+                        "$lte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          0.6
+                        ]
+                      },
+                      "then": "-50"
+                    },
+                    {
+                      "when": {
+                        "$lte": [
+                          {
+                            "$ref": "request.extra.audioSpeed"
+                          },
+                          0.85
+                        ]
+                      },
+                      "then": "-25"
+                    }
+                  ],
+                  "default": {
+                    "$coalesce": [
+                      {
+                        "$ref": "request.providerOptions.lk888-audio.speech_rate"
+                      },
+                      "0"
+                    ]
+                  }
+                }
+              },
+              "emotion": {
+                "$coalesce": [
+                  {
+                    "$ref": "request.providerOptions.lk888-audio.emotion"
+                  },
+                  "auto"
+                ]
+              },
+              "emotion_scale": {
+                "$omitEmpty": {
+                  "$coalesce": [
+                    {
+                      "$ref": "request.providerOptions.lk888-audio.emotion_scale"
+                    }
+                  ]
+                }
+              },
+              "format": {
+                "$switch": {
+                  "cases": [
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.extra.audioFormat"
+                              }
+                            }
+                          },
+                          [
+                            "opus",
+                            "ogg_opus"
+                          ]
+                        ]
+                      },
+                      "then": "ogg_opus"
+                    },
+                    {
+                      "when": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.extra.audioFormat"
+                              }
+                            }
+                          },
+                          [
+                            "mp3",
+                            "wav",
+                            "pcm"
+                          ]
+                        ]
+                      },
+                      "then": {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.extra.audioFormat"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "default": {
+                    "$coalesce": [
+                      {
+                        "$ref": "request.providerOptions.lk888-audio.format"
+                      },
+                      "mp3"
+                    ]
+                  }
+                }
+              }
+            },
+            "notify_url": {
+              "$omitEmpty": {
+                "$coalesce": [
+                  {
+                    "$ref": "request.providerOptions.lk888-audio.notify_url"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "poll": {
+          "method": "GET",
+          "path": "/v1/media/status",
+          "query": {
+            "task_id": {
+              "$ref": "taskId"
+            }
+          }
+        },
+        "response": {
+          "taskId": {
+            "$coalesce": [
+              {
+                "$ref": "response.data.task_id"
+              },
+              {
+                "$ref": "response.task_id"
+              },
+              {
+                "$ref": "taskId"
+              }
+            ]
+          },
+          "status": {
+            "$coalesce": [
+              {
+                "$ref": "response.state"
+              },
+              "pending"
+            ]
+          },
+          "message": {
+            "$ref": "response.error"
+          },
+          "audios": {
+            "$omitEmpty": {
+              "$ref": "response.result_url"
+            }
+          },
+          "errorPaths": [
+            "error"
+          ],
+          "resultEphemeral": true
+        }
+      }
+    ]
+  },
+  "documentation": "# 问鼎 LK888 Audio\n\n该目录是独立官方协议插件源码。后端从生成的 `lk888-audio.yingce-plugin` 包加载，不依赖系统内置 `host:` 适配器。\n\n覆盖豆包语音合成 2.0（`doubao-tts-2.0`）：文字转语音，支持上百种预置音色、多情感、多语种与长文本（最长 10 万字符）。完整接口见 [docs/interface.md](docs/interface.md)。\n\n---\n\n# 问鼎 LK888 Audio 接口字段\n\n## 协议身份\n\n- 插件 ID：`lk888-audio`。\n- Provider ID：`lk888-audio`。\n- 能力：`audio`。\n- 默认 Base URL：`https://api.lk888.ai`。\n- 鉴权驱动：`bearer`。\n- 创建：`POST /v1/media/generate`。\n- 查询：`GET /v1/media/status`，查询参数 `task_id`。\n- 音色清单：`GET /v1/skills/voices?model=doubao-tts-2.0`（免费，返回 `voice_id`、`name`、`gender`、`scene`、`language`、`demo_audio`）。\n\n## 配置字段\n\n| 字段 | 类型 | 必填 | 含义 |\n| --- | --- | --- | --- |\n| `apiKey` | secret | 是 | API Key |\n\n## 统一字段映射\n\n| 统一字段 | 类型 | 必填 | 上游映射 | 说明 |\n| --- | --- | --- | --- | --- |\n| `model` | string | 是 | `model` | `doubao-tts-2.0`。 |\n| `prompt` | string | 是 | `prompt` | 待合成文本，最长 10 万字符。 |\n| `providerOptions` | object | 否 | `params.*` 与顶层 `notify_url` | 命名空间 `lk888-audio`，见下表。 |\n\n## 上游请求模板逐字段清单\n\n| 上游位置 | 值或转换表达式 |\n| --- | --- |\n| `create.method` | `\"POST\"` |\n| `create.path` | `\"/v1/media/generate\"` |\n| `create.contentType` | `\"application/json\"` |\n| `create.body.model` | `request.model` |\n| `create.body.prompt` | `request.prompt` |\n| `create.body.params.voice_id` | 音色：节点音色 `audioVoice`（**OpenAI 风格音色名会被忽略**，见下）→ `providerOptions.lk888-audio.voice_id` → `zh_female_vv_uranus_bigtts` |\n| `create.body.params.speaker` | 同一个音色的另一种上游写法，只在显式设置 `providerOptions.lk888-audio.speaker` 时发送 |\n| `create.body.params.speech_rate` | 语速：先按上游枚举原值放行（`-50/-25/0/25/50/100`），否则把节点的倍速值映射到枚举，空值/非法值回 `0`；也可用 `providerOptions.lk888-audio.speech_rate` |\n| `create.body.params.emotion` | 情感：`providerOptions.lk888-audio.emotion` → `auto`；取值 `auto/happy/sad/angry/fearful/surprised/calm` |\n| `create.body.params.emotion_scale` | 情绪强度 `1~5`，只在显式设置时发送（情感为 `auto` 时上游会隐藏该参数） |\n| `create.body.params.format` | 输出格式：节点格式 `audioFormat` → `providerOptions.lk888-audio.format` → `mp3`；`opus` 映射成 `ogg_opus`，`mp3/wav/pcm` 原样传，其它值落回 `mp3` |\n| `create.body.notify_url` | 任务回调地址（顶层字段，与 `model`/`prompt`/`params` 平级），只在显式设置时发送 |\n| `poll.method` | `\"GET\"` |\n| `poll.path` | `\"/v1/media/status\"` |\n| `poll.query.task_id` | `taskId`（创建响应里的 `data.task_id`） |\n\n## 响应映射逐字段清单\n\n| 映射位置 | 上游路径或转换表达式 |\n| --- | --- |\n| `response.taskId` | `response.data.task_id` → `response.task_id` → `taskId` |\n| `response.status` | `response.state`（`pending`/`running`/`success`/`failed`），缺失时 `pending` |\n| `response.message` | `response.error` |\n| `response.audios` | `response.result_url`（任务成功后才有值） |\n| `response.errorPaths[0]` | `\"error\"` |\n| `response.resultEphemeral` | `true` |\n\n## 宿主音频字段与上游的语义差（重要）\n\n宿主的音频参数面板是给 OpenAI 风格模型设计的，直接透传会被豆包 TTS 拒掉，插件按下面的规则对齐：\n\n| 宿主字段 | 宿主取值形态 | 上游要求 | 插件行为 |\n| --- | --- | --- | --- |\n| `audioVoice` | 固定列表：`alloy`、`ash`、`ballad`、`coral`、`echo`、`fable`、`nova`、`onyx`、`sage`、`shimmer`、`verse`、`marin`、`cedar` | 豆包音色 ID，如 `zh_female_vv_uranus_bigtts` | 命中 OpenAI 名单时**忽略**并落回默认音色（或 `providerOptions.voice_id`）；其它取值原样传给 `voice_id`，因此命令行/Agent 写进去的豆包音色仍然有效 |\n| `audioSpeed` | 倍速 `0.25 ~ 4`（`1` 为正常） | 枚举 `-50/-25/0/25/50/100`（`0` 为正常） | 取值本身就是枚举时原样传；否则按倍速映射：`≤0.6→-50`、`≤0.85→-25`、`<1.25→0`、`≥1.25→25`、`≥1.75→50`、`≥2.5→100`；空值或非数值回 `0` |\n| `audioFormat` | `mp3`、`wav`、`opus`、`aac`、`flac`、`pcm` | `mp3`、`wav`、`ogg_opus` | `opus→ogg_opus`，`mp3/wav/pcm` 原样，`aac/flac` 等不支持的值落回 `mp3` |\n| `audioInstructions` | 自由文本（OpenAI 的 voice instructions） | 无对应字段 | 本插件不发送；需要情感时用 `providerOptions.lk888-audio.emotion` / `emotion_scale` |\n\n要在画布上选具体豆包音色，用 `providerOptions.lk888-audio.voice_id`（音色清单见 `GET /v1/skills/voices?model=doubao-tts-2.0`）；按模型下发音色下拉属于宿主侧后续能力（需要渠道模型可编辑的音频能力 JSON）。\n\n## 响应与错误\n\n- 终态判定用 `is_final`；上游的 `status` / `status_group` 是中文展示字段，不参与业务判断。\n- `state` 固定 4 档：`pending` / `running` / `success` / `failed`。`failed` 时上游会自动退款。\n- `result_url` 是临时地址，宿主在任务成功后立即下载并转存为账号资源，不把该地址写进画布。\n\n## 兼容边界\n\n- 只接文字转语音：不发送参考图片、参考视频或参考音频（`requiresPublicMediaUrls` 为 `false`，宿主不需要为它准备公网素材地址）。\n- 上游文档在\"请求参数\"表里用 `voice_id`、在模型专属页里用 `speaker` 表示同一个音色字段。本插件默认只发 `voice_id`（与官方参数表和示例一致）；若某条线路只认 `speaker`，在渠道的协议扩展里填 `speaker` 即可，不需要改插件。\n- 情感与情绪强度是上游扩展字段，宿主统一字段里没有对应项，因此只通过 `providerOptions.lk888-audio` 传入；不传时使用 `emotion=auto`。\n\n<!-- YINGCE_MANIFEST_CONTRACT_START -->\n## Manifest 完整接口定义\n\n以下 JSON 与插件包内实际 `manifest.json` 逐字段一致，覆盖插件身份、权限、配置、鉴权、参数、校验、创建、Agent、查询、取消、结果下载、响应和 Agent 响应映射。`documentation` 字段的值就是当前完整文档；为避免文档在自身内部无限递归，JSON 中仅用等义占位文本表示正文。\n\n```json\n{\n  \"apiVersion\": \"yingce.plugin/v2\",\n  \"id\": \"lk888-audio\",\n  \"name\": \"问鼎 LK888 Audio\",\n  \"version\": \"1.0.0\",\n  \"author\": \"问鼎数据 / 影策\",\n  \"description\": \"问鼎数据音频异步任务协议，覆盖 doubao-tts-2.0 豆包语音合成 2.0。\",\n  \"permissions\": [\n    \"generation.run\",\n    \"media.read\"\n  ],\n  \"configuration\": {\n    \"fields\": [\n      {\n        \"name\": \"apiKey\",\n        \"type\": \"secret\",\n        \"label\": \"API Key\",\n        \"required\": true\n      }\n    ]\n  },\n  \"contributes\": {\n    \"providers\": [\n      {\n        \"id\": \"lk888-audio\",\n        \"label\": \"问鼎 LK888 Audio\",\n        \"capabilities\": [\n          \"audio\"\n        ],\n        \"scopes\": [\n          \"admin.system-channel\",\n          \"user.custom-channel\",\n          \"canvas\",\n          \"creation\",\n          \"agent\"\n        ],\n        \"baseUrl\": \"https://api.lk888.ai\",\n        \"requiresPublicMediaUrls\": false,\n        \"auth\": {\n          \"type\": \"bearer\",\n          \"field\": \"apiKey\"\n        },\n        \"description\": \"文字转语音：POST /v1/media/generate 建任务，GET /v1/media/status 轮询；终态看 is_final，结果在 result_url。默认音色 zh_female_vv_uranus_bigtts，音色清单见 GET /v1/skills/voices?model=doubao-tts-2.0。\",\n        \"parameters\": [\n          {\n            \"name\": \"model\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"model\",\n            \"description\": \"音频模型 ID：doubao-tts-2.0。\"\n          },\n          {\n            \"name\": \"prompt\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"mapping\": \"prompt\",\n            \"description\": \"待合成文本，最长 10 万字符。\"\n          },\n          {\n            \"name\": \"providerOptions\",\n            \"type\": \"object\",\n            \"required\": false,\n            \"mapping\": \"params.voice_id / params.speaker / params.speech_rate / params.emotion / params.emotion_scale / params.format / notify_url\",\n            \"description\": \"命名空间 lk888-audio 的扩展字段：voice_id、speaker（上游两份文档分别用这两个名字，默认只发 voice_id）、speech_rate、emotion、emotion_scale、format、notify_url（顶层回调地址）。\"\n          }\n        ],\n        \"create\": {\n          \"method\": \"POST\",\n          \"path\": \"/v1/media/generate\",\n          \"contentType\": \"application/json\",\n          \"body\": {\n            \"model\": {\n              \"$ref\": \"request.model\"\n            },\n            \"prompt\": {\n              \"$ref\": \"request.prompt\"\n            },\n            \"params\": {\n              \"voice_id\": {\n                \"$switch\": {\n                  \"cases\": [\n                    {\n                      \"when\": {\n                        \"$in\": [\n                          {\n                            \"$lower\": {\n                              \"$trim\": {\n                                \"$ref\": \"request.extra.audioVoice\"\n                              }\n                            }\n                          },\n                          [\n                            \"alloy\",\n                            \"ash\",\n                            \"ballad\",\n                            \"coral\",\n                            \"echo\",\n                            \"fable\",\n                            \"nova\",\n                            \"onyx\",\n                            \"sage\",\n                            \"shimmer\",\n                            \"verse\",\n                            \"marin\",\n                            \"cedar\"\n                          ]\n                        ]\n                      },\n                      \"then\": {\n                        \"$coalesce\": [\n                          {\n                            \"$ref\": \"request.providerOptions.lk888-audio.voice_id\"\n                          },\n                          \"zh_female_vv_uranus_bigtts\"\n                        ]\n                      }\n                    }\n                  ],\n                  \"default\": {\n                    \"$coalesce\": [\n                      {\n                        \"$ref\": \"request.extra.audioVoice\"\n                      },\n                      {\n                        \"$ref\": \"request.providerOptions.lk888-audio.voice_id\"\n                      },\n                      \"zh_female_vv_uranus_bigtts\"\n                    ]\n                  }\n                }\n              },\n              \"speaker\": {\n                \"$omitEmpty\": {\n                  \"$coalesce\": [\n                    {\n                      \"$ref\": \"request.providerOptions.lk888-audio.speaker\"\n                    }\n                  ]\n                }\n              },\n              \"speech_rate\": {\n                \"$switch\": {\n                  \"cases\": [\n                    {\n                      \"when\": {\n                        \"$in\": [\n                          {\n                            \"$lower\": {\n                              \"$trim\": {\n                                \"$ref\": \"request.extra.audioSpeed\"\n                              }\n                            }\n                          },\n                          [\n                            \"-50\",\n                            \"-25\",\n                            \"0\",\n                            \"25\",\n                            \"50\",\n                            \"100\"\n                          ]\n                        ]\n                      },\n                      \"then\": {\n                        \"$lower\": {\n                          \"$trim\": {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          }\n                        }\n                      }\n                    },\n                    {\n                      \"when\": {\n                        \"$lte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          0\n                        ]\n                      },\n                      \"then\": {\n                        \"$coalesce\": [\n                          {\n                            \"$ref\": \"request.providerOptions.lk888-audio.speech_rate\"\n                          },\n                          \"0\"\n                        ]\n                      }\n                    },\n                    {\n                      \"when\": {\n                        \"$gte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          2.5\n                        ]\n                      },\n                      \"then\": \"100\"\n                    },\n                    {\n                      \"when\": {\n                        \"$gte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          1.75\n                        ]\n                      },\n                      \"then\": \"50\"\n                    },\n                    {\n                      \"when\": {\n                        \"$gte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          1.25\n                        ]\n                      },\n                      \"then\": \"25\"\n                    },\n                    {\n                      \"when\": {\n                        \"$lte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          0.6\n                        ]\n                      },\n                      \"then\": \"-50\"\n                    },\n                    {\n                      \"when\": {\n                        \"$lte\": [\n                          {\n                            \"$ref\": \"request.extra.audioSpeed\"\n                          },\n                          0.85\n                        ]\n                      },\n                      \"then\": \"-25\"\n                    }\n                  ],\n                  \"default\": {\n                    \"$coalesce\": [\n                      {\n                        \"$ref\": \"request.providerOptions.lk888-audio.speech_rate\"\n                      },\n                      \"0\"\n                    ]\n                  }\n                }\n              },\n              \"emotion\": {\n                \"$coalesce\": [\n                  {\n                    \"$ref\": \"request.providerOptions.lk888-audio.emotion\"\n                  },\n                  \"auto\"\n                ]\n              },\n              \"emotion_scale\": {\n                \"$omitEmpty\": {\n                  \"$coalesce\": [\n                    {\n                      \"$ref\": \"request.providerOptions.lk888-audio.emotion_scale\"\n                    }\n                  ]\n                }\n              },\n              \"format\": {\n                \"$switch\": {\n                  \"cases\": [\n                    {\n                      \"when\": {\n                        \"$in\": [\n                          {\n                            \"$lower\": {\n                              \"$trim\": {\n                                \"$ref\": \"request.extra.audioFormat\"\n                              }\n                            }\n                          },\n                          [\n                            \"opus\",\n                            \"ogg_opus\"\n                          ]\n                        ]\n                      },\n                      \"then\": \"ogg_opus\"\n                    },\n                    {\n                      \"when\": {\n                        \"$in\": [\n                          {\n                            \"$lower\": {\n                              \"$trim\": {\n                                \"$ref\": \"request.extra.audioFormat\"\n                              }\n                            }\n                          },\n                          [\n                            \"mp3\",\n                            \"wav\",\n                            \"pcm\"\n                          ]\n                        ]\n                      },\n                      \"then\": {\n                        \"$lower\": {\n                          \"$trim\": {\n                            \"$ref\": \"request.extra.audioFormat\"\n                          }\n                        }\n                      }\n                    }\n                  ],\n                  \"default\": {\n                    \"$coalesce\": [\n                      {\n                        \"$ref\": \"request.providerOptions.lk888-audio.format\"\n                      },\n                      \"mp3\"\n                    ]\n                  }\n                }\n              }\n            },\n            \"notify_url\": {\n              \"$omitEmpty\": {\n                \"$coalesce\": [\n                  {\n                    \"$ref\": \"request.providerOptions.lk888-audio.notify_url\"\n                  }\n                ]\n              }\n            }\n          }\n        },\n        \"poll\": {\n          \"method\": \"GET\",\n          \"path\": \"/v1/media/status\",\n          \"query\": {\n            \"task_id\": {\n              \"$ref\": \"taskId\"\n            }\n          }\n        },\n        \"response\": {\n          \"taskId\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.data.task_id\"\n              },\n              {\n                \"$ref\": \"response.task_id\"\n              },\n              {\n                \"$ref\": \"taskId\"\n              }\n            ]\n          },\n          \"status\": {\n            \"$coalesce\": [\n              {\n                \"$ref\": \"response.state\"\n              },\n              \"pending\"\n            ]\n          },\n          \"message\": {\n            \"$ref\": \"response.error\"\n          },\n          \"audios\": {\n            \"$omitEmpty\": {\n              \"$ref\": \"response.result_url\"\n            }\n          },\n          \"errorPaths\": [\n            \"error\"\n          ],\n          \"resultEphemeral\": true\n        }\n      }\n    ]\n  },\n  \"documentation\": \"<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>\"\n}\n```\n<!-- YINGCE_MANIFEST_CONTRACT_END -->\n"
+}

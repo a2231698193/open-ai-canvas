@@ -3079,3 +3079,33 @@ func TestRunMiniMaxVideoTaskReturnsFailureReason(t *testing.T) {
 		t.Fatalf("runVideoTask() error = %v", err)
 	}
 }
+
+// 声明式音频协议靠 request.Extra 里的 audio* 键映射上游参数（async-audio、lk888-audio 都是
+// 这么写的）。少塞一个键不会报错，只会静默落回 manifest 的默认值，所以四个键都要钉住。
+func TestProtocolRequestCarriesAudioOptionsInExtra(t *testing.T) {
+	request := protocolRequestFromInput(canvasGenerationInput{
+		Mode:   "audio",
+		Prompt: "大家好，欢迎来到今天的节目。",
+		Config: providerConfig{
+			InterfaceType:     "lk888-audio",
+			Model:             "doubao-tts-2.0",
+			AudioVoice:        "zh_female_vv_uranus_bigtts",
+			AudioFormat:       "wav",
+			AudioSpeed:        "25",
+			AudioInstructions: "温柔一点",
+		},
+	})
+	if request.Capability != protocol.CapabilityAudio {
+		t.Fatalf("capability = %q", request.Capability)
+	}
+	for key, want := range map[string]any{
+		"audioVoice":        "zh_female_vv_uranus_bigtts",
+		"audioFormat":       "wav",
+		"audioSpeed":        "25",
+		"audioInstructions": "温柔一点",
+	} {
+		if request.Extra[key] != want {
+			t.Fatalf("Extra[%q] = %#v, want %#v", key, request.Extra[key], want)
+		}
+	}
+}

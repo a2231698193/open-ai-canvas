@@ -210,9 +210,13 @@ func protocolRequestFromInput(input canvasGenerationInput) protocol.GenerationRe
 		Watermark:     parseBool(input.Config.VideoWatermark, false),
 		Operation:     firstNonEmpty(metadataString(input.Metadata, "videoEditOperation"), metadataString(input.Metadata, "videoOperation")),
 		Extra: map[string]any{
-			"videoSeconds":          input.Config.VideoSeconds,
-			"audioVoice":            input.Config.AudioVoice,
-			"audioFormat":           input.Config.AudioFormat,
+			"videoSeconds": input.Config.VideoSeconds,
+			"audioVoice":   input.Config.AudioVoice,
+			"audioFormat":  input.Config.AudioFormat,
+			// 声明式音频协议（如 async-audio、lk888-audio）就是用这几个键映射上游参数，
+			// 少塞一项对应的 manifest 表达式就拿不到值，只会静默用默认值。
+			"audioSpeed":            input.Config.AudioSpeed,
+			"audioInstructions":     input.Config.AudioInstructions,
 			"count":                 input.Config.Count,
 			"transparentBackground": input.Config.TransparentBackground,
 		},
