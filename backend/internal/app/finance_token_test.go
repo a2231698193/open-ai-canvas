@@ -18,6 +18,37 @@ func TestSupportsTokenBillingForVolcengineArkVideo(t *testing.T) {
 	if !supportsTokenBilling("video", model.ChannelInterfaceNewAPIVideo) {
 		t.Fatal("all video protocols must support formula-based Token billing")
 	}
+	if !supportsTokenBilling("audio", model.ChannelInterfaceAsyncAudio) {
+		t.Fatal("audio protocols must support input-only Token billing")
+	}
+	if supportsTokenBilling("image", model.ChannelInterfaceOpenAIImage) {
+		t.Fatal("image must not support Token billing")
+	}
+}
+
+func TestEstimateAudioInputTokensCountsCharacters(t *testing.T) {
+	estimate := estimateTaskBillingTokens(map[string]any{
+		"prompt": " 你好，世界 ",
+		"config": map[string]any{"voice": "zh_female_vv_uranus_bigtts"},
+	}, "audio")
+	// 1 个字符 = 1 输入 Token；首尾空白和 config 都不计入，输出恒为 0。
+	if estimate.Err != nil || estimate.InputTokens != 5 || estimate.OutputTokens != 0 {
+		t.Fatalf("estimateTaskBillingTokens(audio) = %#v", estimate)
+	}
+	if blank := estimateTaskBillingTokens(map[string]any{"prompt": "   "}, "audio"); blank.InputTokens != 0 {
+		t.Fatalf("blank prompt estimated %d tokens", blank.InputTokens)
+	}
+}
+
+func TestTokenEstimateAmountAllowsAudioInputOnly(t *testing.T) {
+	// 1000 字符 × 514.8 积分/百万 Token = 514.8 积分。
+	amount, err := tokenEstimateAmount(&model.ChannelModel{InputTokenPriceMicrocredits: 514_800_000}, tokenBillingEstimate{InputTokens: 1_000}, 10_000)
+	if err != nil || amount != 514_800 {
+		t.Fatalf("tokenEstimateAmount() = %d, %v", amount, err)
+	}
+	if _, err := tokenEstimateAmount(&model.ChannelModel{InputTokenPriceMicrocredits: 514_800_000}, tokenBillingEstimate{}, 10_000); err == nil {
+		t.Fatal("tokenEstimateAmount() accepted an empty estimate")
+	}
 }
 
 func TestEstimateArkVideoTokensUsesPixelFrameEstimate(t *testing.T) {

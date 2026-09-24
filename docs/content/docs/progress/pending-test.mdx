@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 音频（TTS）输入 Token 计费
+
+- 已实现：音频（TTS）模型支持 `billingMode: "token"`，单价口径是「积分 / 百万输入 Token」（豆包语音合成 2.0 的报价是 514.8 积分 / 100 万 Token，保存为 `514_800_000` 微积分）。上游按输入量计价且不返回 usage，平台约定 **1 个字符 = 1 输入 Token**：用量取任务 `prompt` 去掉首尾空白后的字符数（`internal/app/finance.go` 的 `estimateAudioInputTokens`），音色/语速/格式等 `config` 不计入；输出价与缓存价必须为 0，输入价 0 表示免费（与视频一致）。图片仍不开放 Token 计费。
+- 结算没有新增 schema 迁移：下单时把字符数写入 `billing_orders.input_tokens` 并据此预留，结算优先用上游真实 usage（`usage_source=provider`），没有有效 usage 时回落到该快照（`usage_source=audio_formula`、`usage_available=false`，账本说明写明「按提交时的音频输入量估算结算」），成本快照按输入价单独计算、不套销售倍率。待合成文本为空时直接拒绝下单。
+- 验证：`go test ./... -count=1` 全量通过。新增/扩展用例：`TestValidateChannelModelPriceSupportsAudioInputTokens`（输入价有效、0 价免费、输出/缓存价被拒、`HasValidPrice`）、`TestSupportsTokenBillingForVolcengineArkVideo`（音频支持、图片仍不支持）、`TestEstimateAudioInputTokensCountsCharacters`（按字符数、忽略 config、空白为 0）、`TestTokenEstimateAmountAllowsAudioInputOnly`、`TestAudioTokenOrderBillsInputCharacters`（保存音频渠道模型 → 下单：5 字符 × 514.8 = 2574 微积分、空文本拒单、带输出价的档位被拒）、`TestBillingCreditCostUsesExactUsageAndIgnoresSalesMultiplier` 的音频两行、`TestCreditCostRejectsInvalidPrices`、`TestRepriceTierFieldValidationKeepsAudioInputOnly`（改价只收输入价）、`TestAudioTokenSettlementUsesCharacterEstimateSnapshot`（含退款恢复路径与账本说明）、`TestAudioTokenSettlementPrefersProviderUsage`、`TestAudioTokenSettlementWithoutEstimateStaysUnavailable`。前端 `bun test` 2097 项、`bun run lint`、`tsc --noEmit`、改动文件 prettier 检查通过（价格档表单只校验输入价、音频 Token 档强制清零输出/缓存价、音频的「按规格定价」置灰并在切换能力时收回统一价格，成本价同样只收输入价）。
+- [ ] 真实账号验收：把 `doubao-tts-2.0` 渠道模型改成 Token 计费、输入价填 514.8、输出/缓存价填 0，确认保存成功；填任意非 0 输出价时保存被拒并提示「音频 Token 仅按输入量计费」。
+- [ ] 真实账号验收：用一段已知字数的文案生成语音，确认确认摘要里的预估积分 = 字数 × 514.8 / 1,000,000（含平台倍率），订单 `inputTokens` 等于字数、`usageSource` 为 `audio_formula`、`usageAvailable` 为 `false`，账本说明写明按输入量估算，实际扣费与预估一致（无上游 usage 时不做退差/补扣）。
+- [ ] 真实账号验收：空白或只有空格的文案被拒（「无法估算音频输入用量，请检查待合成文本」），不产生账单。
+
 ## 灵感命令行
 
 - [x] 服务端测试覆盖：命令行画布摘要返回当前用户的 snapshotHash；受控操作可新增文本节点；过期快照会拒绝；非 Agent 建的空节点、已绑任务、已有正文、有连线或被分镜引用的节点都拒绝删除，只有 Agent 自己建的空节点能撤销；其他用户不能读取该画布。

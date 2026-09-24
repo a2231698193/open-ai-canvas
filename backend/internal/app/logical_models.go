@@ -775,7 +775,7 @@ func (s *Service) logicalModelBundle(actor *model.User, id string, req LogicalMo
 	}
 	if pricePolicy == "unified" && billingMode == "token" {
 		if !supportsLogicalModelTokenBilling(capability, enabledRouteProtocols) {
-			return nil, nil, nil, false, BadAuthRequest("Token 计费仅支持文本和视频前台模型")
+			return nil, nil, nil, false, BadAuthRequest("Token 计费仅支持文本、视频和音频前台模型")
 		}
 	}
 	// 停用必须始终可执行，便于管理员立即阻止失效线路继续对外服务；重新启用时再强校验结构能力和计费可用性。
@@ -797,7 +797,7 @@ func supportsLogicalModelTokenBilling(capability string, enabledRouteProtocols [
 	if capability == "text" {
 		return true
 	}
-	if capability != "video" || len(enabledRouteProtocols) == 0 {
+	if (capability != "video" && capability != "audio") || len(enabledRouteProtocols) == 0 {
 		return false
 	}
 	for _, protocol := range enabledRouteProtocols {

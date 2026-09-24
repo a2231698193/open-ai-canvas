@@ -40,7 +40,11 @@ describe("channel model editor drafts", () => {
     });
     test("audio does not retain image/video configuration", () => {
         const draft = initialChannelModelValues(null, protocols);
-        expect(changeChannelModelCapability({ ...draft, capability: "audio" }, protocols).capabilityConfig).toBeUndefined();
+        const tier = { ...defaultPriceTier("advanced"), operation: "text_to_video", resolution: "1080p" };
+        const next = changeChannelModelCapability({ ...draft, capability: "audio", priceTiers: [tier] }, protocols);
+        expect(next.capabilityConfig).toBeUndefined();
+        // 音频没有规格维度，按规格定价会被收回统一价格。
+        expect(next.priceTiers[0]).toMatchObject({ matchMode: "default", operation: "*", resolution: "*" });
     });
     test("validation errors map to their mounted tab", () => {
         expect(editorSectionForField(["priceTiers", 2, "unitPrice"])).toBe("pricing");
@@ -73,10 +77,16 @@ describe("pricing write validation", () => {
             expect(priceTiers[0].outputTokenPrice).toBe(8);
         }
     });
-    test("rejects Token pricing after switching to image or audio", () => {
-        for (const capability of ["image", "audio"] as const) {
-            expect(() => validateChannelModelPrices({ ...draft, capability, priceTiers: [{ ...defaultPriceTier(), billingMode: "token", outputTokenPrice: 8 }] })).toThrow("不支持 Token");
-        }
+    test("rejects Token pricing after switching to image, but accepts audio input-only Token pricing", () => {
+        expect(() => validateChannelModelPrices({ ...draft, capability: "image", priceTiers: [{ ...defaultPriceTier(), billingMode: "token", outputTokenPrice: 8 }] })).toThrow("不支持 Token");
+        const audio = { ...draft, capability: "audio" as const, protocol: "lk888-audio", priceTiers: [{ ...defaultPriceTier(), billingMode: "token" as const, inputTokenPrice: 0.5148 }] };
+        expect(() => validateChannelModelPrices(audio)).not.toThrow();
+        audio.priceTiers[0] = { ...defaultPriceTier(), billingMode: "token" as const, inputTokenPrice: 0 };
+        expect(() => validateChannelModelPrices(audio)).not.toThrow();
+        audio.priceTiers[0] = { ...defaultPriceTier(), billingMode: "token" as const, inputTokenPrice: NaN };
+        expect(() => validateChannelModelPrices(audio)).toThrow("有效数值");
+        audio.priceTiers[0] = { ...defaultPriceTier(), billingMode: "per_second" as const, unitPrice: 1 };
+        expect(() => validateChannelModelPrices(audio)).toThrow("按秒");
     });
     test("validates all text Token prices and accepts free video Token pricing", () => {
         expect(() => validateChannelModelPrices({ ...draft, priceTiers: [{ ...defaultPriceTier(), billingMode: "token", inputTokenPrice: NaN }] })).toThrow();

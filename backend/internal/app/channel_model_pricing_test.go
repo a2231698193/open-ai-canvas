@@ -219,6 +219,25 @@ func TestRepriceTierFieldValidation(t *testing.T) {
 	}
 }
 
+func TestRepriceTierFieldValidationKeepsAudioInputOnly(t *testing.T) {
+	input := int64(514_800_000)
+	tier := model.ChannelModelPriceTier{ID: "t", BillingMode: "token", PriceConfigured: true, CostPricing: model.CreditCostPricing{Configured: true}}
+	if err := applyChannelModelTierPrices(&tier, "audio", model.ChannelInterfaceAsyncAudio, map[string]*int64{"inputTokenPriceMicrocredits": &input}); err != nil {
+		t.Fatal(err)
+	}
+	if tier.InputTokenPriceMicrocredits != input || tier.OutputTokenPriceMicrocredits != 0 || tier.CachedTokenPriceMicrocredits != 0 {
+		t.Fatalf("tier=%+v", tier)
+	}
+	output := int64(1)
+	if err := applyChannelModelTierPrices(&tier, "audio", model.ChannelInterfaceAsyncAudio, map[string]*int64{"outputTokenPriceMicrocredits": &output}); err == nil {
+		t.Fatal("audio reprice accepted an output price")
+	}
+	extra := map[string]*int64{"inputTokenPriceMicrocredits": &input, "outputTokenPriceMicrocredits": &output}
+	if err := applyChannelModelTierPrices(&tier, "audio", model.ChannelInterfaceAsyncAudio, extra); err == nil {
+		t.Fatal("audio reprice accepted extra fields")
+	}
+}
+
 func TestBatchRepricingRollsBackOnConcurrentChange(t *testing.T) {
 	for _, target := range []string{"model", "tier"} {
 		t.Run(target, func(t *testing.T) {

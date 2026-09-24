@@ -11,6 +11,10 @@ func validateTokenPrices(capability string, inputPrice, outputPrice, cachedPrice
 	if capability == "video" && (inputPrice != 0 || cachedPrice != 0) {
 		return BadAuthRequest("视频 Token 仅按视频用量计费，输入和缓存 Token 价格必须为 0")
 	}
+	// 音频（TTS）上游按输入量计价：只有输入 Token 有意义，输出与缓存必须为 0。
+	if capability == "audio" && (outputPrice != 0 || cachedPrice != 0) {
+		return BadAuthRequest("音频 Token 仅按输入量计费，输出和缓存 Token 价格必须为 0")
+	}
 	if inputPrice > maxChannelModelTokenPriceMicrocredits || outputPrice > maxChannelModelTokenPriceMicrocredits || cachedPrice > maxChannelModelTokenPriceMicrocredits {
 		return BadAuthRequest("Token 每百万用量价格不能超过 1,000,000 积分")
 	}
@@ -31,7 +35,9 @@ func ValidateChannelModelPrice(billingMode string, capability string, protocol m
 		if validateTokenPrices(capability, inputPrice, outputPrice, cachedPrice) != nil {
 			return false
 		}
-		if capability == "video" {
+		if capability == "video" || capability == "audio" {
+			// 视频按公式估输出量；音频按输入量（字符数）估算，两者的价格维度都已在
+			// validateTokenPrices 里收紧，0 价表示免费。
 			return true
 		}
 		if capability != "" && capability != "text" {

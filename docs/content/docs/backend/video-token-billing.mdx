@@ -1,11 +1,11 @@
 ---
-title: 视频 Token 计费
-description: 所有视频模型共用火山式公式定价、预留与用量结算
+title: 视频与音频 Token 计费
+description: 视频模型共用火山式公式定价，音频按输入量计费
 ---
 
-# 视频 Token 计费
+# 视频与音频 Token 计费
 
-所有系统视频模型均支持 `billingMode: "token"`，不设协议白名单，包括 `newapi-channel-2`、Ark、Agent Plan 和自定义视频协议。当前统一采用火山式像素帧公式：有有效上游用量时优先采用上游数值；没有有效用量时按提交时保存的公式 Token 数结算。图片和音频仍不开放 Token 定价。
+所有系统视频模型均支持 `billingMode: "token"`，不设协议白名单，包括 `newapi-channel-2`、Ark、Agent Plan 和自定义视频协议。当前统一采用火山式像素帧公式：有有效上游用量时优先采用上游数值；没有有效用量时按提交时保存的公式 Token 数结算。音频（TTS）模型同样支持 Token 计费，但只按待合成文本的输入量计费，见下文「音频（TTS）输入 Token 计费」。图片仍不开放 Token 定价。
 
 ## 管理员配置
 
@@ -58,8 +58,22 @@ Ark 协议读取[查询视频任务接口](https://www.volcengine.com/docs/82379
 
 普通用户在模型选择器、画布生成入口与短剧生产页看到当前参数的「预计」金额，可查看公式 Token、预留余量以及估算边界。参数变更后重新报价；报价本身不创建账单、不冻结积分、不请求上游生成。
 
+## 音频（TTS）输入 Token 计费
+
+音频模型按「积分 / 百万输入 Token」定价。上游按待合成文本计价、不返回 usage，所以平台约定 **1 个字符 = 1 输入 Token**：用量取待合成文本（任务的 `prompt`）去掉首尾空白后的字符数，音色、语速、格式、情感等 `config`/`metadata` 不计入。输出价与缓存价必须为 0，输入价允许为 0（明确免费）。
+
+```text
+预估微积分 = ceil(输入字符数 × 每百万输入 Token 微积分单价 × 平台倍率 ÷ 1,000,000)
+```
+
+下单时把字符数写入 `billing_orders.input_tokens` 并据此预留；结算时优先采用上游真实 usage（记录 `usageSource: "provider"`），没有有效 usage 时回落到这个快照（记录 `usageSource: "audio_formula"`、`usageAvailable: false`，账本说明标明「按提交时的音频输入量估算结算」）。成本快照同样按输入量计算，不套用销售倍率。待合成文本为空时不下单，直接报「无法估算音频输入用量，请检查待合成文本」。
+
+例如管理员配置 514.8 积分 / 百万输入 Token（豆包语音合成 2.0 的报价形态）、平台倍率为 1，1000 字的一段文案预留 0.5148 积分；任务成功且上游未回 usage 时按同一数量结算。
+
+音频选择 `billingMode: "token"` 时不使用输入价以外的字段：价格档改价只提交 `inputTokenPriceMicrocredits`，提交输出价或缓存价会被拒绝。这条链路复用 `billing_orders` 既有的 `input_tokens` 与 `usage_source` 列，**没有新的 schema 迁移**。
+
 ## 发布与验证
 
 前后端需一起发布，并执行 schema v25 `video_token_formula_snapshot`：在 `billing_orders` 增加 `video_formula_tokens`（默认 0）与 `usage_source`（默认空字符串），不重算历史订单、不改既有模型售价。关闭自动迁移的部署先执行新版本 `migrate-schema up`、`migrate-schema verify`，然后启动后端。回退旧二进制需匹配数据库备份和 schema 版本，不能手工伪造迁移记录；旧程序也不支持新音频 selector 和非 Ark 视频 Token 配置。本次仅实现并测试迁移，没有操作真实账号数据库。
 
-本地测试覆盖模型像素、公式取整、参考时长、音频分档、免费档、渠道与逻辑模型报价、任务预留一致性，以及真实用量的退差、补扣和非法值拒绝。真实账号页面及真实上游账单仍需按[待测试清单](/docs/progress/pending-test)验收。
+本地测试覆盖模型像素、公式取整、参考时长、音频分档、免费档、渠道与逻辑模型报价、任务预留一致性，以及真实用量的退差、补扣和非法值拒绝；音频侧覆盖字符数估算、输入价校验、下单快照、`audio_formula` 结算来源与上游用量优先。真实账号页面及真实上游账单仍需按[待测试清单](/docs/progress/pending-test)验收。

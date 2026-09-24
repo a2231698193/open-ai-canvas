@@ -215,7 +215,7 @@ schema v27 为 `channel_model_price_tiers` 和 `billing_orders` 添加 `cost_con
 
 部署需前后端与 schema v27 一起升级；关闭自动迁移时执行 `migrate-schema up`、`migrate-schema verify`。迁移只新增列，不删除旧数据，可重复校验；没有降级迁移，回滚使用匹配的数据库备份和程序版本，旧程序不记录成本快照。
 
-所有视频协议开放 Token 定价。`channel_model_price_tiers.selector_json` 支持 `videoGenerateAudio: "true" | "false"`，省略表示任意音频；参考视频仍匹配 `operation: "video_to_video"`。视频仅使用输出 Token 单价，输入和缓存价必须为 0，明确配置的零价表示免费。schema v25 为 `billing_orders` 新增 `video_formula_tokens`（非空、默认 0，提交时固化不含余量的公式用量）及 `usage_source`（非空、默认空字符串，`provider` 或 `video_formula`）。缺少有效上游用量的新视频订单按公式快照结算并记录 `usage_available=false`，不伪造上游用量；历史快照为 0 的订单保持旧规则。价格档、费率、倍率、预留金额和既有账单不被迁移重算。前后端和 schema 一起升级，旧程序不支持新公式结算及非 Ark Token 配置，回滚需匹配数据库备份与二进制版本。完整算法见[视频 Token 计费](/docs/backend/video-token-billing)。
+所有视频协议开放 Token 定价。`channel_model_price_tiers.selector_json` 支持 `videoGenerateAudio: "true" | "false"`，省略表示任意音频；参考视频仍匹配 `operation: "video_to_video"`。视频仅使用输出 Token 单价，输入和缓存价必须为 0，明确配置的零价表示免费。schema v25 为 `billing_orders` 新增 `video_formula_tokens`（非空、默认 0，提交时固化不含余量的公式用量）及 `usage_source`（非空、默认空字符串，`provider`、`video_formula` 或 `audio_formula`）。缺少有效上游用量的新视频订单按公式快照结算并记录 `usage_available=false`，不伪造上游用量；历史快照为 0 的订单保持旧规则。音频（TTS）Token 计费复用同一批列，没有新的 schema 迁移：下单时把待合成文本的字符数写入 `input_tokens`，结算时没有上游 usage 就用它，并把 `usage_source` 记为 `audio_formula`。价格档、费率、倍率、预留金额和既有账单不被迁移重算。前后端和 schema 一起升级，旧程序不支持新公式结算及非 Ark Token 配置，回滚需匹配数据库备份与二进制版本。完整算法见[视频与音频 Token 计费](/docs/backend/video-token-billing)。
 
 图片分档尺寸保存在现有模型能力 JSON 的 `image.size.presets` 中，不新增表、列或 SQL 迁移。每项结构为 `{ tier, ratio, size, width, height }`，例如 `{ "tier": "1k", "ratio": "16:9", "size": "1824x1024", "width": 1824, "height": 1024 }`。
 

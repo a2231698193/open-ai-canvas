@@ -23,6 +23,14 @@ describe("channel model price tier defaults", () => {
         expect(priceTierPayloadFromForm("video", tier, "video").costPricing).toMatchObject({ configured: true, inputTokenPriceMicrocredits: 0, outputTokenPriceMicrocredits: 3_000_000, cachedTokenPriceMicrocredits: 0 });
         expect(priceTierPayloadFromForm("text", tier, "text").costPricing).toMatchObject({ inputTokenPriceMicrocredits: 1_500_000, outputTokenPriceMicrocredits: 3_000_000, cachedTokenPriceMicrocredits: 100_000 });
     });
+
+    test("audio Token tiers keep only the input price and zero out output/cached rates", () => {
+        const tier = { ...defaultPriceTier(), billingMode: "token" as const, inputTokenPrice: 0.5148, outputTokenPrice: 9, cachedTokenPrice: 7, costConfigured: true, costInputTokenPrice: 0.3, costOutputTokenPrice: 3, costCachedTokenPrice: 0.1 };
+        const payload = priceTierPayloadFromForm("audio", tier, "doubao-tts-2.0");
+        expect(payload).toMatchObject({ inputTokenPriceMicrocredits: 514_800, outputTokenPriceMicrocredits: 0, cachedTokenPriceMicrocredits: 0 });
+        expect(payload.costPricing).toMatchObject({ configured: true, inputTokenPriceMicrocredits: 300_000, outputTokenPriceMicrocredits: 0, cachedTokenPriceMicrocredits: 0 });
+        expect(priceTierPayloadFromForm("audio", { ...tier, billingMode: "fixed_request" }, "doubao-tts-2.0")).toMatchObject({ inputTokenPriceMicrocredits: 514_800, outputTokenPriceMicrocredits: 9_000_000 });
+    });
     test("creates a usable all-spec fallback price by default", () => {
         const tier = defaultPriceTier();
 

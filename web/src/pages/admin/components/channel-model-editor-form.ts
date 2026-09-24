@@ -56,6 +56,8 @@ export function changeChannelModelCapability(values: ChannelModelFormValues, pro
         capabilityConfig: capability === "audio" ? undefined : defaultModelCapabilityConfig(protocol, values.providerModelKey?.trim() || values.modelKey.trim()),
         priceTiers: values.priceTiers.map((tier) => ({
             ...tier,
+            // 音频没有可匹配的规格维度，切到音频时收回按规格定价，避免留下无法保存的死配置。
+            matchMode: capability === "audio" ? "default" : tier.matchMode,
             operation: "*",
             quality: "*",
             size: "*",
@@ -95,10 +97,18 @@ export function validateChannelModelPrices(values: Pick<ChannelModelFormValues, 
             const specific = (value: string | undefined) => Boolean(value && value !== "*");
             if (!(specific(tier.operation) || (capability === "image" && (specific(tier.quality) || specific(tier.size))) || (capability === "video" && specific(tier.resolution)))) fail("规格价格至少需要一个匹配条件；统一价格请选择默认价格");
         }
-        const prices = tier.billingMode !== "token" ? [tier.unitPrice] : capability === "video" ? [tier.outputTokenPrice] : [tier.inputTokenPrice, tier.outputTokenPrice, tier.cachedTokenPrice];
+        // 音频按输入量计费（只有输入价），视频按视频用量（只有输出价），文本三个价都给。
+        const prices = tier.billingMode !== "token" ? [tier.unitPrice] : capability === "video" ? [tier.outputTokenPrice] : capability === "audio" ? [tier.inputTokenPrice] : [tier.inputTokenPrice, tier.outputTokenPrice, tier.cachedTokenPrice];
         if (prices.some((price) => typeof price !== "number" || !Number.isFinite(price) || price < 0 || price > 1_000_000)) fail("积分价格必须是 0 到 1000000 之间的有效数值");
         if (tier.costConfigured) {
-            const costs = tier.billingMode !== "token" ? [tier.costUnitPrice] : capability === "video" ? [tier.costOutputTokenPrice] : [tier.costInputTokenPrice, tier.costOutputTokenPrice, tier.costCachedTokenPrice];
+            const costs =
+                tier.billingMode !== "token"
+                    ? [tier.costUnitPrice]
+                    : capability === "video"
+                      ? [tier.costOutputTokenPrice]
+                      : capability === "audio"
+                        ? [tier.costInputTokenPrice]
+                        : [tier.costInputTokenPrice, tier.costOutputTokenPrice, tier.costCachedTokenPrice];
             if (costs.some((price) => typeof price !== "number" || !Number.isFinite(price) || price < 0 || price > 1_000_000)) fail("积分成本价必须是 0 到 1000000 之间的有效数值");
         }
     });

@@ -105,6 +105,8 @@ func TestBillingCreditCostUsesExactUsageAndIgnoresSalesMultiplier(t *testing.T) 
 		{name: "text cached tokens", mode: "token", capability: "text", input: 1_000_000, output: 500_000, cached: 200_000, usage: true, want: 1_820_000},
 		{name: "video formula", mode: "token", capability: "video", formula: 250_000, want: 500_000},
 		{name: "video provider", mode: "token", capability: "video", output: 100_000, formula: 250_000, usage: true, want: 200_000},
+		{name: "audio input estimate", mode: "token", capability: "audio", input: 250_000, want: 250_000},
+		{name: "audio provider usage", mode: "token", capability: "audio", input: 100_000, usage: true, want: 100_000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			order := model.BillingOrder{Status: model.BillingStatusSettled, Capability: tc.capability, InputTokens: tc.input, OutputTokens: tc.output, CachedTokens: tc.cached, UsageAvailable: tc.usage, MultiplierBasisPoints: 30_000, ChargeLimitMicrocredits: 1,
@@ -138,5 +140,11 @@ func TestCreditCostRejectsInvalidPrices(t *testing.T) {
 	}
 	if err := validateCreditCostPricing("video", "token", model.CreditCostPricing{Configured: true, InputTokenPriceMicrocredits: 1}); err == nil {
 		t.Fatal("accepted video input cost")
+	}
+	if err := validateCreditCostPricing("audio", "token", model.CreditCostPricing{Configured: true, OutputTokenPriceMicrocredits: 1}); err == nil {
+		t.Fatal("accepted audio output cost")
+	}
+	if err := validateCreditCostPricing("audio", "token", model.CreditCostPricing{Configured: true, InputTokenPriceMicrocredits: 514_800_000}); err != nil {
+		t.Fatalf("rejected audio input cost: %v", err)
 	}
 }

@@ -129,6 +129,8 @@ export function priceTierVideoSecondsFromForm(capability: ModelCapabilityChoice,
 
 export function priceTierPayloadFromForm(capability: ModelCapabilityChoice, tier: PriceTierFormValues, upstreamModel: string) {
     const videoTokens = capability === "video" && tier.billingMode === "token";
+    // 音频 Token 计费只认输入价：输出和缓存价强制为 0，避免表单残留值被后端校验拒绝。
+    const audioTokens = capability === "audio" && tier.billingMode === "token";
     return {
         selector: skuSelectorFromForm(capability, tier),
         resolution: priceTierResolutionFromForm(capability, tier),
@@ -137,14 +139,14 @@ export function priceTierPayloadFromForm(capability: ModelCapabilityChoice, tier
         billingMode: tier.billingMode,
         unitPriceMicrocredits: Math.round((tier.unitPrice || 0) * 1_000_000),
         inputTokenPriceMicrocredits: videoTokens ? 0 : Math.round((tier.inputTokenPrice || 0) * 1_000_000),
-        outputTokenPriceMicrocredits: Math.round((tier.outputTokenPrice || 0) * 1_000_000),
-        cachedTokenPriceMicrocredits: videoTokens ? 0 : Math.round((tier.cachedTokenPrice || 0) * 1_000_000),
+        outputTokenPriceMicrocredits: audioTokens ? 0 : Math.round((tier.outputTokenPrice || 0) * 1_000_000),
+        cachedTokenPriceMicrocredits: videoTokens || audioTokens ? 0 : Math.round((tier.cachedTokenPrice || 0) * 1_000_000),
         costPricing: {
             configured: tier.costConfigured,
             unitPriceMicrocredits: Math.round(tier.costUnitPrice * 1_000_000),
             inputTokenPriceMicrocredits: videoTokens ? 0 : Math.round(tier.costInputTokenPrice * 1_000_000),
-            outputTokenPriceMicrocredits: Math.round(tier.costOutputTokenPrice * 1_000_000),
-            cachedTokenPriceMicrocredits: videoTokens ? 0 : Math.round(tier.costCachedTokenPrice * 1_000_000),
+            outputTokenPriceMicrocredits: audioTokens ? 0 : Math.round(tier.costOutputTokenPrice * 1_000_000),
+            cachedTokenPriceMicrocredits: videoTokens || audioTokens ? 0 : Math.round((tier.costCachedTokenPrice || 0) * 1_000_000),
         },
         priceConfigured: tier.priceConfigured !== false,
         enabled: tier.enabled !== false,

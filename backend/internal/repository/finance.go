@@ -680,10 +680,23 @@ func billingUsage(db *gorm.DB, orderID string) (*BillingUsage, error) {
 const (
 	billingUsageSourceProvider     = "provider"
 	billingUsageSourceVideoFormula = "video_formula"
+	// 音频（TTS）上游不返回 usage：按下单时按字符数估的输入量结算，标记来源以便核对。
+	billingUsageSourceAudioFormula = "audio_formula"
 )
 
 func tokenSettlementUsage(db *gorm.DB, order model.BillingOrder) (*BillingUsage, string, error) {
 	usage, err := billingUsage(db, order.ID)
+	if order.Capability == "audio" {
+		// 音频（TTS）上游只回任务状态与结果地址，没有 usage：用下单时按待合成文本字符数估的
+		// 输入量结算（写入 usage_source=audio_formula、usage_available=false，与用户看到的口径一致）。
+		if err == nil && usage != nil && usage.InputTokens > 0 {
+			return usage, billingUsageSourceProvider, nil
+		}
+		if order.InputTokens > 0 {
+			return &BillingUsage{InputTokens: order.InputTokens}, billingUsageSourceAudioFormula, nil
+		}
+		return usage, billingUsageSourceProvider, err
+	}
 	if err != nil && !errors.Is(err, ErrBillingUsageUnavailable) {
 		return nil, "", err
 	}
@@ -826,6 +839,9 @@ func (r *Repository) SettleBillingOrder(id string, providerRequestID string) err
 			}
 			if usageSource == billingUsageSourceVideoFormula {
 				consumeNote = strings.TrimSpace("按提交时的视频 Token 公式快照结算；" + consumeNote)
+			}
+			if usageSource == billingUsageSourceAudioFormula {
+				consumeNote = strings.TrimSpace("按提交时的音频输入量估算结算；" + consumeNote)
 			}
 			if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerConsume,
 				AmountMicrocredits: -actual, AvailableDeltaMicrocredits: -supplement, ReservedDeltaMicrocredits: -reserved,
@@ -1007,6 +1023,9 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 		consumeNote := "人工查询确认上游成功，退款订单重新扣费"
 		if usageSource == billingUsageSourceVideoFormula {
 			consumeNote += "；按提交时的视频 Token 公式快照结算"
+		}
+		if usageSource == billingUsageSourceAudioFormula {
+			consumeNote += "；按提交时的音频输入量估算结算"
 		}
 		if chargeCapped {
 			consumeNote += "；已按本轮 Agent 硬上限结算"

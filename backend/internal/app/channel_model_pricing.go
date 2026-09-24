@@ -107,7 +107,13 @@ func applyChannelModelTierPrices(tier *model.ChannelModelPriceTier, capability s
 	fields := map[string]*int64{"unitPriceMicrocredits": &tier.UnitPriceMicrocredits}
 	if tier.BillingMode == "token" {
 		fields = map[string]*int64{"outputTokenPriceMicrocredits": &tier.OutputTokenPriceMicrocredits}
-		if capability != "video" {
+		switch capability {
+		case "audio":
+			// 音频只按输入量计费，改价只提交输入价。
+			fields = map[string]*int64{"inputTokenPriceMicrocredits": &tier.InputTokenPriceMicrocredits}
+		case "video":
+			// 视频只按视频用量计费，保持只提交输出价。
+		default:
 			fields["inputTokenPriceMicrocredits"] = &tier.InputTokenPriceMicrocredits
 			fields["cachedTokenPriceMicrocredits"] = &tier.CachedTokenPriceMicrocredits
 		}

@@ -141,7 +141,7 @@ CANVAS_BACKEND_DATA_DIR=/明确的数据目录 ./migrate-schema repair-canvas-re
 
 报价包含 `logicalModelId`（系统渠道直连为空）、`billingMode`、`quantity`、`amountMicrocredits`、`estimated`。视频 Token 报价另有 `videoTokenEstimate`：`formulaTokens`、`reservedTokens`、`outputWidth`、`outputHeight`、`framesPerSecond`、`outputSeconds`、`referenceSeconds`、`referenceDurationEstimated`、`dimensionsEstimated`、`reservationMarginPercent`。
 
-Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考素材数量不包含时长信息，带参考视频时统一按 15 秒估算并返回 `referenceDurationEstimated: true`。所有视频协议均支持 Token 定价；10% 预留是平台策略，不是费用上限。成功后优先有效上游用量，无有效用量时按提交的公式快照结算，余量不计入公式费用。账单新增 `videoFormulaTokens` 及 `usageSource`（`provider` / `video_formula`），公式结算的 `usageAvailable` 为 `false`，`outputTokens` 表示公式数量。算法、配置与异常用量处理见[视频 Token 计费](/docs/backend/video-token-billing)。
+Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考素材数量不包含时长信息，带参考视频时统一按 15 秒估算并返回 `referenceDurationEstimated: true`。所有视频协议均支持 Token 定价；10% 预留是平台策略，不是费用上限。成功后优先有效上游用量，无有效用量时按提交的公式快照结算，余量不计入公式费用。音频（TTS）模型也支持 Token 定价，单价是「积分 / 百万输入 Token」：`quantity` 是待合成文本的字符数（1 字符 = 1 Token），没有 `videoTokenEstimate`，输出与缓存价必须为 0。账单新增 `videoFormulaTokens` 及 `usageSource`（`provider` / `video_formula` / `audio_formula`），公式或估算结算的 `usageAvailable` 为 `false`，视频的 `outputTokens` 是公式数量，音频的 `inputTokens` 是字符估算量。算法、配置与异常用量处理见[视频与音频 Token 计费](/docs/backend/video-token-billing)。
 
 ## 管理员积分成本
 

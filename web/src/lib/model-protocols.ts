@@ -18,7 +18,9 @@ export function isVolcengineArkVideoProtocol(protocol?: string) {
 }
 
 export function modelProtocolSupportsTokenBilling(capability?: string, _protocol?: string) {
-    return capability === "text" || capability === "video";
+    // 文本按输入/输出/缓存 Token 计费；视频按视频用量（公式估算）；音频（TTS）只按输入量计费，
+    // 输出与缓存价格恒为 0（上游按字符数计价、不返回 usage）。
+    return capability === "text" || capability === "video" || capability === "audio";
 }
 
 export function protocolForModelCatalog(_endpointTypes: string[] = []): ModelProtocol | undefined {

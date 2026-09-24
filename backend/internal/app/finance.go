@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"infinite-canvas/backend/internal/kernel"
 	"infinite-canvas/backend/internal/model"
@@ -531,6 +532,12 @@ func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, i
 	if logicalModel.BillingMode == "token" && tokenEstimate.Video != nil {
 		videoFormulaTokens = tokenEstimate.Video.FormulaTokens
 	}
+	// 音频没有上游 usage：下单时就把按字符数估的输入量落库，结算与成本都按它算
+	// （usage_source=audio_formula、usage_available=false，不会当成真实用量展示）。
+	var audioFormulaInputTokens int64
+	if logicalModel.BillingMode == "token" && capability == "audio" {
+		audioFormulaInputTokens = tokenEstimate.InputTokens
+	}
 	order := &model.BillingOrder{
 		ID: newID(), UserID: userID, IdempotencyKey: "task:" + task.ID + ":" + newID(), TaskID: task.ID,
 		ChannelID: channelModel.ChannelID, ChannelModelID: channelModel.ID, Model: logicalModel.Code, Capability: capability,
@@ -538,8 +545,8 @@ func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, i
 		UnitPriceMicrocredits: logicalModel.UnitPriceMicrocredits, MultiplierBasisPoints: 10_000, Quantity: quantity, AmountMicrocredits: amount,
 		ReservedAmountMicrocredits: amount, InputTokenPriceMicrocredits: logicalModel.InputPriceMicrocredits,
 		OutputTokenPriceMicrocredits: logicalModel.OutputPriceMicrocredits, CachedTokenPriceMicrocredits: logicalModel.CachedPriceMicrocredits,
-		VideoFormulaTokens: videoFormulaTokens,
-		Status:             model.BillingStatusReserved,
+		VideoFormulaTokens: videoFormulaTokens, InputTokens: audioFormulaInputTokens,
+		Status: model.BillingStatusReserved,
 	}
 	intent := ModelRequestIntentFromTaskInput(input, task.Type, task.Operation)
 	priceTierID, _ := config["priceTierId"].(string)
@@ -608,13 +615,19 @@ func (s *Service) newBillingOrderWithPriceTier(userID string, taskID string, ide
 			return nil, tokenEstimate.Err
 		}
 		if !supportsTokenBilling(item.Capability, item.Protocol) || item.Capability != capability {
-			return nil, BadAuthRequest("Token 计费仅支持文本和视频生成")
+			return nil, BadAuthRequest("Token 计费仅支持文本、视频和音频生成")
 		}
 		if capability == "text" && (tokenEstimate.InputTokens <= 0 || tokenEstimate.OutputTokens <= 0) {
 			return nil, BadAuthRequest("无法估算文本 Token 用量")
 		}
 		if capability == "video" && tokenEstimate.OutputTokens <= 0 {
 			return nil, BadAuthRequest("无法计算视频 Token 用量，请检查时长与尺寸")
+		}
+		if capability == "audio" && tokenEstimate.InputTokens <= 0 {
+			return nil, BadAuthRequest("无法估算音频输入用量，请检查待合成文本")
+		}
+		if capability == "audio" && (tier.OutputTokenPriceMicrocredits != 0 || tier.CachedTokenPriceMicrocredits != 0) {
+			return nil, BadAuthRequest("音频 Token 仅按输入量定价，请将输出与缓存价格设为 0")
 		}
 		if capability == "video" && (tier.InputTokenPriceMicrocredits != 0 || tier.CachedTokenPriceMicrocredits != 0) {
 			return nil, BadAuthRequest("视频 Token 仅按视频用量定价，请将输入与缓存价格设为 0")
@@ -640,6 +653,12 @@ func (s *Service) newBillingOrderWithPriceTier(userID string, taskID string, ide
 	if tier.BillingMode == "token" && tokenEstimate.Video != nil {
 		videoFormulaTokens = tokenEstimate.Video.FormulaTokens
 	}
+	// 音频没有上游 usage：下单时就把按字符数估的输入量落库，结算与成本都按它算
+	// （usage_source=audio_formula、usage_available=false，不会当成真实用量展示）。
+	var audioFormulaInputTokens int64
+	if tier.BillingMode == "token" && capability == "audio" {
+		audioFormulaInputTokens = tokenEstimate.InputTokens
+	}
 	order := &model.BillingOrder{
 		ID: newID(), UserID: userID, IdempotencyKey: idempotencyKey, TaskID: taskID,
 		ChannelID: channelID, ChannelModelID: item.ID, PriceTierID: tier.ID, PriceTierVersion: tier.PriceVersion, PriceSelectorJSON: tier.SelectorJSON, Model: modelKey, Capability: capability,
@@ -647,8 +666,8 @@ func (s *Service) newBillingOrderWithPriceTier(userID string, taskID string, ide
 		UnitPriceMicrocredits: tier.UnitPriceMicrocredits, MultiplierBasisPoints: multiplierBPS, Quantity: quantity, AmountMicrocredits: amount,
 		ReservedAmountMicrocredits: amount, InputTokenPriceMicrocredits: tier.InputTokenPriceMicrocredits,
 		OutputTokenPriceMicrocredits: tier.OutputTokenPriceMicrocredits, CachedTokenPriceMicrocredits: tier.CachedTokenPriceMicrocredits,
-		VideoFormulaTokens: videoFormulaTokens,
-		Status:             model.BillingStatusReserved,
+		VideoFormulaTokens: videoFormulaTokens, InputTokens: audioFormulaInputTokens,
+		Status: model.BillingStatusReserved,
 	}
 	snapshotCreditCost(order, tier, requestedQuantity, tokenEstimate)
 	return order, nil
@@ -683,7 +702,22 @@ func estimateTaskBillingTokens(input map[string]any, capability string) tokenBil
 	if capability == "video" {
 		return estimateArkVideoTokens(input)
 	}
+	if capability == "audio" {
+		return estimateAudioInputTokens(input)
+	}
 	return estimateTaskTokens(input)
+}
+
+// estimateAudioInputTokens 是音频（TTS）的输入量估算：上游按输入量计价、不返回 usage，
+// 所以用待合成文本的字符数当输入 Token 数（1 个字符 = 1 Token，与上游「字符」计价单位一致），
+// 输出与缓存恒为 0。只算 prompt，不把 config/metadata 也算进去——那部分不会被合成成语音。
+func estimateAudioInputTokens(input map[string]any) tokenBillingEstimate {
+	text := strings.TrimSpace(stringValue(input["prompt"]))
+	count := int64(utf8.RuneCountInString(text))
+	if count < 1 {
+		return tokenBillingEstimate{}
+	}
+	return tokenBillingEstimate{InputTokens: count}
 }
 
 func estimateProxyTokens(body []byte) tokenBillingEstimate {
@@ -721,7 +755,8 @@ func tokenEstimateAmount(item *model.ChannelModel, estimate tokenBillingEstimate
 	if estimate.Err != nil {
 		return 0, estimate.Err
 	}
-	if item == nil || estimate.InputTokens < 0 || estimate.OutputTokens <= 0 || multiplierBPS <= 0 {
+	// 输出为 0 是合法的：音频（TTS）只按输入量计价。两者都为 0 才算参数无效。
+	if item == nil || estimate.InputTokens < 0 || estimate.OutputTokens < 0 || (estimate.InputTokens == 0 && estimate.OutputTokens == 0) || multiplierBPS <= 0 {
 		return 0, errors.New("Token 计费参数无效")
 	}
 	amount, err := kernel.TokenBillingAmount(multiplierBPS,

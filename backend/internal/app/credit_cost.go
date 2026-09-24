@@ -50,10 +50,16 @@ func billingCreditCost(order model.BillingOrder) (*int64, error) {
 	case "token":
 		input, output, cached := order.InputTokens, order.OutputTokens, order.CachedTokens
 		if !order.UsageAvailable {
-			if order.Capability != "video" || order.CostVideoFormulaTokens <= 0 {
+			switch {
+			case order.Capability == "video" && order.CostVideoFormulaTokens > 0:
+				input, cached, output = 0, 0, order.CostVideoFormulaTokens
+			case order.Capability == "audio" && input > 0:
+				// 音频按输入量计费：没有上游 usage 时用下单时按字符数估的输入量记成本，
+				// 否则成本会静默缺失（不报错，但利润统计少一块）。
+				cached, output = 0, 0
+			default:
 				return nil, nil
 			}
-			input, cached, output = 0, 0, order.CostVideoFormulaTokens
 		}
 		amount, err = kernel.TokenBillingAmount(10_000,
 			kernel.TokenBillingTerm{Tokens: max(0, input-cached), PriceMicrocredits: cost.InputTokenPriceMicrocredits},

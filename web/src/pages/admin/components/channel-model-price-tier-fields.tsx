@@ -41,6 +41,7 @@ export function PriceTierFields({
     const tokenEnabled = modelProtocolSupportsTokenBilling(capability, protocol);
     const isVideo = capability === "video";
     const isImage = capability === "image";
+    const isAudio = capability === "audio";
     return (
         <article className="admin-price-tier-card">
             <header className="admin-price-tier-card-header">
@@ -89,7 +90,8 @@ export function PriceTierFields({
                             aria-label="价格规则适用范围"
                             options={[
                                 { label: "统一价格", value: "default" },
-                                { label: "按规格定价", value: "advanced" },
+                                // 音频没有可匹配的规格维度（既没有生成方式也没有分辨率），按规格定价必然是死配置。
+                                { label: "按规格定价", value: "advanced", disabled: isAudio },
                             ]}
                         />
                     </Form.Item>
@@ -149,13 +151,18 @@ export function PriceTierFields({
                                     options={[
                                         { label: "按次", value: "fixed_request" },
                                         { label: "按秒", value: "per_second", disabled: !isVideo },
-                                        { label: isVideo ? "视频 Token" : "Token", value: "token", disabled: !tokenEnabled },
+                                        { label: isVideo ? "视频 Token" : isAudio ? "音频 Token" : "Token", value: "token", disabled: !tokenEnabled },
                                     ]}
                                 />
                             </Form.Item>
                             {billingMode === "token" ? (
                                 isVideo ? (
                                     <Form.Item className="admin-price-tier-unit-price mb-0" name={[index, "outputTokenPrice"]} label="积分 / 百万视频 Token" rules={[{ required: true, message: "请输入视频 Token 价格" }]}>
+                                        <InputNumber className="w-full" min={0} max={1_000_000} precision={6} step={0.1} />
+                                    </Form.Item>
+                                ) : isAudio ? (
+                                    // 音频（TTS）上游按输入量计价、输出与缓存恒为 0，只收一个输入价。
+                                    <Form.Item className="admin-price-tier-unit-price mb-0" name={[index, "inputTokenPrice"]} label="积分 / 百万输入 Token" rules={[{ required: true, message: "请输入输入 Token 价格" }]}>
                                         <InputNumber className="w-full" min={0} max={1_000_000} precision={6} step={0.1} />
                                     </Form.Item>
                                 ) : (
@@ -177,13 +184,19 @@ export function PriceTierFields({
                                 </Form.Item>
                             )}
                         </div>
+                        {isAudio && billingMode === "token" ? (
+                            <div className="admin-price-tier-helper" role="note">
+                                <strong>音频 Token 计费</strong>
+                                <span>估算：按待合成文本的字符数计输入 Token（1 个字符 = 1 Token，与上游「字符」计价单位一致），输出与缓存按 0 计。上游不返回用量，实际结算按这次请求的字符数计算。</span>
+                            </div>
+                        ) : null}
                         {isVideo && billingMode === "token" ? (
                             <div className="admin-price-tier-helper" role="note">
                                 <strong>视频 Token 计费</strong>
                                 <span>估算：宽 × 高 × 24 帧/秒 ×（输出时长 + 参考视频时长）÷ 1024；优先按上游有效用量结算，无用量时使用公式，授权预留 10% 会在结算后补扣或退回。</span>
                             </div>
                         ) : null}
-                        <CreditCostFields index={index} form={form} billingMode={billingMode} isVideo={isVideo} />
+                        <CreditCostFields index={index} form={form} billingMode={billingMode} isVideo={isVideo} isAudio={isAudio} />
                     </section>
                 </div>
                 {staleTierUpstream ? (

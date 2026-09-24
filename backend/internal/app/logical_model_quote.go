@@ -127,6 +127,10 @@ func (s *Service) QuoteLogicalModel(logicalModelID string, intent ModelRequestIn
 		if capability == "video" && (routed.LogicalModel.InputPriceMicrocredits != 0 || routed.LogicalModel.CachedPriceMicrocredits != 0) {
 			return nil, BadAuthRequest("视频 Token 仅按视频用量定价，请将输入与缓存价格设为 0")
 		}
+		// 音频按输入量计价：统一定价也不允许用输出/缓存价参与报价，否则报价与实际用量口径不一致。
+		if capability == "audio" && (routed.LogicalModel.OutputPriceMicrocredits != 0 || routed.LogicalModel.CachedPriceMicrocredits != 0) {
+			return nil, BadAuthRequest("音频 Token 仅按输入量定价，请将输出与缓存价格设为 0")
+		}
 		pricing := &model.ChannelModel{
 			InputTokenPriceMicrocredits:  routed.LogicalModel.InputPriceMicrocredits,
 			OutputTokenPriceMicrocredits: routed.LogicalModel.OutputPriceMicrocredits,

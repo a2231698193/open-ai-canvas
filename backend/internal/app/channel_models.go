@@ -457,7 +457,8 @@ func (s *Service) syncLogicalModelsFromChannelModel(actor *model.User, channelMo
 }
 
 func supportsTokenBilling(capability string, _ model.ChannelInterfaceType) bool {
-	return capability == "text" || capability == "video"
+	// 文本按输入/输出/缓存 Token 计费，视频按视频用量，音频（TTS）按输入量（字符数）。
+	return capability == "text" || capability == "video" || capability == "audio"
 }
 
 func (s *Service) normalizeChannelModelPriceTiers(req ChannelModelRequest, capability string, protocol model.ChannelInterfaceType, fallbackProviderModelKey string) ([]model.ChannelModelPriceTier, error) {
@@ -626,7 +627,7 @@ func validateChannelModelTierPricing(capability string, protocol model.ChannelIn
 		return BadAuthRequest("只有视频模型可以按秒计费")
 	}
 	if billingMode == "token" && !supportsTokenBilling(capability, protocol) {
-		return BadAuthRequest("Token 计费仅支持文本和视频模型")
+		return BadAuthRequest("Token 计费仅支持文本、视频和音频模型")
 	}
 	if input.UnitPriceMicrocredits < 0 || input.InputTokenPriceMicrocredits < 0 || input.OutputTokenPriceMicrocredits < 0 || input.CachedTokenPriceMicrocredits < 0 {
 		return BadAuthRequest("模型积分价格不能小于 0")
