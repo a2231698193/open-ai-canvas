@@ -61,11 +61,16 @@ export function priceTierSummaryLabel(tiers: ModelPriceTier[], capability?: Mode
             .filter((value) => Number.isFinite(value) && value >= 0);
     const fixedRequestValues = unitPrices("fixed_request");
     const perSecondValues = unitPrices("per_second");
-    const tokenValues = tiers.filter((tier) => tier.billingMode === "token").map((tier) => tier.outputTokenPriceMicrocredits / 1_000_000).filter((value) => Number.isFinite(value) && value >= 0);
+    // 视频只有输出用量、音频只有输入用量（TTS 上游按字符数计价），文本展示输出价。
+    const tokenValues = tiers
+        .filter((tier) => tier.billingMode === "token")
+        .map((tier) => (capability === "audio" ? tier.inputTokenPriceMicrocredits : tier.outputTokenPriceMicrocredits) / 1_000_000)
+        .filter((value) => Number.isFinite(value) && value >= 0);
+    const tokenUnit = capability === "video" ? "积分/百万视频 Token" : capability === "audio" ? "积分/百万输入 Token" : "积分/百万 Token";
     return [
         fixedRequestValues.length ? formatPriceRange(fixedRequestValues, "积分") : "",
         perSecondValues.length ? formatPriceRange(perSecondValues, "积分/秒") : "",
-        tokenValues.length ? `${capability === "video" ? "" : "输出 "}${formatPriceRange(tokenValues, capability === "video" ? "积分/百万视频 Token" : "积分/百万 Token")}` : "",
+        tokenValues.length ? `${capability === "video" || capability === "audio" ? "" : "输出 "}${formatPriceRange(tokenValues, tokenUnit)}` : "",
     ].filter(Boolean).join(" · ") || "未配置";
 }
 

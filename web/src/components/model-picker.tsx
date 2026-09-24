@@ -429,9 +429,11 @@ function modelMenuPrice(config: AiConfig, model: string, capability?: ModelCapab
         return channelTierPriceSummary(matched.length ? matched : tiers, tiers, capability);
     }
     if (cost.billingMode === "token") {
-        const rate = cost.outputTokenPriceMicrocredits;
-        return capability === "video" && typeof rate === "number" && Number.isFinite(rate) && rate >= 0
-            ? { kind: "estimate", label: formatPriceRange([rate / 1_000_000], "积分/百万视频 Token"), title: "按视频 Token 单价预估，优先按有效上游用量结算；未返回用量时按视频公式结算" }
+        const pricing = capability === "audio"
+            ? { rate: cost.inputTokenPriceMicrocredits, unit: "积分/百万输入 Token", title: "按待合成文本的字符数估算输入 Token（1 个字符 = 1 Token），成功任务按这次请求的字符数结算" }
+            : { rate: cost.outputTokenPriceMicrocredits, unit: "积分/百万视频 Token", title: "按视频 Token 单价预估，优先按有效上游用量结算；未返回用量时按视频公式结算" };
+        return (capability === "video" || capability === "audio") && typeof pricing.rate === "number" && Number.isFinite(pricing.rate) && pricing.rate >= 0
+            ? { kind: "estimate", label: formatPriceRange([pricing.rate / 1_000_000], pricing.unit), title: pricing.title }
             : { kind: "estimate" };
     }
     return { kind: "fixed", value: cost.unitPriceMicrocredits / 1_000_000, unit: cost.billingMode === "per_second" ? "秒" : "次" };
@@ -458,7 +460,7 @@ function channelTierPriceSummary(
         kind: "tiers",
         label,
         compactLabel: label,
-        title: `系统规格价格：${allTiers.map((tier) => `${tierSpecificationLabel(tier)} ${priceTierSummaryLabel([tier], capability)}`).join("；")}${allTiers.some((tier) => tier.billingMode === "token") ? (capability === "video" ? "；优先按有效上游用量结算，未返回用量时按视频公式结算" : "；Token 费用为预估，最终按成功任务的实际用量结算") : ""}`,
+        title: `系统规格价格：${allTiers.map((tier) => `${tierSpecificationLabel(tier)} ${priceTierSummaryLabel([tier], capability)}`).join("；")}${allTiers.some((tier) => tier.billingMode === "token") ? (capability === "video" ? "；优先按有效上游用量结算，未返回用量时按视频公式结算" : capability === "audio" ? "；按待合成文本的字符数估算，成功任务按这次请求的字符数结算" : "；Token 费用为预估，最终按成功任务的实际用量结算") : ""}`,
     };
 }
 

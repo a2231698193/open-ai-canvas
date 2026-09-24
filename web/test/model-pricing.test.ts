@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection, requestCreditCost } from "../src/lib/model-pricing";
 import type { ModelRequirements } from "../src/lib/model-selection";
 import { createModelChannel, defaultConfig, normalizeConfigSnapshot, resolveModelChannel, type AiConfig } from "../src/stores/use-config-store";
+import { systemChannelModelChannels } from "../src/lib/user-session";
+import type { PublicChannelCatalog, PublicChannelModel } from "../src/services/api/logical-models";
 import { buildNodeConfig } from "../src/components/canvas/canvas-node-prompt-panel";
 import { buildGenerationConfig } from "../src/lib/canvas/canvas-project-generation";
 import { modelRequestOptions } from "../src/lib/model-selection";
@@ -269,6 +271,29 @@ describe("model request pricing", () => {
             expect(matched[0]?.outputTokenPriceMicrocredits).toBe(videoGenerateAudio === true || videoGenerateAudio === "true" ? 3_000_000 : 2_000_000);
             expect(requestCreditCost({ channelMode: "remote", modelCosts: resolveModelChannel(config, config.model).modelCosts, model: "agnes-video-2.5", capability: "video", config, requirements })).toBeNull();
         }
+    });
+
+    test("shows audio Token pricing as the input rate that is actually billed", () => {
+        const audioModel: PublicChannelModel = {
+            id: "doubao-tts-2.0",
+            modelKey: "doubao-tts-2.0",
+            displayName: "豆包语音合成 2.0",
+            channelLabel: "火山引擎官方直连",
+            description: "",
+            icon: "",
+            capability: "audio",
+            protocol: "lk888-audio",
+            available: true,
+            pricingMode: "provider",
+            priceLabel: "",
+            priceTiers: [{ id: "tier", selector: {}, resolution: "*", videoSeconds: 0, billingMode: "token", unitPriceMicrocredits: 0, inputTokenPriceMicrocredits: 514_800_000, outputTokenPriceMicrocredits: 0, cachedTokenPriceMicrocredits: 0 }],
+        };
+        const channels: PublicChannelCatalog[] = [{ id: "audio-channel", name: "火山引擎官方直连", displayName: "火山引擎官方直连", models: [audioModel] }];
+        const config = normalizeConfigSnapshot({ config: { ...defaultConfig, channels: systemChannelModelChannels(channels) } }).config;
+        const tiers = config.channels[0]!.modelCosts![0]!.logicalPriceTiers!;
+        // 音频只有输入价，不能把未使用的输出价当成售价展示。
+        expect(priceTierSummaryLabel(tiers, "audio")).toBe("514.8 积分/百万输入 Token");
+        expect(priceTierSummaryLabel(tiers, "video")).toBe("0 积分/百万视频 Token");
     });
 
     test("shows the configured video Token rate including free and fractional rates", () => {
