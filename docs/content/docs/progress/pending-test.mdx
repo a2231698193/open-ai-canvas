@@ -5,6 +5,19 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 上游合并（56b1e36d..2ce50bbb）的取舍与验证
+
+- 本次并入官方 6 个提交：画布工作区改悬浮磨砂面板、云端 Agent 缩减画布目录上下文并在输入区展示实时上下文占用、统一输入/按钮/下拉控件样式、经典黑白主题不可改删、资源与技能列表载荷精简。
+- 冲突解决 2 处：`welcome/index.tsx` 官方把 Select 迁到站内统一控件，我方此前已按品牌去掉开源入口（不再用 `Code2`）→ 取官方 import 结构但不引入 `Code2`；`canvas-workspace-panel.tsx` 官方重做侧栏结构（`canvas-workspace-shell`）→ 采用官方新结构，保留本仓库「主页按钮回创作工作台」（`to="/create"`、label 用「工作台」）。侧栏样式表由官方整体替换，我方未改过该 CSS。
+- **上游自身红 6 条**（都先在 `upstream/main` 的独立 worktree 复现，同一断言同一行号），已按新实现同步或停用：
+  - 前端 5 条扫描式契约断言：`app-theme` 的 `Input.activeShadow`（`undefined` → `"none"`）、`workspace-menu-density` 的键盘焦点环选择器（改由 `data-input-modality="keyboard"` 承载）与统一 select 浮层断言（改断言 `app-unified-select`）、`canvas-resource-mention-editor` 的发送提示文案（改为按钮 title 文案）与已随元素删除的 `.agent-composer-send-hint-*`、`canvas-node-title-interaction` 的节点拖拽手柄（实现被官方重做，这组断言暂时只保留仍然有效的 `onClick={onEdit}`）。
+  - 后端 1 条：`TestAppearanceSkinLibrarySupportsEditableCopiesAndProtectsClassic` 的「旧状态色回填」断言与官方实现不同步——自定义主题的 Primary / ControlBorder / Danger 会被覆盖成默认经典调色板，而不是按用例期望的「从本主题派生」。停用该断言，保留用例其余部分。
+- 验证：前端 `bun run typecheck` / `bun run build` / `bun run lint` 通过、`bun test` **2132 通过 / 0 失败**；后端 `go build ./...`、`go test ./... -count=1`（`internal/app` 出现过一次已知的 SQLite `db busy` 抖动，重跑通过）。
+- [ ] 真机验收：画布侧栏新的悬浮磨砂面板在明暗主题下的展开/收起、拖拽与窄屏表现，以及本仓库的「主页 → 创作工作台」跳转是否仍然正确。
+- [ ] 真机验收：助手输入区的上下文占用环在真实会话里随步数更新；模型窗口未确认时不显示百分比。
+- [ ] 真机验收：统一控件样式在后台表单、下拉与按钮上的回归；经典黑白主题在后台确实不可改名或删除。
+- [ ] 待官方修复后可回收：上面 6 条被改写/停用的前后端断言（官方 main 当前同样红）。
+
 ## 上游合并（b701b3ef..56b1e36d）的取舍与验证
 
 - 本次并入官方 4 个提交：注册服务协议后台可配置、Agent 上下文计量读数（`cloud_agent_context_pressure.go` / `cloud_agent_usage_anchor.go`）、v35 认证通知增量迁移、注册页与后台设置样式调整。
