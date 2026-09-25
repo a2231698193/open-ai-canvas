@@ -140,9 +140,11 @@ describe("canvas resource mention editor", () => {
         expect(component).toContain('chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference))');
         expect(chat).toContain('sendOnEnter={canSubmit ? "both" : false}');
         expect(chat).toContain("agent-composer-resize-handle");
-        expect(chat).toContain("Enter 发送 · Shift+Enter 换行");
-        expect(css).toContain(".agent-composer-send-hint-full");
-        expect(css).toContain(".agent-composer-send-hint-compact");
+        // 发送提示从独立提示行改为按钮 title（上游重构），断言跟随新写法，意图不变：
+        // 界面仍要明确告知 Enter / ⌘+Enter 的发送语义。
+        expect(chat).toContain("Enter 或 ⌘/Ctrl+Enter 发送");
+        // 上游把发送提示行连同 `.agent-composer-send-hint-*` 样式一起删掉了（官方 main 的这两条
+        // 断言同样失败），不再断言已删除的元素；下面保留仍然有效的滚动容器与工具行断言。
         expect(css).toContain(".agent-composer-prompt-scroll");
         expect(css).not.toContain(".agent-tool-row:hover");
     });

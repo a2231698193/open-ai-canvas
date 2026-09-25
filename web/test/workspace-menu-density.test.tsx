@@ -88,14 +88,21 @@ test("menu surfaces are explicitly scoped and old account inner overrides are re
     expect(css).toContain("box-shadow: none !important");
     expect(css).not.toContain(".ant-modal");
     expect(globals).not.toContain(".workspace-account-popover .ant-popover-inner");
-    expect(globals).toContain(".ant-select:not(.ant-select-open):has(input:focus-visible)");
+    // 统一控件重构后键盘焦点环改由 data-input-modality 承载，旧选择器已从 globals.css 移除
+    // （官方 main 的这条断言同样失败）。改成断言新机制，意图不变：只有键盘操作才出现细焦点环。
+    expect(globals).toContain('.ant-select.app-unified-select[data-input-modality="keyboard"]:not(.ant-select-open)');
     expect(globals).toContain(".ant-select-dropdown, .ant-dropdown-menu) {\n    border: 0 !important;");
     expect(globals).toContain("body.app-spatial-overlays :where(.ant-dropdown-menu, .ant-select-dropdown, .ant-cascader-menus, .ant-mentions-dropdown) {\n        border: 0 !important;");
 });
 
 test("shared single-select popup uses a borderless surface instead of a bright focus frame", () => {
     const select = readFileSync(new URL("../src/components/ui/base/select/select.tsx", import.meta.url), "utf8");
-    expect(select).toContain("rounded-[var(--r-lg)] border-0 bg-surface-strong");
-    expect(select).toContain("focus-visible:ring-1 focus-visible:ring-[var(--control-selected-border)]");
-    expect(select).not.toContain('setPopoverWidth(width + 2)');
+    const globals = readFileSync(new URL("../src/styles/globals.css", import.meta.url), "utf8");
+    // 统一控件重构不再用 Tailwind 子串写死浮层，改由 app-unified-select 类与 globals.css 承担
+    // 无边框表面（官方 main 的旧断言同样失败）。断言改为新入口类与对应 CSS，意图不变。
+    expect(select).toContain("app-unified-select");
+    expect(select).toContain("data-input-modality");
+    expect(globals).toContain(".ant-select.app-unified-select {");
+    expect(globals).toContain("border: 0 !important;");
+    expect(select).not.toContain("setPopoverWidth(width + 2)");
 });

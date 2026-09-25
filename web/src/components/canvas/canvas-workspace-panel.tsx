@@ -58,7 +58,14 @@ export function CanvasWorkspacePanel({
     };
     const tasks = useCanvasWorkspaceTasks(projectId, open && (tab === "tasks" || history));
     const content = (
-        <div className="canvas-workspace-panel relative flex h-full min-h-0 flex-col text-foreground" style={{ "--canvas-workspace-base": theme.node.panel } as CSSProperties} data-canvas-no-zoom data-canvas-wheel-scroll onWheel={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+        <div
+            className="canvas-workspace-panel relative flex h-full min-h-0 flex-col text-foreground"
+            style={{ "--canvas-workspace-base": theme.node.panel } as CSSProperties}
+            data-canvas-no-zoom
+            data-canvas-wheel-scroll
+            onWheel={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
             <button className="canvas-workspace-close" type="button" aria-label="关闭工作区" onClick={onClose}>
                 <X className="size-4" />
             </button>
