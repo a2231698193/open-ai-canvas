@@ -1,4 +1,4 @@
-import { App, Button, Form, Input, Select, Skeleton } from "antd";
+import { App, Button, Form, Input, Skeleton } from "antd";
 import { Switch } from "@/pages/admin/ui/controls";
 import { AlertTriangle, BadgeCheck, ChevronDown, FileText, Globe2, KeyRound, LockKeyhole, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, UserPlus, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { getAdminLinuxDOSetting, getAdminRegistrationSetting, updateAdminLinuxDOSetting, updateAdminRegistrationSetting, type LinuxDOSetting, type RegistrationSetting } from "@/services/api/wallet";
 import { AdminStatusBadge, configuredSecretText, SettingsSectionCard } from "./admin-ui";
+import { Select } from "@/components/ui/base/select";
 
 const DEFAULT_AGREEMENT_TEMPLATE = `一、服务说明与接受
 欢迎使用本平台提供的 AI 影视与内容创作服务。在注册或使用本平台各项功能前，请务必仔细阅读并理解本协议。当您勾选同意或点击注册、登录按钮，即表示您已自愿接受本协议所有条款的约束。

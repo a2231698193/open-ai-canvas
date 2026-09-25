@@ -549,17 +549,19 @@ func cloudAgentContinuationHistory(history []providerTextMessage, state cloudAge
 }
 
 const (
-	cloudAgentCanvasSummaryMaxNodes    = 80
-	cloudAgentCanvasSummaryBudgetBytes = 60 << 10
+	// 目录只回答“画布上有哪些节点”。正文、提示词和结构化表留给 canvas_get_state 按页读取，
+	// 否则几千个节点的 JSON 会在每一次模型调用里重复出现。
+	cloudAgentCanvasSummaryMaxNodes = 120
+	// 单条目录约百字节量级；预算只兜住异常长的 id / 标题，不再为正文预留 60KB。
+	cloudAgentCanvasSummaryBudgetBytes = 24 << 10
 )
 
 func cloudAgentCanvasSummary(canvas *model.CanvasProject) (string, error) {
 	var payload struct {
 		Nodes []struct {
-			ID       string         `json:"id"`
-			Type     string         `json:"type"`
-			Title    string         `json:"title"`
-			Metadata map[string]any `json:"metadata"`
+			ID    string `json:"id"`
+			Type  string `json:"type"`
+			Title string `json:"title"`
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(canvas.PayloadJSON), &payload); err != nil {
@@ -570,19 +572,9 @@ func cloudAgentCanvasSummary(canvas *model.CanvasProject) (string, error) {
 		if index >= cloudAgentCanvasSummaryMaxNodes {
 			break
 		}
-		descriptor, known := cloudAgentNodeCapabilityForType(node.Type)
-		item := map[string]any{"id": truncateRunes(node.ID, 100), "type": truncateRunes(node.Type, 40), "title": truncateRunes(node.Title, 300)}
-		if known {
-			projected, err := cloudAgentProjectNodeFields(map[string]any{"title": node.Title}, node.Metadata, descriptor, descriptor.SummaryFields, 600, false, 0)
-			if err != nil {
-				return "", err
-			}
-			for key, value := range projected {
-				item[key] = value
-			}
-		} else {
+		item := map[string]any{"id": truncateRunes(node.ID, 100), "type": truncateRunes(node.Type, 40), "title": truncateRunes(node.Title, 80)}
+		if _, known := cloudAgentNodeCapabilityForType(node.Type); !known {
 			item["agentSupported"] = false
-			item["agentUnsupportedReason"] = "仅展示基础信息；当前 Agent 不支持操作此类型节点"
 		}
 		nodes = append(nodes, item)
 		encoded, err := json.Marshal(nodes)
@@ -594,7 +586,11 @@ func cloudAgentCanvasSummary(canvas *model.CanvasProject) (string, error) {
 			break
 		}
 	}
-	summary := map[string]any{"title": truncateRunes(canvas.Title, 240), "savedAt": canvas.UpdatedAt, "totalNodes": len(payload.Nodes), "includedNodes": len(nodes), "nodes": nodes}
+	summary := map[string]any{
+		"kind": "node_catalog", "title": truncateRunes(canvas.Title, 240), "savedAt": canvas.UpdatedAt,
+		"totalNodes": len(payload.Nodes), "includedNodes": len(nodes), "nodes": nodes,
+		"read": "目录不含正文。用 canvas_get_state 按页读取；nodeIds 精读单节点，结构化节点用对应 read 工具。",
+	}
 	if omitted := len(payload.Nodes) - len(nodes); omitted > 0 {
 		summary["omittedNodes"] = omitted
 	}

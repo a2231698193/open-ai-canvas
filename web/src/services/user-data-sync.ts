@@ -248,12 +248,10 @@ async function waitForRemoteProjectLoads() {
 }
 
 export async function loadAssetLibraryPage(options: Parameters<typeof listRemoteAssetsPage>[0]) {
-    const epoch = sessionEpoch;
     const result = await listRemoteAssetsPage(options);
-    await withRemoteUserDataSyncExclusive(async () => {
-        if (epoch !== sessionEpoch) throw new Error("账号已切换，请重新读取素材");
-        acceptRemoteAssets(result.assets);
-    });
+    // 分页列表是展示数据，不是同步快照。不要把每一页都合并进全局
+    // asset store，否则滚动/翻页会不断重建并持久化整个素材数组。
+    // 真正被画布引用的素材仍由 loadAssetsForUse 按 ID 拉取并写入 store。
     return { ...result, assets: parseAssetRecordList(result.assets) };
 }
 
@@ -280,7 +278,8 @@ function collectAssetIds(value: unknown, ids = new Set<string>()): Set<string> {
 }
 
 async function loadReferencedAssets(ids: Iterable<string>) {
-    const pending = [...new Set(ids)].filter((id) => !verifiedAssets.has(id));
+    const loadedIds = new Set(useAssetStore.getState().assets.map((asset) => asset.id));
+    const pending = [...new Set(ids)].filter((id) => !loadedIds.has(id) || !verifiedAssets.has(id));
     for (let offset = 0; offset < pending.length; offset += 100) {
         const { assets } = await getRemoteAssetsByIds(pending.slice(offset, offset + 100));
         acceptRemoteAssets(assets);

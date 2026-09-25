@@ -452,17 +452,25 @@ func TestAppearanceSkinLibrarySupportsEditableCopiesAndProtectsClassic(t *testin
 		t.Fatalf("custom skin round trip = %#v", updated)
 	}
 
+	classic := defaultClassicAppearanceSkin()
 	withoutClassic := append([]AppearanceSkinTheme(nil), themes[1:]...)
-	_, err = svc.UpdateAppearance(admin, AppearanceSetting{BrandName: "HIMA Studio", BrandSlug: "hima-studio", AuthHeroTitle: defaultAppearanceHeroTitle, SkinID: custom.ID, SkinThemes: withoutClassic})
-	if err == nil || !strings.Contains(err.Error(), "不能修改或删除") {
-		t.Fatalf("missing classic error = %v", err)
+	restored, err := svc.UpdateAppearance(admin, AppearanceSetting{BrandName: "HIMA Studio", BrandSlug: "hima-studio", AuthHeroTitle: defaultAppearanceHeroTitle, SkinID: custom.ID, SkinThemes: withoutClassic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.SkinThemes[0] != classic {
+		t.Fatalf("missing classic was not restored = %#v", restored.SkinThemes[0])
 	}
 
 	mutatedClassic := append([]AppearanceSkinTheme(nil), themes...)
 	mutatedClassic[0].Name = "改名"
-	_, err = svc.UpdateAppearance(admin, AppearanceSetting{BrandName: "HIMA Studio", BrandSlug: "hima-studio", AuthHeroTitle: defaultAppearanceHeroTitle, SkinID: custom.ID, SkinThemes: mutatedClassic})
-	if err == nil || !strings.Contains(err.Error(), "不能修改或删除") {
-		t.Fatalf("mutated classic error = %v", err)
+	mutatedClassic[0].Tokens.Light.Primary = "#000000"
+	overwritten, err := svc.UpdateAppearance(admin, AppearanceSetting{BrandName: "HIMA Studio", BrandSlug: "hima-studio", AuthHeroTitle: defaultAppearanceHeroTitle, SkinID: custom.ID, SkinThemes: mutatedClassic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overwritten.SkinThemes[0] != classic || overwritten.Public.ActiveSkin.ID != custom.ID {
+		t.Fatalf("mutated classic was not overwritten = %#v", overwritten.SkinThemes[0])
 	}
 
 	invalidColor := append([]AppearanceSkinTheme(nil), themes...)

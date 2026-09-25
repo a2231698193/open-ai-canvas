@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Button, ConfigProvider, Select, Tabs } from "antd";
+import { Button, ConfigProvider, Tabs } from "antd";
 import { ArrowDown, ArrowRight, ArrowUpRight, Menu, Pause, Play, X } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand/brand-logo";
@@ -9,6 +9,7 @@ import { useAppearanceStore } from "@/stores/use-appearance-store";
 
 import { chapters, getWelcomeLook, showcases, welcomeLooks, type WelcomeLook } from "./story";
 import "./welcome.css";
+import { Select } from "@/components/ui/base/select";
 
 const StoryReel = lazy(() => import("./story-reel"));
 

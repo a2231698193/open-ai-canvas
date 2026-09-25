@@ -54,16 +54,16 @@ func TestCloudAgentMixedCanvasReadsUnsupportedNodesWithoutGrantingCapabilities(t
 	}
 }
 
-func TestCloudAgentCanvasSummaryTruncatesInsteadOfRejecting(t *testing.T) {
-	nodes := make([]map[string]any, 0, 50)
-	content := strings.Repeat("镜", 600)
-	for index := 0; index < 50; index++ {
+func TestCloudAgentCanvasSummaryIsACatalogNotNodeBodies(t *testing.T) {
+	body := strings.Repeat("镜", 4000)
+	nodes := make([]map[string]any, 0, 200)
+	for index := 0; index < 200; index++ {
 		nodes = append(nodes, map[string]any{
 			"id":    fmt.Sprintf("node-%d", index),
 			"type":  "text",
 			"title": fmt.Sprintf("镜头 %d %s", index, strings.Repeat("标题", 40)),
 			"metadata": map[string]any{
-				"content": content,
+				"content": body, "prompt": "PRIVATE_PROMPT", "apiKey": "PRIVATE_SENTINEL",
 			},
 		})
 	}
@@ -73,22 +73,25 @@ func TestCloudAgentCanvasSummaryTruncatesInsteadOfRejecting(t *testing.T) {
 	}
 	summary, err := cloudAgentCanvasSummary(&model.CanvasProject{Title: "大画布", PayloadJSON: string(raw)})
 	if err != nil {
-		t.Fatalf("large canvas summary rejected: %v", err)
+		t.Fatalf("large canvas catalog rejected: %v", err)
+	}
+	if strings.Contains(summary, body[:40]) || strings.Contains(summary, "PRIVATE_PROMPT") || strings.Contains(summary, "PRIVATE_SENTINEL") || strings.Contains(summary, `"content"`) {
+		t.Fatal("catalog leaked node bodies or metadata")
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(summary), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed["totalNodes"] != float64(50) {
-		t.Fatalf("totalNodes=%v", parsed["totalNodes"])
+	if parsed["kind"] != "node_catalog" || parsed["totalNodes"] != float64(200) {
+		t.Fatalf("catalog identity = %+v", parsed)
 	}
 	included, _ := parsed["includedNodes"].(float64)
 	omitted, _ := parsed["omittedNodes"].(float64)
-	if included <= 0 || omitted <= 0 || int(included+omitted) != 50 {
-		t.Fatalf("expected truncation, included=%v omitted=%v", included, omitted)
+	if included <= 0 || omitted <= 0 || int(included+omitted) != 200 || included > float64(cloudAgentCanvasSummaryMaxNodes) {
+		t.Fatalf("expected a bounded catalog, included=%v omitted=%v", included, omitted)
 	}
-	if len(summary) > 64000+4096 {
-		t.Fatalf("truncated summary still huge: %d", len(summary))
+	if len(summary) > cloudAgentCanvasSummaryBudgetBytes+4096 {
+		t.Fatalf("catalog still carries canvas-sized payload: %d", len(summary))
 	}
 }
 

@@ -773,6 +773,7 @@ export function AgentChatComposer({
     onAddFiles,
     onRemoveAttachment,
     left,
+    submitAccessory,
     onStop,
     stopping,
     references = [],
@@ -793,6 +794,8 @@ export function AgentChatComposer({
     onAddFiles?: (files: FileList | File[] | null) => void | Promise<void>;
     onRemoveAttachment?: (id: string) => void;
     left?: ReactNode;
+    /** 发送按钮左侧的附属控件，例如上下文用量环。 */
+    submitAccessory?: ReactNode;
     /** 供「@」插入的画布节点/素材/技能引用候选（可选，默认空，缺省时退化为普通输入框） */
     references?: CanvasResourceReference[];
     /** 供「/」弹出的技能候选（可选） */
@@ -1058,12 +1061,7 @@ export function AgentChatComposer({
                         {left}
                     </div>
                     <div className="agent-composer-submit flex items-center gap-2">
-                        {disabled ? null : (
-                            <span className="agent-composer-send-hint">
-                                <span className="agent-composer-send-hint-full">{canStop ? "运行中：发送即插话，下一步生效" : "Enter 发送 · Shift+Enter 换行"}</span>
-                                <span className="agent-composer-send-hint-compact">{canStop ? "运行中可插话" : "Enter 发送"}</span>
-                            </span>
-                        )}
+                        {submitAccessory}
                         {canStop ? (
                             <motion.button
                                 type="button"
@@ -1091,6 +1089,7 @@ export function AgentChatComposer({
                             whileTap={canSubmit && !reducedMotion ? { scale: 0.9, y: 1 } : undefined}
                             animate={stopping && !reducedMotion ? { scale: [1, 0.94, 1] } : { scale: 1, rotate: 0 }}
                             transition={sending && !reducedMotion ? { duration: 0.42, ease: "easeOut" } : { type: "spring", stiffness: 420, damping: 24 }}
+                            data-icon-only
                             className="agent-composer-send grid size-7 shrink-0 place-items-center rounded-full p-0 outline-none transition-[background-color,box-shadow,color,transform] duration-200 focus-visible:ring-2 focus-visible:ring-current/35 disabled:cursor-not-allowed"
                             style={{
                                 background: canSubmit || sending ? theme.accent.primary : theme.spatial.surface,

@@ -1626,8 +1626,6 @@
     }
 
     body.app-spatial-overlays :where(
-        .ant-dropdown-menu,
-        .ant-select-dropdown,
         .ant-popover-container,
         .ant-picker-dropdown .ant-picker-panel-container,
         .ant-cascader-menus,
@@ -1651,9 +1649,11 @@
         border-radius: 8px !important;
     }
 
-    /* 展开菜单（下拉/弹出）取消阴影：层级由边框 + 背景对比表达 */
-    body.app-spatial-overlays :where(.ant-dropdown-menu, .ant-select-dropdown, .ant-popover-container, .ant-cascader-menus, .ant-mentions-dropdown) {
-        box-shadow: none !important;
+    /* 下拉层用背景和柔和阴影建立层次，不再用亮色描边圈住选项。 */
+    body.app-spatial-overlays :where(.ant-dropdown-menu, .ant-select-dropdown, .ant-cascader-menus, .ant-mentions-dropdown) {
+        border: 0 !important;
+        background: var(--workspace-overlay-bg-strong) !important;
+        box-shadow: var(--elevation-overlay) !important;
     }
 
     body.app-spatial-overlays :where(
@@ -2086,12 +2086,13 @@
 
     .canvas-topbar-cluster {
         min-height: var(--space-10);
-        border: 0;
-        border-radius: var(--r-lg);
-        background: var(--dock-surface);
+        border: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+        border-radius: var(--r-2xl);
+        background: color-mix(in srgb, var(--dock-surface) 72%, transparent) !important;
         padding: var(--space-half) var(--space-2);
-        box-shadow: var(--elevation-overlay);
-        backdrop-filter: blur(var(--dock-blur)) saturate(var(--glass-saturate));
+        box-shadow: 0 10px 28px color-mix(in srgb, black 16%, transparent);
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        backdrop-filter: blur(22px) saturate(140%);
     }
 
     /* 顶部操作区复用底部 FloatingDock 的命令状态，保持两组浮层在不同主题下有同一套反馈。 */
@@ -7319,7 +7320,7 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     .aceternity-floating-dock {
         isolation: isolate;
         transform-origin: bottom center;
-        box-shadow: 0 24px 72px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+        box-shadow: 0 24px 72px rgba(15, 23, 42, 0.18);
     }
 
     /* Dock 命令按钮：BottomMenu 式干净状态——透明默认 + hover/active 仅换底色，
@@ -7889,22 +7890,23 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
     }
 
     .canvas-floating-dock {
-        border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent) !important;
+        border: 0 !important;
+        border-radius: var(--r-2xl) !important;
+        background: color-mix(in srgb, var(--dock-surface) 72%, transparent) !important;
         max-width: calc(100vw - 24px);
         scrollbar-width: none;
-        box-shadow:
-            0 1px 2px rgba(15, 23, 42, 0.06),
-            0 10px 26px rgba(15, 23, 42, 0.08);
+        box-shadow: 0 10px 28px color-mix(in srgb, black 16%, transparent) !important;
+        -webkit-backdrop-filter: blur(22px) saturate(140%);
+        backdrop-filter: blur(22px) saturate(140%);
+    }
+
+    .canvas-floating-dock .aceternity-dock-command:not(.is-labeled) {
+        border: 0 !important;
+        padding: 0 !important;
     }
 
     .canvas-floating-dock::-webkit-scrollbar {
         display: none;
-    }
-
-    .dark .canvas-floating-dock {
-        box-shadow:
-            0 1px 1px rgba(0, 0, 0, 0.28),
-            0 12px 28px rgba(0, 0, 0, 0.3);
     }
 
     .canvas-floating-panel {
@@ -12484,7 +12486,16 @@ html:not(.dark) .creation-history-drawer-root {
     border-color: color-mix(in srgb, var(--foreground) 42%, var(--border)) !important;
 }
 
-:where(.ant-select-dropdown, .ant-dropdown-menu, .ant-popover-inner, .ant-picker-dropdown .ant-picker-panel-container) {
+:where(.ant-select-dropdown, .ant-dropdown-menu) {
+    border: 0 !important;
+    border-radius: var(--r-lg) !important;
+    background: var(--popover) !important;
+    background-image: none !important;
+    box-shadow: var(--elevation-overlay) !important;
+    backdrop-filter: none !important;
+}
+
+:where(.ant-popover-inner, .ant-picker-dropdown .ant-picker-panel-container) {
     border: 1px solid var(--border) !important;
     border-radius: var(--r-md) !important;
     background: var(--popover) !important;
@@ -18621,7 +18632,200 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
 }
 .app-user-workspace :where(.ant-input:hover, .ant-input-affix-wrapper:hover, .ant-select-selector:hover, .ant-picker:hover) { border-color: var(--user-border-strong) !important; }
 .app-user-workspace :where(.ant-input:focus, .ant-input-affix-wrapper-focused, .ant-select-focused .ant-select-selector, .ant-picker-focused) { border-color: var(--user-border-strong) !important; box-shadow: none !important; }
-.app-user-workspace .ant-select:has(input:focus-visible) {
-    outline: var(--focus-ring-width, 2px) solid var(--control-focus-ring);
+.app-user-workspace .ant-select.app-unified-select[data-input-modality="keyboard"]:not(.ant-select-open) {
+    outline: 1px solid var(--user-border-strong);
     outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------
+   Unified select contract
+   所有 Select / TreeSelect / Cascader / AutoComplete 共用同一套触发器和浮层
+   语义。尤其禁止鼠标点击后出现高亮白边；键盘焦点仍保留可见 ring。
+   ------------------------------------------------------------------------- */
+:where(.app-unified-select, .ant-select, .ant-tree-select, .ant-cascader-picker, .ant-auto-complete) {
+    --unified-select-surface: var(--control-surface, color-mix(in srgb, var(--foreground) 5%, transparent));
+    --unified-select-surface-hover: var(--control-surface-hover, color-mix(in srgb, var(--foreground) 9%, transparent));
+    --unified-select-border: transparent;
+    --unified-select-focus: var(--control-focus-ring, color-mix(in srgb, var(--foreground) 32%, transparent));
+}
+
+:where(.ant-select .ant-select-selector, .ant-tree-select .ant-select-selector, .ant-cascader-picker, .ant-auto-complete .ant-select-selector) {
+    border-color: var(--unified-select-border) !important;
+    background: var(--unified-select-surface) !important;
+    box-shadow: none !important;
+    transition: background-color var(--motion-state, 180ms) ease, border-color var(--motion-state, 180ms) ease !important;
+}
+
+:where(.ant-select:not(.ant-select-disabled):hover .ant-select-selector, .ant-tree-select:not(.ant-select-disabled):hover .ant-select-selector, .ant-cascader-picker:hover, .ant-auto-complete:not(.ant-select-disabled):hover .ant-select-selector) {
+    border-color: var(--unified-select-border) !important;
+    background: var(--unified-select-surface-hover) !important;
+}
+
+/* 点击打开时只改变表面，不制造白色外框；焦点可见性只交给键盘路径。 */
+:where(.ant-select-focused .ant-select-selector, .ant-select-open .ant-select-selector, .ant-tree-select-focused .ant-select-selector, .ant-cascader-picker-focused, .ant-auto-complete.ant-select-focused .ant-select-selector) {
+    border-color: var(--unified-select-border) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+:where(.ant-select:focus-visible, .ant-tree-select:focus-visible, .ant-cascader-picker:focus-visible, .ant-auto-complete:focus-visible) {
+    outline: 2px solid var(--unified-select-focus) !important;
+    outline-offset: 2px;
+}
+
+:where(.ant-select-dropdown, .ant-dropdown-menu, .ant-cascader-dropdown, .ant-tree-select-dropdown, .ant-picker-dropdown) {
+    border: 0 !important;
+    border-radius: var(--r-lg, 12px) !important;
+    background: var(--popover) !important;
+    background-image: none !important;
+    box-shadow: var(--elevation-overlay) !important;
+}
+
+:where(.ant-select-item-option, .ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title, .ant-cascader-menu-item, .ant-tree-select-tree-node-content-wrapper) {
+    min-height: 36px;
+    margin-block: 2px;
+    border-radius: var(--r-sm, 8px) !important;
+    color: var(--popover-foreground) !important;
+}
+
+:where(.ant-select-item-option-active:not(.ant-select-item-option-disabled), .ant-dropdown-menu-item:hover, .ant-cascader-menu-item-active, .ant-tree-select-tree-node-content-wrapper:hover) {
+    background: color-mix(in srgb, var(--popover-foreground) 7%, var(--popover)) !important;
+}
+
+:where(.ant-select-item-option-selected:not(.ant-select-item-option-disabled), .ant-dropdown-menu-item-selected, .ant-tree-select-tree-node-content-wrapper.ant-tree-node-selected) {
+    background: color-mix(in srgb, var(--popover-foreground) 12%, var(--popover)) !important;
+    color: var(--popover-foreground) !important;
+    font-weight: 600;
+}
+
+/* 旧的 workspace 局部规则曾用 outline 表达 focus，鼠标点击时会误触发白边；
+   这里只保留键盘 focus-visible 的可见 ring。 */
+.app-user-workspace .ant-select.app-unified-select[data-input-modality="keyboard"]:not(.ant-select-open) {
+    outline: 2px solid var(--unified-select-focus) !important;
+    outline-offset: 2px;
+}
+
+/* 工作台页面已有更具体的控件规则；统一契约必须覆盖它们，确保打开/悬停不再出现白色描边。 */
+.app-user-workspace :where(.app-unified-select .ant-select-selector, .ant-select-focused .ant-select-selector, .ant-select-open .ant-select-selector, .ant-tree-select-focused .ant-select-selector) {
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.app-user-workspace :where(.app-unified-select:hover .ant-select-selector, .ant-select:not(.ant-select-disabled):hover .ant-select-selector, .ant-tree-select:not(.ant-select-disabled):hover .ant-select-selector) {
+    border-color: transparent !important;
+}
+
+/* -------------------------------------------------------------------------
+   Unified Select v2
+   Ant Design 6 把 Select 的边框、背景和 focus 状态放在 .ant-select 根节点，
+   不再是旧版的 .ant-select-selector。这里是统一组件的唯一视觉出口：默认 filled
+   只是借用 AntD 的交互语义，实际渲染为无描边的柔和表面，避免各页面出现不同的
+   outlined 下拉框。键盘 focus-visible 仍保留可发现的焦点提示。
+   ------------------------------------------------------------------------- */
+.ant-select.app-unified-select {
+    --unified-select-surface: color-mix(in srgb, var(--foreground) 6%, transparent);
+    --unified-select-surface-hover: color-mix(in srgb, var(--foreground) 10%, transparent);
+    --unified-select-surface-open: color-mix(in srgb, var(--foreground) 12%, transparent);
+    min-width: 128px;
+    min-height: 36px;
+    border: 0 !important;
+    border-width: 0 !important;
+    border-color: transparent !important;
+    border-radius: var(--r-xl) !important;
+    background: var(--unified-select-surface) !important;
+    box-shadow: none !important;
+    outline: none !important;
+    transition: background-color var(--motion-state, 180ms) ease, color var(--motion-state, 180ms) ease !important;
+}
+
+.ant-select.app-unified-select--pill {
+    border-radius: var(--r-full) !important;
+    padding-inline: 4px;
+}
+
+.ant-select.app-unified-select.ant-select-sm {
+    min-width: 112px;
+}
+
+.ant-select.app-unified-select.ant-select-lg {
+    min-width: 144px;
+}
+
+.ant-select.app-unified-select--field {
+    border-radius: var(--r-lg) !important;
+}
+
+.ant-select.app-unified-select:hover:not(.ant-select-disabled) {
+    border: 0 !important;
+    border-color: transparent !important;
+    background: var(--unified-select-surface-hover) !important;
+    box-shadow: none !important;
+}
+
+.ant-select.app-unified-select.ant-select-focused,
+.ant-select.app-unified-select.ant-select-open {
+    border: 0 !important;
+    border-width: 0 !important;
+    border-color: transparent !important;
+    background: var(--unified-select-surface-open) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.ant-select.app-unified-select .ant-select-content,
+.ant-select.app-unified-select .ant-select-selector,
+.ant-select.app-unified-select .ant-select-selection-search-input {
+    border: 0 !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.ant-select.app-unified-select .ant-select-arrow {
+    color: color-mix(in srgb, var(--foreground) 48%, transparent) !important;
+    transition: color var(--motion-state, 180ms) ease, transform var(--motion-state, 180ms) ease !important;
+}
+
+.ant-select.app-unified-select.ant-select-open .ant-select-arrow {
+    color: color-mix(in srgb, var(--foreground) 72%, transparent) !important;
+}
+
+.ant-select.app-unified-select[data-input-modality="pointer"],
+.ant-select.app-unified-select[data-input-modality="unknown"],
+.ant-select.app-unified-select[data-input-modality="keyboard"].ant-select-open {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.ant-select.app-unified-select[data-input-modality="keyboard"]:not(.ant-select-open) {
+    outline: 1px solid color-mix(in srgb, var(--ring) 30%, transparent) !important;
+    outline-offset: 0;
+}
+
+.ant-select.app-unified-select .ant-select-input:focus {
+    outline: 0 !important;
+    box-shadow: none !important;
+}
+
+.ant-select-dropdown {
+    border: 0 !important;
+    border-color: transparent !important;
+    border-radius: var(--r-2xl) !important;
+    background: var(--popover) !important;
+    background-image: none !important;
+    box-shadow: var(--elevation-overlay) !important;
+}
+
+.ant-select-dropdown .ant-select-item-option {
+    border: 0 !important;
+    border-radius: var(--r-md) !important;
+    background: transparent !important;
+    color: var(--popover-foreground) !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled),
+.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+    border: 0 !important;
+    background: color-mix(in srgb, var(--popover-foreground) 10%, var(--popover)) !important;
+    color: var(--popover-foreground) !important;
 }
