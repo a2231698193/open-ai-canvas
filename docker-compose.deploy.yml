@@ -28,7 +28,8 @@ services:
 
   migrate:
     image: ghcr.io/ddcat-ai/open-ai-canvas-backend:${CANVAS_IMAGE_TAG:-latest}
-    command: ["migrate-schema", "up"]
+    entrypoint: ["migrate-schema"]
+    command: ["up"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

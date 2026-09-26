@@ -39,7 +39,8 @@ services:
         ALPINE_IMAGE: ${ALPINE_IMAGE:-docker.m.daocloud.io/library/alpine:3.22}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         ALPINE_MIRROR: ${ALPINE_MIRROR:-https://mirrors.aliyun.com/alpine}
-    command: ["migrate-schema", "up"]
+    entrypoint: ["migrate-schema"]
+    command: ["up"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
