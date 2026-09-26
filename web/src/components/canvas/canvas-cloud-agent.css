@@ -388,8 +388,20 @@
     scroll-padding-block: var(--space-5);
 }
 
+.agent-conversation-messages {
+    --agent-thought-icon: 16px;
+    --agent-thought-gap: 9px;
+    --agent-summary-inset: 4px;
+    min-width: 0;
+}
+
 .agent-conversation-messages > * + * {
     margin-top: var(--space-4);
+}
+
+/* 状态行的图标只是语义标记，不应把正文向右推成另一条内容轴。 */
+.agent-status-message {
+    min-width: 0;
 }
 
 .agent-message-user {
@@ -791,8 +803,38 @@
     border: 0;
     border-radius: 8px;
     background: transparent;
-    padding: 5px 2px;
+    padding: 5px 0;
     transition: transform 160ms ease;
+}
+
+/* Tool calls are secondary activity, not chat content. Keep the receipt row
+   scannable and reveal node links / diagnostics only on demand. */
+.agent-tool-details {
+    min-width: 0;
+}
+
+.agent-tool-summary-toggle {
+    display: flex;
+    align-items: flex-start;
+}
+
+.agent-tool-summary-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.agent-tool-chevron {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, currentColor 48%, transparent);
+    transition: transform 160ms ease;
+}
+
+.agent-tool-details[open] .agent-tool-chevron {
+    transform: rotate(180deg);
+}
+
+.agent-tool-detail-body {
+    margin: -1px 0 4px 31px;
+    padding: 0 2px 4px;
 }
 
 /* 没有节点明细的“读取信息 / 操作画布”只保留时间线语义，不再撑成一张空卡片。 */
@@ -801,7 +843,7 @@
     border-color: transparent;
     border-radius: 9px;
     background: transparent;
-    padding: 3px 2px;
+    padding: 3px 0;
 }
 
 .agent-tool-row--read {
@@ -816,12 +858,20 @@
     --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
 }
 
+/*
+ * 看图（canvas_inspect_image）：唯一会把图片字节真交给模型的档位，用主题强调色把它与
+ * "读清单 / 写画布"分开。取色走面板注入的 --agent-accent，不写字面值。
+ */
+.agent-tool-row--vision {
+    --agent-tool-accent: var(--agent-accent, var(--foreground));
+}
+
 .agent-tool-header {
     display: flex;
     min-width: 0;
     align-items: center;
     flex-wrap: wrap;
-    gap: 7px;
+    gap: 6px;
     line-height: 18px;
 }
 
@@ -839,6 +889,14 @@
     font-weight: 700;
     letter-spacing: 0.01em;
     line-height: 15px;
+}
+
+.agent-tool-label {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 15px;
+    white-space: nowrap;
 }
 
 .agent-tool-summary {
@@ -907,7 +965,166 @@
 
 @media (prefers-reduced-motion: reduce) {
     .agent-tool-row,
+    .agent-tool-chevron,
     .agent-tool-action-link { transition: none; }
+}
+
+/*
+ * 操作记录折叠行：一轮运行动辄十几条工具记录，逐条铺开会把正文挤出可视区。
+ * 默认只报最新一步，点击展开完整记录；失败时整行转红并默认展开（见 AgentOperationFeed）。
+ * 类别徽标复用工具卡的 chip（.agent-tool-category），所以这里要给出 accent 默认值。
+ */
+.agent-operation-feed {
+    --agent-tool-accent: color-mix(in srgb, var(--foreground) 62%, transparent);
+    /* 操作流与正文共用同一左对齐轴。不要用竖线把每条工具记录切成
+       独立的日志栏：用户首先要看到的是 Agent 的输出和当前动作。 */
+    min-width: 0;
+}
+
+/* 看图是唯一的"画面"档，给它主题强调色，和清单/写画布区分开（不写字面颜色）。 */
+.agent-operation-feed[data-agent-category="vision"] {
+    --agent-tool-accent: var(--agent-accent, var(--foreground));
+}
+
+.agent-operation-toggle {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    padding: 5px 0;
+    color: color-mix(in srgb, var(--agent-ink, currentColor) 72%, transparent);
+    font-size: var(--fs-caption);
+    line-height: 18px;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color 140ms ease,
+        color 140ms ease;
+}
+
+/* The folded receipt is a single sentence, not another pill-shaped card. */
+.agent-operation-list .agent-tool-category {
+    background: transparent;
+    padding-inline: 0;
+}
+
+.agent-operation-kind {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--agent-tool-accent) 86%, var(--foreground));
+    font-size: var(--fs-caption);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.agent-operation-toggle:hover {
+    background: var(--agent-surface-soft, color-mix(in srgb, var(--foreground) 4%, transparent));
+    color: var(--agent-ink, var(--foreground));
+}
+
+.agent-operation-toggle:focus-visible {
+    outline: 2px solid var(--agent-focus-ring, var(--foreground));
+    outline-offset: 1px;
+}
+
+.agent-operation-latest {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * 流光：把文字本身当渐变蒙版，让一道高光扫过。底色与高光都从 --agent-ink 派生——不能用
+ * currentColor，因为开启 background-clip 后 color 是 transparent，会自指成空。
+ * 动画只挂在 .is-live 上：面板按"末尾段 + 还在跑"下发，任务完成流光立即停。
+ */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .agent-operation-latest {
+        background-image: linear-gradient(
+            100deg,
+            color-mix(in srgb, var(--agent-operation-ink, var(--agent-ink, currentColor)) 74%, transparent) 0%,
+            color-mix(in srgb, var(--agent-operation-ink, var(--agent-ink, currentColor)) 74%, transparent) 42%,
+            var(--agent-operation-ink, var(--agent-ink, currentColor)) 50%,
+            color-mix(in srgb, var(--agent-operation-ink, var(--agent-ink, currentColor)) 74%, transparent) 58%,
+            color-mix(in srgb, var(--agent-operation-ink, var(--agent-ink, currentColor)) 74%, transparent) 100%
+        );
+        background-position: 100% 0;
+        background-size: 240% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
+    .agent-operation-feed.is-live .agent-operation-latest {
+        animation: agent-operation-sheen 3.6s linear infinite;
+    }
+}
+
+/* 失败/被拒的一步：折叠行跟工具卡同一套红，不用主题色盖掉语义。 */
+.agent-operation-feed.is-failed .agent-operation-latest {
+    --agent-operation-ink: #dc2626;
+}
+
+.agent-operation-count {
+    flex: 0 0 auto;
+    padding: 0 2px;
+    color: color-mix(in srgb, var(--agent-ink, currentColor) 62%, transparent);
+    font-size: var(--fs-tiny);
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+}
+
+.agent-operation-chevron {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    opacity: 0.55;
+    transition: transform 180ms ease;
+}
+
+.agent-operation-feed.is-open .agent-operation-chevron {
+    transform: rotate(180deg);
+}
+
+.agent-operation-list {
+    margin-top: 2px;
+}
+
+.agent-operation-list > * + * {
+    margin-top: var(--space-1);
+}
+
+/*
+ * 展开后的每一步不再重复状态图标（勾/叉）：状态与错误已经由卡片文字与折叠行颜色表达，
+ * 一列彩色勾只会把"记录"读成"成绩单"。失败那一步的文字仍是红的（AgentToolCard 内联色）。
+ */
+.agent-operation-list .agent-tool-status {
+    display: none;
+}
+
+@keyframes agent-operation-sheen {
+    from {
+        background-position: 130% 0;
+    }
+    to {
+        background-position: -30% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* 与 .is-live 规则同特异性，否则关不掉动画。 */
+    .agent-operation-feed.is-live .agent-operation-latest {
+        animation: none;
+        background-position: 0% 0;
+    }
+    .agent-operation-toggle,
+    .agent-operation-chevron {
+        transition: none;
+    }
 }
 
 .agent-composer-prompt-scroll {
@@ -1120,9 +1337,19 @@
  * 比工具日志更安静、比正文更有层次。使用当前画布主题的 accent，避免
  * 固定紫色的 AI 默认样式，同时把实时状态、摘要内容和展开动作分开。
  */
+/* 信息层级：正文 / 工具调用 / 模型思考三段只靠位置、字号和对比度分层。 */
 .agent-reasoning {
     min-width: 0;
-    color: color-mix(in srgb, var(--foreground) 64%, transparent);
+    color: color-mix(in srgb, var(--foreground) 58%, transparent);
+}
+
+/* 系统行、错误行和审批卡保留一个窄图标列，但不再向左挂出一条公共竖轨。 */
+.agent-timeline-marker {
+    display: flex;
+    width: 20px;
+    flex: 0 0 20px;
+    align-self: stretch;
+    justify-content: center;
 }
 
 .agent-reasoning-card {
@@ -1143,11 +1370,11 @@
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 9px;
+    gap: 0;
     cursor: pointer;
     list-style: none;
-    padding: 6px 4px;
-    color: color-mix(in srgb, var(--foreground) 72%, transparent);
+    padding: 6px 0;
+    color: color-mix(in srgb, var(--foreground) 66%, transparent);
     user-select: none;
 }
 
@@ -1159,16 +1386,17 @@
     background: color-mix(in srgb, var(--agent-reasoning-accent) 4%, transparent);
 }
 
+/* 只留那颗星：圆底是上一版的装饰，去掉后与时间线标记同一种"无底图标"语言。 */
 .agent-reasoning-icon {
     display: grid;
-    width: 25px;
-    height: 25px;
-    flex: 0 0 25px;
+    width: var(--agent-thought-icon, 16px);
+    height: var(--agent-thought-icon, 16px);
+    flex: 0 0 var(--agent-thought-icon, 16px);
     place-items: center;
     border: 0;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--agent-reasoning-accent) 10%, transparent);
-    color: var(--agent-reasoning-accent);
+    border-radius: 0;
+    background: transparent;
+    color: color-mix(in srgb, var(--agent-reasoning-accent) 82%, var(--foreground));
 }
 
 .agent-reasoning-copy {
@@ -1182,9 +1410,9 @@
 .agent-reasoning-title {
     min-width: 0;
     overflow: hidden;
-    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+    color: color-mix(in srgb, var(--foreground) 72%, transparent);
     font-size: 12px;
-    font-weight: 650;
+    font-weight: 600;
     line-height: 17px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1193,7 +1421,7 @@
 .agent-reasoning-subtitle {
     min-width: 0;
     overflow: hidden;
-    color: color-mix(in srgb, var(--foreground) 43%, transparent);
+    color: color-mix(in srgb, var(--foreground) 38%, transparent);
     font-size: 11px;
     line-height: 16px;
     text-overflow: ellipsis;
@@ -1250,17 +1478,17 @@
 .agent-reasoning-content {
     position: relative;
     display: flex;
-    max-height: min(232px, 30vh);
+    max-height: min(180px, 24vh);
     gap: 0;
     overflow: auto;
     border-top: 0;
-    padding: 4px 10px 10px 38px;
+    padding: 4px 0 10px;
     scrollbar-gutter: stable;
 }
 
 .agent-reasoning-text {
     min-width: 0;
-    color: color-mix(in srgb, var(--foreground) 58%, transparent);
+    color: color-mix(in srgb, var(--foreground) 54%, transparent);
     font-size: 12px;
     line-height: 1.75;
     white-space: pre-wrap;

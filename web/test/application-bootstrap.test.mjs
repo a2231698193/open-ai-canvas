@@ -55,7 +55,7 @@ for (const [dev, pathname] of [
     [true, "/dev/director-repro/"],
     [true, "/dev/director-repro-other"],
 ]) {
-    test(`appearance still blocks normal startup: dev=${dev} path=${pathname}`, async () => {
+    test(`appearance completes before normal startup: dev=${dev} path=${pathname}`, async () => {
         const entry = await prepareEntry(dev, pathname);
         expect(entry.events).toEqual(["appearance"]);
         entry.resolveAppearance();

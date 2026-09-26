@@ -21,6 +21,7 @@ func Models() []any {
 		&model.CloudAgentMessageRecord{},
 		&model.CloudAgentCanvasMutation{},
 		&model.CloudAgentResourceLease{},
+		&model.CloudAgentGeminiCache{},
 		&model.AgentProfile{},
 		&model.AgentLesson{},
 		&model.AgentMemorySetting{},
