@@ -30,3 +30,5 @@ Agent 执行时不会直接创建任务，而是返回 `needs_confirmation`。�
 `input` 不完整时，服务器会在用户确认后拒绝任务。确认之前可以修改文件再重新执行。
 
 `task get` 返回任务状态和安全错误。用它判断结果，不要根据一段自然语言猜测失败原因。
+
+任务进入 `succeeded`、`failed` 或 `cancelled` 后，服务端会把终态写回它绑定的画布节点，不需要打开网页刷新：`canvas state` 会看到 `status` 从 `loading` 变成 `success`，失败则变成 `error` 并带上安全原因。拿到成功状态后用 `canvas_inspect_media`（图片用 `canvas_inspect_image`）取短时链接去下载作品。节点已经绑定任务时不要重复提交同一笔生成。

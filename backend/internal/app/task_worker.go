@@ -127,7 +127,45 @@ func (w *taskWorkerCoordinator) processNextTask() error {
 	return w.processClaimedTask(task, nil)
 }
 
+// processClaimedTask 执行一条领取到的任务，并在任务进入终态后补上命令行生成的画布回写。
+//
+// 回写放在这里而不是 provider 分支里：一条任务有成功、失败、取消、结果保存失败等多条收尾
+// 路径（见 terminalCoordinator），逐条挂容易漏。这里统一在收尾之后按数据库里的终态判断一次。
 func (w *taskWorkerCoordinator) processClaimedTask(task *model.Task, globalSlot *platform.SlotLease) error {
+	err := w.processClaimedTaskExecution(task, globalSlot)
+	w.writebackCLIGeneratedMedia(task)
+	return err
+}
+
+// writebackCLIGeneratedMedia 只认数据库里的终态。任务仍可能处于运行中（等待上游、续租失败、
+// 延后回查、媒体恢复），这些情况一律不碰画布。
+func (w *taskWorkerCoordinator) writebackCLIGeneratedMedia(task *model.Task) {
+	s := w.service
+	if task == nil || task.ID == "" {
+		return
+	}
+	// 先按任务输入判一次：浏览器生成、文本和 Agent 任务都不带这个标记，
+	// 不必为它们多读一次数据库。
+	if _, ok := cliGenerationWritebackTarget(task); !ok {
+		return
+	}
+	latest, err := s.repo.Task(task.ID)
+	if err != nil || latest == nil {
+		return
+	}
+	switch latest.Status {
+	case model.TaskStatusSucceeded, model.TaskStatusFailed, model.TaskStatusCancelled:
+	default:
+		return
+	}
+	if err := s.completeCLIGenerationWriteback(latest); err != nil {
+		// 回写失败不影响已完成的生成与计费：作品仍能从任务中心恢复，
+		// 但必须留下可排查的记录，不能让节点无声无息停在 loading。
+		_ = s.log(latest.UserID, latest.ID, "error", "命令行生成结果回写画布失败", err.Error())
+	}
+}
+
+func (w *taskWorkerCoordinator) processClaimedTaskExecution(task *model.Task, globalSlot *platform.SlotLease) error {
 	s := w.service
 	terminal := s.terminalCoordinator()
 	policyCtx, cancelPolicy := context.WithTimeout(context.Background(), 3*time.Second)

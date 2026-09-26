@@ -227,6 +227,9 @@ func (s *Service) cliGenerateMedia(userID, canvasID string, call cloudAgentCall)
 	if err != nil {
 		return nil, err
 	}
+	// 命令行没有 Agent 运行来推进"任务终态 → 回写节点"，由 worker 在终态时代劳，
+	// 否则节点会停在 loading，外部 Agent 只能等网页刷新才读得到结果。
+	markCLIGenerationWriteback(request.Input)
 	preview := &creationTaskPreparation{}
 	request.creationPrepare = preview
 	if _, err := s.CreateTask(userID, request); err != nil {

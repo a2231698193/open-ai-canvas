@@ -128,6 +128,8 @@ linggan canvas apply --file ops.json
 
 图片、视频和音频生成优先用 `generate_media`，不要用 `task create`。`task create` 只提交任务，不会创建结果节点，也不会把结果写回画布。
 
+`generate_media` 提交的任务进入终态后，服务端会把结果写回它创建的那个节点：成功写媒体地址与真实尺寸，失败或取消写失败原因。所以结果不需要任何人打开网页刷新，也不必重复提交同一笔生成——用 `task get` 等终态，然后直接读节点。
+
 生成完想确认结果时用 `canvas_inspect_media`：`ready` 为真时带 `durationMs`、`width`、`height`、`mimeType`、`bytes`，**以及 `resourceUrl`（图片、视频、音频都有，短时签名链接，由你自己的模型或脚本去取）**；还没就绪或素材不属于当前账号时 `ready` 为假并带 `issue`，照 `issue` 说明处理，不要自己编造时长和分辨率。签不出链接时多一个 `urlIssue`，事实仍然可用。本地原件会在读取时解析一次视频容器头，这种情况下多一个 `factsSource: "container"`；远端存储不下载，拿不到就带 `factsIncomplete` 并如实留 0，不要把它当成“视频是 0 秒”。
 
 要看画面：图片用 `canvas_inspect_image`（短时链接，`nodeIds` 一次最多 6 张）；视频和音频用 `canvas_inspect_media` 的 `resourceUrl` 自己下载后再处理（抽帧、送视频模型等）。

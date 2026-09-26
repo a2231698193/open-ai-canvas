@@ -21,3 +21,5 @@ linggan canvas tool generate_media --file generate.json
 ```bash
 linggan task get <任务ID>
 ```
+
+任务进入终态后结果已经写回节点，不用等网页刷新：`canvas state` 看节点 `status` 变成 `success`，再用 `canvas_inspect_media` 取短时链接下载视频。
