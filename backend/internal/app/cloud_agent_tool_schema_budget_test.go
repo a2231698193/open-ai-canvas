@@ -67,11 +67,11 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 	//     canvas_inspect_image 的 nodeIds、新增 canvas_inspect_media（素材事实）、
 	//     canvas_apply_ops 的 delete_node 与 canvas_get_state 的截断提示，并压缩了
 	//     canvas_inspect_image / canvas_apply_ops 的描述（约 95 字节）。
-	//     本地保留的素材事实、受约束生成规格和视频参考角色会再增加约 3KB；
-	//     当前实测 31,072 字节，因此将预算定为 32,000，保留约 3% 余量。
+	//     实测 27,842 字节 → 预算 28300（约 1.6% 余量）。
 	// 新增工具或字段时请重新测量并有意识地调整这个数字，而不是让 schema 悄悄膨胀
-	// （它每一步都要发、还在前缀最前面）。
-	if len(raw) > 32000 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 32000：请压缩描述或显式调整预算", len(raw))
+	// （它每一步都要发、还在前缀最前面）。余量已不足 2%，再要加字段就应当回到
+	// 「按工具逐个复核描述」这一层，而不是继续抬高这个上限。
+	if len(raw) > 28300 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 28300：请压缩描述或显式调整预算", len(raw))
 	}
 }

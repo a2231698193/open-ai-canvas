@@ -86,9 +86,6 @@ function unwrapTransportError(error: unknown): never {
             cause: error,
         });
     }
-    if (axios.isAxiosError(error) && !error.response) {
-        throw new ApiError(transportFailureMessage(undefined), { retryable: true, cause: error });
-    }
     if (error instanceof Error && isGenericTransportMessage(error.message)) {
         throw new ApiError("请求失败", { cause: error });
     }

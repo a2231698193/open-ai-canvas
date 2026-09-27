@@ -26,7 +26,7 @@ export type Skill = {
     contentHash: string;
     fileCount: number;
     totalBytes: number;
-    sourceType: "builtin" | "markdown" | "zip" | string;
+    sourceType: "builtin" | "markdown" | "zip" | "github" | string;
     sourceUrl: string;
     sourceRef: string;
     sourceSubdir: string;
@@ -55,32 +55,12 @@ export type Skill = {
     extraInfo: string;
     isAdded: boolean;
     isOwner: boolean;
-    libraryCategoryId?: string;
 };
 
 /** /skills/added 只返回运行时目录需要的引用字段，不携带编辑器和同步详情。 */
-export type AddedSkillReference = Pick<Skill, "skillId" | "skillName" | "description" | "versionId" | "version" | "tag" | "isLike" | "isAdded" | "isOwner" | "libraryCategoryId">;
+export type AddedSkillReference = Pick<Skill, "skillId" | "skillName" | "description" | "versionId" | "version" | "tag" | "isLike" | "isAdded" | "isOwner">;
 
-export type SkillCategory = { value: string; label: string; count?: number };
-
-
-export type SkillLibraryCategory = {
-    id: string;
-    name: string;
-    scope: "personal" | "platform";
-    count: number;
-};
-
-export type SkillLibraryCategoryList = {
-    categories: SkillLibraryCategory[];
-    totalCount: number;
-    uncategorizedCount: number;
-};
-
-export type SkillLibraryCategoryMutationInput = {
-    name: string;
-    scope?: "personal" | "platform";
-};
+export type SkillCategory = { value: string; label: string };
 
 /**
  * 场景预设：平台只读目录（GET /skills/presets，随二进制内置）。
@@ -115,8 +95,6 @@ export type ListSkillsInput = {
     sort?: SkillSort;
     search?: string;
     tag?: string;
-    libraryCategoryId?: string;
-    libraryUncategorized?: boolean;
 };
 
 export type SkillMutationInput = {
@@ -178,23 +156,6 @@ export type InstallGitHubSkillInput = {
 export function listSkills(input: ListSkillsInput = {}) {
     const params = serializeApiParams(compactApiParams(input as ApiParams));
     return http.get<SkillList>(`/skills?${params.toString()}`);
-}
-
-
-export function listSkillLibraryCategories(scope: "mine" | "created" = "mine") {
-    return http.get<SkillLibraryCategoryList>("/skills/library-categories", { params: { scope } });
-}
-
-export function createSkillLibraryCategory(input: SkillLibraryCategoryMutationInput) {
-    return http.post<{ category: SkillLibraryCategory }>("/skills/library-categories", input).finally(invalidateAddedSkillsCache);
-}
-
-export function deleteSkillLibraryCategory(id: string) {
-    return http.delete<{ deleted: boolean }>(`/skills/library-categories/${encodeURIComponent(id)}`).finally(invalidateAddedSkillsCache);
-}
-
-export function setSkillLibraryCategory(skillId: string, categoryId: string) {
-    return http.patch<{ skill: Skill }>(`/skills/${encodeURIComponent(skillId)}/library-category`, { categoryId }).finally(invalidateAddedSkillsCache);
 }
 
 export function getSkill(id: string) {
@@ -276,7 +237,6 @@ function normalizeAddedSkillReference(skill: AddedSkillReference): Skill {
         extraInfo: "",
         isAdded: skill.isAdded,
         isOwner: skill.isOwner,
-        libraryCategoryId: skill.libraryCategoryId || "",
     };
 }
 

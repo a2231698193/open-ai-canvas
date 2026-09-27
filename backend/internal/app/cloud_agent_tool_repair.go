@@ -14,25 +14,13 @@ type cloudAgentToolRepair struct {
 	Attempt int    `json:"attempt"`
 }
 
-func cloudAgentRetryReceipt(groupID string, attempt int, status string) map[string]any {
-	terminal := status == "exhausted"
-	severity := "warning"
-	if terminal {
-		severity = "error"
-	}
-	return map[string]any{
-		"groupId": groupID, "attempt": attempt, "maxAttempts": cloudAgentToolAttemptLimit,
-		"status": status, "severity": severity, "terminal": terminal,
-	}
-}
-
 // Count per tool, not per model step: intervening reads must not reset a failed
 // write's allowance. Only explicitly typed, pre-execution errors are repairable.
 func cloudAgentTrackToolRepair(runID string, state *cloudAgentRuntime, call cloudAgentCall, result any, err error, payload map[string]any) bool {
 	previous, exists := state.ToolRepairs[call.Function.Name]
 	if err == nil {
 		if exists {
-			payload["retry"] = cloudAgentRetryReceipt(previous.GroupID, previous.Attempt, "recovered")
+			payload["retry"] = map[string]any{"groupId": previous.GroupID, "attempt": previous.Attempt, "maxAttempts": cloudAgentToolAttemptLimit, "status": "recovered"}
 			delete(state.ToolRepairs, call.Function.Name)
 		}
 		return false
@@ -55,7 +43,7 @@ func cloudAgentTrackToolRepair(runID string, state *cloudAgentRuntime, call clou
 	if exhausted {
 		status = "exhausted"
 	}
-	retry := cloudAgentRetryReceipt(previous.GroupID, previous.Attempt, status)
+	retry := map[string]any{"groupId": previous.GroupID, "attempt": previous.Attempt, "maxAttempts": cloudAgentToolAttemptLimit, "status": status}
 	payload["retry"], detail["retry"] = retry, retry
 	return exhausted
 }
@@ -69,6 +57,6 @@ func cloudAgentRecordToolResult(run *model.CloudAgentExecution, state *cloudAgen
 	cloudAgentDropInterjections(run.ID, "本轮已结束："+truncateRunes(run.FailureMessage, 120), state)
 	state.event(run.ID, "run_failed", map[string]any{
 		"text": run.FailureMessage, "reason": "tool_retry_exhausted", "toolName": call.Function.Name,
-		"callId": call.ID, "attempts": cloudAgentToolAttemptLimit, "severity": "error", "terminal": true,
+		"callId": call.ID, "attempts": cloudAgentToolAttemptLimit,
 	})
 }

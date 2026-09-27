@@ -113,23 +113,20 @@ type cloudAgentRuntime struct {
 	// AutoPreparedMedia is the durable admission checkpoint for permissionMode=auto.
 	// It prevents a worker restart between dry admission and billed submission from
 	// re-running admission or creating the draft node a second time.
-	AutoPreparedMedia              *cloudAgentPreparedMedia                `json:"autoPreparedMedia,omitempty"`
-	AutoPreparedCallHash           string                                  `json:"autoPreparedCallHash,omitempty"`
-	Decisions                      map[string]string                       `json:"decisions"`
-	DecisionSettings               map[string]string                       `json:"decisionSettings,omitempty"`
-	DecisionPreparedHashes         map[string]string                       `json:"decisionPreparedHashes,omitempty"`
-	ActionNudged                   bool                                    `json:"actionNudged,omitempty"`
-	EmptyOutputNudged              int                                     `json:"emptyOutputNudged,omitempty"`
-	StepSnapshotHash               string                                  `json:"stepSnapshotHash,omitempty"`
-	StoryboardTaskID               string                                  `json:"storyboardTaskId,omitempty"`
-	Plan                           []cloudAgentPlanItem                    `json:"plan,omitempty"`
-	ConfirmationRounds             int                                     `json:"confirmationRounds,omitempty"`
-	ConfirmationFingerprints       []string                                `json:"confirmationFingerprints,omitempty"`
-	PendingConfirmationFingerprint string                                  `json:"pendingConfirmationFingerprint,omitempty"`
-	PendingInterjections           []cloudAgentInterjection                `json:"pendingInterjections,omitempty"`
-	TransientReferences            map[string]cloudAgentTransientReference `json:"transientReferences,omitempty"`
-	InterjectionIDs                []string                                `json:"interjectionIds,omitempty"`
-	Events                         []CloudAgentEvent                       `json:"events"`
+	AutoPreparedMedia      *cloudAgentPreparedMedia                `json:"autoPreparedMedia,omitempty"`
+	AutoPreparedCallHash   string                                  `json:"autoPreparedCallHash,omitempty"`
+	Decisions              map[string]string                       `json:"decisions"`
+	DecisionSettings       map[string]string                       `json:"decisionSettings,omitempty"`
+	DecisionPreparedHashes map[string]string                       `json:"decisionPreparedHashes,omitempty"`
+	ActionNudged           bool                                    `json:"actionNudged,omitempty"`
+	EmptyOutputNudged      int                                     `json:"emptyOutputNudged,omitempty"`
+	StepSnapshotHash       string                                  `json:"stepSnapshotHash,omitempty"`
+	StoryboardTaskID       string                                  `json:"storyboardTaskId,omitempty"`
+	Plan                   []cloudAgentPlanItem                    `json:"plan,omitempty"`
+	PendingInterjections   []cloudAgentInterjection                `json:"pendingInterjections,omitempty"`
+	TransientReferences    map[string]cloudAgentTransientReference `json:"transientReferences,omitempty"`
+	InterjectionIDs        []string                                `json:"interjectionIds,omitempty"`
+	Events                 []CloudAgentEvent                       `json:"events"`
 	// EmptyOutputEscalated 记录"空输出已经升级重试过几次"（关思考 + 放大输出预算）。
 	EmptyOutputEscalated int `json:"emptyOutputEscalated,omitempty"`
 	// StepTimeoutEscalated 记录"单步墙钟到点后已经关思考重试过几次"。
@@ -221,7 +218,7 @@ func (s *Service) ensureCloudAgentExecution(task *model.Task, initial cloudAgent
 	if err != nil {
 		return err
 	}
-	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, CreativeAnchor: initial.CreativeAnchor, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Plan: initial.Plan, ConfirmationRounds: initial.ConfirmationRounds, ConfirmationFingerprints: append([]string(nil), initial.ConfirmationFingerprints...), PendingConfirmationFingerprint: "", Events: []CloudAgentEvent{}, StepLimits: limits}
+	state := cloudAgentRuntime{Request: initial.Request, Policy: initial.Policy, ParentID: initial.ParentID, Fingerprint: initial.Fingerprint, CreativeAnchor: initial.CreativeAnchor, TextHistory: input.TextHistory, Skills: initial.Skills, Profile: initial.Profile, Canonical: canonical, ActiveTaskID: task.ID, TaskIDs: []string{task.ID}, Step: 1, Decisions: map[string]string{}, Plan: initial.Plan, Events: []CloudAgentEvent{}, StepLimits: limits}
 	if len(initial.Skills) > 0 {
 		// skillIds makes the enablement auditable: usage telemetry can attribute a
 		// run to the skills it actually loaded instead of only counting the total.
@@ -385,30 +382,6 @@ func validateCloudAgentRuntime(run *model.CloudAgentExecution, state *cloudAgent
 	}
 	if state.Step < 0 || state.Generations < 0 || state.VideoSeconds < 0 {
 		return errors.New("Agent runtime budget or step is invalid")
-	}
-	if state.ConfirmationRounds < 0 || state.ConfirmationRounds > cloudAgentMaxConfirmationRounds {
-		return errors.New("Agent runtime confirmation round is invalid")
-	}
-	if len(state.ConfirmationFingerprints) > cloudAgentMaxConfirmationRounds {
-		return errors.New("Agent runtime confirmation fingerprint history is invalid")
-	}
-	seenConfirmationPoints := make(map[string]struct{}, len(state.ConfirmationFingerprints))
-	for _, fingerprint := range state.ConfirmationFingerprints {
-		if !cloudAgentSHA256(fingerprint) {
-			return errors.New("Agent runtime confirmation fingerprint is invalid")
-		}
-		if _, exists := seenConfirmationPoints[fingerprint]; exists {
-			return errors.New("Agent runtime confirmation fingerprint history contains duplicates")
-		}
-		seenConfirmationPoints[fingerprint] = struct{}{}
-	}
-	if state.PendingConfirmationFingerprint != "" {
-		if !cloudAgentSHA256(state.PendingConfirmationFingerprint) {
-			return errors.New("Agent runtime pending confirmation fingerprint is invalid")
-		}
-		if _, exists := seenConfirmationPoints[state.PendingConfirmationFingerprint]; !exists {
-			return errors.New("Agent runtime pending confirmation fingerprint is not recorded")
-		}
 	}
 	if state.ImageInspectCalls < 0 {
 		return errors.New("Agent runtime image inspection budget is invalid")
@@ -1903,16 +1876,10 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		}
 		if call.Function.Name == "ask_user" && toolErr == nil {
 			payload, _ := result.(map[string]any)
-			if payload["phase"] == "question" {
-				state.event(run.ID, "user_question", payload)
-				cloudAgentRecordToolResult(current, state, call, result, nil)
-				skipRemainingCloudAgentCalls(run.ID, state)
-				current.Status = "completed"
-				return cloudAgentSave(current, state)
-			}
-			// The server-side round limit turns further questions into a normal
-			// tool result so the model must continue with safe defaults.
+			state.event(run.ID, "user_question", payload)
 			cloudAgentRecordToolResult(current, state, call, result, nil)
+			skipRemainingCloudAgentCalls(run.ID, state)
+			current.Status = "completed"
 			return cloudAgentSave(current, state)
 		}
 		cloudAgentRecordToolResult(current, state, call, result, toolErr)
@@ -2149,10 +2116,6 @@ func (s *Service) cloudAgentMediaError(run *model.CloudAgentExecution, state *cl
 			state.event(run.ID, "run_failed", map[string]any{"text": "Agent 媒体调用状态无效，本轮已停止"})
 			return cloudAgentSave(current, state)
 		}
-		if phase == "admission" && !submitted {
-			err = cloudAgentWrapMediaAdmissionError(err)
-		}
-		toolName := state.Calls[state.CallIndex].Function.Name
 		cloudAgentRecordToolResult(current, state, state.Calls[state.CallIndex], map[string]any{"phase": phase, "taskSubmitted": submitted}, err)
 		// Any admission failure advances the call into the repair path. Do not let
 		// a prepared quote from the failed attempt leak into the corrected call.
@@ -2161,30 +2124,9 @@ func (s *Service) cloudAgentMediaError(run *model.CloudAgentExecution, state *cl
 		if submitted {
 			state.MediaTaskID = ""
 		}
-		// Only explicitly typed argument errors and a stale canvas snapshot may
-		// continue into another model turn. Every other pre-submission media
-		// failure is a real admission boundary failure; continuing would invite
-		// the model to submit unverified variants of a billed write.
-		continueAfterAdmissionError := false
-		if phase == "admission" && !submitted {
-			var argumentErr *cloudAgentArgumentError
-			continueAfterAdmissionError = errors.As(err, &argumentErr)
-			var admissionErr *cloudAgentMediaAdmissionError
-			if errors.As(err, &admissionErr) && admissionErr.Reason == "snapshot_conflict" {
-				continueAfterAdmissionError = true
-			}
-		}
-		if terminal || (phase == "admission" && !submitted && !continueAfterAdmissionError) {
+		if terminal {
 			current.Status = "failed"
-			message := "媒体生成准入失败，本轮已停止；请检查模型、能力和预算后由用户明确重试"
-			reason := "tool_admission_failed"
-			if terminal {
-				message = "媒体任务已提交，但结果处理失败；任务不会自动重试"
-				reason = "media_task_failed"
-			}
-			current.FailureMessage = truncateRunes(message, 1000)
-			cloudAgentDropInterjections(run.ID, "本轮已结束："+truncateRunes(message, 120), state)
-			state.event(run.ID, "run_failed", map[string]any{"text": message, "reason": reason, "toolName": toolName})
+			state.event(run.ID, "run_failed", map[string]any{"text": "媒体任务已提交，但结果处理失败；任务不会自动重试"})
 		}
 		return cloudAgentSave(current, state)
 	})

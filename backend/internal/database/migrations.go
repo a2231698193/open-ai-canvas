@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 39
+const CurrentSchemaVersion int64 = 38
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -26,7 +26,6 @@ const authNotificationsChecksum = "sha256:auth-notifications-v35-20260924"
 const cloudAgentGeminiCacheChecksum = "sha256:cloud-agent-gemini-cache-v36-20260924"
 const cloudAgentGeminiCacheIdentityChecksum = "sha256:cloud-agent-gemini-cache-identity-v37-20260925"
 const prefixedIDSequenceReconcileChecksum = "sha256:prefixed-id-sequence-reconcile-v38-20260926"
-const skillLibraryCategoriesChecksum = "sha256:skill-library-categories-v39-20260926"
 
 const postgresSchemaMigrationLockID int64 = 73123910420260830
 
@@ -128,9 +127,6 @@ var schemaMigrations = []migration{
 	}},
 	{version: 37, name: "cloud_agent_gemini_cache_identity", checksum: cloudAgentGeminiCacheIdentityChecksum, apply: migrateCloudAgentGeminiCacheIdentity},
 	{version: 38, name: "prefixed_id_sequence_reconcile", checksum: prefixedIDSequenceReconcileChecksum, apply: migratePrefixedIDSequenceReconcile},
-	{version: 39, name: "skill_library_categories", checksum: skillLibraryCategoriesChecksum, apply: func(tx *gorm.DB) error {
-		return tx.AutoMigrate(&model.SkillLibraryCategory{}, &model.UserSkillState{})
-	}},
 }
 
 func migratePrefixedIDSequenceReconcile(tx *gorm.DB) error {
