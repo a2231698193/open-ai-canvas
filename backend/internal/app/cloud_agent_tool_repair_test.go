@@ -37,11 +37,15 @@ func TestCloudAgentToolRepairBudgetAndSafety(t *testing.T) {
 	}{
 		{"permission", BadAuthRequest("工具未获本轮权限授权"), nil},
 		{"storage", errors.New("storage unavailable"), nil},
+		{"upstream", errors.New("upstream unavailable"), map[string]any{"retryable": true}},
 		{"submitted", err, map[string]any{"taskSubmitted": true}},
 		{"completion", err, map[string]any{"phase": "completion"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			state := &cloudAgentRuntime{}
+			state := &cloudAgentRuntime{Request: CloudAgentRequest{PermissionMode: "auto", ContextScope: []string{"canvas"}}}
+			if test.name == "permission" {
+				state.Request.PermissionMode = "read_only"
+			}
 			cloudAgentToolResult("run", state, call, test.result, test.err)
 			if state.Events[0].Payload["retry"] != nil || len(state.ToolRepairs) != 0 {
 				t.Fatal("unsafe operation was marked for automatic repair")

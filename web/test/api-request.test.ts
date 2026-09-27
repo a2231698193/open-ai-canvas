@@ -43,6 +43,19 @@ describe("backend API request error semantics", () => {
         expect(thrown).toMatchObject({ status: 502, message: "后端服务暂时不可用，请稍后重试", retryable: true });
     });
 
+    test("marks transport failures without an HTTP response as retryable", async () => {
+        const axiosError = {
+            isAxiosError: true,
+            code: "ERR_NETWORK",
+            message: "Network Error",
+        };
+        const thrown = await request(Promise.reject(axiosError)).catch((error) => error);
+
+        expect(thrown).toBeInstanceOf(ApiError);
+        expect(thrown).toMatchObject({ message: "网络连接失败，请稍后重试", retryable: true });
+        expect(thrown.cause).toBe(axiosError);
+    });
+
     test("http.get unwraps the same backend envelope", async () => {
         const original = apiClient.request;
         apiClient.request = (async () => ({
@@ -74,10 +87,12 @@ describe("backend API request error semantics", () => {
     });
 
     test("quota exceeded is not retryable", async () => {
-        const thrown = await request(Promise.resolve({
-            data: { code: 40301, data: null, msg: "账号素材数量已达到 100 个上限", reason: "quota_exceeded" },
-            status: 403,
-        })).catch((error) => error);
+        const thrown = await request(
+            Promise.resolve({
+                data: { code: 40301, data: null, msg: "账号素材数量已达到 100 个上限", reason: "quota_exceeded" },
+                status: 403,
+            }),
+        ).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
         expect(thrown).toMatchObject({ status: 403, code: 40301, reason: "quota_exceeded", retryable: false });
@@ -90,26 +105,30 @@ describe("backend API request error semantics", () => {
     });
 
     test("uses backend msg for HTTP 400 instead of the Axios status sentence", async () => {
-        const thrown = await request(Promise.reject({
-            isAxiosError: true,
-            message: "Request failed with status code 400",
-            response: {
-                status: 400,
-                data: { code: 400, data: null, msg: "请填写阿里云 OSS Endpoint", reason: "bad_request" },
-                headers: {},
-            },
-        })).catch((error) => error);
+        const thrown = await request(
+            Promise.reject({
+                isAxiosError: true,
+                message: "Request failed with status code 400",
+                response: {
+                    status: 400,
+                    data: { code: 400, data: null, msg: "请填写阿里云 OSS Endpoint", reason: "bad_request" },
+                    headers: {},
+                },
+            }),
+        ).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
         expect(thrown).toMatchObject({ status: 400, code: 400, reason: "bad_request", message: "请填写阿里云 OSS Endpoint", retryable: false });
     });
 
     test("does not surface a bare Axios 400 status sentence", async () => {
-        const thrown = await request(Promise.reject({
-            isAxiosError: true,
-            message: "Request failed with status code 400",
-            response: { status: 400, data: "", headers: {} },
-        })).catch((error) => error);
+        const thrown = await request(
+            Promise.reject({
+                isAxiosError: true,
+                message: "Request failed with status code 400",
+                response: { status: 400, data: "", headers: {} },
+            }),
+        ).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
         expect(thrown.message).toBe("请求无效（HTTP 400），接口未返回具体原因，请检查填写内容后重试");
@@ -118,15 +137,17 @@ describe("backend API request error semantics", () => {
     });
 
     test("extracts OSS XML Code and Message from a 400 body", async () => {
-        const thrown = await request(Promise.reject({
-            isAxiosError: true,
-            message: "Request failed with status code 400",
-            response: {
-                status: 400,
-                data: '<?xml version="1.0"?><Error><Code>InvalidBucketName</Code><Message>The specified bucket is not valid.</Message></Error>',
-                headers: {},
-            },
-        })).catch((error) => error);
+        const thrown = await request(
+            Promise.reject({
+                isAxiosError: true,
+                message: "Request failed with status code 400",
+                response: {
+                    status: 400,
+                    data: '<?xml version="1.0"?><Error><Code>InvalidBucketName</Code><Message>The specified bucket is not valid.</Message></Error>',
+                    headers: {},
+                },
+            }),
+        ).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
         expect(thrown.message).toBe("The specified bucket is not valid.（InvalidBucketName）");
@@ -135,15 +156,17 @@ describe("backend API request error semantics", () => {
 
 describe("backend API list query params", () => {
     test("serializes pagination filters as camelCase pageSize keys", () => {
-        const query = serializeApiParams(compactApiParams({
-            page: 2,
-            pageSize: 40,
-            projectId: "project-1",
-            folderId: "folder-1",
-            mediaType: "image",
-            unitId: "unit-1",
-            q: "夜戏",
-        }));
+        const query = serializeApiParams(
+            compactApiParams({
+                page: 2,
+                pageSize: 40,
+                projectId: "project-1",
+                folderId: "folder-1",
+                mediaType: "image",
+                unitId: "unit-1",
+                q: "夜戏",
+            }),
+        );
 
         expect(query.get("page")).toBe("2");
         expect(query.get("pageSize")).toBe("40");

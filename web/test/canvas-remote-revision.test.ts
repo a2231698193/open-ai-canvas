@@ -4,7 +4,17 @@ import { apiClient } from "../src/services/api/request";
 import { canvasContentHash } from "../src/lib/canvas/canvas-content";
 import { rebaseCanvasProjects, parseCanvasStorageDocument } from "../src/lib/canvas/canvas-storage-revision";
 import { readCanvasSyncDrafts } from "../src/services/canvas-sync-drafts";
-import { applyAgentCanvasPatches, deleteCanvasProjectsWithRemoteSync, refreshCanvasAfterAgent, initializeRemoteUserDataSession, installRemoteUserDataAutoSync, loadCanvasProjectForEditing, resetRemoteUserDataSync, saveRemoteUserDataNow, syncRemoteUserData } from "../src/services/user-data-sync";
+import {
+    applyAgentCanvasPatches,
+    deleteCanvasProjectsWithRemoteSync,
+    refreshCanvasAfterAgent,
+    initializeRemoteUserDataSession,
+    installRemoteUserDataAutoSync,
+    loadCanvasProjectForEditing,
+    resetRemoteUserDataSync,
+    saveRemoteUserDataNow,
+    syncRemoteUserData,
+} from "../src/services/user-data-sync";
 import { createAgentCanvasSync } from "../src/services/agent-canvas-sync";
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "../src/stores/canvas/use-canvas-store";
 import { flushAssetStorePersistence, useAssetStore } from "../src/stores/use-asset-store";
@@ -23,6 +33,7 @@ let remote = new Map<string, CanvasProject>();
 let requests: Array<{ method: string; id: string; project?: CanvasProject }> = [];
 let beforePut: (() => Promise<void>) | undefined;
 let deleteFailureId: string | undefined;
+let temporaryPutFailures = 0;
 
 function canvas(id = "canvas"): CanvasProject {
     return {
@@ -54,6 +65,7 @@ beforeEach(async () => {
     autoSave = undefined;
     beforePut = undefined;
     deleteFailureId = undefined;
+    temporaryPutFailures = 0;
     remote = new Map([
         ["canvas", canvas()],
         ["other", canvas("other")],
@@ -91,11 +103,20 @@ beforeEach(async () => {
                 data = { id };
             }
         } else if (id === "batch" && method === "post") {
-            data = { assets: [{
-                id: "invalid-mime-asset", kind: "image", title: "历史素材", coverUrl: "", tags: [],
-                createdAt: "2026-09-01", updatedAt: "2026-09-01",
-                data: { dataUrl: "https://example.com/image.png", width: 100, height: 100, bytes: 1, mimeType: "image/*" },
-            }] };
+            data = {
+                assets: [
+                    {
+                        id: "invalid-mime-asset",
+                        kind: "image",
+                        title: "历史素材",
+                        coverUrl: "",
+                        tags: [],
+                        createdAt: "2026-09-01",
+                        updatedAt: "2026-09-01",
+                        data: { dataUrl: "https://example.com/image.png", width: 100, height: 100, bytes: 1, mimeType: "image/*" },
+                    },
+                ],
+            };
         } else if (id === "restore" && method === "post") {
             const current = remote.get("canvas")!;
             if (body.revision !== current.revision) status = 409;
@@ -108,7 +129,10 @@ beforeEach(async () => {
             await beforePut?.();
             const project = body.project as CanvasProject;
             const current = remote.get(id);
-            if (project.revision !== (current?.revision ?? 0)) status = 409;
+            if (temporaryPutFailures > 0) {
+                temporaryPutFailures -= 1;
+                status = 503;
+            } else if (project.revision !== (current?.revision ?? 0)) status = 409;
             else {
                 const saved = { ...structuredClone(project), revision: project.revision! + 1 };
                 remote.set(id, saved);
@@ -122,6 +146,14 @@ beforeEach(async () => {
     installRemoteUserDataAutoSync();
     await syncRemoteUserData(scope);
 });
+
+async function waitForSyncState(predicate: () => boolean) {
+    const deadline = Date.now() + 1_000;
+    while (!predicate()) {
+        if (Date.now() >= deadline) throw new Error("同步测试状态等待超时");
+        await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    }
+}
 
 afterEach(async () => {
     resetRemoteUserDataSync();
@@ -146,7 +178,8 @@ test("deletion skips editing and invalid MIME assets, including an uncached canv
     await deleteCanvasProjectsWithRemoteSync([" canvas ", "canvas", "other"]);
 
     expect(requests.map(({ method, id }) => ({ method, id }))).toEqual([
-        { method: "delete", id: "canvas" }, { method: "delete", id: "other" },
+        { method: "delete", id: "canvas" },
+        { method: "delete", id: "other" },
     ]);
     expect(remote.size).toBe(0);
     expect(useCanvasStore.getState().projects).toEqual([]);
@@ -197,24 +230,40 @@ test("load latest, save and reload stay synced when Agent history replays an unv
         await loadCanvasProjectForEditing("canvas");
         let resolve!: () => void;
         let reject!: (error: unknown) => void;
-        const reconciled = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+        const reconciled = new Promise<void>((done, fail) => {
+            resolve = done;
+            reject = fail;
+        });
         const sync = createAgentCanvasSync({
-            canvasId: "canvas", batchMs: 0,
+            canvasId: "canvas",
+            batchMs: 0,
             applyPatches: (patches) => applyAgentCanvasPatches("canvas", patches),
-            refresh: async () => { await refreshCanvasAfterAgent("canvas"); resolve(); },
+            refresh: async () => {
+                await refreshCanvasAfterAgent("canvas");
+                resolve();
+            },
             onError: reject,
         });
         try {
-            sync.receive({ eventId: "historical-event", runId: "completed-run", seq: 1, type: "canvas_updated", createdAt: "2026-09-17", payload: {
-                canvasId: "canvas",
-                canvasPatch: { canvasId: "canvas", updatedAt: "2026-09-17", nodes: [{ before: null, after: { ...canvas().nodes[0], id: "stale-node" } }], connections: [] },
-            } });
+            sync.receive({
+                eventId: "historical-event",
+                runId: "completed-run",
+                seq: 1,
+                type: "canvas_updated",
+                createdAt: "2026-09-17",
+                payload: {
+                    canvasId: "canvas",
+                    canvasPatch: { canvasId: "canvas", updatedAt: "2026-09-17", nodes: [{ before: null, after: { ...canvas().nodes[0], id: "stale-node" } }], connections: [] },
+                },
+            });
             await reconciled;
             expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
             await saveRemoteUserDataNow("canvas");
             expect(useCanvasStore.getState().openProject("canvas")).toMatchObject({ revision: 10, title: "已保存的标题", nodes: canvas().nodes });
             expect(await readCanvasSyncDrafts("canvas")).toHaveLength(0);
-        } finally { sync.dispose(); }
+        } finally {
+            sync.dispose();
+        }
     }
     expect(requests.filter((request) => request.method === "put")).toHaveLength(1);
 });
@@ -261,6 +310,22 @@ test("a same-field conflict preserves drafts, stops retries and does not block a
     expect(useSyncProgressStore.getState().syncingProjects.canvas.draftCount).toBe(2);
 });
 
+test("transient cloud failures schedule a bounded automatic retry", async () => {
+    temporaryPutFailures = 1;
+    useCanvasStore.getState().renameProject("canvas", "retry me");
+    expect(autoSave).toBeDefined();
+
+    autoSave?.();
+    await waitForSyncState(() => requests.filter((request) => request.method === "put" && request.id === "canvas").length === 1);
+    expect(autoSave).toBeDefined();
+    expect(useSyncProgressStore.getState().syncingProjects.canvas.message).toContain("自动重试");
+
+    autoSave?.();
+    await waitForSyncState(() => remote.get("canvas")?.title === "retry me");
+    expect(requests.filter((request) => request.method === "put" && request.id === "canvas")).toHaveLength(2);
+    expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
+});
+
 test("edits during a save retain the right ancestor revision and are saved next", async () => {
     let release!: () => void;
     let started!: () => void;
@@ -285,6 +350,27 @@ test("edits during a save retain the right ancestor revision and are saved next"
     expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "first-video", "second-video"]);
     expect(useCanvasStore.getState().openProject("canvas")!.remoteContentHash).toBe(await canvasContentHash(useCanvasStore.getState().openProject("canvas")!));
     expect(requests.filter((request) => request.method === "put").every((request) => !("viewport" in request.project!) && !("remoteContentHash" in request.project!))).toBe(true);
+});
+
+test("an automatic retry cannot cross into a new user session", async () => {
+    temporaryPutFailures = 1;
+    useCanvasStore.getState().renameProject("canvas", "old user draft");
+    await expect(saveRemoteUserDataNow()).rejects.toThrow();
+    const staleRetry = autoSave;
+    expect(staleRetry).toBeDefined();
+    resetRemoteUserDataSync();
+    await initializeRemoteUserDataSession("another-user");
+    const requestCount = requests.length;
+    staleRetry?.();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(requests.length).toBe(requestCount);
+});
+
+test("retryable saves without a browser preserve their original error", async () => {
+    temporaryPutFailures = 1;
+    useCanvasStore.getState().renameProject("canvas", "offline draft");
+    delete (globalThis as { window?: unknown }).window;
+    await expect(saveRemoteUserDataNow()).rejects.toMatchObject({ name: "ApiError", status: 503, retryable: true });
 });
 
 test("login archives unsynced changes before replacing cache and keeps user scopes separate", async () => {

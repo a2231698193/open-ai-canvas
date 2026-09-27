@@ -86,6 +86,10 @@ function unwrapTransportError(error: unknown): never {
             cause: error,
         });
     }
+    if (axios.isAxiosError(error) && !error.response) {
+        // 无 HTTP 响应的传输失败交给调用方按幂等性和重试预算决定是否重试。
+        throw new ApiError("网络连接失败，请稍后重试", { retryable: true, cause: error });
+    }
     if (error instanceof Error && isGenericTransportMessage(error.message)) {
         throw new ApiError("请求失败", { cause: error });
     }

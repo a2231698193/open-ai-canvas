@@ -38,6 +38,8 @@ description: 从产品功能快速定位主要代码入口
 
 ## 画布核心
 
+内置技能包位于 `backend/builtin/<slug>/SKILL.md`，元数据中的 `skillId` 保留历史数据库身份；`internal/skills/skills_builtin.go` 负责加载和版本同步，`skill_library_categories.go` 管理个人及平台分类，`internal/repository/builtin_skills.go` 保存内置技能删除标记。`internal/app/cloud_agent_director.go` 提供导演场景安全摘要和预演请求，实际白模录制由前端导演台视口完成。`internal/prompts/AGENTS.md` 是随系统策略加载的版本化操作合同，修改时须与本地工具 schema 同步。
+
 云端 Agent 的提示词维护边界见[画布 Agent 提示词与用户意图](/docs/backend/agent-prompt-policy)：行为策略在版本化 md，动态事实由 `cloud_agent_policy.go` 编译，运行状态消息由 `cloud_agent_prompt_context.go` 统一编码；`cloud_agent_anchor.go` 不再推断用户授权或锁定首轮目标。
 
 | 职责 | 代码位置 |
