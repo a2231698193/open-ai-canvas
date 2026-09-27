@@ -354,6 +354,11 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onOpenTextEditor?.(data);
                         return;
                     }
+                    if (!readOnly && data.type === CanvasNodeType.Markdown) {
+                        event.stopPropagation();
+                        onOpenTextEditor?.(data);
+                        return;
+                    }
                     if (readOnly || data.type !== CanvasNodeType.Text) return;
                     event.stopPropagation();
                     setIsEditingContent(true);
@@ -403,7 +408,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     />
                 </div>
 
-                {showChrome && data.type === CanvasNodeType.Text && data.metadata?.workflowKind !== "character" && !readOnly ? (
+                {showChrome && (data.type === CanvasNodeType.Text || data.type === CanvasNodeType.Markdown) && data.metadata?.workflowKind !== "character" && !readOnly ? (
                     <div
                         className={`absolute bottom-[10%] left-1/2 z-[var(--node-z-overlay)] -translate-x-1/2 motion-safe:transition motion-safe:duration-200 ${isSelected ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"}`}
                         onMouseDown={(event) => event.stopPropagation()}

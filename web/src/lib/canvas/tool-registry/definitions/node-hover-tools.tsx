@@ -178,7 +178,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         defaultVisible: true,
         defaultOrder: 80,
         nodeToolbar: { group: "primary", order: 30 },
-        applicable: isEditableText,
+        applicable: (ctx) => isEditableText(ctx) || ctx.node?.type === CanvasNodeType.Markdown,
         run: (ctx) => ctx.handlers.onNodeEditText(ctx.node!),
     },
     {

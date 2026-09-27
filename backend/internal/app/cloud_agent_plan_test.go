@@ -1,11 +1,48 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
 	"infinite-canvas/backend/internal/model"
 )
+
+func TestCloudAgentChoiceFingerprintPreservesSavedIdentity(t *testing.T) {
+	want := sha256.Sum256([]byte("a\x00\x00b\x00"))
+	got := cloudAgentConfirmationPointFingerprint("换个说法", []map[string]any{{"label": "B"}, {"label": " A "}}, nil)
+	if got != hex.EncodeToString(want[:]) {
+		t.Fatal("choice fingerprint no longer matches persisted rounds")
+	}
+}
+
+func TestCloudAgentFormDistinguishesChoicesAndIgnoresOrder(t *testing.T) {
+	state := &cloudAgentRuntime{}
+	call := cloudAgentCall{ID: "form"}
+	call.Function.Name = "ask_user"
+	for index, args := range []string{
+		`{"question":"选方向","fields":[{"id":"style","title":"画风","type":"single_select","options":[{"id":"a","label":"写实"},{"id":"b","label":"动漫"}]}]}`,
+		`{"question":"请确定画风","fields":[{"id":"style","title":"画风","type":"single_select","options":[{"id":"b","label":"动漫"},{"id":"a","label":"写实"}]}]}`,
+		`{"question":"选方向","fields":[{"id":"style","title":"画风","type":"single_select","options":[{"id":"a","label":"水彩"},{"id":"b","label":"油画"}]}]}`,
+	} {
+		call.Function.Arguments = args
+		result, err := cloudAgentAskUser(call, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "question"
+		if index == 1 {
+			want = "defaulted"
+		}
+		if result.(map[string]any)["phase"] != want {
+			t.Fatalf("form %d: %+v", index, result)
+		}
+	}
+	if state.ConfirmationRounds != 2 {
+		t.Fatalf("rounds = %d", state.ConfirmationRounds)
+	}
+}
 
 func TestCloudAgentPlanUpdateAndPending(t *testing.T) {
 	state := &cloudAgentRuntime{}
@@ -121,6 +158,24 @@ func TestCloudAgentAskUserRequiresChoices(t *testing.T) {
 	call.Function.Arguments = `{"question":"只有一个选项","options":[{"label":"A"}]}`
 	if _, err := cloudAgentAskUser(call); err == nil {
 		t.Fatal("ask_user accepted a single option")
+	}
+}
+
+func TestCloudAgentAskUserAcceptsDynamicForm(t *testing.T) {
+	call := cloudAgentCall{ID: "ask-form-1"}
+	call.Function.Name = "ask_user"
+	call.Function.Arguments = `{"question":"确认创作方向","questionId":"canvas-setup","fields":[{"id":"genre","title":"题材","type":"single_select","options":[{"id":"comedy","label":"搞笑"},{"id":"other","label":"其他"}],"defaultValue":"comedy","allowCustom":true},{"id":"aspectRatio","title":"画幅","type":"segmented","options":[{"id":"9:16","label":"9:16"},{"id":"16:9","label":"16:9"}],"defaultValue":"9:16"},{"id":"notes","title":"补充说明","type":"textarea","placeholder":"可选"}]}`
+	result, err := cloudAgentAskUser(call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := result.(map[string]any)
+	if body["kind"] != "form" || body["questionId"] != "canvas-setup" {
+		t.Fatalf("dynamic form payload = %+v", body)
+	}
+	fields, ok := body["fields"].([]map[string]any)
+	if !ok || len(fields) != 3 {
+		t.Fatalf("dynamic form fields = %#v", body["fields"])
 	}
 }
 

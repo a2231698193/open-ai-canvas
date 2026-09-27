@@ -28,6 +28,20 @@ function createNodeContext(node: CanvasNodeData): ToolContext {
 }
 
 describe("canvas node toolbar model", () => {
+    test("Markdown exposes the shared editor without enabling text generation controls", () => {
+        const node: CanvasNodeData = { id: "markdown", type: CanvasNodeType.Markdown, title: "文档", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "# 标题" } };
+        const ctx = createNodeContext(node);
+        const received: CanvasNodeData[] = [];
+        ctx.handlers.onNodeEditText = (value) => { received.push(value); };
+        const tools = resolveToolbarTools("node-hover", ctx, null);
+        const edit = tools.find((tool) => tool.id === "editText")!;
+        expect(edit).toBeDefined();
+        expect(resolveNodeToolbarPlacement(edit, ctx).group).toBe("primary");
+        edit.run?.(ctx);
+        expect(received).toEqual([node]);
+        expect(tools.some((tool) => tool.id === "edit")).toBe(false);
+    });
+
     test("preserves empty, simple and busy video states", () => {
         const ctx = createNodeContext({ id: "video", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: {} });
         const emptyTools = resolveToolbarTools("node-hover", ctx, null);
