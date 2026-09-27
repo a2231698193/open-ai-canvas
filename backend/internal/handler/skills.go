@@ -80,15 +80,67 @@ func RegisterSkillRoutes(r *gin.RouterGroup, svc *service.Service) {
 			fail(c, http.StatusBadRequest, err)
 			return
 		}
+		libraryUncategorized, err := parseOptionalBool(c.Query("libraryUncategorized"))
+		if err != nil {
+			failService(c, service.BadAuthRequest("libraryUncategorized 必须是布尔值"))
+			return
+		}
 		result, err := svc.Skills(user.ID, service.SkillListRequest{
 			Page: page, PageSize: pageSize, Scope: c.DefaultQuery("scope", "public"),
 			Search: c.Query("search"), Tag: c.Query("tag"), Sort: c.DefaultQuery("sort", "popular"),
+			LibraryCategoryID: c.Query("libraryCategoryId"), LibraryUncategorized: libraryUncategorized,
 		})
 		if err != nil {
 			failService(c, err)
 			return
 		}
 		ok(c, result)
+	})
+
+	r.GET("/skills/library-categories", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		result, err := svc.SkillLibraryCategories(user.ID, c.DefaultQuery("scope", "mine"))
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, result)
+	})
+
+	r.POST("/skills/library-categories", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		var req service.SkillLibraryCategoryMutationRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			failService(c, service.BadAuthRequest("技能库分类数据格式无效"))
+			return
+		}
+		category, err := svc.CreateSkillLibraryCategory(user, req)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"category": category})
+	})
+
+	r.DELETE("/skills/library-categories/:id", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		if err := svc.DeleteSkillLibraryCategory(user, c.Param("id")); err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"deleted": true})
 	})
 
 	r.GET("/skills/presets", func(c *gin.Context) {
@@ -122,6 +174,25 @@ func RegisterSkillRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		skill, err := svc.SkillDetail(user.ID, c.Param("id"))
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"skill": skill})
+	})
+
+	r.PATCH("/skills/:id/library-category", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		var req service.SkillLibraryCategoryAssignmentRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			failService(c, service.BadAuthRequest("技能库分类数据格式无效"))
+			return
+		}
+		skill, err := svc.SetSkillLibraryCategory(user.ID, c.Param("id"), req.CategoryID)
 		if err != nil {
 			failService(c, err)
 			return

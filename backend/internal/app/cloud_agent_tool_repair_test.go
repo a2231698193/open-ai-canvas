@@ -37,6 +37,7 @@ func TestCloudAgentToolRepairBudgetAndSafety(t *testing.T) {
 	}{
 		{"permission", BadAuthRequest("工具未获本轮权限授权"), nil},
 		{"storage", errors.New("storage unavailable"), nil},
+		{"upstream", errors.New("upstream unavailable"), map[string]any{"retryable": true}},
 		{"submitted", err, map[string]any{"taskSubmitted": true}},
 		{"completion", err, map[string]any{"phase": "completion"}},
 	} {

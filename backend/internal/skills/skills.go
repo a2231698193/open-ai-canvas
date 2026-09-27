@@ -43,44 +43,45 @@ type SkillEffectiveUser struct {
 }
 
 type SkillItem struct {
-	SkillID         string               `json:"skillId"`
-	SkillName       string               `json:"skillName"`
-	Description     string               `json:"description"`
-	Instruction     string               `json:"instruction,omitempty"`
-	VersionID       string               `json:"versionId"`
-	Version         string               `json:"version"`
-	ContentHash     string               `json:"contentHash"`
-	FileCount       int                  `json:"fileCount"`
-	TotalBytes      int64                `json:"totalBytes"`
-	SourceType      string               `json:"sourceType"`
-	SourceURL       string               `json:"sourceUrl"`
-	SourceRef       string               `json:"sourceRef"`
-	SourceSubdir    string               `json:"sourceSubdir"`
-	SourceCommit    string               `json:"sourceCommit"`
-	SyncStatus      string               `json:"syncStatus"`
-	SyncError       string               `json:"syncError,omitempty"`
-	AutoUpdate      bool                 `json:"autoUpdate"`
-	LastCheckedAt   *time.Time           `json:"lastCheckedAt,omitempty"`
-	LastSyncedAt    *time.Time           `json:"lastSyncedAt,omitempty"`
-	Status          int                  `json:"status"`
-	MarkdownURL     string               `json:"markdownUrl"`
-	CreatedAt       time.Time            `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
-	Source          int                  `json:"source"`
-	Tag             string               `json:"tag"`
-	SortWeight      int                  `json:"sortWeight"`
-	IsPrivate       bool                 `json:"isPrivate"`
-	LikeCount       int64                `json:"likeCount"`
-	IsLike          bool                 `json:"isLike"`
-	OwnerUID        string               `json:"ownerUid"`
-	EffectiveUser   SkillEffectiveUser   `json:"effectiveUser"`
-	OriginalSkillID *string              `json:"originalSkillId"`
-	ShowcaseMedia   []SkillShowcaseMedia `json:"showcaseMedia"`
-	AddedCount      int64                `json:"addedCount"`
-	IsTest          bool                 `json:"isTest"`
-	ExtraInfo       string               `json:"extraInfo"`
-	IsAdded         bool                 `json:"isAdded"`
-	IsOwner         bool                 `json:"isOwner"`
+	SkillID           string               `json:"skillId"`
+	SkillName         string               `json:"skillName"`
+	Description       string               `json:"description"`
+	Instruction       string               `json:"instruction,omitempty"`
+	VersionID         string               `json:"versionId"`
+	Version           string               `json:"version"`
+	ContentHash       string               `json:"contentHash"`
+	FileCount         int                  `json:"fileCount"`
+	TotalBytes        int64                `json:"totalBytes"`
+	SourceType        string               `json:"sourceType"`
+	SourceURL         string               `json:"sourceUrl"`
+	SourceRef         string               `json:"sourceRef"`
+	SourceSubdir      string               `json:"sourceSubdir"`
+	SourceCommit      string               `json:"sourceCommit"`
+	SyncStatus        string               `json:"syncStatus"`
+	SyncError         string               `json:"syncError,omitempty"`
+	AutoUpdate        bool                 `json:"autoUpdate"`
+	LastCheckedAt     *time.Time           `json:"lastCheckedAt,omitempty"`
+	LastSyncedAt      *time.Time           `json:"lastSyncedAt,omitempty"`
+	Status            int                  `json:"status"`
+	MarkdownURL       string               `json:"markdownUrl"`
+	CreatedAt         time.Time            `json:"createdAt"`
+	UpdatedAt         time.Time            `json:"updatedAt"`
+	Source            int                  `json:"source"`
+	Tag               string               `json:"tag"`
+	SortWeight        int                  `json:"sortWeight"`
+	IsPrivate         bool                 `json:"isPrivate"`
+	LikeCount         int64                `json:"likeCount"`
+	IsLike            bool                 `json:"isLike"`
+	OwnerUID          string               `json:"ownerUid"`
+	EffectiveUser     SkillEffectiveUser   `json:"effectiveUser"`
+	OriginalSkillID   *string              `json:"originalSkillId"`
+	ShowcaseMedia     []SkillShowcaseMedia `json:"showcaseMedia"`
+	AddedCount        int64                `json:"addedCount"`
+	IsTest            bool                 `json:"isTest"`
+	ExtraInfo         string               `json:"extraInfo"`
+	IsAdded           bool                 `json:"isAdded"`
+	IsOwner           bool                 `json:"isOwner"`
+	LibraryCategoryID string               `json:"libraryCategoryId,omitempty"`
 }
 
 // AddedSkillReference is the small contract used by the runtime catalog.
@@ -105,12 +106,14 @@ type SkillCategory struct {
 }
 
 type SkillListRequest struct {
-	Page     int
-	PageSize int
-	Scope    string
-	Search   string
-	Tag      string
-	Sort     string
+	Page                 int
+	PageSize             int
+	Scope                string
+	Search               string
+	Tag                  string
+	LibraryCategoryID    string
+	LibraryUncategorized bool
+	Sort                 string
 }
 
 type SkillList struct {
@@ -136,14 +139,24 @@ type SkillMutationRequest struct {
 
 func (s *Service) Skills(userID string, req SkillListRequest) (*SkillList, error) {
 	req = normalizeSkillListRequest(req)
+	if req.LibraryCategoryID != "" && req.LibraryUncategorized {
+		return nil, kernel.BadAuthRequest("技能库分类与未分类筛选不能同时使用")
+	}
+	if req.LibraryCategoryID != "" || req.LibraryUncategorized {
+		if req.Scope != "mine" && req.Scope != "created" {
+			return nil, kernel.BadAuthRequest("用户技能分类仅支持筛选我的技能或我创建的技能")
+		}
+	}
 	rows, total, err := s.repo.Skills(repository.SkillListFilter{
-		UserID: userID,
-		Scope:  req.Scope,
-		Search: req.Search,
-		Tag:    req.Tag,
-		Sort:   req.Sort,
-		Limit:  req.PageSize,
-		Offset: (req.Page - 1) * req.PageSize,
+		UserID:               userID,
+		Scope:                req.Scope,
+		Search:               req.Search,
+		Tag:                  req.Tag,
+		LibraryCategoryID:    req.LibraryCategoryID,
+		LibraryUncategorized: req.LibraryUncategorized,
+		Sort:                 req.Sort,
+		Limit:                req.PageSize,
+		Offset:               (req.Page - 1) * req.PageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -359,6 +372,7 @@ func (s *Service) skillItems(userID string, skills []model.Skill, includeInstruc
 			LikeCount: metric.LikeCount, IsLike: state.Liked, OwnerUID: skill.OwnerID,
 			EffectiveUser: SkillEffectiveUser{Name: ownerName, AvatarURL: ownerAvatarURL, UID: skill.OwnerID}, ShowcaseMedia: showcaseMedia,
 			AddedCount: metric.AddedCount, ExtraInfo: skill.ExtraInfo, IsAdded: state.Added || skill.OwnerID == userID, IsOwner: skill.OwnerID == userID,
+			LibraryCategoryID: state.LibraryCategoryID,
 		})
 	}
 	return items, nil

@@ -4,28 +4,33 @@ import (
 	"context"
 	"mime/multipart"
 
+	"infinite-canvas/backend/internal/model"
 	"infinite-canvas/backend/internal/skills"
 )
 
 const SkillPackageUploadMaxBytes = skills.SkillPackageUploadMaxBytes
 
 type (
-	SkillShowcaseMedia        = skills.SkillShowcaseMedia
-	SkillEffectiveUser        = skills.SkillEffectiveUser
-	SkillItem                 = skills.SkillItem
-	AddedSkillReference       = skills.AddedSkillReference
-	SkillCategory             = skills.SkillCategory
-	SkillListRequest          = skills.SkillListRequest
-	SkillList                 = skills.SkillList
-	SkillMutationRequest      = skills.SkillMutationRequest
-	SkillInstallRequest       = skills.SkillInstallRequest
-	SkillGitHubInstallRequest = skills.SkillGitHubInstallRequest
-	SkillPackageFileItem      = skills.SkillPackageFileItem
-	SkillPackageFileContent   = skills.SkillPackageFileContent
-	SkillPackageBundleFile    = skills.SkillPackageBundleFile
-	SkillPackageBundle        = skills.SkillPackageBundle
-	SkillFileSearchResult     = skills.SkillFileSearchResult
-	SkillPreset               = skills.SkillPreset
+	SkillShowcaseMedia                    = skills.SkillShowcaseMedia
+	SkillEffectiveUser                    = skills.SkillEffectiveUser
+	SkillItem                             = skills.SkillItem
+	AddedSkillReference                   = skills.AddedSkillReference
+	SkillCategory                         = skills.SkillCategory
+	SkillLibraryCategory                  = skills.SkillLibraryCategory
+	SkillLibraryCategoryList              = skills.SkillLibraryCategoryList
+	SkillLibraryCategoryMutationRequest   = skills.SkillLibraryCategoryMutationRequest
+	SkillLibraryCategoryAssignmentRequest = skills.SkillLibraryCategoryAssignmentRequest
+	SkillListRequest                      = skills.SkillListRequest
+	SkillList                             = skills.SkillList
+	SkillMutationRequest                  = skills.SkillMutationRequest
+	SkillInstallRequest                   = skills.SkillInstallRequest
+	SkillGitHubInstallRequest             = skills.SkillGitHubInstallRequest
+	SkillPackageFileItem                  = skills.SkillPackageFileItem
+	SkillPackageFileContent               = skills.SkillPackageFileContent
+	SkillPackageBundleFile                = skills.SkillPackageBundleFile
+	SkillPackageBundle                    = skills.SkillPackageBundle
+	SkillFileSearchResult                 = skills.SkillFileSearchResult
+	SkillPreset                           = skills.SkillPreset
 )
 
 func (s *Service) skillDomain() *skills.Service {
@@ -44,6 +49,22 @@ func (s *Service) Skills(userID string, req SkillListRequest) (*SkillList, error
 
 func (s *Service) AddedSkills(userID string) ([]AddedSkillReference, error) {
 	return s.skillDomain().AddedSkills(userID)
+}
+
+func (s *Service) SkillLibraryCategories(userID string, scope string) (*SkillLibraryCategoryList, error) {
+	return s.skillDomain().SkillLibraryCategories(userID, scope)
+}
+
+func (s *Service) CreateSkillLibraryCategory(actor *model.User, req SkillLibraryCategoryMutationRequest) (*SkillLibraryCategory, error) {
+	return s.skillDomain().CreateSkillLibraryCategory(actor, req)
+}
+
+func (s *Service) DeleteSkillLibraryCategory(actor *model.User, id string) error {
+	return s.skillDomain().DeleteSkillLibraryCategory(actor, id)
+}
+
+func (s *Service) SetSkillLibraryCategory(userID string, skillID string, categoryID string) (*SkillItem, error) {
+	return s.skillDomain().SetSkillLibraryCategory(userID, skillID, categoryID)
 }
 
 // SkillPresets 返回场景预设目录（只读；数据随技能种子发布，无需用户上下文）。

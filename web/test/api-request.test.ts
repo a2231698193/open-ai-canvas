@@ -52,7 +52,7 @@ describe("backend API request error semantics", () => {
         const thrown = await request(Promise.reject(axiosError)).catch((error) => error);
 
         expect(thrown).toBeInstanceOf(ApiError);
-        expect(thrown).toMatchObject({ message: "Network Error", retryable: true });
+        expect(thrown).toMatchObject({ message: "请求失败", retryable: true });
         expect(thrown.cause).toBe(axiosError);
     });
 
