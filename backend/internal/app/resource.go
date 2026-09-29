@@ -345,6 +345,7 @@ func (s *Service) openResourceRange(userID string, resource *model.Resource, ran
 	setting.Provider = firstNonEmpty(resource.Provider, setting.Provider)
 	setting.Endpoint = firstNonEmpty(resource.Endpoint, setting.Endpoint)
 	setting.Bucket = firstNonEmpty(resource.Bucket, setting.Bucket)
+	setting = s.storageSettingWithRuntimePolicy(setting)
 	stream, err := getOriginOSSObjectRange(setting, resource.ObjectKey, normalizeSingleByteRange(rangeHeader))
 	if err != nil {
 		return nil, err
@@ -466,7 +467,7 @@ func (s *Service) storeResourceObject(resource *model.Resource, fileName string,
 	if settingErr != nil {
 		return "", settingErr
 	}
-	etag, err := putOSSObject(setting, resource.ObjectKey, resource.MimeType, resource.Size, body)
+	etag, err := putOSSObject(s.storageSettingWithRuntimePolicy(setting), resource.ObjectKey, resource.MimeType, resource.Size, body)
 	if err != nil {
 		return "", err
 	}

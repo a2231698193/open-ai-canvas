@@ -2,6 +2,7 @@
 
 ARG GO_IMAGE=golang:1.25-alpine
 ARG ALPINE_IMAGE=alpine:3.22
+ARG NODE_IMAGE=node:22.19-alpine
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS payment-package-build
 
@@ -91,7 +92,23 @@ RUN --mount=type=cache,target=/root/.cache/go-build set -eu; \
     CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="$ldflags" -o /out/migrate-sqlite-postgres ./cmd/migrate-sqlite-postgres; \
     CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="$ldflags" -o /out/import-apimart-video-pricing ./cmd/import-apimart-video-pricing
 
-FROM ${ALPINE_IMAGE}
+FROM ${NODE_IMAGE} AS pi-runtime-deps
+
+WORKDIR /app/backend/agent-runtime/pi
+COPY backend/agent-runtime/pi/package.json backend/agent-runtime/pi/package-lock.json ./
+ARG NPM_REGISTRY=
+RUN set -eu; \
+    case "$NPM_REGISTRY" in \
+      ""|http://*|https://*) ;; \
+      *) echo "NPM_REGISTRY must be an http(s) URL" >&2; exit 2 ;; \
+    esac; \
+    if [ -n "$NPM_REGISTRY" ]; then \
+      npm ci --omit=dev --ignore-scripts --registry "$NPM_REGISTRY"; \
+    else \
+      npm ci --omit=dev --ignore-scripts; \
+    fi
+
+FROM ${NODE_IMAGE}
 
 ARG ALPINE_MIRROR=
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -115,6 +132,9 @@ COPY --from=backend-build /out/migrate-sqlite-postgres /usr/local/bin/migrate-sq
 COPY --from=backend-build /out/import-apimart-video-pricing /usr/local/bin/import-apimart-video-pricing
 COPY --from=payment-package-smoke /app/plugin-packages /app/plugin-packages
 RUN chmod -R a+rX /app/plugin-packages
+COPY --from=pi-runtime-deps /app/backend/agent-runtime/pi/node_modules /app/backend/agent-runtime/pi/node_modules
+COPY backend/agent-runtime/pi/package.json backend/agent-runtime/pi/package-lock.json /app/backend/agent-runtime/pi/
+COPY backend/agent-runtime/pi/agent-runtime.mjs /app/backend/agent-runtime/pi/agent-runtime.mjs
 
 USER app
 EXPOSE 8080
