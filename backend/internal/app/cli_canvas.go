@@ -141,8 +141,8 @@ func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloud
 	return cloudAgentImageInspectionWithURLs(inspections), nil
 }
 
-// signedInspectionResourceURL 把 resource:ID 换成短时签名链接；链接要跨越外部 Agent 的一次
-// 往返，用比浏览器直连更长的有效期。
+// signedInspectionResourceURL 把 resource:ID 换成短时签名链接。
+// 传零值时沿用后台「厂商访问地址有效期」，和模型读取资源使用同一套期限。
 func (s *Service) signedInspectionResourceURL(userID, storageKey string) (string, error) {
 	resourceID := strings.TrimPrefix(storageKey, "resource:")
 	if resourceID == "" || resourceID == storageKey {
@@ -152,7 +152,7 @@ func (s *Service) signedInspectionResourceURL(userID, storageKey string) (string
 	if err != nil {
 		return "", BadAuthRequest("该节点的图片资源不存在或不属于当前用户")
 	}
-	return s.providerResourceURL(resource, time.Now().Add(providerResourceURLTTL))
+	return s.providerResourceURL(resource, time.Time{})
 }
 
 // CLICanvasTool 执行画布 Agent 的画布工具。它不创建 Agent 运行，也不调用语言模型。
