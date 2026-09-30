@@ -538,7 +538,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"topic", "category", "situation")
 	}
 	if req.PermissionMode != "read_only" && len(req.ContextScope) > 0 {
-		add("image_layer_split", "按用户指定对象把图片拆成独立透明图层。参数与 generate_media 的图片参数一致，mode 固定为 image；属于生成型操作，必须走现有媒体审批与计费链路。", map[string]any{
+		add("image_layer_split", "将图片按用户指定对象拆分为独立透明图层。参数与 generate_media 的图片生成参数一致，但 mode 固定为 image；所有权限模式都会先创建草稿并进入界面独立审批，用户批准后才提交生成任务。", map[string]any{
 			"prompt": str("需要拆分的对象与透明背景要求"), "logicalModelId": str("selection.logicalModelId"), "channelId": str("selection.channelId"), "channelModelKey": str("selection.channelModelKey"),
 			"quality": str("模型支持的质量档位"), "snapshotHash": str("最近画布读取返回的 mediaSnapshotHash，可省略"), "nodeId": str("新的结果节点ID"), "title": str("结果节点名称"), "referenceNodeIds": map[string]any{"type": "array", "maxItems": 16, "items": str("源图片节点ID")},
 		}, "prompt", "nodeId", "title", "referenceNodeIds")
@@ -615,7 +615,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 		}, "snapshotHash")
 	}
 	if req.PermissionMode != "read_only" && len(req.ContextScope) > 0 {
-		add("generate_media", "提交媒体生成：先准备草稿和引用。request_approval 需用户确认；auto 经服务端模型、价格、预算、资源校验后直接提交。创建节点、改提示词或连线用 canvas_apply_ops；先读画布和模型目录。已有任务或产物不可覆盖；状态用 generation/task_get。sourceNodeId 是文本输入，referenceNodeIds 是媒体输入，referenceTransientIds 只接受标注工具返回值。失败须告知用户；重试须用户明确要求并按权限模式重新准入或审批。", map[string]any{
+		add("generate_media", "提交媒体生成：先准备草稿和引用；所有权限模式都会先经服务端完成模型、能力、价格、预算和资源校验，再进入界面独立审批，用户批准后才提交生成任务。创建节点/改提示词/连线用 canvas_apply_ops。先读画布和模型目录并遵守其能力。已有任务或产物的节点不可覆盖；状态用 generation/task_get。sourceNodeId 为文本输入，referenceNodeIds 为媒体输入，referenceTransientIds 仅接受标注工具返回值，不接受URL。已提交失败要告知用户，重试须用户明确要求并重新审批。", map[string]any{
 			"mode": map[string]any{"type": "string", "enum": cloudAgentGenerationModeNames()}, "prompt": str("完整生成提示词；引用素材时在对应描述中使用 @图片1、@视频1、@音频1，各类型按 referenceNodeIds 中出现顺序独立编号，文本来源不占媒体编号。服务端会为遗漏的已选素材补齐引用标签，不推断素材用途"),
 			"logicalModelId": str("selection.logicalModelId；与channelId/channelModelKey互斥"), "channelId": str("selection.channelId"), "channelModelKey": str("selection.channelModelKey"),
 			"durationSeconds": map[string]any{"type": "integer", "minimum": 0}, "size": str("模型支持的画幅，例如9:16"), "quality": str("目录支持的分辨率或质量"), "videoGenerateAudio": map[string]any{"type": "boolean", "description": "是否生成音频，仅视频可用"},
