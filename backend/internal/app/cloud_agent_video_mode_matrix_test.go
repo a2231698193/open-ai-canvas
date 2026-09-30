@@ -17,14 +17,14 @@ func TestCloudAgentVideoReferenceModeMatrix(t *testing.T) {
 	s, _, args := agentMediaFixture(t)
 	cases := []struct {
 		name       string
-		roles      []cloudAgentMediaReference
+		roles      []cloudAgentMediaReferenceSpec
 		nodeIDs    []string
 		operation  string
 		wantErrHas string
 	}{
-		{"只有首帧", []cloudAgentMediaReference{{NodeID: "hero", Role: "first_frame"}}, nil, "", ""},
-		{"首帧+参考图", []cloudAgentMediaReference{{NodeID: "hero", Role: "first_frame"}, {NodeID: "cat", Role: "reference_image"}}, nil, "", "图生视频只收一张首帧图片"},
-		{"首尾帧两张", []cloudAgentMediaReference{{NodeID: "hero", Role: "first_frame"}, {NodeID: "cat", Role: "last_frame"}}, nil, "", ""},
+		{"只有首帧", []cloudAgentMediaReferenceSpec{{NodeID: "hero", Role: "first_frame"}}, nil, "", ""},
+		{"首帧+参考图", []cloudAgentMediaReferenceSpec{{NodeID: "hero", Role: "first_frame"}, {NodeID: "cat", Role: "reference_image"}}, nil, "", "图生视频只收一张首帧图片"},
+		{"首尾帧两张", []cloudAgentMediaReferenceSpec{{NodeID: "hero", Role: "first_frame"}, {NodeID: "cat", Role: "last_frame"}}, nil, "", ""},
 		{"无角色双图+全能参考", nil, []string{"hero", "cat"}, "reference_to_video", ""},
 		{"无角色双图不指定operation", nil, []string{"hero", "cat"}, "", ""},
 	}

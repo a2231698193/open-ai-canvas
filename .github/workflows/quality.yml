@@ -7,10 +7,18 @@ on:
 permissions:
   contents: read
 
+# 同一个 PR 连续推送时取消旧的检查，只保留最新提交；被发布流程调用（workflow_call）时
+# 每次运行使用独立分组，绝不互相取消，避免中间提交的镜像发布被跳过。
+concurrency:
+  group: quality-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
+    # go test 自身有 20 分钟超时；这里兜底防止依赖服务卡死时占用 Runner 数小时。
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
@@ -59,11 +67,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          # internal/app 单包在 CI 上已经要 8-10 分钟（1486 个用例，每个构造服务的用例都要
-          # 读入并解析官方插件包），默认的 10 分钟单包超时只剩几十秒余量，一次并发跑两个
-          # 工作流就会踩线失败。这里显式放宽到 20 分钟；真正需要的是把包本身变快
-          # （官方插件包按进程缓存解析结果），而不是继续抬这个数字。
-          go test -json -timeout 20m ./... | tee "$RUNNER_TEMP/go-tests.jsonl"
+          # internal/app 约 1000 个用例串行执行，是后端检查的关键路径（本地约 2–3 分钟）。
+          # 此前每个用例构造 Service 时都会完整解压 85MB 官方插件包（约 4 秒/次，累计 7 分钟以上），
+          # 现已改为只读清单 + 进程内缓存；若该包耗时再次明显上涨，先查 newPluginRuntime。
+          go test -json -timeout=20m ./... | tee "$RUNNER_TEMP/go-tests.jsonl"
       - name: Ensure dependency-backed tests were not skipped
         shell: bash
         run: |
@@ -106,6 +113,7 @@ jobs:
   web:
     name: Web checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web

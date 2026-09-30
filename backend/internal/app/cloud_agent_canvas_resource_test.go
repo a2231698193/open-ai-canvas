@@ -52,7 +52,7 @@ func TestCLICanvasOpsAttachUploadedResourceAndUseItAsReference(t *testing.T) {
 	args.NodeID = "video-uploaded"
 	// references 自带顺序与角色，与 referenceNodeIds 只能填一个。
 	args.ReferenceNodeIDs = nil
-	args.References = []cloudAgentMediaReference{{NodeID: "uploaded-ref", Role: cloudAgentReferenceRoleFirstFrame}}
+	args.References = []cloudAgentMediaReferenceSpec{{NodeID: "uploaded-ref", Role: cloudAgentReferenceRoleFirstFrame}}
 	args.VideoEditOperation = "image_to_video"
 	args.SnapshotHash = applied.(map[string]any)["snapshotHash"].(string)
 	raw, err := json.Marshal(args)

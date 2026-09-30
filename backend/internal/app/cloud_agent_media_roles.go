@@ -23,7 +23,7 @@ var cloudAgentReferenceBindingRoles = map[string]string{
 	cloudAgentReferenceRoleLastFrame:  "last-frame",
 }
 
-type cloudAgentMediaReference struct {
+type cloudAgentMediaReferenceSpec struct {
 	NodeID string `json:"nodeId"`
 	Role   string `json:"role"`
 }

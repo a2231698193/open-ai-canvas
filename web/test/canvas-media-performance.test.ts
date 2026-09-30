@@ -9,19 +9,20 @@ import { canvasNodeVideoPreviewReference, canvasNodeVideoPreviewUrl, canvasVideo
 import { collectImageStorageKeys } from "../src/services/image-storage";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 import { detectVideoAudioTrack, detectVideoAudioTrackFromBlob, detectVideoAudioTrackFromUrl } from "../src/lib/video-poster";
+import { moduleGroupSource } from "./helpers/module-group-source";
 
-const canvasNodeContentSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-node-content.tsx"), "utf8");
+const canvasNodeContentSource = moduleGroupSource("components/canvas/canvas-node-content.tsx");
 const canvasAudioPlayerSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-audio-player.tsx"), "utf8");
-const canvasMentionSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-resource-mention-textarea.tsx"), "utf8");
+const canvasMentionSource = moduleGroupSource("components/canvas/canvas-resource-mention-textarea.tsx");
 const canvasNodeSource = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-node.tsx"), "utf8");
 const canvasVideoPreviewSource = readFileSync(resolve(import.meta.dir, "../src/services/canvas-video-preview.ts"), "utf8");
 const browserDownloadSource = readFileSync(resolve(import.meta.dir, "../src/services/browser-download.ts"), "utf8");
 const canvasNodeEditorSource = readFileSync(resolve(import.meta.dir, "../src/pages/canvas/use-canvas-node-editor.ts"), "utf8");
-const assetLibrarySource = readFileSync(resolve(import.meta.dir, "../src/pages/assets/index.tsx"), "utf8");
+const assetLibrarySource = moduleGroupSource("pages/assets/index.tsx");
 const projectAssetsSource = readFileSync(resolve(import.meta.dir, "../src/pages/projects/detail/assets.tsx"), "utf8");
 const workflowProductionSource = readFileSync(resolve(import.meta.dir, "../src/pages/projects/detail/workflow-production-workbench.tsx"), "utf8");
 const videoPlayerSource = readFileSync(resolve(import.meta.dir, "../src/components/video-player.tsx"), "utf8");
-const canvasProjectSource = readFileSync(resolve(import.meta.dir, "../src/pages/canvas/project.tsx"), "utf8");
+const canvasProjectSource = moduleGroupSource("pages/canvas/project.tsx");
 const globalStylesSource = readFileSync(resolve(import.meta.dir, "../src/styles/globals.css"), "utf8");
 
 function node(id: string, type: CanvasNodeType): CanvasNodeData {
@@ -82,10 +83,12 @@ describe("large canvas media rendering", () => {
     });
 
     test("keeps inactive video nodes on a viewport-gated static first frame", () => {
-        const inactivePreviewSource = canvasNodeContentSource.match(/function InactiveVideoPreview[\s\S]*?\n}\n\nfunction VideoPreviewPlayButton/)?.[0] || "";
-        // 视口门控：不在视口内就不去取首帧，也不把它升级成活动播放器。
-        expect(inactivePreviewSource).toContain("if (hasPersistedPreview || !nearViewport || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current)");
-        // 静态首帧来自持久化/水合出来的预览图，并把结果写回 videoPreview 供下次直接使用。
+        const inactivePreviewSource = canvasNodeContentSource.match(/function InactiveVideoPreview[\s\S]*?\n}\n\n(?:export )?function VideoPreviewPlayButton/)?.[0] || "";
+        expect(canvasNodeContentSource).toContain("if (hasPersistedPreview || !nearViewport || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current)");
+        expect(canvasNodeContentSource).not.toContain("hydrateMediaPreview");
+        expect(inactivePreviewSource).toContain("hasPersistedPreview || !nearViewport");
+        expect(inactivePreviewSource).toContain("URL.revokeObjectURL(localPreviewUrlRef.current)");
+        expect(inactivePreviewSource).not.toContain("<video");
         expect(inactivePreviewSource).toContain("hydrateCanvasVideoPreview(node, controller.signal)");
         expect(inactivePreviewSource).toContain("updateMetadataRef.current?.(node.id, { videoPreview })");
         expect(inactivePreviewSource).toContain("<CanvasVideoPreviewImage");

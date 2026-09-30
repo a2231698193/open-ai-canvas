@@ -7,7 +7,7 @@ import (
 )
 
 func TestNormalizeCloudAgentMediaReferencesOrdersAndAssignsRoles(t *testing.T) {
-	a := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{
+	a := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{
 		{NodeID: "img-1", Role: "reference_image"},
 		{NodeID: "seam-1", Role: "first_frame"},
 	}}
@@ -32,7 +32,7 @@ func TestNormalizeCloudAgentMediaReferencesOrdersAndAssignsRoles(t *testing.T) {
 }
 
 func TestNormalizeCloudAgentMediaReferencesKeyframesAndDefaultRole(t *testing.T) {
-	keyframes := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{
+	keyframes := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{
 		{NodeID: "first", Role: "first_frame"},
 		{NodeID: "last", Role: "last_frame"},
 	}}
@@ -45,7 +45,7 @@ func TestNormalizeCloudAgentMediaReferencesKeyframesAndDefaultRole(t *testing.T)
 	}
 
 	// 省略 role 等于 reference_image，别名与连字符写法也接受。
-	plain := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{
+	plain := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{
 		{NodeID: "a"}, {NodeID: "b", Role: "reference"}, {NodeID: "c", Role: "first-frame"},
 	}}
 	if err := normalizeCloudAgentMediaReferences(&plain); err != nil {
@@ -59,7 +59,7 @@ func TestNormalizeCloudAgentMediaReferencesKeyframesAndDefaultRole(t *testing.T)
 	}
 
 	// 只挂普通参考图时落到 reference 模式，operation 会把它判成 reference_to_video。
-	only := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "x"}}}
+	only := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "x"}}}
 	if err := normalizeCloudAgentMediaReferences(&only); err != nil {
 		t.Fatal(err)
 	}
@@ -74,12 +74,12 @@ func TestNormalizeCloudAgentMediaReferencesRejectsBadInput(t *testing.T) {
 		args    cloudAgentMediaArgs
 		contain string
 	}{
-		{"两种写法并存", cloudAgentMediaArgs{Mode: "video", ReferenceNodeIDs: []string{"a"}, References: []cloudAgentMediaReference{{NodeID: "b"}}}, "只能填一个"},
-		{"节点重复", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "a"}, {NodeID: "a"}}}, "出现了多次"},
-		{"两个首帧", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "a", Role: "first_frame"}, {NodeID: "b", Role: "first_frame"}}}, "first_frame 只能有一个"},
-		{"尾帧没有首帧", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "a", Role: "last_frame"}}}, "必须同时指定 first_frame"},
-		{"角色无效", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "a", Role: "lastframe"}}}, "reference_image"},
-		{"节点ID为空", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReference{{NodeID: "  "}}}, "nodeId"},
+		{"两种写法并存", cloudAgentMediaArgs{Mode: "video", ReferenceNodeIDs: []string{"a"}, References: []cloudAgentMediaReferenceSpec{{NodeID: "b"}}}, "只能填一个"},
+		{"节点重复", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "a"}, {NodeID: "a"}}}, "出现了多次"},
+		{"两个首帧", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "a", Role: "first_frame"}, {NodeID: "b", Role: "first_frame"}}}, "first_frame 只能有一个"},
+		{"尾帧没有首帧", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "a", Role: "last_frame"}}}, "必须同时指定 first_frame"},
+		{"角色无效", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "a", Role: "lastframe"}}}, "reference_image"},
+		{"节点ID为空", cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "  "}}}, "nodeId"},
 	}
 	for _, item := range cases {
 		err := normalizeCloudAgentMediaReferences(&item.args)
@@ -119,7 +119,7 @@ func TestValidateCloudAgentReferenceRolesRequiresImageFrames(t *testing.T) {
 func TestCLIGenerateMediaWritesKeyframesIntoNodeMetadata(t *testing.T) {
 	s, _, args := agentMediaFixture(t)
 	args.ReferenceNodeIDs = nil
-	args.References = []cloudAgentMediaReference{
+	args.References = []cloudAgentMediaReferenceSpec{
 		{NodeID: "hero", Role: "first_frame"},
 		{NodeID: "cat", Role: "last_frame"},
 	}

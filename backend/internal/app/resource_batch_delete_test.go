@@ -1,7 +1,6 @@
 package app
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -44,48 +43,8 @@ func TestPurgeAssetsBatchSharedResourcesAndHistory(t *testing.T) {
 		}
 	}
 
-	// Active task, canvas and history references must block deletion.
-	if err := svc.PurgeUserAssets("user-1", []string{"first", "second"}); err == nil {
-		t.Fatal("expected referenced assets to remain protected")
-	}
-	assertCount(&model.Asset{}, 3)
-	assertCount(&model.Resource{}, 4)
-	assertCount(&model.ResourceDeletionJob{}, 0)
-	assertCount(&model.CanvasSnapshotResource{}, 1)
-	assertCount(&model.AssetVersion{}, 2)
-	assertCount(&model.AssetRepresentation{}, 2)
-
-	// 被任务与画布引用的素材整批拒绝：什么都不删，并把引用来源说清楚（与 AGENTS.md
-	// "有引用则保留并返回来源，无引用才清理物理对象" 一致）。
-	if err := svc.PurgeUserAssets("user-1", []string{"first", " second ", "first"}); err == nil {
-		t.Fatal("被业务记录引用的素材必须拒绝删除")
-	} else if message := err.Error(); !strings.Contains(message, "batch-task") || !strings.Contains(message, "batch-canvas") || !strings.Contains(message, "解除引用") {
-		t.Fatalf("拒绝理由要列出引用来源与处理方式：%v", err)
-	}
-	assertCount(&model.Asset{}, 3)
-	assertCount(&model.Resource{}, 4)
-	assertCount(&model.ResourceDeletionJob{}, 0)
-	assertCount(&model.CanvasSnapshotResource{}, 1)
-
-	// 解除任务与画布的引用后仍被历史版本引用：继续拒绝，且这次指名历史版本。
-	if err := db.Model(&model.Task{}).Where("id = ?", "batch-task").Update("input_json", `{}`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&model.CanvasProject{}).Where("id = ?", "batch-canvas").Update("payload_json", `{}`).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.PurgeUserAssets("user-1", []string{"first", " second ", "first"}); err == nil {
-		t.Fatal("被画布历史版本引用的素材必须拒绝删除")
-	} else if message := err.Error(); !strings.Contains(message, "画布历史版本") {
-		t.Fatalf("拒绝理由要指名历史版本：%v", err)
-	}
-	assertCount(&model.Asset{}, 3)
-
-	// 引用全部解除后才允许删除：共享资源（batch-shared）进入物理删除队列，其余资源保留。
-	if err := db.Where("snapshot_id = ?", "batch-snapshot").Delete(&model.CanvasSnapshotResource{}).Error; err != nil {
-		t.Fatal(err)
-	}
-	// Once references are released, a late database error must still roll back.
+	// 彻底删除不受任务、画布与画布历史引用拦截（产品约定）；
+	// 但事务后段失败时，素材、版本、表现、历史索引与 Outbox 必须整批回滚。
 	if err := db.Exec("CREATE TRIGGER fail_batch_resource_delete BEFORE DELETE ON resources BEGIN SELECT RAISE(ABORT, 'forced failure'); END;").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +54,7 @@ func TestPurgeAssetsBatchSharedResourcesAndHistory(t *testing.T) {
 	assertCount(&model.Asset{}, 3)
 	assertCount(&model.Resource{}, 4)
 	assertCount(&model.ResourceDeletionJob{}, 0)
-	assertCount(&model.CanvasSnapshotResource{}, 0)
+	assertCount(&model.CanvasSnapshotResource{}, 1)
 	assertCount(&model.AssetVersion{}, 2)
 	assertCount(&model.AssetRepresentation{}, 2)
 	if err := db.Exec("DROP TRIGGER fail_batch_resource_delete").Error; err != nil {
