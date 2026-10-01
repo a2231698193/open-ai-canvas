@@ -53,6 +53,8 @@ func protocolRequestFromInput(input canvasGenerationInput) protocol.GenerationRe
 			// 少塞一项对应的 manifest 表达式就拿不到值，只会静默用默认值。
 			"audioSpeed":            input.Config.AudioSpeed,
 			"audioInstructions":     input.Config.AudioInstructions,
+			"audioLanguage":         input.Config.AudioLanguage,
+			"audioDialect":          input.Config.AudioDialect,
 			"count":                 input.Config.Count,
 			"transparentBackground": input.Config.TransparentBackground,
 		},

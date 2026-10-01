@@ -82,6 +82,8 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
             audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice,
             audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat,
             audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed,
+            audioLanguage: node.metadata?.audioLanguage || globalConfig.audioLanguage,
+            audioDialect: node.metadata?.audioDialect || globalConfig.audioDialect,
         }, mode),
     };
     const config = buildNodeConfig(globalConfig, node, mode, requirements);
@@ -492,6 +494,8 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice || defaultConfig.audioVoice,
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
+        audioLanguage: node.metadata?.audioLanguage || globalConfig.audioLanguage || defaultConfig.audioLanguage,
+        audioDialect: node.metadata?.audioDialect || globalConfig.audioDialect || defaultConfig.audioDialect,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
         audioEmotionControlMethod: node.metadata?.audioEmotionControlMethod || globalConfig.audioEmotionControlMethod || defaultConfig.audioEmotionControlMethod,
         audioEmotionRandom: node.metadata?.audioEmotionRandom || globalConfig.audioEmotionRandom || defaultConfig.audioEmotionRandom,
@@ -558,6 +562,8 @@ function buildModelNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode
         audioVoice: node.metadata?.audioVoice || globalConfig.audioVoice || defaultConfig.audioVoice,
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
+        audioLanguage: node.metadata?.audioLanguage || globalConfig.audioLanguage || defaultConfig.audioLanguage,
+        audioDialect: node.metadata?.audioDialect || globalConfig.audioDialect || defaultConfig.audioDialect,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
         audioEmotionControlMethod: node.metadata?.audioEmotionControlMethod || globalConfig.audioEmotionControlMethod || defaultConfig.audioEmotionControlMethod,
         audioEmotionRandom: node.metadata?.audioEmotionRandom || globalConfig.audioEmotionRandom || defaultConfig.audioEmotionRandom,
@@ -585,6 +591,8 @@ function audioConfigPatch(key: CanvasAudioSettingKey, value: string) {
     if (key === "audioVoice") return { audioVoice: value };
     if (key === "audioFormat") return { audioFormat: value };
     if (key === "audioSpeed") return { audioSpeed: value };
+    if (key === "audioLanguage") return { audioLanguage: value };
+    if (key === "audioDialect") return { audioDialect: value };
     if (key === "audioInstructions") return { audioInstructions: value };
     return { [key]: value };
 }

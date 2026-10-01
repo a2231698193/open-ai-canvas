@@ -1,3 +1,4 @@
+import { normalizeAudioFormatForConfig, normalizeAudioVoiceForConfig } from "@/lib/audio-generation";
 import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob } from "@/services/image-storage";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
@@ -429,9 +430,11 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
         videoGenerateAudio: config.videoGenerateAudio,
         videoWatermark: config.videoWatermark,
         videoArkPrivateAssetUpload: config.videoArkPrivateAssetUpload,
-        audioVoice: config.audioVoice,
-        audioFormat: config.audioFormat,
+        audioVoice: normalizeAudioVoiceForConfig(config, config.audioVoice),
+        audioFormat: normalizeAudioFormatForConfig(config, config.audioFormat),
         audioSpeed: config.audioSpeed,
+        audioLanguage: config.audioLanguage,
+        audioDialect: config.audioDialect,
         audioInstructions: config.audioInstructions,
         systemPrompt: config.systemPrompt,
     };
@@ -471,9 +474,11 @@ function workflowProviderConfig(config: AiConfig, requestConfig: ReturnType<type
         videoGenerateAudio: config.videoGenerateAudio,
         videoWatermark: config.videoWatermark,
         videoArkPrivateAssetUpload: config.videoArkPrivateAssetUpload,
-        audioVoice: config.audioVoice,
-        audioFormat: config.audioFormat,
+        audioVoice: normalizeAudioVoiceForConfig(config, config.audioVoice),
+        audioFormat: normalizeAudioFormatForConfig(config, config.audioFormat),
         audioSpeed: config.audioSpeed,
+        audioLanguage: config.audioLanguage,
+        audioDialect: config.audioDialect,
         audioInstructions: config.audioInstructions,
         workflowId: workflow.workflowId,
         webappId: workflow.webappId,
@@ -506,7 +511,7 @@ function logicalCapabilityOptions(config: AiConfig, mode: BackendGenerationMode)
         : mode === "video"
             ? { size: config.size, videoSeconds: Number(config.videoSeconds), vquality: config.vquality, videoGenerateAudio: config.videoGenerateAudio === "true", videoWatermark: config.videoWatermark === "true" }
             : mode === "audio"
-                ? { audioVoice: config.audioVoice, audioFormat: config.audioFormat, audioSpeed: Number(config.audioSpeed) }
+                ? { audioVoice: config.audioVoice, audioFormat: config.audioFormat, audioSpeed: Number(config.audioSpeed), audioLanguage: config.audioLanguage, audioDialect: config.audioDialect }
                 : {};
     const filtered = Object.fromEntries(Object.entries(candidates).filter(([key]) => Boolean(spec?.options?.[key])));
     // 只把前台模型声明过的参数送进能力匹配。未声明的 quality 不能因为画布选了 4K 档位

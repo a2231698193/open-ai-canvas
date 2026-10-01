@@ -57,7 +57,7 @@ func cloudAgentCreativeAnchorForCanvas(repo *repository.Repository, userID strin
 
 	ids := make([]string, 0, 16)
 	for _, node := range nodes {
-		descriptor, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
+		descriptor, known := cloudAgentNodeCapabilityForNode(node)
 		if known && descriptor.Connection.CanReference {
 			ids = append(ids, stringValue(node["id"]))
 		}
@@ -70,14 +70,14 @@ func cloudAgentCreativeAnchorForCanvas(repo *repository.Repository, userID strin
 			continue
 		}
 		node := byID[id]
-		descriptor, known := cloudAgentNodeCapabilityForType(stringValue(node["type"]))
+		descriptor, known := cloudAgentNodeCapabilityForNode(node)
 		if !known || !descriptor.Connection.CanReference {
 			continue
 		}
 		meta, _ := node["metadata"].(map[string]any)
 		prompt := firstNonEmpty(stringValue(meta["prompt"]), stringValue(meta["composerContent"]))
 		item := cloudAgentReferenceAnchor{
-			NodeID: stringValue(node["id"]), Type: stringValue(node["type"]),
+			NodeID: stringValue(node["id"]), Type: descriptor.Type,
 			Title:          truncateRunes(stringValue(node["title"]), 300),
 			Prompt:         truncateRunes(prompt, cloudAgentAnchorPromptLimit),
 			VisualIdentity: "unknown", RequiresVisualInspection: true,
@@ -91,7 +91,8 @@ func cloudAgentCreativeAnchorForCanvas(repo *repository.Repository, userID strin
 			}
 		}
 		if repo != nil {
-			ref, _, refErr := cloudAgentReference(repo, userID, node)
+			// 角色卡按三视图判定是否可作参考；普通媒体按节点资源判定。
+			ref, _, refErr := cloudAgentMediaReference(repo, userID, "", node)
 			if refErr == nil {
 				item.ReferenceReady = true
 				item.Width, item.Height = ref["width"], ref["height"]

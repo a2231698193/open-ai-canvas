@@ -128,22 +128,22 @@ func cloudAgentImageInspectionResult(inspections cloudAgentImageInspections) any
 
 // cloudAgentInspectionDocument 读取画布文档，查看类工具共用同一份加载与解析口径。
 func cloudAgentInspectionDocument(repo *repository.Repository, userID, canvasID string) (map[string]any, error) {
-	doc, _, err := cloudAgentInspectionDocumentRevision(repo, userID, canvasID)
+	doc, _, _, err := cloudAgentInspectionDocumentRevision(repo, userID, canvasID)
 	return doc, err
 }
 
-// cloudAgentInspectionDocumentRevision 额外返回画布 revision：识图用它判断"这张图本轮是否
-// 已经看过"，画布改动（可能换了素材）之后允许重新识别。
-func cloudAgentInspectionDocumentRevision(repo *repository.Repository, userID, canvasID string) (map[string]any, int64, error) {
+// cloudAgentInspectionDocumentRevision 额外返回画布 revision 和项目 ID。
+// revision 用来判断这张图本轮是否已经看过；项目 ID 用来解析角色卡绑定的三视图。
+func cloudAgentInspectionDocumentRevision(repo *repository.Repository, userID, canvasID string) (map[string]any, int64, string, error) {
 	canvas, err := canvasProjectForUser(repo, userID, canvasID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	doc, err := creationDocument(canvas.PayloadJSON)
 	if err != nil {
-		return nil, 0, BadAuthRequest("服务端画布内容无法解析，请先重新同步")
+		return nil, 0, "", BadAuthRequest("服务端画布内容无法解析，请先重新同步")
 	}
-	return doc, canvas.Revision, nil
+	return doc, canvas.Revision, canvas.ProjectID, nil
 }
 
 func cloudAgentCanvasNode(doc map[string]any, nodeID string) map[string]any {
@@ -240,7 +240,7 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 	if err != nil {
 		return nil, err
 	}
-	doc, revision, err := cloudAgentInspectionDocumentRevision(s.repo, userID, canvasID)
+	doc, revision, projectID, err := cloudAgentInspectionDocumentRevision(s.repo, userID, canvasID)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 		if node == nil {
 			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
 		}
-		inspection, err := s.cloudAgentInspectImageNode(userID, state, node, limits, refresh, revision)
+		inspection, err := s.cloudAgentInspectImageNode(userID, projectID, state, node, limits, refresh, revision)
 		if err != nil {
 			return nil, err
 		}
@@ -272,9 +272,10 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 // cloudAgentInspectImageNode 处理一张图：就绪校验、大小校验、重复查看降级。
 // 交付方式是上游的统一约定——回执里只放 resource:ID，任务执行前由服务端读取真实字节。
 // revision 参与"这张图本轮是否已经看过"的判定（见 cloudAgentImageInspectionCacheKey）。
-func (s *Service) cloudAgentInspectImageNode(userID string, state *cloudAgentRuntime, node map[string]any, limits TextReferenceConfig, refresh bool, revision int64) (cloudAgentImageInspection, error) {
+func (s *Service) cloudAgentInspectImageNode(userID, projectID string, state *cloudAgentRuntime, node map[string]any, limits TextReferenceConfig, refresh bool, revision int64) (cloudAgentImageInspection, error) {
 	nodeID := stringValue(node["id"])
-	reference, _, err := cloudAgentReference(s.repo, userID, node)
+	// 角色卡看的是绑定的三视图；普通图片节点仍看自身资源。
+	reference, _, err := cloudAgentMediaReference(s.repo, userID, projectID, node)
 	if err != nil {
 		return cloudAgentImageInspection{}, err
 	}

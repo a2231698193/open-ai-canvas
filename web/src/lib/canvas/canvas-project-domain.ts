@@ -258,6 +258,8 @@ const NODE_MODEL_GENERATION_PARAMS: ReadonlyArray<keyof CanvasNodeMetadata> = [
     "audioVoice",
     "audioFormat",
     "audioSpeed",
+    "audioLanguage",
+    "audioDialect",
     "audioInstructions",
 ];
 

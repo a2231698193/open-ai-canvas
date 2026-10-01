@@ -289,7 +289,7 @@ test("an independent remote edit merges with local edits instead of stopping the
     await saveRemoteUserDataNow();
 
     expect(remote.get("canvas")!.revision).toBe(3);
-    expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "remote-video", "local-video"]);
+    expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "local-video", "remote-video"]);
     expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
     expect(await readCanvasSyncDrafts("canvas")).toEqual([]);
 });
@@ -302,7 +302,7 @@ test("a same-field conflict preserves drafts, stops retries and does not block a
         nodes: addNode(canvas(), "local-video").nodes.map((node, index) => (index === 0 ? { ...node, title: "本地改名" } : node)),
     });
     useCanvasStore.getState().renameProject("other", "other edit");
-    await expect(saveRemoteUserDataNow()).rejects.toThrow("版本冲突");
+    await expect(saveRemoteUserDataNow()).rejects.toThrow("已保留本地编辑");
     expect(remote.get("canvas")!.nodes.map((node) => node.id)).toEqual(["old-image", "remote-video"]);
     expect(remote.get("other")!.title).toBe("other edit");
     expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("conflict");
