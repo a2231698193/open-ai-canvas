@@ -25,10 +25,11 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ASSET_CATEGORY_OPTIONS } from "@/lib/asset-category";
 import { downloadBrowserMedia } from "@/services/browser-download";
 import { flushAssetStorePersistence, useAssetStore, type AssetCategory, type AssetKind, type ImageAsset } from "@/stores/use-asset-store";
-import { loadAssetLibraryPage, loadAssetsForUse, saveRemoteUserDataNow, localSavedRemotePendingMessage, deleteAssetsWithRemoteSync, deleteAssetWithRemoteSync } from "@/services/user-data-sync";
+import { loadAssetLibraryPage, loadAssetsForUse, saveRemoteUserDataNow, localSavedRemotePendingMessage, deleteAssetsWithRemoteSync, deleteAssetWithRemoteSync, clearActiveAssetsByKind } from "@/services/user-data-sync";
+import { libraryClearCountLabel } from "@/services/asset-library-clear";
 import { useUserStore } from "@/stores/use-user-store";
 import { createAssetFolder, deleteAssetFolder, listAssetFolders, updateAssetFolder, type AssetFolder, moveRemoteAssetsToFolder } from "@/services/api/user-data";
-import { assetCountMap, assetSearchText, readAssetGridDensity, assetKindIcons } from "./asset-library-format";
+import { assetCountMap, assetSearchText, readAssetGridDensity, assetKindIcons, assetKindLabel } from "./asset-library-format";
 import { ASSET_GRID_DENSITY_KEY, type LibraryAsset } from "./asset-library-format";
 
 export { ASSET_GRID_DENSITY_KEY, type LibraryAsset, assetKindIcons } from "./asset-library-format";
@@ -74,6 +75,7 @@ export default function AssetsPage() {
     const imageInputRef = useRef<HTMLInputElement>(null);
     const assetInputRef = useRef<HTMLInputElement>(null);
     const modelInputRef = useRef<HTMLInputElement>(null);
+    const clearingKind = useRef<string | null>(null);
     const assets = useAssetStore((state) => state.assets);
     const addAsset = useAssetStore((state) => state.addAsset);
 
@@ -538,6 +540,25 @@ export default function AssetsPage() {
         }
     };
 
+    const clearAssetKind = async (kind: string) => {
+        if (clearingKind.current) throw new Error("正在清空其他类型，请稍候");
+        clearingKind.current = kind;
+        try {
+            const { deleted, ids } = await clearActiveAssetsByKind(kind);
+            const removed = new Set(ids);
+            setSelectedIds((current) => current.filter((id) => !removed.has(id)));
+            const label = assetKindLabel(kind as AssetKind);
+            const name = /^[A-Za-z0-9]/.test(label) ? ` ${label}` : label;
+            if (!deleted) {
+                message.info(`没有可清空的${name}`);
+                return;
+            }
+            message.success(`已彻底清空 ${libraryClearCountLabel(deleted, label)}`);
+        } finally {
+            clearingKind.current = null;
+        }
+    };
+
     return (
         <>
             <WorkspacePage grid className="library-page assets-library-page canvas-library-page">
@@ -636,6 +657,8 @@ export default function AssetsPage() {
                                 options={kindOptions}
                                 value={viewMode === "library" ? kindFilter : ""}
                                 counts={kindCounts}
+                                clearable={viewMode === "library"}
+                                onClear={clearAssetKind}
                                 onChange={(value) => {
                                     setViewMode("library");
                                     setKindFilter(value as AssetKind | "all");

@@ -142,7 +142,8 @@
 }
 .assets-collection-filters .assets-filter-item { width: 100%; }
 .assets-collection-filters .collection-folder-list > button,
-.assets-collection-filters .collection-folder-list .assets-folder-row { width: 100%; max-width: none; }
+.assets-collection-filters .collection-folder-list .assets-folder-row,
+.assets-collection-filters .assets-kind-row { width: 100%; max-width: none; }
 .collection-folder-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .collection-folder-heading .collection-filter-label { padding: 0; }
 .collection-trash-entry {
@@ -249,6 +250,7 @@
     .assets-collection-filters .assets-filter-item { width: auto; }
     .assets-collection-filters .collection-folder-list > button,
     .assets-collection-filters .collection-folder-list .assets-folder-row { width: auto; max-width: 220px; }
+    .assets-collection-filters .assets-kind-row { width: auto; max-width: 260px; }
     .app-user-workspace .skill-library-grid { grid-template-columns: minmax(0, 1fr); }
     .app-product-workspace .skill-library-grid.library-grid { grid-template-columns: minmax(0, 1fr); }
     .story-launcher-panel { padding: var(--space-4); }

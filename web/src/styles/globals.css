@@ -14416,6 +14416,27 @@ html:not(.dark) .creation-history-drawer-root {
 .assets-filter-item.is-active:hover { background: var(--control-selected-hover-bg); color: var(--control-selected-fg); }
 .assets-filter-item.is-active .assets-filter-count { background: color-mix(in srgb, var(--control-selected-fg) 18%, transparent); color: var(--control-selected-fg); }
 .assets-folder-row { display: flex; min-width: 0; align-items: center; gap: 2px; }
+.assets-kind-row { display: flex; min-width: 0; align-items: center; gap: 2px; }
+.assets-kind-row > .assets-filter-item { width: auto; min-width: 0; flex: 1 1 auto; }
+.assets-kind-clear {
+    display: inline-flex;
+    height: 26px;
+    flex: 0 0 auto;
+    align-items: center;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 56%, transparent);
+    font-size: var(--fs-micro);
+    cursor: pointer;
+}
+.assets-kind-clear:hover,
+.assets-kind-clear[aria-expanded="true"] {
+    background: color-mix(in srgb, var(--status-error) 12%, transparent);
+    color: var(--status-error);
+}
+.assets-kind-clear:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 .assets-folder-add, .assets-folder-more { display: grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border: 0; border-radius: var(--r-md); background: transparent; color: color-mix(in srgb, var(--foreground) 42%, transparent); cursor: pointer; }
 .assets-folder-add:hover, .assets-folder-more:hover { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
 @media (min-width: 1024px) {

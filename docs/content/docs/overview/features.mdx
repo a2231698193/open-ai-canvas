@@ -44,13 +44,16 @@ description: 当前项目已实现的核心工作台能力与使用入口
 
 素材库支持用户手动新增、重命名和删除分类，也可以按分类或“未分类”筛选素材，并批量移动素材。删除分类不会删除素材，分类内素材会回到“未分类”。
 
+素材库可按类型分别清空当前库中的文本、图片、视频、音频或 3D 模型。每次只清一种，确认后彻底删除，不受当前搜索、业务分类和文件夹筛选影响；其他类型以及回收站中的素材不会一起删除。
+
 画布中的远程图片、视频和音频展示统一使用资源文件地址，不把浏览器 Blob Object URL 写入节点或预览状态；Blob 缓存只用于导出、抽帧、供应商输入等字节处理。画布生成的视频在进入成功态前会先完成资源 Blob 缓存，缓存失败会保留失败语义，不会显示为已成功。
 
 资源出口统一由服务端按存储分发设置决定（配了 CDN 直连 CDN，否则签名回源，需要字节时走平台读取），客户端不再用 `direct=1` / `proxy=1` 选择出口；`download=1` 映射成 `purpose=download` 并保留附件名。因此**对象存储与 CDN 必须对站点来源返回 CORS 响应头**（`Access-Control-Allow-Origin` 即可），否则复制图片、导出、本地缓存这类读字节的操作会失败并如实报错（不再自动回落同源代理）。架构见 [资源分发架构](/docs/design/resource-delivery-architecture)。
 
 ### 相关实现
 
-- `web/src/pages/assets/index.tsx`：素材库分类筛选、新建、重命名、删除和批量移动入口。
+- `web/src/pages/assets/index.tsx`：素材库分类筛选、新建、重命名、删除、批量移动和按类型清空入口。
+- `web/src/services/asset-library-clear.ts`：按类型清空时的分页与分批规则。
 - `web/src/services/api/user-data.ts`：素材分类及素材移动 API。
 - `web/src/services/file-storage.ts`、`web/src/services/image-storage.ts`：远程资源地址解析。
 - `web/src/services/resource-blob-cache.ts`：按用户 scope 隔离的媒体字节缓存。

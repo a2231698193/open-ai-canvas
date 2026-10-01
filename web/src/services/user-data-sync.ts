@@ -15,7 +15,9 @@ import { canvasContentHash, sameCanvasContent } from "@/lib/canvas/canvas-conten
 import { getActiveUserScope } from "@/lib/user-scope";
 import { preserveCanvasSyncDraft, readCanvasSyncDrafts } from "@/services/canvas-sync-drafts";
 import { appQueryClient } from "@/lib/query-client";
+import { accountFileStorageUsageQueryKey } from "@/lib/account-storage-usage";
 import { parseAssetRecordList } from "@/lib/asset-record";
+import { clearLibraryAssetsByKind, isLibraryClearKind } from "@/services/asset-library-clear";
 import { assetForRemoteSync } from "@/lib/asset-remote-sync";
 import type { Asset } from "@/stores/use-asset-store";
 import { flushAssetStorePersistence, useAssetStore } from "@/stores/use-asset-store";
@@ -598,6 +600,58 @@ export async function deleteAssetsWithRemoteSync(ids: string[]) {
     void Promise.all([appQueryClient.invalidateQueries({ queryKey: ["asset-library"] }, { throwOnError: true }), appQueryClient.invalidateQueries({ queryKey: ["asset-picker"] }, { throwOnError: true })]).catch((error) => {
         console.warn("素材删除后列表刷新失败", error);
     });
+}
+
+export async function clearActiveAssetsByKind(kind: string): Promise<{ deleted: number; ids: string[] }> {
+    if (!isLibraryClearKind(kind)) throw new Error("不能一次清空所有类型");
+    const epoch = sessionEpoch;
+    try {
+        const result = await withRemoteUserDataSyncExclusive(async () => {
+            if (epoch !== sessionEpoch) throw new Error("账号已切换，请重新确认要清空的类型");
+            if (activeRemoteUserId) requireRemoteUserDataBaseline();
+            // 同步队列不可重入。这里已经占住队列，不能再走批量删除入口，否则清空会等待自己结束。
+            try {
+                const cleared = await clearLibraryAssetsByKind({
+                    kind,
+                    loggedIn: Boolean(activeRemoteUserId),
+                    readLocal: () => useAssetStore.getState().assets,
+                    loadPage: async (page, pageSize) => {
+                        if (epoch !== sessionEpoch) throw new Error("账号已切换，请刷新原账号素材库确认清空结果");
+                        const listed = await listRemoteAssetsPage({ page, pageSize, kind, status: "active" });
+                        return { assets: parseAssetRecordList(listed.assets), hasMore: listed.hasMore };
+                    },
+                    deleteRemote: async (ids) => {
+                        if (epoch !== sessionEpoch) throw new Error("账号已切换，请刷新原账号素材库确认清空结果");
+                        await deleteRemoteAssets(ids);
+                        if (epoch !== sessionEpoch) throw new Error("账号已切换，请刷新原账号素材库确认清空结果");
+                        for (const id of ids) acknowledgedAssets.delete(id);
+                        await useAssetStore.getState().removeAssets(ids);
+                    },
+                    deleteLocal: async (ids) => {
+                        if (epoch !== sessionEpoch) throw new Error("账号已切换，请刷新原账号素材库确认清空结果");
+                        await useAssetStore.getState().removeAssets(ids);
+                    },
+                });
+                await flushAssetStorePersistence();
+                return cleared;
+            } catch (error) {
+                await flushAssetStorePersistence();
+                throw error;
+            }
+        });
+        if (epoch !== sessionEpoch) throw new Error("账号已切换，请刷新原账号素材库确认清空结果");
+        return result;
+    } finally {
+        if (epoch === sessionEpoch) {
+            void Promise.all([
+                appQueryClient.invalidateQueries({ queryKey: ["asset-library"] }, { throwOnError: true }),
+                appQueryClient.invalidateQueries({ queryKey: ["asset-picker"] }, { throwOnError: true }),
+                appQueryClient.invalidateQueries({ queryKey: accountFileStorageUsageQueryKey }, { throwOnError: true }),
+            ]).catch((error) => {
+                console.warn("素材清空后列表刷新失败", error);
+            });
+        }
+    }
 }
 
 export async function deleteCanvasProjectsWithRemoteSync(ids: string[]) {

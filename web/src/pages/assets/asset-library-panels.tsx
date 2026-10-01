@@ -6,7 +6,9 @@ import { AudioPlayButton, CharacterAssetCover } from "@/components/assets/asset-
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { assetCategoryLabel } from "@/lib/asset-category";
 import { formatBytes } from "@/lib/image-utils";
-import { useRef, useState } from "react";
+import { DeleteButton } from "@/components/ui/base/buttons/delete-button";
+import { libraryClearActionLabel, libraryClearDescription, shouldOfferAssetKindClear } from "@/services/asset-library-clear";
+import { Fragment, useRef, useState } from "react";
 import { resourceStorageLabel, resourceStorageLocation, resourceStorageTitle } from "@/lib/canvas/resource-storage-status";
 import { type LibraryAsset, assetKindIcons } from "./asset-library-format";
 import { isKnownAssetKind } from "./asset-library-cards";
@@ -127,6 +129,8 @@ export function AssetFilterGroup({
     counts,
     onChange,
     className = "",
+    clearable = false,
+    onClear,
 }: {
     title: string;
     options: Array<{ label: string; value: string }>;
@@ -134,6 +138,8 @@ export function AssetFilterGroup({
     counts: Map<string, number>;
     onChange: (value: string) => void;
     className?: string;
+    clearable?: boolean;
+    onClear?: (value: string) => Promise<unknown>;
 }) {
     return (
         <div className={`collection-filter-group ${className}`}>
@@ -141,11 +147,20 @@ export function AssetFilterGroup({
             <div className="collection-filter-options">
                 {options.map((option) => {
                     const active = value === option.value;
-                    return (
-                        <button key={option.value} type="button" aria-pressed={active} className={`assets-filter-item ${active ? "is-active" : ""}`} onClick={() => onChange(option.value)}>
+                    const count = counts.get(option.value) || 0;
+                    const offerClear = Boolean(onClear) && shouldOfferAssetKindClear(option.value, count, clearable);
+                    const button = (
+                        <button type="button" aria-pressed={active} className={`assets-filter-item ${active ? "is-active" : ""}${offerClear ? " min-w-0 flex-1" : ""}`} onClick={() => onChange(option.value)}>
                             <span className="assets-filter-item-label">{option.label}</span>
-                            <span className="assets-filter-count">{counts.get(option.value) || 0}</span>
+                            <span className="assets-filter-count">{count}</span>
                         </button>
+                    );
+                    if (!offerClear || !onClear) return <Fragment key={option.value}>{button}</Fragment>;
+                    return (
+                        <div key={option.value} className="assets-kind-row">
+                            {button}
+                            <DeleteButton label={libraryClearActionLabel(option.label)} description={libraryClearDescription(option.label, count)} triggerLabel="清空" onConfirm={() => onClear(option.value)} />
+                        </div>
                     );
                 })}
             </div>

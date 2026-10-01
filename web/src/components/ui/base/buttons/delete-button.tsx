@@ -3,7 +3,7 @@ import { Check, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 /** 原位确认只在真实请求完成后关闭；失败保留操作上下文。 */
-export function DeleteButton({ label, description, onConfirm }: { label: string; description: string; onConfirm: () => Promise<unknown> }) {
+export function DeleteButton({ label, description, onConfirm, triggerLabel }: { label: string; description: string; onConfirm: () => Promise<unknown>; triggerLabel?: string }) {
     const [open, setOpen] = useState(false);
     const [pending, setPending] = useState(false);
     const [error, setError] = useState("");
@@ -31,7 +31,7 @@ export function DeleteButton({ label, description, onConfirm }: { label: string;
                 </div>
             </div>
         }>
-            <button ref={trigger} type="button" className="product-icon-button product-delete-trigger" aria-label={label} aria-expanded={open} aria-haspopup="dialog"><Trash2 /></button>
+            <button ref={trigger} type="button" className={triggerLabel ? "assets-kind-clear" : "product-icon-button product-delete-trigger"} aria-label={label} title={label} aria-expanded={open} aria-haspopup="dialog">{triggerLabel || <Trash2 />}</button>
         </Popover>
     </span>;
 }
