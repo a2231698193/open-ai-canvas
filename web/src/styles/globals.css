@@ -648,6 +648,12 @@
     text-align: center;
 }
 
+.site-compliance-footer > span {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
 .site-compliance-footer a {
     display: inline-flex;
     align-items: center;
@@ -9984,9 +9990,9 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
         font-size: 0.92em;
         font-weight: 500;
         line-height: 1;
-        vertical-align: baseline;
+        vertical-align: middle;
         user-select: none;
-        transform: translateY(var(--canvas-mention-chip-offset-y));
+        transform: translateY(-0.08em);
     }
 
     .canvas-resource-inline-skill-icon {

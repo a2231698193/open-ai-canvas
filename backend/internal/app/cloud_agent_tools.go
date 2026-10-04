@@ -234,18 +234,20 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"globalPrompt": str("set_global_prompt 使用；非空时覆盖各任务提示词，空字符串清除全局提示词"),
 		}, "snapshotHash", "nodeId", "action")
 		opProperties := map[string]any{
-			"type":       map[string]any{"type": "string", "enum": []string{"add_node", "update_node", "connect_nodes", "delete_node"}, "description": "必填的操作类型；新增节点必须传 add_node，nodeType 不能代替本字段"},
-			"id":         str("节点或连线唯一ID"),
-			"nodeType":   map[string]any{"type": "string", "enum": cloudAgentNodeTypeNames()},
-			"title":      str("标题；更新操作可选"),
-			"content":    str("文本正文或媒体提示词；更新操作可选"),
-			"patch":      cloudAgentPatchSchema(),
-			"generation": map[string]any{"type": "object", "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝"},
-			"resourceId": str("账号资源库的媒体资源ID（asset upload 返回值，可带 resource: 前缀）：add_node/update_node 用它把图片/视频/音频挂到媒体节点，服务端校验归属、就绪与类型"),
-			"fromNodeId": str("连线来源节点ID"),
-			"toNodeId":   str("连线目标节点ID"),
-			"x":          map[string]any{"type": "number"},
-			"y":          map[string]any{"type": "number"},
+			"type":         map[string]any{"type": "string", "enum": []string{"add_node", "update_node", "connect_nodes", "delete_node"}, "description": "必填的操作类型；新增节点必须传 add_node，nodeType 不能代替本字段"},
+			"id":           str("节点或连线唯一ID"),
+			"nodeType":     map[string]any{"type": "string", "enum": cloudAgentNodeTypeNames()},
+			"title":        str("标题；更新操作可选"),
+			"content":      str("文本正文或媒体提示词；更新操作可选"),
+			"patch":        cloudAgentPatchSchema(),
+			"generation":   map[string]any{"type": "object", "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝"},
+			"resourceId":   str("账号资源库的媒体资源ID（asset upload 返回值，可带 resource: 前缀）：add_node/update_node 用它把图片/视频/音频挂到媒体节点，服务端校验归属、就绪与类型"),
+			"fromNodeId":   str("连线来源节点ID"),
+			"toNodeId":     str("连线目标节点ID"),
+			"fromHandleId": str("分镜来源 handle：row:<rowId> 或 storyboard:context"),
+			"toHandleId":   str("分镜目标 handle：row:<rowId> 或 storyboard:context"),
+			"x":            map[string]any{"type": "number"},
+			"y":            map[string]any{"type": "number"},
 		}
 		opItem := map[string]any{
 			"type":                 "object",
@@ -259,7 +261,7 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 				{"properties": map[string]any{"type": map[string]any{"const": "delete_node"}}},
 			},
 		}
-		add("canvas_apply_ops", "创建节点、挂载账号素材、改提示词、连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不接受任意 metadata 和媒体 URL：上传好的图片/视频/音频用 resourceId 挂到媒体节点。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y），connect_nodes 还要 fromNodeId 与 toNodeId，delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
+		add("canvas_apply_ops", "创建节点、挂载账号素材、改提示词、连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不接受任意 metadata 和媒体 URL：上传好的图片/视频/音频用 resourceId 挂到媒体节点。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y），connect_nodes 还要 fromNodeId 与 toNodeId。分镜镜头关联把 rowId 写成 fromHandleId/toHandleId 的 row:<rowId>，整表设定用 storyboard:context。delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
 		add("canvas_arrange_nodes", "整理画布节点位置：只改坐标，不改内容、不建连线、不增删节点，先读画布并传 snapshotHash。mode 省略即 auto（有连线按依赖分层，否则按媒体类型分区）。groups 为横向分带（label 展示名，可覆盖整组 mode）。nodeIds 省略则整理全部可整理节点（跳过锁定节点、容器、批次子节点与已归属背板者）。align 对齐/等距，dryRun 只预演；一次最多 50 个节点，只挪单个节点用 update_node 的 x/y。", map[string]any{
 			"snapshotHash": str("最近一次画布读取的 snapshotHash"),
 			"nodeIds":      map[string]any{"type": "array", "maxItems": cloudAgentArrangeMaxNodes, "items": str("节点ID；省略=全部可整理")},
