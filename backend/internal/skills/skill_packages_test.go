@@ -290,7 +290,13 @@ func TestSkillPackageSizeLimits(t *testing.T) {
 	if _, err := archiveFromZip(skillZip(t, map[string]string{
 		"SKILL.md":  "# Skill\n\nDescription.",
 		"asset.bin": strings.Repeat("x", (8<<20)+1),
-	}), ""); err == nil || !strings.Contains(err.Error(), "8MB") {
+	}), ""); err != nil {
+		t.Fatalf("file above 8MB must fit the package limit, got %v", err)
+	}
+	if _, err := archiveFromZip(skillZip(t, map[string]string{
+		"SKILL.md":  "# Skill\n\nDescription.",
+		"asset.bin": strings.Repeat("x", maxSkillFileBytes+1),
+	}), ""); err == nil || !strings.Contains(err.Error(), "单个文件") {
 		t.Fatalf("expected single-file limit error, got %v", err)
 	}
 	svc := New(nil, t.TempDir(), nil)

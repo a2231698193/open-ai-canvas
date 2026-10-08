@@ -46,7 +46,7 @@ func readSkillArchiveEntries(dataDir string, packageKey string) (map[string][]by
 			return nil, kernel.BadAuthRequest("技能包包含重复文件路径")
 		}
 		if entry.UncompressedSize64 > maxSkillFileBytes {
-			return nil, kernel.BadAuthRequest("技能包中单个文件不能超过 8MB")
+			return nil, skillFileTooLarge()
 		}
 		file, err := entry.Open()
 		if err != nil {
@@ -61,7 +61,7 @@ func readSkillArchiveEntries(dataDir string, packageKey string) (map[string][]by
 			return nil, closeErr
 		}
 		if len(content) > maxSkillFileBytes {
-			return nil, kernel.BadAuthRequest("技能包中单个文件不能超过 8MB")
+			return nil, skillFileTooLarge()
 		}
 		total += int64(len(content))
 		if total > maxSkillPackageBytes {
@@ -136,7 +136,7 @@ func archiveFromZip(data []byte, subdir string) (skillPackageArchive, error) {
 			return skillPackageArchive{}, kernel.BadAuthRequest("技能包包含重复文件路径")
 		}
 		if entry.UncompressedSize64 > maxSkillFileBytes {
-			return skillPackageArchive{}, kernel.BadAuthRequest("技能包中单个文件不能超过 8MB")
+			return skillPackageArchive{}, skillFileTooLarge()
 		}
 		file, err := entry.Open()
 		if err != nil {
@@ -151,7 +151,7 @@ func archiveFromZip(data []byte, subdir string) (skillPackageArchive, error) {
 			return skillPackageArchive{}, closeErr
 		}
 		if len(content) > maxSkillFileBytes {
-			return skillPackageArchive{}, kernel.BadAuthRequest("技能包中单个文件不能超过 8MB")
+			return skillPackageArchive{}, skillFileTooLarge()
 		}
 		total += int64(len(content))
 		if total > maxSkillPackageBytes {

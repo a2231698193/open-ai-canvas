@@ -26,7 +26,7 @@ import (
 
 const (
 	maxSkillPackageBytes       = 100 << 20
-	maxSkillFileBytes          = 8 << 20
+	maxSkillFileBytes          = maxSkillPackageBytes
 	maxSkillPackageFiles       = 4096
 	maxSkillZipEntries         = maxSkillPackageFiles * 4 // ponytail: raw entries include directories and macOS junk; real files still use maxSkillPackageFiles
 	maxSkillPreviewBytes       = 512 << 10
@@ -35,6 +35,10 @@ const (
 
 func tooManySkillFiles() error {
 	return kernel.BadAuthRequest(fmt.Sprintf("技能包文件数量不能超过 %d 个", maxSkillPackageFiles))
+}
+
+func skillFileTooLarge() error {
+	return kernel.BadAuthRequest(fmt.Sprintf("技能包中单个文件不能超过 %dMB", maxSkillFileBytes>>20))
 }
 
 type SkillInstallRequest struct {

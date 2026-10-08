@@ -7,9 +7,9 @@ description: 信封、错误码与 OpenAPI
 
 ## 技能包安装限制
 
-`POST /api/skills/install` 使用登录 Cookie 和 multipart `file` 安装 Markdown 或 ZIP 技能包。上传文件最大 100 MiB，请求体最大 101 MiB（包含 multipart 开销）；ZIP 解压总量最大 100 MiB、单文件最大 8 MiB、技能文件最多 4096 个。目录、`__MACOSX` 和 `.DS_Store` 不计入文件数量，入口必须是 `SKILL.md`。路径穿越、软链接、特殊文件和重复路径仍会被拒绝。单独上传 Markdown 也受 8 MiB 单文件限制。
+`POST /api/skills/install` 使用登录 Cookie 和 multipart `file` 安装 Markdown 或 ZIP 技能包。上传文件最大 100 MiB，请求体最大 101 MiB（包含 multipart 开销）；ZIP 解压总量最大 100 MiB、单文件最大 100 MiB、技能文件最多 4096 个。目录、`__MACOSX` 和 `.DS_Store` 不计入文件数量，入口必须是 `SKILL.md`。路径穿越、软链接、特殊文件和重复路径仍会被拒绝。单独上传 Markdown 也受 100 MiB 单文件限制。
 
-`POST /api/skills/install/github` 安装及后续同步使用同样的 100 MiB 归档下载、100 MiB 解压总量和 8 MiB 单文件限制。
+`POST /api/skills/install/github` 安装及后续同步使用同样的 100 MiB 归档下载、100 MiB 解压总量和 100 MiB 单文件限制。
 
 预演场景工具 `previs_scene_read` 返回当前用户画布的安全摘要。`previs_preview` 仅向自动执行模式开放，时长范围 0.1–60 秒，帧率为 24/25/30；浏览器预演台负责录制和回写，服务端返回请求不代表预演已经完成。审批模式可使用预演台手动预演，尚不提供浏览器录制的独立审批回执。
 
