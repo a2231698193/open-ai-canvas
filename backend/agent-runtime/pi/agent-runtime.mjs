@@ -522,6 +522,8 @@ async function run() {
 }
 
 run().catch((error) => {
-  emit("runtime_error", { message: error instanceof Error ? error.message : String(error) });
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : "";
+  emit("runtime_error", { message, stack });
   process.exitCode = 1;
 });

@@ -69,7 +69,7 @@ process.stdout.write(JSON.stringify({ event: "settled" }) + "\n");
 // runtime_error 之后仍要读到 EOF，并把该错误作为运行结果返回。
 func TestRunReportsRuntimeErrorAfterDrainingOutput(t *testing.T) {
 	fakeRuntime(t, `
-process.stdout.write(JSON.stringify({ event: "runtime_error", message: "boom" }) + "\n");
+process.stdout.write(JSON.stringify({ event: "runtime_error", message: "boom", stack: "Error: boom\\nat broken (agent-runtime.mjs:1:1)" }) + "\n");
 const line = JSON.stringify({ event: "progress", pad: "x".repeat(2048) }) + "\n";
 for (let i = 0; i < 500; i++) process.stdout.write(line);
 process.exitCode = 1;
@@ -77,8 +77,8 @@ process.exitCode = 1;
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := Run(ctx, ProcessRequest{Model: map[string]any{"id": "m"}}, noopBridge())
-	if err == nil || err.Error() != "boom" {
-		t.Fatalf("want runtime_error message, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "boom") || !strings.Contains(err.Error(), "agent-runtime.mjs:1:1") {
+		t.Fatalf("want runtime_error message and stack, got %v", err)
 	}
 }
 

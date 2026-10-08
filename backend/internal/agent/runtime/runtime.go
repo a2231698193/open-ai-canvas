@@ -161,13 +161,18 @@ func ReadOutput(stdout io.Reader) error {
 		var event struct {
 			Event   string `json:"event"`
 			Message string `json:"message"`
+			Stack   string `json:"stack"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
 			lastError = fmt.Errorf("decode Agent runtime event: %w", err)
 			continue
 		}
 		if event.Event == "runtime_error" || event.Event == "bridge_error" {
-			lastError = errors.New(firstNonEmpty(event.Message, "Agent runtime failed"))
+			message := firstNonEmpty(event.Message, "Agent runtime failed")
+			lastError = errors.New(message)
+			if stack := strings.TrimSpace(event.Stack); stack != "" && stack != message {
+				lastError = fmt.Errorf("%s\n%s", message, stack)
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
