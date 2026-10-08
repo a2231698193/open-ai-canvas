@@ -155,6 +155,9 @@ func loadBuiltinSkillPackagesFromFS(filesystem fs.FS, tombstones interface {
 			if err != nil {
 				return err
 			}
+			if ignoredSkillPath(filePath) {
+				return nil
+			}
 			content, err := fs.ReadFile(filesystem, path.Join(base, relative))
 			if err != nil {
 				return err

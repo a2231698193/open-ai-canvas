@@ -129,7 +129,7 @@ func archiveFromZip(data []byte, subdir string) (skillPackageArchive, error) {
 		if err != nil {
 			return skillPackageArchive{}, err
 		}
-		if strings.HasPrefix(entryPath, "__MACOSX/") || path.Base(entryPath) == ".DS_Store" {
+		if ignoredSkillPath(entryPath) {
 			continue
 		}
 		if _, exists := raw[entryPath]; exists {

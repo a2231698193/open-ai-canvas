@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -276,6 +277,46 @@ func TestSkillPackageFileCountIgnoresDirectoriesAndMacJunk(t *testing.T) {
 	}
 	if _, err := archiveFromZip(skillZip(t, over), ""); err == nil || !strings.Contains(err.Error(), "4096") {
 		t.Fatalf("expected file count error, got %v", err)
+	}
+}
+
+func TestSkillPackageGitDirectoryDoesNotBlockReading(t *testing.T) {
+	archive, err := archiveFromZip(skillZip(t, map[string]string{
+		"omniailab-ai-director/SKILL.md":    "# Skill\n\nDescription.",
+		"omniailab-ai-director/.git/config": "[core]\n",
+		"omniailab-ai-director/notes.md":    "notes",
+	}), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := archive.Files[".git/config"]; exists || archive.Files["notes.md"] == nil {
+		t.Fatalf("import should drop .git and keep skill files: %#v", archive.Files)
+	}
+
+	data, err := encodeSkillArchive(map[string][]byte{
+		"SKILL.md":    []byte("# Skill\n\nDescription."),
+		".git/config": []byte("[core]\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "skill-packages")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pkg.zip"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := readSkillArchiveEntries(root, "pkg.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents[".git/config"]) != "[core]\n" || contents["SKILL.md"] == nil {
+		t.Fatalf("stored package should stay readable, got %#v", contents)
+	}
+	if _, err := normalizeSkillPath("docs/../../secret"); err == nil {
+		t.Fatal("expected path traversal to be rejected")
 	}
 }
 

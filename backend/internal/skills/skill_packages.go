@@ -33,6 +33,13 @@ const (
 	SkillPackageUploadMaxBytes = maxSkillPackageBytes + (1 << 20)
 )
 
+func ignoredSkillPath(filePath string) bool {
+	if strings.HasPrefix(filePath, "__MACOSX/") || path.Base(filePath) == ".DS_Store" {
+		return true
+	}
+	return filePath == ".git" || strings.HasPrefix(filePath, ".git/") || strings.Contains(filePath, "/.git/")
+}
+
 func tooManySkillFiles() error {
 	return kernel.BadAuthRequest(fmt.Sprintf("技能包文件数量不能超过 %d 个", maxSkillPackageFiles))
 }
@@ -464,7 +471,7 @@ func normalizeSkillPath(value string) (string, error) {
 		return "", kernel.BadAuthRequest("技能文件路径无效")
 	}
 	clean := path.Clean(value)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") || strings.HasPrefix(clean, ".git/") || clean == ".git" {
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
 		return "", kernel.BadAuthRequest("技能文件路径越界或包含禁止目录")
 	}
 	if utf8.RuneCountInString(clean) > 1000 {
