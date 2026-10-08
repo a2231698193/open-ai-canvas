@@ -31,6 +31,26 @@ cleanup_old_backups
 
 printf 'update-yingce backup retention: ok\n'
 
+parse_backup_mode
+[[ "$SKIP_DATA_BACKUP" == "0" ]]
+SKIP_BACKUP=1 parse_backup_mode
+[[ "$SKIP_DATA_BACKUP" == "1" ]]
+SKIP_BACKUP=0 parse_backup_mode --no-backup
+[[ "$SKIP_DATA_BACKUP" == "1" ]]
+SKIP_BACKUP=1 parse_backup_mode --backup
+[[ "$SKIP_DATA_BACKUP" == "0" ]]
+if (SKIP_BACKUP=maybe parse_backup_mode) >/dev/null 2>&1; then
+    printf 'expected invalid SKIP_BACKUP to fail\n' >&2
+    exit 1
+fi
+[[ "$(latest_complete_backup)" == "${BACKUP_ROOT}/20260920-211234" ]]
+mkdir -p "${BACKUP_ROOT}/empty-check"
+if (BACKUP_ROOT="${BACKUP_ROOT}/empty-check" latest_complete_backup) >/dev/null 2>&1; then
+    printf 'expected missing backup to fail\n' >&2
+    exit 1
+fi
+printf 'update-yingce skip backup: ok\n'
+
 # 备份 tar 退出码：1 视为可接受，2 及以上仍然失败
 tar_allow_changed bash -c 'exit 1'
 if tar_allow_changed bash -c 'exit 2'; then

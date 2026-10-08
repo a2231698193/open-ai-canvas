@@ -111,6 +111,13 @@ BuildKit 缓存里带着 Go 的编译缓存和前端的依赖，`docker buildx p
 sudo FORCE_BUILD_CACHE_PRUNE=1 /usr/local/sbin/update-yingce
 ```
 
+已有一份完整备份、不想再等数据库导出和后端数据打包时，可以跳过这次数据备份。前后端镜像仍会留下，用来在启动失败时切回容器。没有完整备份时脚本会拒绝跳过。
+
+```bash
+sudo SKIP_BACKUP=1 /usr/local/sbin/update-yingce
+sudo /usr/local/sbin/update-yingce --no-backup
+```
+
 确认缓存有没有被清掉，可以在更新前后各跑一次 `docker buildx du`，比较输出的总量。
 
 清理只在新版本健康检查通过后执行。构建失败、启动失败或自动回退时，当前备份和回退镜像都不会被轮转。

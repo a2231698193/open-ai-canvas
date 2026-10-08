@@ -161,6 +161,36 @@ tag_rollback_images() {
     fi
 }
 
+# 默认备份。SKIP_BACKUP=1 或 --no-backup 跳过 PostgreSQL 与后端数据打包；
+# --backup 强制备份。跳过时必须已经有一份完整备份，否则拒绝更新。
+parse_backup_mode() {
+    SKIP_DATA_BACKUP=0
+    case "${SKIP_BACKUP:-0}" in
+        0|false|FALSE|no|NO) ;;
+        1|true|TRUE|yes|YES) SKIP_DATA_BACKUP=1 ;;
+        *) fail "SKIP_BACKUP 只能是 0 或 1" ;;
+    esac
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --no-backup) SKIP_DATA_BACKUP=1 ;;
+            --backup) SKIP_DATA_BACKUP=0 ;;
+        esac
+    done
+}
+
+latest_complete_backup() {
+    local backup
+    [[ -d "$BACKUP_ROOT" ]] || return 1
+    while IFS= read -r backup; do
+        if [[ -s "${backup}/env" && -s "${backup}/postgres.dump" && -s "${backup}/backend-data.tar.gz" ]]; then
+            printf '%s\n' "$backup"
+            return 0
+        fi
+    done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '????????-??????' -print | sort -r)
+    return 1
+}
+
 cleanup_old_backups() {
     local -a backups=()
     local backup index
@@ -348,23 +378,31 @@ main() {
 
     local old_commit old_short stamp backup_dir port migration_started=0
     require_free_memory
+    parse_backup_mode "$@"
     old_commit="$(git rev-parse HEAD)"
     old_short="$(git rev-parse --short=12 HEAD)"
     stamp="$(date +%Y%m%d-%H%M%S)"
-    backup_dir="${BACKUP_ROOT}/${stamp}"
     port="$(env_value CANVAS_HTTP_PORT)"
     port="${port:-3000}"
 
-    step "备份当前版本 ${old_short}"
-    install -d -m 0700 "$backup_dir"
-    (
-        umask 077
-        cp -a .env "${backup_dir}/env"
-        backup_postgres "${backup_dir}/postgres.dump"
-        backup_backend_data "${backup_dir}/backend-data.tar.gz"
-    )
+    if [[ "$SKIP_DATA_BACKUP" == "1" ]]; then
+        step "跳过数据库和后端数据备份"
+        backup_dir="$(latest_complete_backup)" || fail "没有可用的完整备份，不能跳过。请去掉 --no-backup 或 SKIP_BACKUP 后再执行。"
+        printf '沿用已有备份：%s\n' "$backup_dir"
+        printf '本次不导出 PostgreSQL，也不打包后端数据。迁移出问题只能回到这份备份。\n'
+    else
+        backup_dir="${BACKUP_ROOT}/${stamp}"
+        step "备份当前版本 ${old_short}"
+        install -d -m 0700 "$backup_dir"
+        (
+            umask 077
+            cp -a .env "${backup_dir}/env"
+            backup_postgres "${backup_dir}/postgres.dump"
+            backup_backend_data "${backup_dir}/backend-data.tar.gz"
+        )
+        printf '备份目录：%s\n' "$backup_dir"
+    fi
     tag_rollback_images "$old_short"
-    printf '备份目录：%s\n' "$backup_dir"
 
     step "快进更新到 ${REMOTE}/${BRANCH}"
     git fetch --prune "$REMOTE"
