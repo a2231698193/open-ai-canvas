@@ -301,15 +301,69 @@ require_free_memory() {
     printf '可用内存 %sMB，要求至少 %sMB。\n' "$available" "$minimum"
 }
 
+docker_update_supports_oom_score_adj() {
+    docker update --help 2>&1 | grep -q -- '--oom-score-adj'
+}
+
+write_oom_score_adj() {
+    printf '%s\n' "$2" >"/proc/$1/oom_score_adj"
+}
+
+container_cgroup_procs() {
+    local pid="$1" line path
+    [[ -r "/proc/${pid}/cgroup" ]] || return 1
+    while IFS= read -r line; do
+        [[ "$line" == 0::* ]] || continue
+        path="${line#0::}"
+        if [[ -r "/sys/fs/cgroup${path}/cgroup.procs" ]]; then
+            printf '%s\n' "/sys/fs/cgroup${path}/cgroup.procs"
+            return 0
+        fi
+    done <"/proc/${pid}/cgroup"
+    while IFS= read -r line; do
+        [[ "$line" == *:memory:* ]] || continue
+        path="${line##*:}"
+        if [[ -r "/sys/fs/cgroup/memory${path}/cgroup.procs" ]]; then
+            printf '%s\n' "/sys/fs/cgroup/memory${path}/cgroup.procs"
+            return 0
+        fi
+    done <"/proc/${pid}/cgroup"
+    return 1
+}
+
+set_container_oom_score() {
+    local id="$1" score="$2" use_docker_update="$3" pid procs p wrote=0
+    if [[ "$use_docker_update" == "1" ]]; then
+        docker update --oom-score-adj "$score" "$id" >/dev/null
+        return
+    fi
+    # ponytail: old Docker CLI rejects --oom-score-adj; root writes the container cgroup instead.
+    pid="$(docker inspect -f '{{.State.Pid}}' "$id" 2>/dev/null || true)"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    procs="$(container_cgroup_procs "$pid" || true)"
+    if [[ -n "$procs" ]]; then
+        while IFS= read -r p; do
+            [[ "$p" =~ ^[1-9][0-9]*$ ]] || continue
+            write_oom_score_adj "$p" "$score" && wrote=1
+        done <"$procs"
+        (( wrote == 1 ))
+        return
+    fi
+    write_oom_score_adj "$pid" "$score"
+}
+
 protect_running_services() {
     local score="${SERVICE_OOM_SCORE_ADJ:--500}"
-    local id found=0
+    local id found=0 use_docker_update=0
     [[ "$score" =~ ^-?[0-9]+$ ]] || fail "SERVICE_OOM_SCORE_ADJ 必须是整数"
     (( score >= -1000 && score <= 1000 )) || fail "SERVICE_OOM_SCORE_ADJ 必须在 -1000 到 1000 之间"
+    if docker_update_supports_oom_score_adj; then
+        use_docker_update=1
+    fi
     while IFS= read -r id; do
         [[ -z "$id" ]] && continue
         found=1
-        if docker update --oom-score-adj "$score" "$id" >/dev/null; then
+        if set_container_oom_score "$id" "$score" "$use_docker_update"; then
             printf '已保护运行中的容器 %s（oom_score_adj=%s）。\n' "$id" "$score"
         else
             printf '警告：无法设置容器 %s 的 OOM 优先级。\n' "$id" >&2

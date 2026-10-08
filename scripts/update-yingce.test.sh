@@ -81,6 +81,27 @@ fi
 rm -f "$meminfo"
 printf 'update-yingce memory gate: ok\n'
 
+compose() { printf 'backend-id\nweb-id\n'; }
+docker() {
+    if [[ "$1 $2" == "update --help" ]]; then
+        printf 'Usage: docker update\n'
+        return 0
+    fi
+    if [[ "$1" == "inspect" ]]; then
+        printf '999999\n'
+        return 0
+    fi
+    printf 'unexpected docker %s\n' "$*" >&2
+    return 1
+}
+oom_writes=""
+write_oom_score_adj() { oom_writes+="$1:$2 "; }
+protect_output="$(protect_running_services)"
+[[ "$protect_output" == *"已保护运行中的容器 backend-id（oom_score_adj=-500）"* ]]
+[[ "$protect_output" == *"已保护运行中的容器 web-id（oom_score_adj=-500）"* ]]
+[[ "$oom_writes" == "999999:-500 999999:-500 " ]]
+printf 'update-yingce oom fallback: ok\n'
+
 [[ "$(release_rollback_notice 0 /tmp/backup)" == "数据库迁移尚未执行。本次只回退前后端镜像。备份目录：/tmp/backup" ]]
 [[ "$(release_rollback_notice 1 /tmp/backup)" == "数据库迁移步骤已开始。本次只回退前后端镜像，不恢复数据库。备份目录：/tmp/backup" ]]
 printf 'update-yingce rollback notice: ok\n'
