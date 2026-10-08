@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	maxSkillPackageBytes       = 20 << 20
+	maxSkillPackageBytes       = 100 << 20
 	maxSkillFileBytes          = 8 << 20
 	maxSkillPackageFiles       = 512
 	maxSkillPreviewBytes       = 512 << 10
@@ -180,7 +180,7 @@ func (s *Service) InstallSkillUpload(userID string, sourceType string, header *m
 		return nil, kernel.BadAuthRequest("技能文件仅支持 Markdown 或 ZIP")
 	}
 	if header == nil || header.Size <= 0 || header.Size > maxSkillPackageBytes {
-		return nil, kernel.BadAuthRequest("技能文件大小必须在 1B-20MB 之间")
+		return nil, kernel.BadAuthRequest("技能文件大小必须在 1B-100MB 之间")
 	}
 	file, err := header.Open()
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *Service) InstallSkillUpload(userID string, sourceType string, header *m
 		return nil, err
 	}
 	if len(data) > maxSkillPackageBytes {
-		return nil, kernel.BadAuthRequest("技能文件不能超过 20MB")
+		return nil, kernel.BadAuthRequest("技能文件不能超过 100MB")
 	}
 	var archive skillPackageArchive
 	if sourceType == "markdown" {

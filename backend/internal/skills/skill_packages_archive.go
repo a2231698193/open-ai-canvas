@@ -65,7 +65,7 @@ func readSkillArchiveEntries(dataDir string, packageKey string) (map[string][]by
 		}
 		total += int64(len(content))
 		if total > maxSkillPackageBytes {
-			return nil, kernel.BadAuthRequest("技能包解压后不能超过 20MB")
+			return nil, kernel.BadAuthRequest("技能包解压后不能超过 100MB")
 		}
 		contents[filePath] = content
 	}
@@ -155,7 +155,7 @@ func archiveFromZip(data []byte, subdir string) (skillPackageArchive, error) {
 		}
 		total += int64(len(content))
 		if total > maxSkillPackageBytes {
-			return skillPackageArchive{}, kernel.BadAuthRequest("技能包解压后不能超过 20MB")
+			return skillPackageArchive{}, kernel.BadAuthRequest("技能包解压后不能超过 100MB")
 		}
 		raw[entryPath] = content
 	}

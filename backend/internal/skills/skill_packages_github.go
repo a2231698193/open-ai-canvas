@@ -81,7 +81,7 @@ func fetchGitHubSkillArchive(ctx context.Context, spec githubSkillSpec) (skillPa
 		return skillPackageArchive{}, "", "", "", err
 	}
 	if len(data) > maxSkillPackageBytes {
-		return skillPackageArchive{}, "", "", "", kernel.BadAuthRequest("GitHub 技能包超过 20MB")
+		return skillPackageArchive{}, "", "", "", kernel.BadAuthRequest("GitHub 技能包超过 100MB")
 	}
 	archive, err := archiveFromZip(data, spec.Subdir)
 	if err != nil {

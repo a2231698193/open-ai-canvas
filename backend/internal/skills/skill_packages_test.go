@@ -3,6 +3,8 @@ package skills
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
+	"mime/multipart"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -177,6 +179,68 @@ func TestArchiveFromZipRejectsTraversalAndMultipleSkills(t *testing.T) {
 				t.Fatal("expected package validation error")
 			}
 		})
+	}
+}
+
+func TestSkillPackageLargerThan20MiBCanBeReadAfterPersistence(t *testing.T) {
+	files := map[string][]byte{"SKILL.md": []byte("# Large skill\n\nA large skill package.")}
+	for index := 0; index < 3; index++ {
+		files[fmt.Sprintf("assets/%d.bin", index)] = bytes.Repeat([]byte("x"), 8<<20)
+	}
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	for filePath, content := range files {
+		entry, err := writer.CreateHeader(&zip.FileHeader{Name: filePath, Method: zip.Store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if buffer.Len() <= 20<<20 || buffer.Len() > maxSkillPackageBytes || SkillPackageUploadMaxBytes != 101<<20 {
+		t.Fatal("large ZIP must fit the 100 MiB file and 101 MiB request limits")
+	}
+	archive, err := archiveFromZip(buffer.Bytes(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := New(nil, t.TempDir(), nil)
+	packageKey, _, _, err := svc.persistSkillArchive("large-skill", "version", archive, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := readSkillArchiveEntries(svc.dataDir, packageKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for filePath, content := range files {
+		if !bytes.Equal(contents[filePath], content) {
+			t.Fatalf("persisted file %s differs", filePath)
+		}
+	}
+}
+
+func TestSkillPackageSizeLimits(t *testing.T) {
+	files := map[string]string{"SKILL.md": "# Large skill\n\nA large skill package."}
+	for index := 0; index < 13; index++ {
+		files[fmt.Sprintf("assets/%d.bin", index)] = strings.Repeat("x", 8<<20)
+	}
+	if _, err := archiveFromZip(skillZip(t, files), ""); err == nil || !strings.Contains(err.Error(), "100MB") {
+		t.Fatalf("expected decompression limit error, got %v", err)
+	}
+	if _, err := archiveFromZip(skillZip(t, map[string]string{
+		"SKILL.md":  "# Skill\n\nDescription.",
+		"asset.bin": strings.Repeat("x", (8<<20)+1),
+	}), ""); err == nil || !strings.Contains(err.Error(), "8MB") {
+		t.Fatalf("expected single-file limit error, got %v", err)
+	}
+	svc := New(nil, t.TempDir(), nil)
+	if _, err := svc.InstallSkillUpload("user", "zip", &multipart.FileHeader{Size: (100 << 20) + 1}, SkillInstallRequest{}); err == nil || !strings.Contains(err.Error(), "100MB") {
+		t.Fatalf("expected upload limit error, got %v", err)
 	}
 }
 
