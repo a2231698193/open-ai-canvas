@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"mime/multipart"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -221,6 +222,60 @@ func TestSkillPackageLargerThan20MiBCanBeReadAfterPersistence(t *testing.T) {
 		if !bytes.Equal(contents[filePath], content) {
 			t.Fatalf("persisted file %s differs", filePath)
 		}
+	}
+}
+
+func TestSkillPackageFileCountIgnoresDirectoriesAndMacJunk(t *testing.T) {
+	var noisy bytes.Buffer
+	writer := zip.NewWriter(&noisy)
+	add := func(name, content string, directory bool) {
+		t.Helper()
+		header := &zip.FileHeader{Name: name, Method: zip.Store}
+		if directory {
+			header.SetMode(os.ModeDir | 0o755)
+		}
+		entry, err := writer.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if directory {
+			return
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("SKILL.md", "# Skill\n\nDescription.", false)
+	for index := 0; index < 600; index++ {
+		add(fmt.Sprintf("refs/%d/", index), "", true)
+		add(fmt.Sprintf("refs/%d.md", index), "x", false)
+		add(fmt.Sprintf("__MACOSX/refs/._%d.md", index), "junk", false)
+		add(".DS_Store", "junk", false)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(noisy.Bytes()), int64(noisy.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reader.File) <= 512+64 {
+		t.Fatal("fixture must exceed the old raw entry ceiling")
+	}
+	archive, err := archiveFromZip(noisy.Bytes(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.Files) != 601 {
+		t.Fatalf("counted files = %d, want 601", len(archive.Files))
+	}
+
+	over := map[string]string{"SKILL.md": "# Skill\n\nDescription."}
+	for index := 0; index < maxSkillPackageFiles; index++ {
+		over[fmt.Sprintf("refs/%d.md", index)] = "x"
+	}
+	if _, err := archiveFromZip(skillZip(t, over), ""); err == nil || !strings.Contains(err.Error(), "4096") {
+		t.Fatalf("expected file count error, got %v", err)
 	}
 }
 

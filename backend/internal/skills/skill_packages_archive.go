@@ -29,7 +29,7 @@ func readSkillArchiveEntries(dataDir string, packageKey string) (map[string][]by
 		return nil, err
 	}
 	defer reader.Close()
-	if len(reader.File) > maxSkillPackageFiles+64 {
+	if len(reader.File) > maxSkillZipEntries {
 		return nil, kernel.BadAuthRequest("技能包文件数量异常")
 	}
 	contents := make(map[string][]byte, len(reader.File))
@@ -113,8 +113,8 @@ func archiveFromZip(data []byte, subdir string) (skillPackageArchive, error) {
 	if err != nil {
 		return skillPackageArchive{}, kernel.BadAuthRequest("ZIP 文件无法解析")
 	}
-	if len(reader.File) > maxSkillPackageFiles+64 {
-		return skillPackageArchive{}, kernel.BadAuthRequest("技能包文件数量不能超过 512 个")
+	if len(reader.File) > maxSkillZipEntries {
+		return skillPackageArchive{}, tooManySkillFiles()
 	}
 	raw := make(map[string][]byte)
 	var total int64
@@ -237,7 +237,7 @@ func normalizeSkillArchiveRoot(raw map[string][]byte, subdir string) (map[string
 		files[filePath] = content
 	}
 	if len(files) > maxSkillPackageFiles {
-		return nil, kernel.BadAuthRequest("技能包文件数量不能超过 512 个")
+		return nil, tooManySkillFiles()
 	}
 	return files, nil
 }

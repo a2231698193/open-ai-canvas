@@ -27,10 +27,15 @@ import (
 const (
 	maxSkillPackageBytes       = 100 << 20
 	maxSkillFileBytes          = 8 << 20
-	maxSkillPackageFiles       = 512
+	maxSkillPackageFiles       = 4096
+	maxSkillZipEntries         = maxSkillPackageFiles * 4 // ponytail: raw entries include directories and macOS junk; real files still use maxSkillPackageFiles
 	maxSkillPreviewBytes       = 512 << 10
 	SkillPackageUploadMaxBytes = maxSkillPackageBytes + (1 << 20)
 )
+
+func tooManySkillFiles() error {
+	return kernel.BadAuthRequest(fmt.Sprintf("技能包文件数量不能超过 %d 个", maxSkillPackageFiles))
+}
 
 type SkillInstallRequest struct {
 	Name        string
