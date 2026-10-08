@@ -49,10 +49,16 @@ test("ModelPicker 样式独立加载，并保留模型列表的视口边界", as
     expect(application).toContain('import "./styles/shared/model-picker.css";');
     expect(globals).not.toContain("canvas-model-picker");
     expect(pickerStyles).toContain(".canvas-model-picker-menu {");
-    expect(pickerStyles).toContain("max-height: min(420px, calc(100vh - 32px));");
+    expect(pickerStyles).toContain("max-height: min(460px, calc(100dvh - 24px), calc(var(--canvas-model-picker-available-height) - 24px));");
+    const picker = await Bun.file(new URL("../src/components/model-picker.tsx", import.meta.url)).text();
+    expect(picker).toContain('"--canvas-model-picker-available-height": `${availableHeight}px`');
+    expect(picker).toContain('window.addEventListener("resize", updateAvailableHeight)');
+    expect(picker).toContain('window.addEventListener("scroll", updateAvailableHeight, true)');
+    expect(picker).toContain('window.removeEventListener("scroll", updateAvailableHeight, true)');
+    expect(picker).toContain('align={{ overflow: { adjustY: true, shiftX: true } }}');
 
     const creationMenu = pickerStyles.match(/\.creation-model-picker-menu \{([\s\S]*?)\}/)?.[1] || "";
-    expect(creationMenu).toContain("max-height: min(460px, calc(100vh - 24px));");
+    expect(creationMenu).not.toContain("max-height:");
     expect(creationMenu).toContain("overflow-y: auto;");
     expect(pickerStyles).toContain(".canvas-model-picker-description.is-visible");
     expect(pickerStyles).toContain(".canvas-model-picker-option.is-previewed:not(:disabled)");

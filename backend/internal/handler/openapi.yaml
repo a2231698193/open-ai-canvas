@@ -233,10 +233,11 @@ paths:
       summary: 获取创作端模型目录
       description: |
         固定 source=system，channels 直接来自系统渠道下的模型列表，models 为空数组；不反查逻辑模型。
-        一级跨渠道按 displayName 分组，二级显示 channelLabel；模型请求仍使用 channelId + modelKey 定位。
+        单层列表按 displayName 相邻排序，同名模型来自多个渠道时以 channelLabel 标注；模型请求仍使用 channelId + modelKey 定位。
         channelLabel 是后台渠道模型创建和更新时配置的渠道展示名，去除首尾空白后最多 80 字，空字符串表示使用所属渠道名称。
         description 是后台渠道模型创建和更新时填写的公开模型描述，去除首尾空白后最多 500 字；空字符串表示未填写。
-        displayName 和 icon 用于一级模型菜单，channelLabel 不参与路由、权限或计费。
+        displayName 和 icon 用于模型菜单，channelLabel 不参与路由、权限或计费。
+        availability 是可选的历史生成成功率；近 24 小时及七个 UTC 日桶均至少 10 条样本才返回成功率，不改变 available 的当前可用性。
         渠道级 publicAlias 已废弃；成本配置和成本快照仅供管理端，不包含在本接口及用户报价中。
       responses:
         "200":
@@ -301,6 +302,11 @@ paths:
                                         color:
                                           type: string
                                           enum: [purple, blue, green, gold, orange, pink]
+                                  available:
+                                    type: boolean
+                                    description: 当前模型可用性，由目录与路由健康逻辑决定
+                                  availability:
+                                    $ref: "#/components/schemas/PublicModelAvailability"
                                   description:
                                     type: string
                                     maxLength: 500
@@ -1336,6 +1342,30 @@ components:
       in: cookie
       name: open_ai_canvas_session
   schemas:
+    PublicModelAvailability:
+      type: object
+      required: [rate24h, sampleCount24h, trend7d, dataState, computedAt]
+      description: 系统渠道有用户身份的 create 成功/失败日志统计；少于 10 条样本时成功率为 null。统计不可用时目录省略本对象。
+      properties:
+        rate24h: {type: number, nullable: true, minimum: 0, maximum: 1}
+        sampleCount24h: {type: integer, minimum: 0}
+        trend7d:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/PublicModelAvailabilityDay"
+        dataState: {type: string, enum: [ready, insufficient, no_data]}
+        computedAt: {type: string, format: date-time}
+        dataThrough: {type: string, format: date-time, description: 最新纳入样本时间；无样本时省略}
+    PublicModelAvailabilityDay:
+      type: object
+      required: [day, rate, sampleCount, dataState]
+      properties:
+        day: {type: string, format: date, description: UTC 日桶}
+        rate: {type: number, nullable: true, minimum: 0, maximum: 1}
+        sampleCount: {type: integer, minimum: 0}
+        dataState: {type: string, enum: [ready, insufficient, no_data]}
     ToolMutation:
       type: object
       required: [type, label, prompt]

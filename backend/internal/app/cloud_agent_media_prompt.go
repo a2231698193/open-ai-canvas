@@ -35,7 +35,6 @@ func mergeCloudAgentReferenceBlock(prompt string, missing []string) string {
 
 func cloudAgentMediaComposerPrompt(prompt string, refs map[string]any) string {
 	labels := map[string]string{}
-	counts := map[string]int{}
 	for _, kind := range []struct{ field, label string }{
 		{"referenceImages", "图片"}, {"referenceVideos", "视频"}, {"referenceAudios", "音频"},
 	} {
@@ -44,11 +43,11 @@ func cloudAgentMediaComposerPrompt(prompt string, refs map[string]any) string {
 				continue
 			}
 			label := kind.label
-			if stringValue(ref["canvasReferenceKind"]) == "character" {
+			if kind.field == "referenceImages" && stringValue(ref["canvasReferenceKind"]) == "character" {
 				label = "角色"
 			}
-			counts[label]++
-			labels[fmt.Sprintf("@%s%d", kind.label, index+1)] = fmt.Sprintf("@%s%d", label, counts[label])
+			// 显示时保留角色类型，编号仍等于实际图片数组的位置。
+			labels[fmt.Sprintf("@%s%d", kind.label, index+1)] = fmt.Sprintf("@%s%d", label, index+1)
 		}
 	}
 	return cloudAgentMediaMention.ReplaceAllStringFunc(prompt, func(token string) string {
