@@ -19,6 +19,7 @@ import {
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import type { CanvasTheme } from "@/lib/canvas-theme";
 import type { CanvasBatchOperation, CanvasBatchRow, CanvasBatchTableData, CanvasConnection, CanvasGenerationBatch, CanvasGenerationBatchItem, CanvasNodeData } from "@/types/canvas";
+import { generationErrorMessage } from "@/lib/generation-error";
 
 type ReferenceCell = { rowId: string; columnIndex: number };
 
@@ -465,10 +466,10 @@ type RowStatus = { label: string; tone: RowStatusTone; loading: boolean; retryab
 
 function rowStatus(item: CanvasGenerationBatchItem | undefined, output: CanvasNodeData | undefined): RowStatus {
     if (hasNodeMedia(output)) return { label: "生成完成", tone: "success", loading: false, retryable: false };
-    if (item?.status === "failed") return { label: item.errorDetails || "生成失败", tone: "error", loading: false, retryable: true };
+    if (item?.status === "failed") return { label: item.errorDetails ? generationErrorMessage(item.errorDetails) : "生成失败", tone: "error", loading: false, retryable: true };
     if (item?.status === "cancelled") return { label: "已停止", tone: "error", loading: false, retryable: false };
     // 未完成项统一显示「生成中」，不再区分等待/提交/排队。
     if (item && ["waiting", "submitting", "queued", "running"].includes(item.status)) return { label: "生成中", tone: "loading", loading: true, retryable: false };
-    if (output?.metadata?.status === "error") return { label: output.metadata.errorDetails || "生成失败", tone: "error", loading: false, retryable: false };
+    if (output?.metadata?.status === "error") return { label: output.metadata.errorDetails ? generationErrorMessage(output.metadata.errorDetails) : "生成失败", tone: "error", loading: false, retryable: false };
     return { label: "待生成", tone: "idle", loading: false, retryable: false };
 }

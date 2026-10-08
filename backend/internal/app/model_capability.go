@@ -85,17 +85,25 @@ type ParameterSupport struct {
 }
 
 type VideoCapabilityConfig struct {
-	References        VideoReferenceConfig `json:"references"`
-	Duration          VideoDurationConfig  `json:"duration"`
-	DurationSupported *bool                `json:"durationSupported,omitempty"`
-	Ratios            []string             `json:"ratios"`
-	DefaultRatio      string               `json:"defaultRatio"`
-	Resolutions       []string             `json:"resolutions"`
-	DefaultResolution string               `json:"defaultResolution"`
-	GenerateAudio     VideoBooleanConfig   `json:"generateAudio"`
-	Watermark         VideoBooleanConfig   `json:"watermark"`
-	Operations        []string             `json:"operations"`
-	DefaultOperation  string               `json:"defaultOperation"`
+	References        VideoReferenceConfig   `json:"references"`
+	Duration          VideoDurationConfig    `json:"duration"`
+	DurationSupported *bool                  `json:"durationSupported,omitempty"`
+	Ratios            []string               `json:"ratios"`
+	DefaultRatio      string                 `json:"defaultRatio"`
+	Resolutions       []string               `json:"resolutions"`
+	DefaultResolution string                 `json:"defaultResolution"`
+	FixedScreenSpec   *VideoScreenSpecConfig `json:"fixedScreenSpec,omitempty"`
+	GenerateAudio     VideoBooleanConfig     `json:"generateAudio"`
+	Watermark         VideoBooleanConfig     `json:"watermark"`
+	Operations        []string               `json:"operations"`
+	DefaultOperation  string                 `json:"defaultOperation"`
+}
+
+type VideoScreenSpecConfig struct {
+	Ratios            []string `json:"ratios"`
+	DefaultRatio      string   `json:"defaultRatio"`
+	Resolutions       []string `json:"resolutions"`
+	DefaultResolution string   `json:"defaultResolution"`
 }
 
 type VideoReferenceConfig struct {
@@ -208,16 +216,24 @@ func NormalizeModelCapabilityConfigForModel(capability string, protocol string, 
 	if input == nil || input.Video == nil {
 		return nil, BadAuthRequest("请配置视频模型能力参数")
 	}
-	value := &ModelCapabilityConfig{Version: 1, Video: applyModelSpecificVideoCapability(input.Video, protocol, modelName)}
-	if len(value.Video.References.ImageRoles) == 0 {
-		value.Video.References.ImageRoles = []string{"first_frame"}
-		if containsCapabilityString(value.Video.Operations, "reference_to_video") {
-			value.Video.References.ImageRoles = append(value.Video.References.ImageRoles, "reference_image")
+	video := applyModelSpecificVideoCapability(input.Video, protocol, modelName)
+	if strings.TrimSpace(protocol) == "autodl-comfyui" {
+		var err error
+		video, err = normalizeAutoDLVideoScreenSpec(video, modelName)
+		if err != nil {
+			return nil, err
 		}
 	}
-	if value.Video.References.PromptMaxChars <= 0 || value.Video.References.PromptMaxChars == 1000 {
-		value.Video.References.PromptMaxChars = DefaultVideoPromptMaxChars
+	if len(video.References.ImageRoles) == 0 {
+		video.References.ImageRoles = []string{"first_frame"}
+		if containsCapabilityString(video.Operations, "reference_to_video") {
+			video.References.ImageRoles = append(video.References.ImageRoles, "reference_image")
+		}
 	}
+	if video.References.PromptMaxChars <= 0 || video.References.PromptMaxChars == 1000 {
+		video.References.PromptMaxChars = DefaultVideoPromptMaxChars
+	}
+	value := &ModelCapabilityConfig{Version: 1, Video: video}
 	if err := validateVideoCapabilityConfig(value.Video); err != nil {
 		return nil, err
 	}

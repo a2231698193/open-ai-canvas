@@ -12,7 +12,7 @@ import { defaultModelCapabilityConfig, modelCapabilityConfigFor, normalizeImageV
 import { defaultImageParamsForModel, modelCompatibilityError, modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefaults, type ModelRequirements } from "@/lib/model-selection";
 import { videoGenerationModeFromMetadata, videoModeImageRoles, videoModeInputSummary } from "@/lib/video-generation-mode";
 import { resolveCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
-import { canonicalGenerationMetadata } from "@/lib/canvas/generation-contract";
+import { canonicalGenerationMetadata, nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import type { CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { workflowProviderPluginEnabled } from "@/lib/plugins/builtin/workflows";
@@ -137,7 +137,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
     ];
     const chipStyle = { background: theme.node.fill, color: theme.node.text };
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount || inputSummary.characterCount);
-    const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
+    const hasComposerContent = Boolean(nodeGenerationPrompt(node).trim());
     const workflowParameterError = firstWorkflowParameterError(dynamicWorkflowFields, node.metadata?.workflowParameters || {});
     const capabilityError = workflowParameterError || (workflowProvider === "runninghub"
         ? (!workflowProviderPluginEnabled(runtimeStatuses, "runninghub") ? "RunningHub 工作流插件未启用" : !globalConfig.runningHub.enabled ? "请先在设置中启用 RunningHub" : !node.metadata?.runningHubWorkflowId ? `请选择${capabilityLabel(workflowCapability)}工作流或 App` : !selectedRunningHubWorkflow ? "当前画布引用的 RunningHub 条目已不存在，请重新选择" : selectedRunningHubCapability !== workflowCapability ? `当前条目用途为${capabilityLabel(selectedRunningHubCapability || "image")}，请切换画布模式或重新选择条目` : undefined)

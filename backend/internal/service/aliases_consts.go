@@ -69,6 +69,7 @@ const (
 	ReasonUpstreamDNSFailed            = app.ReasonUpstreamDNSFailed
 	ReasonConflict                     = app.ReasonConflict
 	ReasonResourceUploadInProgress     = app.ReasonResourceUploadInProgress
+	ReasonProjectNameConflict          = app.ReasonProjectNameConflict
 	ReasonFailedPrecondition           = app.ReasonFailedPrecondition
 	ReasonForbidden                    = app.ReasonForbidden
 	ReasonInternal                     = app.ReasonInternal

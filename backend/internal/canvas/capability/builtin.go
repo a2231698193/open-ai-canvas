@@ -1,5 +1,7 @@
 package capability
 
+import "infinite-canvas/backend/internal/canvas/contract"
+
 const (
 	maxAgentNodeTitleRunes   = 240
 	maxAgentNodeContentRunes = 16000
@@ -129,33 +131,30 @@ func characterDescriptor() Descriptor {
 	}
 }
 
+// generatedMediaDescriptor 根据节点类型、显示尺寸、生成模式和连接规则创建媒体能力描述。
+// 返回读写字段及创建默认值；首尾帧只对视频开放，避免其他节点接受无效视频参数。
 func generatedMediaDescriptor(nodeType, version, label string, width, height float64, generationMode string, connection ConnectionPolicy) Descriptor {
 	semantics := generatedMediaSemantics(nodeType)
+	fields := editableNodeFields("metadata.generationSpec.prompt", "提示词", "生成合同中的当前提示词；这是 Agent 唯一读写的媒体提示词")
+	readFields := []string{"prompt", "assetTags", "referenceNodeIds"}
+	if generationMode == "video" {
+		for i, frame := range []struct{ key, label string }{
+			{"videoStartFrameNodeId", "首帧"}, {"videoEndFrameNodeId", "尾帧"},
+		} {
+			fields[frame.key] = PatchField{Path: "metadata." + frame.key, Kind: patchKindString, Label: frame.label, Order: 40 + i, MaxRunes: 80, Description: "已连接图片ID；空字符串取消"}
+			readFields = append(readFields, frame.key)
+		}
+	}
 	return Descriptor{
 		Type: nodeType, Version: version, Label: label, DefaultWidth: width, DefaultHeight: height,
 		Purpose: semantics.Purpose, GoodFor: semantics.GoodFor, NotIdealFor: semantics.NotIdealFor,
 		Tradeoffs: semantics.Tradeoffs, Actions: semantics.Actions,
 		InputKind: nodeType, GenerationMode: generationMode, Connection: connection, CanUpdate: true,
-		// 生成规格字段（contract.Options 的节点名）必须读得回来：Agent 用 generation 写完
-		// 规格后要能自证写对了，否则只能靠下游是否真的用了这个规格来间接判断。
-		SummaryFields:  generatedMediaProjectionFields(),
-		DetailFields:   generatedMediaProjectionFields(),
-		PatchFields:    editableNodeFields("metadata.composerContent", "下一版提示词", "下次生成使用的提示词草稿；不覆盖已提交提示词或媒体结果"),
-		CreateMetadata: generatedMetadata,
+		SummaryFields:  readFields,
+		DetailFields:   readFields,
+		PatchFields:    fields,
+		CreateMetadata: func(prompt string) map[string]any { return generatedMetadata(generationMode, prompt) },
 	}
-}
-
-// generatedMediaProjectionFields 是媒体节点读取时要投影的字段：节点正文/草稿/标签/参考，
-// 外加生成规格。规格字段名取自 contract.Options 的 node 标签，前端读的也是同一组字段。
-func generatedMediaProjectionFields() []string {
-	fields := []string{"prompt", "composerContent", "assetTags", "referenceNodeIds"}
-	return append(fields, generatedSpecFieldNames...)
-}
-
-var generatedSpecFieldNames = []string{
-	"model", "size", "quality", "count", "transparentBackground",
-	"seconds", "vquality", "generateAudio", "watermark",
-	"audioVoice", "audioFormat", "audioSpeed", "audioInstructions",
 }
 
 type generatedMediaCapabilitySemantics struct {
@@ -226,6 +225,20 @@ func positionPatchFields() map[string]PatchField {
 	}
 }
 
-func generatedMetadata(prompt string) map[string]any {
-	return map[string]any{"content": "", "prompt": prompt, "composerContent": prompt, "status": "idle"}
+func generatedMetadata(mode, prompt string) map[string]any {
+	spec := contract.GenerationSpec{
+		Version:           contract.GenerationVersion,
+		Mode:              mode,
+		Prompt:            prompt,
+		Options:           contract.Options{},
+		ReferenceBindings: []contract.ReferenceBinding{},
+		TextInputMode:     "append-sources",
+	}
+	metadata, err := spec.NodeMetadata()
+	if err != nil {
+		panic(err)
+	}
+	metadata["content"] = ""
+	metadata["status"] = "idle"
+	return metadata
 }

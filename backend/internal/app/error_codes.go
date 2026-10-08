@@ -28,6 +28,7 @@ const (
 	ReasonForbidden                = kernel.ReasonForbidden
 	ReasonNotFound                 = kernel.ReasonNotFound
 	ReasonConflict                 = kernel.ReasonConflict
+	ReasonProjectNameConflict      = kernel.ReasonProjectNameConflict
 	ReasonResourceUploadInProgress = kernel.ReasonResourceUploadInProgress
 	ReasonFailedPrecondition       = kernel.ReasonFailedPrecondition
 	ReasonQuotaExceeded            = kernel.ReasonQuotaExceeded
