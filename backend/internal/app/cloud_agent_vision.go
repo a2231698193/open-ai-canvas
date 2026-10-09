@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"infinite-canvas/backend/internal/model"
-	"infinite-canvas/backend/internal/repository"
+	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
 )
 
 // cloudAgentImageInspection 是"让模型真的看一眼画布上的图"的工具结果。

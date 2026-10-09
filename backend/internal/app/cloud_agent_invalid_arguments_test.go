@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
-	"infinite-canvas/backend/internal/repository"
+	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
 )
 
 // 回归（线上 run ag3580aca，2026-10-07）：用户发整份剧本，模型把大纲塞进 canvas_apply_ops

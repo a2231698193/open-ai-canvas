@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // cliGenerationWritebackKey 标记"没有 Agent 运行负责收尾"的生成任务。

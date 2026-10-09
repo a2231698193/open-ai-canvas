@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"infinite-canvas/backend/internal/model"
-	"infinite-canvas/backend/internal/repository"
+	"yingce/backend/internal/model"
+	"yingce/backend/internal/repository"
 )
 
 const cloudAgentCompactionSummarySystemPromptPrefix = "You are a context summarization assistant."

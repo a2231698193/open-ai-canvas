@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // cliWritebackNode 读取画布上的目标节点，断言节点的媒体状态。

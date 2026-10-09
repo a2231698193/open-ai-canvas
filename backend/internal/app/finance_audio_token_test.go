@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // 音频（TTS）Token 计费端到端：按输入量（字符数）下单、按输入价算预授权，

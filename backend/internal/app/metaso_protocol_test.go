@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"infinite-canvas/backend/internal/protocol"
+	"yingce/backend/internal/protocol"
 )
 
 // METASO 的 Base URL 只有域名，接口全部挂在 /api/minimax 这类非标准版本段下。

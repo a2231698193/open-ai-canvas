@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"infinite-canvas/backend/internal/canvas/contract"
+	"yingce/backend/internal/canvas/contract"
 )
 
 // generation 字段里与生成选项无关、直接写进节点 metadata 的模型选择键。

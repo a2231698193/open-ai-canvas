@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
-	"infinite-canvas/backend/internal/storage"
+	"yingce/backend/internal/model"
+	"yingce/backend/internal/storage"
 )
 
 // nodeId 与 nodeIds 二选一：两个都填、都不填、超过上限都要在动手之前报错。

@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // apimartDeclarativeImagePluginMessage 标记必须由官方声明式插件执行的 APIMart 图片协议。

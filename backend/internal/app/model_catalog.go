@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"infinite-canvas/backend/internal/logging"
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/logging"
+	"yingce/backend/internal/model"
 )
 
 // ModelCatalogSource 标识创作目录来自系统渠道模型。

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // requireCannotReadCanvas 断言错误是命令行能读懂的 404，而不是承载不了语义的 500。

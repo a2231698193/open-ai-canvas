@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // CLICanvasState 给外部命令行返回与画布 Agent 相同的只读摘要。

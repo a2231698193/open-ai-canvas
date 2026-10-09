@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"infinite-canvas/backend/internal/agentcontext"
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/agentcontext"
+	"yingce/backend/internal/model"
 )
 
 // A deterministic checkpoint failure must not be retried forever like a transient DB error.

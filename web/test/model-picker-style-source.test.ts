@@ -39,29 +39,30 @@ test("模型标签与渠道副标题共存，选中后关闭菜单并回到触�
     expect(component).toContain('window.addEventListener("pointerdown", closeOnOutsidePointer, true)');
 });
 
-test("ModelPicker 样式独立加载，并保留模型列表的视口边界", async () => {
-    const [application, globals, pickerStyles] = await Promise.all([
+test("ModelPicker 样式独立加载，所有入口继承可用高度约束", async () => {
+    const [application, globals, pickerStyles, component] = await Promise.all([
         Bun.file(new URL("../src/application.tsx", import.meta.url)).text(),
         Bun.file(new URL("../src/styles/globals.css", import.meta.url)).text(),
         Bun.file(new URL("../src/styles/shared/model-picker.css", import.meta.url)).text(),
+        Bun.file(new URL("../src/components/model-picker.tsx", import.meta.url)).text(),
     ]);
 
     expect(application).toContain('import "./styles/shared/model-picker.css";');
     expect(globals).not.toContain("canvas-model-picker");
-    expect(pickerStyles).toContain(".canvas-model-picker-menu {");
-    expect(pickerStyles).toContain("max-height: min(460px, calc(100dvh - 24px), calc(var(--canvas-model-picker-available-height) - 24px));");
-    const picker = await Bun.file(new URL("../src/components/model-picker.tsx", import.meta.url)).text();
-    expect(picker).toContain('"--canvas-model-picker-available-height": `${availableHeight}px`');
-    expect(picker).toContain('window.addEventListener("resize", updateAvailableHeight)');
-    expect(picker).toContain('window.addEventListener("scroll", updateAvailableHeight, true)');
-    expect(picker).toContain('window.removeEventListener("scroll", updateAvailableHeight, true)');
-    expect(picker).toContain('align={{ overflow: { adjustY: true, shiftX: true } }}');
-
-    const creationMenu = pickerStyles.match(/\.creation-model-picker-menu \{([\s\S]*?)\}/)?.[1] || "";
-    expect(creationMenu).not.toContain("max-height:");
-    expect(creationMenu).toContain("overflow-y: auto;");
+    const menu = pickerStyles.match(/\.canvas-model-picker-menu\s*\{([^}]+)\}/)?.[1] || "";
+    expect(menu).toMatch(/display:\s*flex\s*;/);
+    expect(menu).toMatch(/flex-direction:\s*column\s*;/);
+    const maxHeight = menu.match(/max-height:\s*([^;]+);/)?.[1] || "";
+    expect(maxHeight).toContain("min(");
+    expect(maxHeight).toContain("100dvh");
+    expect(maxHeight).toContain("var(--canvas-model-picker-available-height)");
+    expect(menu).toMatch(/overflow-y:\s*auto\s*;/);
+    expect(component).toContain('"--canvas-model-picker-available-height": `${availableHeight}px`');
+    expect(component).toContain('window.addEventListener("resize", updateAvailableHeight)');
+    expect(component).toContain('window.addEventListener("scroll", updateAvailableHeight, true)');
+    expect(component).toContain('window.removeEventListener("scroll", updateAvailableHeight, true)');
+    expect(component).toContain('align={{ overflow: { adjustY: true, shiftX: true } }}');
     expect(pickerStyles).toContain(".canvas-model-picker-description.is-visible");
     expect(pickerStyles).toContain(".canvas-model-picker-option.is-previewed:not(:disabled)");
-    expect(pickerStyles).not.toContain(".app-user-workspace .creation-model-picker-menu {");
-    expect(pickerStyles).not.toContain(".creation-model-picker-surface .creation-model-picker-menu {");
+    expect(component).not.toContain("canvas-model-picker-two-pane");
 });

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"infinite-canvas/backend/internal/model"
+	"yingce/backend/internal/model"
 )
 
 // 音频（TTS）上游不返回 usage：结算必须回落到下单时按待合成文本字符数记录的输入量，
