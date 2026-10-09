@@ -21,6 +21,15 @@ services:
       dockerfile: backend/Dockerfile
       args: *backend_build_args
 
+  yingce-agent:
+    image: open-ai-canvas-yingce-agent:server
+    build:
+      context: .
+      dockerfile: yingce-agent/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-docker.m.daocloud.io/library/node:22.19-alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+
   web:
     image: open-ai-canvas-web:server
     build:

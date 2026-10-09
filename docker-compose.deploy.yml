@@ -42,7 +42,7 @@ services:
 
   yingce-agent:
     # 让旧更新器也能完成本次升级；新版更新器在后续更新中会固定为镜像 digest。
-    image: ${CANVAS_YINGCE_AGENT_IMAGE:-ghcr.io/ddcat-ai/open-ai-canvas-yingce-agent:${CANVAS_IMAGE_TAG:?请先配置 CANVAS_IMAGE_TAG}}
+    image: ${CANVAS_YINGCE_AGENT_IMAGE:-open-ai-canvas-yingce-agent:server}
     environment:
       YINGCE_AGENT_TOKEN: ${YINGCE_AGENT_TOKEN:-${CANVAS_UPDATER_TOKEN:?请先配置 YINGCE_AGENT_TOKEN}}
       MAX_CONCURRENT_SESSIONS: ${YINGCE_AGENT_MAX_SESSIONS:-30}

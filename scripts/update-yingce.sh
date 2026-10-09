@@ -159,6 +159,9 @@ tag_rollback_images() {
     if docker image inspect open-ai-canvas-web:server >/dev/null 2>&1; then
         docker tag open-ai-canvas-web:server "open-ai-canvas-web:rollback-${prefix}"
     fi
+    if docker image inspect open-ai-canvas-yingce-agent:server >/dev/null 2>&1; then
+        docker tag open-ai-canvas-yingce-agent:server "open-ai-canvas-yingce-agent:rollback-${prefix}"
+    fi
 }
 
 # 默认备份。SKIP_BACKUP=1 或 --no-backup 跳过 PostgreSQL 与后端数据打包；
@@ -211,7 +214,7 @@ cleanup_old_backups() {
 cleanup_old_rollback_images() {
     local keep_prefix="$1"
     local repository image
-    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+    for repository in open-ai-canvas-backend open-ai-canvas-web open-ai-canvas-yingce-agent; do
         while IFS= read -r image; do
             [[ -z "$image" || "$image" == "${repository}:rollback-${keep_prefix}" ]] && continue
             docker image rm "$image" >/dev/null || printf '警告：无法清理旧回退镜像 %s\n' "$image" >&2
@@ -395,24 +398,24 @@ switch_services() {
     compose up -d redis --wait --wait-timeout 120
     migration_started=1
     compose run --rm --no-deps migrate
-    compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 backend web
+    compose up -d --no-deps --remove-orphans --wait --wait-timeout 600 yingce-agent backend web
 }
 
 restore_previous_release() {
     local prefix="$1"
     local repository image
-    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+    for repository in open-ai-canvas-backend open-ai-canvas-web open-ai-canvas-yingce-agent; do
         image="${repository}:rollback-${prefix}"
         if ! docker image inspect "$image" >/dev/null 2>&1; then
             printf '缺少回退镜像 %s。\n' "$image" >&2
             return 1
         fi
     done
-    for repository in open-ai-canvas-backend open-ai-canvas-web; do
+    for repository in open-ai-canvas-backend open-ai-canvas-web open-ai-canvas-yingce-agent; do
         docker tag "${repository}:rollback-${prefix}" "${repository}:server"
     done
-    compose stop --timeout "${ROLLBACK_STOP_TIMEOUT:-20}" backend web >/dev/null 2>&1 || true
-    compose up -d --no-deps --force-recreate --wait --wait-timeout 180 backend web
+    compose stop --timeout "${ROLLBACK_STOP_TIMEOUT:-20}" yingce-agent backend web >/dev/null 2>&1 || true
+    compose up -d --no-deps --force-recreate --wait --wait-timeout 180 yingce-agent backend web
 }
 
 main() {
@@ -483,6 +486,10 @@ main() {
     step "串行构建前端镜像"
     if ! COMPOSE_PARALLEL_LIMIT=1 compose build web; then
         fail "前端镜像构建失败，线上容器未切换。请勿继续清理 Docker。"
+    fi
+    step "串行构建 Agent 镜像"
+    if ! COMPOSE_PARALLEL_LIMIT=1 compose build yingce-agent; then
+        fail "Agent 镜像构建失败，线上容器未切换。请勿继续清理 Docker。"
     fi
 
     step "迁移数据库并重启服务"
