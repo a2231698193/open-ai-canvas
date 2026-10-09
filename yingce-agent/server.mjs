@@ -83,11 +83,11 @@ function readBody(request) {
   });
 }
 
-function writeRuntimeError(response, message) {
+function writeRuntimeError(response, message, stack = "") {
   if (!response.headersSent) {
     response.writeHead(200, { "content-type": "application/x-ndjson" });
   }
-  response.end(`${JSON.stringify({ event: "runtime_error", message })}\n`);
+  response.end(`${JSON.stringify({ event: "runtime_error", message, stack })}\n`);
 }
 
 const server = createServer(async (request, response) => {
@@ -159,6 +159,7 @@ const server = createServer(async (request, response) => {
     release();
   };
   let sawRuntimeError = false;
+  let stderrText = "";
   const stop = () => {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
   };
@@ -169,15 +170,18 @@ const server = createServer(async (request, response) => {
     if (text.includes('"runtime_error"') || text.includes('"bridge_error"')) sawRuntimeError = true;
     response.write(chunk);
   });
-  child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+  child.stderr.on("data", (chunk) => {
+    stderrText = `${stderrText}${chunk.toString("utf8")}`.slice(-16000);
+    process.stderr.write(chunk);
+  });
   child.on("error", (error) => {
-    writeRuntimeError(response, error.message);
+    writeRuntimeError(response, error.message, error.stack || "");
     finish();
   });
   child.on("close", (code) => {
     if (!response.writableEnded) {
       if (code && !sawRuntimeError) {
-        response.write(`${JSON.stringify({ event: "runtime_error", message: `Agent runtime exited with code ${code}` })}\n`);
+        response.write(`${JSON.stringify({ event: "runtime_error", message: `Agent runtime exited with code ${code}`, stack: stderrText.trim() })}\n`);
       }
       response.end();
     }
