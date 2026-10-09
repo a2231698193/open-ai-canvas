@@ -5,6 +5,17 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## linggan 命令行量产编排（v1.6.3）
+
+CLI 补齐批量能力，网页端行为不变。服务端改动只有 `reference_audio` 参考角色与分镜 `rows` 批量追加；确认与挂起仍全部在 CLI 本地。
+
+- [x] `backend/go build ./...` 与 `go test ./...` 全量通过；`cmd/linggan` 预算选择、批量表行映射、`app` 参考角色与分镜批量追加专项通过。
+- [ ] 真实站点登录后跑通一集批量出片：`wallet` 报余额 → `batch generate --file` 挂起整批（检查每笔预估积分与 `invalid` 剔除）→ `confirm --all --max-credits` 预算内提交 → `task wait` 收果 → `canvas_inspect_media` 取成片。
+- [ ] `batch generate --from-batch-table` 从批量创作表读行：globalPrompt 覆盖行提示词、try_on 不足两张参考图的行跳过、复用 `outputNodeId`。
+- [ ] `confirm --all --max-credits` 超预算项与无报价项留在 `remaining`，下一批可继续确认；单笔失败不影响其余笔。
+- [ ] 分镜 `rows` 批量追加后 `shotNumber` 连续重排、行 ID 唯一；`rows` 与 `patch` 并存被拒绝。
+- [ ] Seedance 2.5 音色锁：`references` 传图片 + `reference_audio` 且显式 `reference_to_video`，生成成功且对白音色与参考音频一致；网页端节点「参考帧」不显示首尾帧。
+
 ## 本仓库合并官方 v1.6.2
 
 已接入官方 `d74f7839..ac683782`。产品版本仍为 `v1.5.7.10`，欢迎页仍在 `/`，创作台仍在 `/create`，模型选择仍是单层列表。Go 模块路径随官方改为 `yingce/backend`。技能包上限、`.git` 读取和 Agent 容器构建保持本仓库已有行为。

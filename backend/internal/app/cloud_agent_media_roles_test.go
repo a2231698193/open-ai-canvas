@@ -98,6 +98,40 @@ func TestNormalizeCloudAgentMediaReferencesRejectsBadInput(t *testing.T) {
 	}
 }
 
+// reference_audio 角色承载音色锁：音频节点走既有 referenceAudios 适配器，
+// 不影响首尾帧元数据；别名 audio 与连字符写法同样接受。
+func TestNormalizeCloudAgentMediaReferencesAudioRole(t *testing.T) {
+	a := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{
+		{NodeID: "img-hero", Role: "reference_image"},
+		{NodeID: "voice-1", Role: "reference_audio"},
+	}}
+	if err := normalizeCloudAgentMediaReferences(&a); err != nil {
+		t.Fatal(err)
+	}
+	if a.ReferenceRoles["voice-1"] != cloudAgentReferenceRoleAudio {
+		t.Fatalf("roles = %#v", a.ReferenceRoles)
+	}
+	if len(a.ReferenceNodeIDs) != 2 || a.ReferenceNodeIDs[0] != "img-hero" || a.ReferenceNodeIDs[1] != "voice-1" {
+		t.Fatalf("ReferenceNodeIDs = %#v", a.ReferenceNodeIDs)
+	}
+	// 音频角色不产生首尾帧键：videoMode 回落 reference，operation 判成 audio_to_video。
+	metadata := cloudAgentVideoRoleMetadata(a)
+	if metadata["videoMode"] != "reference" {
+		t.Fatalf("音频角色应回落 reference 模式：%#v", metadata)
+	}
+	if _, exists := metadata["videoStartFrameNodeId"]; exists {
+		t.Fatalf("音频角色不该写首帧：%#v", metadata)
+	}
+
+	alias := cloudAgentMediaArgs{Mode: "video", References: []cloudAgentMediaReferenceSpec{{NodeID: "voice-1", Role: "audio"}}}
+	if err := normalizeCloudAgentMediaReferences(&alias); err != nil {
+		t.Fatal(err)
+	}
+	if alias.ReferenceRoles["voice-1"] != cloudAgentReferenceRoleAudio {
+		t.Fatalf("audio 别名应映射到 reference_audio：%#v", alias.ReferenceRoles)
+	}
+}
+
 func TestValidateCloudAgentReferenceRolesRequiresImageFrames(t *testing.T) {
 	a := cloudAgentMediaArgs{Mode: "video", ReferenceRoles: map[string]string{"clip": cloudAgentReferenceRoleFirstFrame}}
 	refs := map[string]any{

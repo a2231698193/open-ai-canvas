@@ -32,3 +32,14 @@ Agent 执行时不会直接创建任务，而是返回 `needs_confirmation`。�
 `task get` 返回任务状态和安全错误。用它判断结果，不要根据一段自然语言猜测失败原因。
 
 任务进入 `succeeded`、`failed` 或 `cancelled` 后，服务端会把终态写回它绑定的画布节点，不需要打开网页刷新：`canvas state` 会看到 `status` 从 `loading` 变成 `success`，失败则变成 `error` 并带上安全原因。拿到成功状态后用 `canvas_inspect_media`（图片用 `canvas_inspect_image`）取短时链接去下载作品。节点已经绑定任务时不要重复提交同一笔生成。
+
+## 列出与等待
+
+```bash
+linggan task list [--canvas <画布ID>] [--active] [--limit 50]
+linggan task wait <任务ID> [--timeout 900] [--interval 5]
+```
+
+- `task list` 默认列当前画布的任务；`--all` 列全部画布，`--active` 只看进行中的。批量出片后先用它对账：多少笔在跑、多少笔已终态。
+- `task wait` 轮询单个任务直到 `succeeded`/`failed`/`cancelled`，输出最终任务 JSON；超时报错并给出最后的任务状态。等一批任务时对每笔并发调用（或逐个 wait），收完果再用 `canvas_inspect_media` 拉取作品。
+- 等待期间任务失败是正常结果，不要重试提交同一笔生成；先看失败原因。

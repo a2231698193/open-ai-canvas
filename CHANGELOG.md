@@ -67,6 +67,14 @@
 
 - 发布 `linggan` 命令行安装包，供外部 Agent 登录后操作画布、分镜和图片/视频生成。Agent 执行生成时先返回确认摘要，用户在对话里同意后再提交。
 
+## v1.6.3
+
+- `linggan` 命令行补齐量产编排能力，支持外部 Agent 跑完整集漫剧出片流水线：新增 `batch generate` 批量生成（请求文件或直接从批量创作表读行，逐笔走报价与准入）、`confirm --all --max-credits` 预算授权整批确认（超预算与无报价的挂起项保留）、`asset list` 资源库列表与搜索、`task list` / `task wait` 任务列表与终态等待、`wallet` 积分余额查询和 `version` 版本号（发布包注入 tag）。
+- 画布工具 `canvas_edit_storyboard` 的 append 支持 `rows` 数组一次追加多个镜头（与 `patch` 互斥，总量仍为 100 镜），整段分镜可批量导入。
+- 视频生成的参考素材新增 `reference_audio` 角色（音色锁）：图片 + 参考音频组合需显式 `reference_to_video`，只投音频推导为 `audio_to_video`。
+- `docs/linggan-cli-skill` 同步全部新命令：新增 `commands/batch.md`、`commands/confirm.md` 与 `examples/batch-episode.md`（一集漫剧批量出片完整流程），更新 `SKILL.md` 命令表与硬性边界（批量执行前必须把笔数、每笔预估积分和总额告诉用户）。
+- 升级注意：本版本无数据库 schema 变更；网页端行为不变。
+
 ## v1.6.2
 
 - 优化前后端模块实现，统一图片、视频、流式响应和画布节点处理边界。

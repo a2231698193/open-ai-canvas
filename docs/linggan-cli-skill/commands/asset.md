@@ -8,6 +8,18 @@ linggan asset upload --file ./poster.png --kind image
 
 stdout 返回资源 JSON，其中 `resource.id` 是后续要用的资源 ID。
 
+## 列出资源库
+
+```bash
+linggan asset list [--kind image|video|audio] [--query <文件名关键词>] [--limit 200]
+```
+
+返回 `{resources, returned, total}`，每项含 `id`、`kind`、`mimeType`、`size`、`width`、`height`、`durationMs`、`status`。用途：
+
+- 忘了某次上传的 `resource.id` 时按文件名关键词找回来；
+- 出图前确认账号里有没有可复用的角色/场景素材（配合 `--kind` 过滤）；
+- `status` 不是 `ready` 的资源不能挂到画布节点，不要拿它当参考素材。
+
 ## 把上传的素材放到画布上
 
 上传只进账号资源库；要让它出现在画布上（并成为可用的参考素材），用 `canvas apply` 给媒体节点带上 `resourceId`：

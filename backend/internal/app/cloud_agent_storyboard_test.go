@@ -350,6 +350,81 @@ func TestCloudAgentStoryboardEditPreservesRowsAndRenumbers(t *testing.T) {
 	}
 }
 
+// 批量导入：append 携带 rows 数组一次追加多镜，编号连续、ID 唯一；rows 与 patch 互斥。
+func TestCloudAgentStoryboardAppendMultipleRows(t *testing.T) {
+	s, canvas := cloudAgentStoryboardFixture(t)
+	initialRows := createCloudAgentStoryboardForTest(t, s, canvas)
+	policy, err := s.RuntimePolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(args map[string]any) ([]map[string]any, error) {
+		call := cloudAgentStoryboardCall(t, "canvas_edit_storyboard", "batch-append", args)
+		if _, err := applyCloudAgentStoryboardMutation(s.repo, "user", canvas.ID, call, policy); err != nil {
+			return nil, err
+		}
+		stored, err := s.repo.CanvasProjectForUser("user", canvas.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*canvas = *stored
+		doc, _ := creationDocument(canvas.PayloadJSON)
+		_, _, rows, err := storyboardNodeFromDocument(doc, "storyboard-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rows, nil
+	}
+	hash := func() string {
+		doc, _ := creationDocument(canvas.PayloadJSON)
+		return cloudAgentCanvasHash(doc)
+	}
+
+	rows, err := apply(map[string]any{
+		"snapshotHash": hash(), "nodeId": "storyboard-1", "action": "append",
+		"rows": []map[string]any{
+			{"durationSeconds": 3.0, "plotDescription": "第三镜：雨夜巷口"},
+			{"durationSeconds": 4.0, "videoMotionPrompt": "镜头推向门缝"},
+			{"durationSeconds": 2.5, "imageGenerationPrompt": "特写：门把手"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(initialRows)+3 {
+		t.Fatalf("批量追加后行数错误：%d", len(rows))
+	}
+	ids := map[string]bool{}
+	for i, row := range rows {
+		if row["shotNumber"] != float64(i+1) {
+			t.Fatalf("shotNumber 未重排：rows[%d] = %v", i, row["shotNumber"])
+		}
+		id := stringValue(row["id"])
+		if id == "" || ids[id] {
+			t.Fatalf("行 ID 缺失或重复：%s", id)
+		}
+		ids[id] = true
+	}
+	if rows[len(initialRows)]["plotDescription"] != "第三镜：雨夜巷口" || rows[len(initialRows)+2]["imageGenerationPrompt"] != "特写：门把手" {
+		t.Fatalf("批量行内容丢失：%+v", rows[len(initialRows):])
+	}
+
+	if _, err := apply(map[string]any{
+		"snapshotHash": hash(), "nodeId": "storyboard-1", "action": "append",
+		"rows":  []map[string]any{{"durationSeconds": 1.0, "plotDescription": "冲突行"}},
+		"patch": map[string]any{"durationSeconds": 1.0, "plotDescription": "冲突 patch"},
+	}); err == nil || !strings.Contains(err.Error(), "只能填一个") {
+		t.Fatalf("rows 与 patch 并存未被拒绝：%v", err)
+	}
+
+	if _, err := apply(map[string]any{
+		"snapshotHash": hash(), "nodeId": "storyboard-1", "action": "update", "rowId": stringValue(rows[0]["id"]),
+		"rows": []map[string]any{{"durationSeconds": 1.0, "plotDescription": "不该写入"}},
+	}); err == nil || !strings.Contains(err.Error(), "只支持 append") {
+		t.Fatalf("update 携带 rows 未被拒绝：%v", err)
+	}
+}
+
 func TestCloudAgentStoryboardRejectsUnsafeOrStaleMutations(t *testing.T) {
 	s, canvas := cloudAgentStoryboardFixture(t)
 	rows := createCloudAgentStoryboardForTest(t, s, canvas)

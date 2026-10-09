@@ -11,9 +11,12 @@ const (
 	cloudAgentReferenceRoleImage      = "reference_image"
 	cloudAgentReferenceRoleFirstFrame = "first_frame"
 	cloudAgentReferenceRoleLastFrame  = "last_frame"
+	// cloudAgentReferenceRoleAudio 声明参考音频（音色锁）。帧角色只对图片有意义，
+	// 音频节点经由既有 referenceAudios 适配器进入供应商载荷，这里只负责角色命名。
+	cloudAgentReferenceRoleAudio = "reference_audio"
 )
 
-var cloudAgentReferenceRoleNames = []string{cloudAgentReferenceRoleFirstFrame, cloudAgentReferenceRoleImage, cloudAgentReferenceRoleLastFrame}
+var cloudAgentReferenceRoleNames = []string{cloudAgentReferenceRoleFirstFrame, cloudAgentReferenceRoleImage, cloudAgentReferenceRoleLastFrame, cloudAgentReferenceRoleAudio}
 
 // cloudAgentReferenceBindingRoles 把对外角色名映射成契约里的 binding role。
 // 契约用的是连字符写法；两套词汇各自服务于模型目录与生成合同，这里只做一次转换。
@@ -82,6 +85,8 @@ func cloudAgentReferenceRoleName(raw string) (string, error) {
 		return cloudAgentReferenceRoleFirstFrame, nil
 	case cloudAgentReferenceRoleLastFrame, "last-frame":
 		return cloudAgentReferenceRoleLastFrame, nil
+	case cloudAgentReferenceRoleAudio, "audio":
+		return cloudAgentReferenceRoleAudio, nil
 	case "":
 		return cloudAgentReferenceRoleImage, nil
 	default:

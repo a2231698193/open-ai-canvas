@@ -188,10 +188,11 @@ linggan canvas tool generate_media --file generate.json
 }
 ```
 
-`role` 取值 `first_frame`、`last_frame`、`reference_image`（省略即 `reference_image`；`reference` 是它的同义写法）。规则：
+`role` 取值 `first_frame`、`last_frame`、`reference_image`（省略即 `reference_image`；`reference` 是它的同义写法）、`reference_audio`（`audio` 同义；音色锁）。规则：
 
 - `first_frame` 和 `last_frame` 各自最多一个；填了 `last_frame` 就必须同时有 `first_frame`。
 - 首尾帧只能指向图片节点，指向视频或音频会被拒绝。
+- `reference_audio` 指向画布里的音频节点（音色锁，模型支持时生效）；图片 + 音频组合投喂时必须显式传 `videoEditOperation: "reference_to_video"`，只投音频会被推导成 `audio_to_video`。
 - 只填 `reference_image` 时服务端按 `reference` 模式处理。
 
 服务端会据此写入与网页端相同的视频元数据（`videoMode`、`videoStartFrameNodeId`、`videoEndFrameNodeId`），**并且写进节点本身**：路由和供应商适配与网页生成一致，用户打开画布时模式下拉和「参考帧」也和你提交的一致，不需要额外参数。没有显式角色时按最终 operation 回填模式（`reference_to_video` → 全能参考），所以两图全能参考不会在界面上显示成首尾帧参考。
@@ -286,7 +287,21 @@ linggan canvas tool canvas_edit_storyboard --file edit.json
 
 创建时提交 `snapshotHash`、`nodeId`、`title` 和结构化 `rows`。之后的修改必须先读取，使用返回的真实 `rowId` 和新的 `snapshotHash`。`action` 只能是 `append`、`update` 或 `remove`。
 
-批量创作表使用 `canvas_read_batch_table` 和 `canvas_edit_batch_table`。它可以改任务行、并发和参考图列，但不会提交收费生成。
+`append` 有两种写法：单镜用 `patch`；一次导入整段分镜用 `rows` 数组（与 `patch` 互斥），每行都要带 `durationSeconds` 和至少一个画面字段，追加后总镜数不超过 100：
+
+```json
+{
+  "snapshotHash": "<canvas_read_storyboard 返回的 snapshotHash>",
+  "nodeId": "storyboard-1",
+  "action": "append",
+  "rows": [
+    {"durationSeconds": 3, "plotDescription": "雨夜巷口", "videoMotionPrompt": "镜头推向门缝"},
+    {"durationSeconds": 4, "plotDescription": "门缝里的目光", "dialogue": "谁在外面？"}
+  ]
+}
+```
+
+批量创作表使用 `canvas_read_batch_table` 和 `canvas_edit_batch_table`。它可以改任务行、并发和参考图列，但不会提交收费生成；要整表出图用 `linggan batch generate --from-batch-table`（见 `batch.md`）。
 
 Agent 执行 `generate_media` 或 `image_layer_split` 时，stdout 返回 `needs_confirmation`，此时还没有创建任务。把 `summary` 告诉用户并询问。用户明确同意后，执行同一输出里的 `nextCommand`。不要让用户自己打开终端，也不要在用户同意前执行确认。
 

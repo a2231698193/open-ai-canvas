@@ -33,6 +33,9 @@ type cloudAgentStoryboardEditArgs struct {
 	Action       string         `json:"action"`
 	RowID        string         `json:"rowId"`
 	Patch        map[string]any `json:"patch"`
+	// Rows 只在 append 时可用：一次追加多个镜头，供外部 Agent 把整段分镜批量导入。
+	// 与 patch 互斥；单次追加后总量仍受 100 镜上限约束。
+	Rows []map[string]any `json:"rows"`
 }
 
 type cloudAgentStoryboardMutationPlan struct {
@@ -231,6 +234,12 @@ func prepareCloudAgentStoryboardEdit(repo *repository.Repository, userID, canvas
 			return nil, BadAuthRequest("修改或删除镜头必须使用最新读取结果中的真实 rowId")
 		}
 	}
+	if args.Action == "append" && len(args.Rows) > 0 && len(args.Patch) > 0 {
+		return nil, BadAuthRequest("append 的 rows 与 patch 只能填一个：多镜导入用 rows，单镜追加用 patch")
+	}
+	if args.Action != "append" && len(args.Rows) > 0 {
+		return nil, BadAuthRequest("rows 只支持 append：一次追加多个镜头")
+	}
 	if args.Action == "remove" && len(args.Patch) != 0 {
 		return nil, BadAuthRequest("删除镜头不接受 patch")
 	}
@@ -270,6 +279,26 @@ func prepareCloudAgentStoryboardEdit(repo *repository.Repository, userID, canvas
 		next = append(next[:index], next[index+1:]...)
 		fields = []string{"镜头行"}
 	case "append", "update":
+		if args.Action == "append" && len(args.Rows) > 0 {
+			// 批量导入：一次追加多个镜头。ID 种子跟着 next 走，避免与并发单镜追加撞号。
+			if len(rows)+len(args.Rows) > maxCloudAgentStoryboardRows {
+				return nil, BadAuthRequest(fmt.Sprintf("单个分镜表最多%d个镜头，本次追加后为 %d 个", maxCloudAgentStoryboardRows, len(rows)+len(args.Rows)))
+			}
+			for offset, input := range args.Rows {
+				if err := validateCloudAgentStoryboardRow(input, true, fmt.Sprintf("rows[%d]", offset)); err != nil {
+					return nil, err
+				}
+				row := cloudAgentStoryboardRowDefaults()
+				for key, value := range input {
+					row[key] = value
+				}
+				row["id"] = cloudAgentID(userID, fmt.Sprintf("storyboard:%s:%s:%d", args.NodeID, call.ID, len(next)+1))
+				row["shotNumber"] = float64(len(next) + 1)
+				next = append(next, row)
+			}
+			fields = []string{"镜头行"}
+			break
+		}
 		if len(args.Patch) == 0 {
 			return nil, BadAuthRequest("分镜操作需要 patch")
 		}

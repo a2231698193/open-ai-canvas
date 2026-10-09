@@ -220,12 +220,13 @@ func compileCloudAgentTools(req CloudAgentRequest, includeProfileTool bool) []ma
 			"x":            map[string]any{"type": "number"},
 			"y":            map[string]any{"type": "number"},
 		}, "snapshotHash", "nodeId", "title", "rows")
-		add("canvas_edit_storyboard", "追加、修改或删除分镜脚本中的单个镜头行。必须先用 canvas_read_storyboard 读取最新 snapshotHash 和真实 rowId；append 不传 rowId，update/remove 必须传。patch 只允许镜头文本与时长，不能修改素材绑定、媒体节点ID、任务状态、资源URL或任意 metadata。", map[string]any{
+		add("canvas_edit_storyboard", "追加、修改或删除分镜脚本中的镜头行。必须先用 canvas_read_storyboard 读取最新 snapshotHash 和真实 rowId；append 不传 rowId，update/remove 必须传。追加单镜用 patch（只允许镜头文本与时长）；一次导入多个镜头用 rows 数组（与 patch 互斥，总量不超过 100 镜）。不能修改素材绑定、媒体节点ID、任务状态、资源URL或任意 metadata。", map[string]any{
 			"snapshotHash": str("最近一次 canvas_read_storyboard 返回的 snapshotHash（这个分镜节点的版本；其它节点的改动不影响它）"),
 			"nodeId":       str("真实分镜脚本节点ID"),
 			"action":       map[string]any{"type": "string", "enum": []string{"append", "update", "remove"}},
 			"rowId":        str("update/remove 使用 canvas_read_storyboard 返回的真实 rowId；append 留空"),
 			"patch":        cloudAgentStoryboardPatchSchema(),
+			"rows":         map[string]any{"type": "array", "maxItems": 100, "items": cloudAgentStoryboardRowSchema(), "description": "仅 append：一次追加多个镜头，与 patch 互斥；每行必须带 durationSeconds 和至少一个画面字段"},
 		}, "snapshotHash", "nodeId", "action")
 		add("canvas_create_character", "把画布上就绪的形象图片（可加声音音频）打包成角色卡：写入角色库并在画布放置角色卡节点，按权限审批。已有同名角色卡先复用；definition 只填有依据的设定。", cloudAgentCharacterCreateSchema(), "nodeId", "name", "imageNodeId")
 		add("canvas_edit_batch_table", "操作批量创作表组件：追加、修改或删除任务行，切换批量换装/创意生图，设置1/5/10并发，新增或减少参考图列，或设置覆盖各任务的全局提示词。必须先用 canvas_read_batch_table 获取最新 snapshotHash 和真实 rowId。行 patch 仅允许 enabled、inputNodeIds、prompt；prompt 可使用读取结果中的 @参考图1、@参考图2 等 mentionToken 指代本行对应位置的图片。append 未传 inputNodeIds 时会继承上一行参考图；图片ID必须来自当前画布。不能写 outputNodeId、任务状态、URL、storageKey 或任意 metadata。本工具只编辑计划，不提交收费生成。", map[string]any{
