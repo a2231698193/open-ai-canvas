@@ -50,6 +50,21 @@ func TestCloudAgentSkillEmptyDirectoryAndRepeatedRead(t *testing.T) {
 	}
 }
 
+func TestCloudAgentSkillReadAcceptsUniqueEnabledName(t *testing.T) {
+	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{
+		ID: "123", Name: "omniailab-ai-director", Version: "v1", Instruction: "# 导演\n\n正文",
+		Files: map[string]string{cloudAgentSkillEntryPath: ""},
+	}}}
+	result, err := cloudAgentReadTool(nil, "user", &state, skillFeedbackCall("omniailab-ai-director", cloudAgentSkillEntryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.(map[string]any)
+	if data["content"] != state.Skills[0].Instruction {
+		t.Fatalf("name did not resolve to the enabled skill: %+v", data)
+	}
+}
+
 func TestCloudAgentSkillEntryDocumentIsReadableFromSnapshot(t *testing.T) {
 	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{
 		ID: "script", Version: "v1", Instruction: "# 剧本撰写\n\n只是一份任务剧本。",

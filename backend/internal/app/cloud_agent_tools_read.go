@@ -428,6 +428,9 @@ func cloudAgentReadTool(repo *repository.Repository, userID string, state *cloud
 		if args.Offset < 0 || (args.Path == "" && args.Offset != 0) {
 			return nil, BadAuthRequest("技能读取偏移无效")
 		}
+		if skill, ok := cloudAgentEnabledSkill(state.Skills, args.SkillID); ok {
+			args.SkillID = skill.ID
+		}
 		for _, skill := range state.Skills {
 			if skill.ID == args.SkillID {
 				if args.Path == "" {

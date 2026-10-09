@@ -27,6 +27,27 @@ type cloudAgentSkill struct {
 
 const cloudAgentSkillEntryPath = "SKILL.md"
 
+func cloudAgentEnabledSkill(skills []cloudAgentSkill, id string) (cloudAgentSkill, bool) {
+	id = strings.TrimSpace(id)
+	for _, skill := range skills {
+		if skill.ID == id {
+			return skill, true
+		}
+	}
+	var found cloudAgentSkill
+	matches := 0
+	for _, skill := range skills {
+		if strings.EqualFold(strings.TrimSpace(skill.Name), id) {
+			found = skill
+			matches++
+		}
+	}
+	if matches == 1 {
+		return found, true
+	}
+	return cloudAgentSkill{}, false
+}
+
 func cloudAgentSkillPaths(skill cloudAgentSkill) []string {
 	paths := make([]string, 0, len(skill.Files)+1)
 	seen := make(map[string]struct{}, len(skill.Files)+1)
