@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 49
+const CurrentSchemaVersion int64 = 50
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -163,6 +163,24 @@ var schemaMigrations = []migration{
 		}
 		return nil
 	}},
+	{version: 50, name: "membership_dual_pool", checksum: "sha256:membership-dual-pool-v50-20261010", apply: migrateMembershipDualPool},
+}
+
+func migrateMembershipDualPool(tx *gorm.DB) error {
+	if err := tx.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}); err != nil {
+		return fmt.Errorf("创建会员表：%w", err)
+	}
+	// AutoMigrate 兼容缺表的旧库形态：存在时只补会员池两列，不存在时整表创建。
+	if err := tx.AutoMigrate(&model.CreditAccount{}); err != nil {
+		return fmt.Errorf("积分账户增加会员池列：%w", err)
+	}
+	// 同一用户最多一条 active 订阅；SQLite 与 PostgreSQL 均支持 partial unique index。
+	if !tx.Migrator().HasIndex(&model.UserMembership{}, "idx_user_memberships_active_user") {
+		if err := tx.Exec("CREATE UNIQUE INDEX idx_user_memberships_active_user ON user_memberships(user_id) WHERE status = 'active'").Error; err != nil {
+			return fmt.Errorf("创建会员 active 唯一索引：%w", err)
+		}
+	}
+	return nil
 }
 
 func migratePrefixedIDSequenceReconcile(tx *gorm.DB) error {

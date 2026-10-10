@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 会员等级与积分 P0（迁移 v50 + 解析层）
+
+会员方案 v5 的第一阶段落地：结构迁移 v50（`membership_plans`、`user_memberships`、`credit_accounts` 双池列、3 个台账枚举）与 `EffectiveMembership` 解析层（Free 兜底）。扣费双池、限制接入、后台开通发放和用户侧展示尚未实现。
+
+- [x] `go build ./...` 通过；database/repository 包全量通过，app 包仅 4 个存量基线失败（见下）。迁移 v50 的新建库与 v49 升级路径、active 部分唯一索引、Free 兜底/生效/过期/作废解析均有专项测试覆盖。
+- [ ] 部署后确认生产库自动迁移到 v50，`credit_accounts` 出现 `membership_microcredits` / `membership_expires_at` 两列且默认值不改变现有余额。
+- [ ] PostgreSQL 环境验证部分唯一索引 `idx_user_memberships_active_user` 生效（专项测试跑在 SQLite）。
+
 ## 本仓库合并官方 v1.6.3 / v1.6.4
 
 已接入官方 `ac683782..c3dc8c80` 共 34 个提交。产品版本仍为 `v1.5.7.10`，模型选择保持单层列表（吸收上游 `modelFilter` 参数），欢迎页与创作台入口不变。数据库结构随官方升级至 v49（渠道代理 URL、通知排序），部署时需先备份数据库。

@@ -3,12 +3,15 @@ package model
 import "time"
 
 type CreditAccount struct {
-	UserID                string    `json:"userId" gorm:"primaryKey;size:36"`
-	AvailableMicrocredits int64     `json:"availableMicrocredits"`
-	ReservedMicrocredits  int64     `json:"reservedMicrocredits"`
-	Version               int64     `json:"version"`
-	CreatedAt             time.Time `json:"createdAt"`
-	UpdatedAt             time.Time `json:"updatedAt"`
+	UserID                string `json:"userId" gorm:"primaryKey;size:36"`
+	AvailableMicrocredits int64  `json:"availableMicrocredits"`
+	ReservedMicrocredits  int64  `json:"reservedMicrocredits"`
+	// 会员积分池：后台发放、带到期时间，过期即清零；通用池（Available）永不过期。
+	MembershipMicrocredits int64     `json:"membershipMicrocredits"`
+	MembershipExpiresAt    time.Time `json:"membershipExpiresAt"`
+	Version                int64     `json:"version"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
 type CreditLedgerEntry struct {

@@ -125,6 +125,10 @@ const (
 	CreditLedgerCheckinBonus CreditLedgerType = "checkin_bonus"
 	CreditLedgerPaymentTopup CreditLedgerType = "payment_topup"
 
+	CreditLedgerMembershipGrant       CreditLedgerType = "membership_grant"
+	CreditLedgerMembershipUpgradeDiff CreditLedgerType = "membership_upgrade_diff"
+	CreditLedgerMembershipExpireClear CreditLedgerType = "membership_expire_clear"
+
 	RedeemCodeUnused   RedeemCodeStatus = "unused"
 	RedeemCodeRedeemed RedeemCodeStatus = "redeemed"
 	RedeemCodeDisabled RedeemCodeStatus = "disabled"
