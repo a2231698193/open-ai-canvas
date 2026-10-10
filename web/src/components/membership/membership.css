@@ -1,43 +1,48 @@
-/* 会员权益页：档位卡片栅格与联系开通弹窗。 */
+/* 会员权益页与弹层：档位卡片栅格、当前方案横幅与联系开通弹窗。 */
 
 .membership-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
     gap: var(--space-4, 16px);
     align-items: stretch;
 }
 
 .membership-card {
+    --card-accent: var(--primary);
+    --card-accent-deep: var(--primary);
     position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--space-2, 8px);
     padding: var(--space-5, 20px);
-    border: 1px solid color-mix(in srgb, var(--user-ink) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--card-accent) 26%, transparent);
     border-radius: var(--r-2xl, 16px);
-    background: var(--creation-surface, var(--user-surface));
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--card-accent) 8%, transparent), transparent 42%),
+        var(--creation-surface, var(--user-surface));
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .membership-card:hover {
-    border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    border-color: color-mix(in srgb, var(--card-accent) 55%, transparent);
     transform: translateY(-2px);
+    box-shadow: 0 14px 34px -20px color-mix(in srgb, var(--card-accent) 65%, transparent);
 }
 
 .membership-card.is-featured {
-    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 55%, transparent);
     background:
-        radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%),
+        radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, #f59e0b 14%, transparent), transparent 70%),
         var(--creation-surface, var(--user-surface));
-    box-shadow: 0 12px 32px -18px color-mix(in srgb, var(--primary) 55%, transparent);
-}
-
-.membership-card.is-featured .membership-card-grant strong {
-    color: var(--primary);
+    box-shadow: 0 14px 36px -20px color-mix(in srgb, #f59e0b 60%, transparent);
 }
 
 .membership-card.is-current {
-    border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 65%, transparent);
+    background:
+        radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, #f59e0b 16%, transparent), transparent 70%),
+        var(--creation-surface, var(--user-surface));
+    box-shadow: 0 14px 36px -20px color-mix(in srgb, #f59e0b 60%, transparent);
 }
 
 .membership-card-badge {
@@ -47,35 +52,55 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: 999px;
     font-size: 12px;
-    color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: #e2e8f0;
+    background: color-mix(in srgb, #94a3b8 22%, transparent);
 }
 
 .membership-card-badge.is-current {
-    color: var(--color-success, #16a34a);
-    background: color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent);
+    color: #4ade80;
+    background: color-mix(in srgb, #22c55e 16%, transparent);
 }
 
 .membership-card h3 {
     margin: 0;
-    font-size: 15px;
-    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 650;
+}
+
+.membership-card-crown {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: var(--card-accent);
+    background: color-mix(in srgb, var(--card-accent) 14%, transparent);
 }
 
 .membership-card-grant {
     margin: 0;
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: 5px;
 }
 
 .membership-card-grant strong {
-    font-size: 28px;
-    font-weight: 700;
-    line-height: 1.2;
+    font-size: 30px;
+    font-weight: 750;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+}
+
+.membership-card.is-featured .membership-card-grant strong,
+.membership-card.is-current .membership-card-grant strong {
+    color: #fbbf24;
 }
 
 .membership-card-grant span {
@@ -90,19 +115,19 @@
 }
 
 .membership-card ul {
-    margin: var(--space-2, 8px) 0 var(--space-3, 12px);
+    margin: var(--space-3, 12px) 0 var(--space-4, 16px);
     padding: 0;
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     flex: 1;
 }
 
 .membership-card li {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
+    gap: 7px;
     font-size: 13px;
     line-height: 1.5;
 }
@@ -111,37 +136,100 @@
     margin-top: 2px;
 }
 
-.membership-current {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3, 12px);
-    padding: var(--space-4, 16px);
-    border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
-    border-radius: var(--r-xl, 12px);
-    background: color-mix(in srgb, var(--primary) 6%, var(--creation-surface, var(--user-surface)));
+.membership-card-check {
+    color: var(--card-accent);
 }
 
-.membership-current.is-guest {
-    border-color: color-mix(in srgb, var(--user-ink) 10%, transparent);
-    background: var(--creation-surface, var(--user-surface));
+.membership-card-cta {
+    height: 42px;
+    border: none;
+    color: #fff;
+    background: linear-gradient(135deg, var(--card-accent), var(--card-accent-deep));
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--card-accent) 70%, transparent);
+}
+
+.membership-card-cta:hover {
+    filter: brightness(1.08);
+}
+
+.membership-card-cta.is-current {
+    color: #1c1917;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, #f59e0b 70%, transparent);
+}
+
+/* 当前方案横幅：深蓝渐变 + 金色徽标 + 皇冠装饰图。 */
+
+.membership-current {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4, 16px);
+    overflow: hidden;
+    padding: var(--space-5, 20px) var(--space-5, 20px);
+    border: 1px solid color-mix(in srgb, #3b82f6 40%, transparent);
+    border-radius: var(--r-2xl, 16px);
+    background:
+        radial-gradient(90% 160% at 100% 0%, rgba(96, 130, 255, 0.45), transparent 60%),
+        linear-gradient(120deg, #101a3d, #1a2560 55%, #24307a);
+}
+
+.membership-current-emblem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    color: #fbbf24;
+    background: linear-gradient(160deg, color-mix(in srgb, #fbbf24 30%, transparent), color-mix(in srgb, #1a2560 60%, transparent));
+    border: 1px solid color-mix(in srgb, #fbbf24 45%, transparent);
+}
+
+.membership-current-emblem.is-muted {
+    color: #94a3b8;
+    border-color: color-mix(in srgb, #94a3b8 35%, transparent);
+    background: color-mix(in srgb, #94a3b8 12%, transparent);
+}
+
+.membership-current-crown {
+    position: absolute;
+    right: var(--space-4, 16px);
+    top: 50%;
+    transform: translateY(-50%);
+    height: 100%;
+    width: auto;
+    max-width: 30%;
+    object-fit: contain;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%);
+    mask-image: linear-gradient(90deg, transparent, #000 22%);
 }
 
 .membership-current strong {
     display: block;
-    font-size: 14px;
+    font-size: 15px;
+    color: #e7ecff;
+}
+
+.membership-current strong em {
+    font-style: normal;
+    color: #fbbf24;
+    font-weight: 700;
 }
 
 .membership-current span {
     display: block;
     font-size: 13px;
-    opacity: 0.7;
+    color: #aeb9e8;
 }
 
 .membership-current-expiry {
     margin-left: var(--space-2, 8px);
     font-size: 12px;
     font-weight: 400;
-    opacity: 0.65;
+    opacity: 0.75;
 }
 
 .membership-footnote {
@@ -150,6 +238,28 @@
     line-height: 1.6;
     opacity: 0.55;
 }
+
+/* 弹窗标题：皇冠 + 主副标题。 */
+
+.membership-modal-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.membership-modal-title-crown {
+    color: #fbbf24;
+}
+
+.membership-modal-subtitle {
+    padding-left: 10px;
+    border-left: 1px solid color-mix(in srgb, var(--user-ink) 14%, transparent);
+    font-size: 13px;
+    font-weight: 400;
+    opacity: 0.6;
+}
+
+/* 联系开通弹窗。 */
 
 .membership-contact {
     display: flex;
@@ -207,6 +317,7 @@
     background: transparent;
     font-size: 13px;
     cursor: pointer;
+    color: inherit;
 }
 
 .membership-contact-wechat:hover {

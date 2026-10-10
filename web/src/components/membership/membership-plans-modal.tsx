@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Crown } from "lucide-react";
 
 import { AppModal } from "@/components/ui/product/app-modal";
 import { MembershipContactModal, MembershipCurrentStrip, MembershipPlanCards, useMembershipPlans, type MembershipPlansData } from "@/components/membership/membership-plan-cards";
@@ -11,7 +12,20 @@ export function MembershipPlansModal({ open, onCancel }: { open: boolean; onCanc
     const [contactPlan, setContactPlan] = useState<MembershipPlan | null>(null);
     return (
         <>
-            <AppModal open={open} title="会员权益" centered width="min(1180px, calc(100vw - 28px))" footer={null} onCancel={onCancel}>
+            <AppModal
+                open={open}
+                title={
+                    <span className="membership-modal-title">
+                        <Crown className="size-5 membership-modal-title-crown" />
+                        会员权益
+                        <span className="membership-modal-subtitle">尊享多重特权 · 畅享极致体验</span>
+                    </span>
+                }
+                centered
+                width="min(1180px, calc(100vw - 28px))"
+                footer={null}
+                onCancel={onCancel}
+            >
                 <MembershipPlansBody data={data} loading={loading} loadError={loadError} onReload={() => void reload()} onContact={(plan) => setContactPlan(plan)} />
             </AppModal>
             <MembershipContactModal plan={contactPlan} membership={data?.membership} open={Boolean(contactPlan)} onCancel={() => setContactPlan(null)} />

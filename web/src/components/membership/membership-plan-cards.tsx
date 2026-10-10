@@ -1,6 +1,6 @@
 import { App, Button, Skeleton } from "antd";
-import { BadgeCheck, Check, Copy, Crown, RefreshCw, ShieldAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowRight, BadgeCheck, Check, Copy, Crown, RefreshCw, ShieldAlert } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { AppModal } from "@/components/ui/product/app-modal";
 import { formatCredits } from "@/constant/credits";
@@ -10,6 +10,14 @@ import { cn } from "@/lib/utils";
 import "./membership.css";
 
 export type MembershipPlansData = Awaited<ReturnType<typeof getMembershipPlans>>;
+
+// 档位强调色：[主色, 渐变深色]，勾选与按钮渐变随档位循环。
+const MEMBERSHIP_ACCENTS: [string, string][] = [
+    ["#3b82f6", "#1d4ed8"],
+    ["#a855f7", "#7c3aed"],
+    ["#f59e0b", "#b45309"],
+    ["#94a3b8", "#475569"],
+];
 
 export function useMembershipPlans(enabled: boolean) {
     const [data, setData] = useState<MembershipPlansData | null>(null);
@@ -41,20 +49,25 @@ export function MembershipCurrentStrip({ effective, membership }: { effective?: 
     if (effective?.active && membership) {
         return (
             <section className="membership-current" aria-label="当前会员">
-                <BadgeCheck className="size-5 shrink-0 text-primary" />
+                <span className="membership-current-emblem" aria-hidden="true">
+                    <Crown className="size-5" />
+                </span>
                 <div className="min-w-0 flex-1">
                     <strong>
-                        当前方案：{effective.planName || "会员"}
+                        当前方案：<em>{effective.planName || "会员"}</em>
                         {effective.periodEnd ? <span className="membership-current-expiry">{new Date(effective.periodEnd).toLocaleDateString("zh-CN")} 前有效</span> : null}
                     </strong>
                     <span>每月到账 {formatCredits(effective.monthlyGrantMicrocredits)} 积分，会员积分在有效期内优先抵扣生成费用。</span>
                 </div>
+                <img src="/membership-banner-crown.png" alt="" aria-hidden="true" className="membership-current-crown" />
             </section>
         );
     }
     return (
         <section className="membership-current is-guest" aria-label="开通引导">
-            <ShieldAlert className="size-5 shrink-0 text-warning" />
+            <span className="membership-current-emblem is-muted" aria-hidden="true">
+                <ShieldAlert className="size-5" />
+            </span>
             <div className="min-w-0 flex-1">
                 <strong>还没有生效中的会员</strong>
                 <span>选择下面的方案，点击「立即开通」联系管理员办理；开通后积分立即到账。</span>
@@ -78,11 +91,17 @@ export function MembershipPlanCards({
     const currentPlanId = effective?.active ? effective.planId : "";
     return (
         <div className="membership-grid">
-            {plans.map((plan) => {
+            {plans.map((plan, index) => {
                 const featured = plan.id === topPlanId && plans.length > 1;
                 const current = plan.id === currentPlanId;
+                // 档位强调色循环：蓝 → 紫 → 金 → 银，勾选图标与按钮渐变随档位变化。
+                const accent = MEMBERSHIP_ACCENTS[index % MEMBERSHIP_ACCENTS.length];
                 return (
-                    <article key={plan.id} className={cn("membership-card", featured && "is-featured", current && "is-current")}>
+                    <article
+                        key={plan.id}
+                        className={cn("membership-card", featured && "is-featured", current && "is-current")}
+                        style={{ "--card-accent": accent[0], "--card-accent-deep": accent[1] } as CSSProperties}
+                    >
                         {featured ? (
                             <span className="membership-card-badge">
                                 <Crown className="size-3" />
@@ -95,12 +114,17 @@ export function MembershipPlanCards({
                                 当前方案
                             </span>
                         ) : null}
-                        <h3>{plan.name}</h3>
+                        <h3>
+                            <span className="membership-card-crown" aria-hidden="true">
+                                <Crown className="size-4" />
+                            </span>
+                            {plan.name}
+                        </h3>
                         <p className="membership-card-grant">
                             <strong>{formatCredits(plan.monthlyGrantMicrocredits)}</strong>
                             <span>积分 / 月</span>
                         </p>
-                        <p className="membership-card-note">每月到账 · 当期未用完清零</p>
+                        <p className="membership-card-note">每月到账，当期未用完清零</p>
                         <ul>
                             <MembershipFeature label={concurrencyLabel(plan.activeTaskLimit)} />
                             <MembershipFeature label={storageLabel(plan.storageGB)} />
@@ -108,9 +132,16 @@ export function MembershipPlanCards({
                             <MembershipFeature label={checkinLabel(plan.checkinBonusOverrideMicrocredits)} />
                             <MembershipFeature label="生成扣费会员积分优先抵扣" />
                         </ul>
-                        <Button type="primary" block size="large" disabled={current} onClick={() => onContact(plan)}>
-                            {current ? "当前方案" : membership ? "升级 / 续费" : "立即开通"}
-                        </Button>
+                        {current ? (
+                            <Button block size="large" className="membership-card-cta is-current" disabled>
+                                当前方案
+                            </Button>
+                        ) : (
+                            <Button block size="large" className="membership-card-cta" onClick={() => onContact(plan)}>
+                                {membership ? "升级 / 续费" : "立即开通"}
+                                <ArrowRight className="size-4" />
+                            </Button>
+                        )}
                     </article>
                 );
             })}
@@ -163,7 +194,7 @@ export function MembershipContactModal({ plan, membership, open, onCancel }: { p
 function MembershipFeature({ label }: { label: string }) {
     return (
         <li>
-            <Check className="size-4 shrink-0 text-primary" />
+            <Check className="size-4 shrink-0 membership-card-check" />
             <span>{label}</span>
         </li>
     );
