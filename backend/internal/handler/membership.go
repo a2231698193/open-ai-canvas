@@ -8,8 +8,21 @@ import (
 	"yingce/backend/internal/service"
 )
 
-// RegisterMembershipRoutes 注册管理端会员等级与开通路由。
+// RegisterMembershipRoutes 注册会员路由：用户端信息与管理端配置。
 func RegisterMembershipRoutes(r *gin.RouterGroup, svc *service.Service) {
+	r.GET("/membership/plans", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		result, err := svc.UserMembershipPlans(user.ID)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, result)
+	})
 	r.GET("/admin/membership/plans", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

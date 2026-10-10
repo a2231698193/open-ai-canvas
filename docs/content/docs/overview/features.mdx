@@ -1013,3 +1013,15 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 - `web/src/stores/use-inspiration-store.ts`：自建、覆盖、隐藏与收藏的本地持久化。
 - `web/scripts/import-inspirations.mjs`：外部来源同步、缩略图生成与画廊池落盘。
 - `web/public/inspirations/`、`web/public/inspiration-thumbs/`：全量目录、画廊池与本地缩略图。
+
+## 会员等级与积分（全后台版）
+
+会员由管理员人工开通、续费、升级与作废，一期无自助购买。生效会员获得专属积分池：每月按 30 天锚点自动到账、当期未用完清零；生成扣费优先使用会员积分，不足再扣通用积分。存储空间、日上传、并发任务与签到奖励按等级覆盖（0=沿用全局默认，-1=不限制）。
+
+用户在「会员权益」页（`/membership`）查看可选购档位与当前方案，点击开通弹出管理员微信二维码；积分中心顶部展示会员等级、会员积分余额与有效期。运营数据的用户总余额为两池之和，用户详情分列展示。
+
+- 等级配置：`membership_plans`（后台 CRUD，名称、level、每月到账、并发、存储/日上传、签到覆盖）
+- 订阅：`user_memberships`（同一用户仅一条 active），锚点发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等
+- 双池：`credit_accounts.membership_microcredits` + `membership_expires_at`；订单记录会员池拆分，退款按此拆回
+- 过期清零：每小时清扫 + 预留时惰性清零，均写 `membership_expire_clear` 台账
+- 管理端：等级 CRUD 与开通/升级/作废接口已上线（`/admin/membership/*`），管理界面面板待接入

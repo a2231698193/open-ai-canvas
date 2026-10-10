@@ -38,6 +38,7 @@ const SystemPerformancePage = lazy(() => import("@/pages/admin/settings/system-p
 const StoryboardPromptsPage = lazy(() => import("@/pages/admin/storyboard-prompts/storyboard-prompts-page"));
 const UsersPage = lazy(() => import("@/pages/admin/users/users-page"));
 const AssetsPage = lazy(loadAssetsPage);
+const MembershipPage = lazy(() => import("@/pages/membership"));
 const LoginPage = lazy(() => import("@/pages/auth/login"));
 const RegisterPage = lazy(() => import("@/pages/auth/register"));
 const ForgotPasswordPage = lazy(() => import("@/pages/auth/forgot-password"));
@@ -111,6 +112,7 @@ export const router = createBrowserRouter([
         children: [
             { path: "/create", element: deferred(<CreatePage />) },
             { path: "/inspirations", element: deferred(<InspirationsPage />) },
+            { path: "/membership", element: <RequireAuth>{deferred(<MembershipPage />)}</RequireAuth> },
             {
                 path: "/tasks",
                 element: (

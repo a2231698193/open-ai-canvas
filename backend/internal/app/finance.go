@@ -22,12 +22,15 @@ import (
 const CreditScale int64 = 1_000_000
 
 type WalletSummary struct {
-	Account model.CreditAccount       `json:"account"`
-	Entries []model.CreditLedgerEntry `json:"entries"`
-	Total   int64                     `json:"total"`
-	Page    int                       `json:"page"`
-	Limit   int                       `json:"pageSize"`
-	Policy  PublicCreditPolicy        `json:"policy"`
+	Account             model.CreditAccount       `json:"account"`
+	Entries             []model.CreditLedgerEntry `json:"entries"`
+	Total               int64                     `json:"total"`
+	Page                int                       `json:"page"`
+	Limit               int                       `json:"pageSize"`
+	Policy              PublicCreditPolicy        `json:"policy"`
+	Membership          *model.UserMembership     `json:"membership,omitempty"`
+	MembershipPlanName  string                    `json:"membershipPlanName,omitempty"`
+	MembershipPoolValid bool                      `json:"membershipPoolValid"`
 }
 
 type RedeemBatchPage struct {
@@ -137,7 +140,18 @@ func (s *Service) Wallet(user *model.User, entryType string, page int, limit int
 	if err != nil {
 		return nil, err
 	}
-	return &WalletSummary{Account: *account, Entries: entries, Total: total, Page: page, Limit: limit, Policy: policy}, nil
+	membership, err := s.repo.ActiveUserMembership(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	summary := &WalletSummary{Account: *account, Entries: entries, Total: total, Page: page, Limit: limit, Policy: policy, Membership: membership, MembershipPoolValid: false}
+	if membership != nil {
+		summary.MembershipPoolValid = account.MembershipMicrocredits > 0 && (account.MembershipExpiresAt.IsZero() || account.MembershipExpiresAt.After(time.Now()))
+		if plan, err := s.repo.MembershipPlan(membership.PlanID); err == nil {
+			summary.MembershipPlanName = plan.Name
+		}
+	}
+	return summary, nil
 }
 
 func (s *Service) RedeemCredits(user *model.User, code string, redeemedIP string) (*model.CreditAccount, error) {

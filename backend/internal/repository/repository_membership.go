@@ -32,6 +32,13 @@ func (r *Repository) MembershipPlan(planID string) (*model.MembershipPlan, error
 	return &plan, nil
 }
 
+// EnabledMembershipPlans 返回启用中的等级配置，按 level 升序（用户端可选购列表）。
+func (r *Repository) EnabledMembershipPlans() ([]model.MembershipPlan, error) {
+	var plans []model.MembershipPlan
+	err := r.db.Where("enabled = ?", true).Order("level asc").Find(&plans).Error
+	return plans, err
+}
+
 // MembershipPlans 返回全部等级配置，按 level 升序。
 func (r *Repository) MembershipPlans() ([]model.MembershipPlan, error) {
 	var plans []model.MembershipPlan
@@ -49,7 +56,8 @@ func (r *Repository) SaveMembershipPlan(plan *model.MembershipPlan) error {
 			"checkin_bonus_override_microcredits": plan.CheckinBonusOverrideMicrocredits,
 		}).Error
 	}
-	return r.db.Create(plan).Error
+	// Enabled=false 是合法配置；GORM 会把零值字段交给 default 标签，必须 Select 强制写入。
+	return r.db.Select("ID", "Name", "Level", "Enabled", "SortOrder", "MonthlyGrantMicrocredits", "ActiveTaskLimit", "StorageGB", "DailyUploadMB", "CheckinBonusOverrideMicrocredits").Create(plan).Error
 }
 
 // UserMembershipByID 按 ID 读取订阅。

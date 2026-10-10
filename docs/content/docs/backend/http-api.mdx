@@ -227,7 +227,7 @@ Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考
 
 `credit_accounts` 分为通用积分池（充值、签到、注册赠送，永不过期）和会员积分池（后台发放，带 `membershipExpiresAt` 到期时间）。生成扣费、系统代理计费等预留路径按「会员池优先 → 通用池」拆分：会员池未过期先扣，差额扣通用池；`billing_orders.membershipAmountMicrocredits` 记录预留时的会员池部分，退款按此拆回，会员池已过期时该部分并入通用池退回，避免退款被过期清零吞掉。结算多退部分优先退回剩余会员份额，少补从通用池扣除。台账 `membershipDeltaMicrocredits` 记录会员池变动，预留、消耗、退款全周期对账归零。
 
-`GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
+`GET /membership/plans` 返回启用中的会员等级（level 升序）与当前登录用户的订阅状态（`membership`、`effective`），供会员权益页一次拉取。`GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`，并附带 `membership`（当前订阅）、`membershipPlanName` 与 `membershipPoolValid`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
 
 管理端会员接口（均需管理员权限并写入审计）：`GET/POST /admin/membership/plans` 列出与保存等级配置（名称、level 唯一、排序、每月到账积分、并发任务、存储/日上传、签到覆盖）；`POST /admin/users/:id/membership/grant` 开通或续费（`planId` + `months` 1-36，周期顺延，锚点不变，到期的窗口立即补发）；`POST /admin/users/:id/membership/upgrade` 立即升级并整额补差（新月额度 − 旧月额度，有效期跟随当前会员池），service 层拒绝降级与同等级；`POST /admin/users/:id/membership/cancel` 作废（已发放积分保留到自然过期）。锚点窗口为开通日起每 30 天一期，窗口末超过周期末按实际剩余天数发放，额度仍为整月；发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等，后台每小时清扫补发。
 

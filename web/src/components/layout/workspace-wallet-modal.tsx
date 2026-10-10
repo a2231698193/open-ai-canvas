@@ -1,5 +1,5 @@
 import { App, Button, Input, Skeleton } from "antd";
-import { Check, ChevronLeft, ChevronRight, CircleAlert, Coins, CreditCard, History, RefreshCw, TicketCheck, WalletCards } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleAlert, Coins, CreditCard, Crown, History, RefreshCw, TicketCheck, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
@@ -64,6 +64,7 @@ export function WorkspaceWalletHost() {
 }
 
 export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, paymentInvalid }: { open: boolean; onClose: () => void; pendingPaymentOrderId?: string; paymentInvalid?: boolean }) {
+    const navigate = useNavigate();
     const { message } = App.useApp();
     const redeemPurchaseUrl = useAppearanceStore((state) => state.appearance.redeemPurchaseUrl);
     const [tab, setTab] = useState<WalletModalTab>("topup");
@@ -278,6 +279,8 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
                             <small>冻结 {wallet ? formatCredits(wallet.account.reservedMicrocredits, 6) : "--"}</small>
                         </div>
                     </header>
+
+                    {wallet ? <WalletMembershipCard wallet={wallet} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
 
                     <div className="workspace-wallet-tabs" role="tablist" aria-label="积分中心">
                         <button type="button" role="tab" aria-selected={tab === "topup"} onClick={() => setTab("topup")}>
@@ -501,9 +504,43 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
     );
 }
 
+function WalletMembershipCard({ wallet, onOpenMembership }: { wallet: WalletSummary; onOpenMembership: () => void }) {
+    const { membership, membershipPlanName, account, membershipPoolValid } = wallet;
+    if (!membership) {
+        return (
+            <div className="workspace-wallet-membership" role="region" aria-label="会员">
+                <Crown className="size-4" />
+                <div className="min-w-0 flex-1">
+                    <strong>会员积分</strong>
+                    <span>开通会员每月到账专属积分，生成扣费优先抵扣。</span>
+                </div>
+                <button type="button" onClick={onOpenMembership}>
+                    查看会员权益
+                </button>
+            </div>
+        );
+    }
+    const expiry = membershipPoolValid && account.membershipExpiresAt ? new Date(account.membershipExpiresAt).toLocaleDateString("zh-CN") : "";
+    return (
+        <div className="workspace-wallet-membership is-active" role="region" aria-label="当前会员">
+            <Crown className="size-4" />
+            <div className="min-w-0 flex-1">
+                <strong>
+                    {membershipPlanName || "会员"}
+                    <span> {expiry ? `${expiry} 前有效` : ""}</span>
+                </strong>
+                <span>会员积分 {formatCredits(account.membershipMicrocredits, 6)} · 生成扣费优先抵扣，当期未用完清零。</span>
+            </div>
+            <button type="button" onClick={onOpenMembership}>
+                查看会员权益
+            </button>
+        </div>
+    );
+}
+
 function WalletLedgerRow({ entry }: { entry: CreditLedgerEntry }) {
     const positive = entry.amountMicrocredits > 0;
-    const title = entry.type === "consume" ? "模型调用" : entry.type === "refund" ? "消费退款" : entry.type === "payment_topup" ? "在线充值" : entry.type === "redeem" ? "兑换码充值" : entry.note || "积分调整";
+    const title = entry.type === "consume" ? "模型调用" : entry.type === "refund" ? "消费退款" : entry.type === "payment_topup" ? "在线充值" : entry.type === "redeem" ? "兑换码充值" : entry.type === "membership_grant" ? "会员积分发放" : entry.type === "membership_upgrade_diff" ? "会员升级补差" : entry.type === "membership_expire_clear" ? "会员积分到期清零" : entry.note || "积分调整";
     return (
         <article className="workspace-wallet-ledger-row">
             <span className={cn("workspace-wallet-ledger-icon", positive ? "is-income" : "is-consume")}>{positive ? <Coins /> : <CreditCard />}</span>

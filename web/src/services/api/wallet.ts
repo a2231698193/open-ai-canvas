@@ -6,6 +6,8 @@ export type CreditAccount = {
     userId: string;
     availableMicrocredits: number;
     reservedMicrocredits: number;
+    membershipMicrocredits: number;
+    membershipExpiresAt?: string;
     version: number;
     createdAt: string;
     updatedAt: string;
@@ -14,7 +16,7 @@ export type CreditAccount = {
 export type CreditLedgerEntry = {
     id: string;
     userId: string;
-    type: "redeem" | "payment_topup" | "admin_grant" | "consume" | "refund" | "admin_adjustment" | "signup_bonus" | "checkin_bonus";
+    type: "redeem" | "payment_topup" | "admin_grant" | "consume" | "refund" | "admin_adjustment" | "signup_bonus" | "checkin_bonus" | "membership_grant" | "membership_upgrade_diff" | "membership_expire_clear";
     amountMicrocredits: number;
     availableAfterMicrocredits: number;
     reservedAfterMicrocredits: number;
@@ -25,6 +27,19 @@ export type CreditLedgerEntry = {
     scene?: string;
     note?: string;
     createdAt: string;
+};
+
+export type UserMembership = {
+    id: string;
+    userId: string;
+    planId: string;
+    status: "active" | "cancelled";
+    periodStart: string;
+    periodEnd: string;
+    grantedMonths: number;
+    note?: string;
+    createdAt: string;
+    updatedAt: string;
 };
 
 export type WalletSummary = {
@@ -38,6 +53,9 @@ export type WalletSummary = {
         checkinBonusMicrocredits: number;
         checkedInToday: boolean;
     };
+    membership?: UserMembership;
+    membershipPlanName?: string;
+    membershipPoolValid: boolean;
 };
 
 export type CreditPolicy = {
