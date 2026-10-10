@@ -1,4 +1,5 @@
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Crown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { SystemAnnouncementCenter } from "@/components/layout/system-announcement-center";
@@ -10,6 +11,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
+import { MembershipPlansModal } from "@/components/membership/membership-plans-modal";
 import { openWorkspaceWallet } from "@/lib/workspace-wallet";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -25,6 +27,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
+    const [membershipOpen, setMembershipOpen] = useState(false);
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
@@ -48,15 +51,24 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
             </nav>
             <WorkspaceTopBarExtensionSlot />
             <div className="app-workspace-topbar-actions">
-                {creditsEnabled ? <button type="button" className="app-workspace-topbar-credit-pill" aria-label={`打开积分中心，可用 ${balance} 积分`} onClick={() => openWorkspaceWallet()}>
-                    <WorkspaceCreditGiftMark />
-                    <span>积分</span>
-                    <strong>{balance}</strong>
-                </button> : null}
+                {creditsEnabled ? (
+                    <>
+                        <button type="button" className="app-workspace-topbar-credit-pill" aria-label="查看会员权益" onClick={() => setMembershipOpen(true)}>
+                            <Crown className="size-4" />
+                            <span>开通会员</span>
+                        </button>
+                        <button type="button" className="app-workspace-topbar-credit-pill" aria-label={`打开积分中心，可用 ${balance} 积分`} onClick={() => openWorkspaceWallet()}>
+                            <WorkspaceCreditGiftMark />
+                            <span>积分</span>
+                            <strong>{balance}</strong>
+                        </button>
+                    </>
+                ) : null}
                 {user ? <SystemAnnouncementCenter userId={user.id} className="app-workspace-topbar-icon-button" autoOpen /> : null}
                 <AnimatedThemeToggler className="app-workspace-topbar-icon-button" theme={theme} onThemeChange={setTheme} aria-label="切换主题" />
                 <WorkspaceAccountMenu />
             </div>
+            {creditsEnabled ? <MembershipPlansModal open={membershipOpen} onCancel={() => setMembershipOpen(false)} /> : null}
         </header>
     );
 }

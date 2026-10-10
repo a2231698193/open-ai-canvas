@@ -16,16 +16,24 @@
     border: 1px solid color-mix(in srgb, var(--user-ink) 10%, transparent);
     border-radius: var(--r-2xl, 16px);
     background: var(--creation-surface, var(--user-surface));
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .membership-card:hover {
     border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+    transform: translateY(-2px);
 }
 
 .membership-card.is-featured {
     border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent);
+    background:
+        radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%),
+        var(--creation-surface, var(--user-surface));
+    box-shadow: 0 12px 32px -18px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.membership-card.is-featured .membership-card-grant strong {
+    color: var(--primary);
 }
 
 .membership-card.is-current {
