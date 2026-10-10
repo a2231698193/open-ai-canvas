@@ -329,6 +329,14 @@ function UserMembershipSection({ detail, onUpdated }: { detail: AdminUserDetail;
                 destroyOnHidden
             >
                 <Form form={form} layout="vertical" className="mt-2">
+                    <Form.Item noStyle shouldUpdate={(prev, next) => prev.planId !== next.planId}>
+                        {() => {
+                            const selectedPlan = plans.find((plan) => plan.id === form.getFieldValue("planId"));
+                            return selectedPlan && selectedPlan.monthlyGrantMicrocredits <= 0 ? (
+                                <p className="mb-2 text-xs text-amber-500">注意：该等级的每月到账积分为 0，开通后本期不会发放积分；请先在会员管理里调整额度，或开通后作废重开。</p>
+                            ) : null;
+                        }}
+                    </Form.Item>
                     <Form.Item name="planId" label="会员等级" rules={[{ required: true, message: "请选择等级" }]}>
                         <Select
                             options={plans.map((plan) => ({
@@ -345,6 +353,7 @@ function UserMembershipSection({ detail, onUpdated }: { detail: AdminUserDetail;
                     ) : (
                         <p className="text-xs text-foreground/60">升级立即生效：补差 = 新等级月额度 − 旧等级月额度，整额补进会员池，有效期跟随当前会员池。</p>
                     )}
+                    <p className="text-xs text-foreground/50">发放按开通当天的等级额度执行，之后调整等级额度不重算已发放的窗口。</p>
                     <Form.Item name="note" label="备注（写入审计）">
                         <Input maxLength={100} placeholder="选填" />
                     </Form.Item>
