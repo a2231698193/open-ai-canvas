@@ -9,7 +9,7 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 已接入官方 `ac683782..c3dc8c80` 共 34 个提交。产品版本仍为 `v1.5.7.10`，模型选择保持单层列表（吸收上游 `modelFilter` 参数），欢迎页与创作台入口不变。数据库结构随官方升级至 v49（渠道代理 URL、通知排序），部署时需先备份数据库。
 
-- [x] 后端 `go build ./...` 与 `go test ./...` 全量通过；前端 `bun run build` 与 `bun run lint` 通过，全量 `bun test` 2400 通过、4 失败（与合并前基线完全一致的存量失败）。
+- [x] 后端 `go build ./...` 通过；`go test ./...` 中 `internal/app` 有 4 个合并前存量失败（`TestCLICanvasStateAndApplyStayOnExistingRules`、`TestCloudAgentDeleteNodeIgnoresPromptOnTasklessMediaNode`、`TestCloudAgentCanvasStateReadsBackGenerationSpec`、`TestCloudAgentPiStepImageReferencesSatisfyPlaceholderPreflight`，末项含识图结果复数转单数 panic，与下方 d74f7839 基线一致）；其余包全部通过。前端 `bun run build` 与 `bun run lint` 通过，全量 `bun test` 2400 通过、4 失败（与合并前基线完全一致的存量失败）。
 - [x] 图片档位并集：保留本地 3K（即梦），纳入上游 1.5K（可美 Seedream）；后端校验、前端档位、质量标签与 `imageQualityForTier` 别名同步扩展。
 - [ ] 可美 KM Seedream 插件渠道实测：选择 1.5K 精确尺寸生成成功，24 个预设与默认 `2048x2048` 正确；即梦渠道 3K 档生成不受影响。
 - [ ] AI 拆图：图片节点规划图层 → 逐层生成 → 展开/显隐/合成预览；与本地 Midjourney 批量序号（`batchOutputIndex`）节点互不干扰。
