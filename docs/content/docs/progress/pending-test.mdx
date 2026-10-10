@@ -12,8 +12,9 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] 后端 `go test ./...` 仅 4 个 app + 2 个 skills 存量基线失败；前端 `bun run build` / `bun run lint` 通过，`bun test` 2400 通过、4 个存量失败与基线一致。
 - [ ] 浏览器验收 `/membership`：明暗主题下档位卡片栅格、当前方案标注、旗舰方案高亮、无会员开通引导；点击「立即开通」弹二维码弹窗（二维码图片缺失时显示占位文案）。
 - [ ] 浏览器验收积分中心：有会员用户显示等级名 + 会员积分余额 + 有效期；无会员显示开通引导；「查看会员权益」跳转 `/membership`。
+- [x] 管理界面已接入：`/admin/membership` 等级管理页（表格 + 新建/编辑弹窗）；用户详情抽屉新增会员操作区（开通/续费、升级、作废，均写审计）。
 - [ ] 部署前替换 `web/src/lib/membership-contact.ts` 中的微信号，并上传真实二维码到 `web/public/membership-wechat-qr.png`。
-- [ ] 管理界面面板（等级编辑、用户开通/升级/作废按钮）待接入，当前用 `/admin/membership/*` 接口操作；FeatureAvailability 灰度开关未接。
+- [ ] FeatureAvailability 灰度开关未接。
 
 ## 会员等级与积分 P3（后台开通与锚点发放）
 

@@ -1024,4 +1024,4 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 - 订阅：`user_memberships`（同一用户仅一条 active），锚点发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等
 - 双池：`credit_accounts.membership_microcredits` + `membership_expires_at`；订单记录会员池拆分，退款按此拆回
 - 过期清零：每小时清扫 + 预留时惰性清零，均写 `membership_expire_clear` 台账
-- 管理端：等级 CRUD 与开通/升级/作废接口已上线（`/admin/membership/*`），管理界面面板待接入
+- 管理端：`/admin/membership` 等级管理页；用户详情抽屉提供开通/续费、升级、作废操作

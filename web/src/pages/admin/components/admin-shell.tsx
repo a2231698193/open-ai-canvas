@@ -7,6 +7,7 @@ import {
     BellRing,
     ChevronLeft,
     ChevronRight,
+    Crown,
     ChevronDown,
     CloudUpload,
     Coins,
@@ -90,6 +91,7 @@ const adminNavigation: Array<{ label: string; items: AdminNavigationItem[] }> = 
             { path: "/admin/payments", label: "支付充值", description: "支付渠道、订单与对账", icon: <CreditCard className="size-4" /> },
             { path: "/admin/credit-operations", label: "积分运营", description: "人工调账与异常计费", icon: <Coins className="size-4" /> },
             { path: "/admin/redemption-codes", label: "兑换码", description: "生成与查看兑换码批次", icon: <TicketCheck className="size-4" /> },
+            { path: "/admin/membership", label: "会员管理", description: "会员等级、额度与启用状态", icon: <Crown className="size-4" /> },
         ],
     },
     {

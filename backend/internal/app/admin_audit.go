@@ -12,6 +12,8 @@ import (
 type AdminUserDetail struct {
 	User             model.User                  `json:"user"`
 	Account          model.CreditAccount         `json:"account"`
+	Membership       *model.UserMembership       `json:"membership,omitempty"`
+	MembershipName   string                      `json:"membershipName,omitempty"`
 	Counts           repository.AdminUserCounts  `json:"counts"`
 	StorageUsage     repository.UserStorageUsage `json:"storageUsage"`
 	StoredFileBytes  int64                       `json:"storedFileBytes"`
@@ -91,10 +93,17 @@ func (s *Service) AdminUserDetail(actor *model.User, userID string) (*AdminUserD
 	if err != nil {
 		return nil, err
 	}
-	return &AdminUserDetail{
+	detail := &AdminUserDetail{
 		User: *user, Account: *account, Counts: counts, StorageUsage: usage,
 		StoredFileBytes: storedFileBytes, DailyUploadBytes: dailyUploadBytes, Quota: policy.Resource,
-	}, nil
+	}
+	if membership, err := s.repo.ActiveUserMembership(user.ID); err == nil && membership != nil {
+		detail.Membership = membership
+		if plan, err := s.repo.MembershipPlan(membership.PlanID); err == nil {
+			detail.MembershipName = plan.Name
+		}
+	}
+	return detail, nil
 }
 
 func (s *Service) AdminUserLedger(actor *model.User, userID string, entryType string, page int, limit int) (*WalletSummary, error) {

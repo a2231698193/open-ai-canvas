@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { App, Button, Descriptions, Progress, Skeleton, Tabs } from "antd";
+import { App, Button, Descriptions, Form, Input, Modal, Progress, Select, Skeleton, Tabs } from "antd";
 import { AdminDrawer } from "@/pages/admin/ui/overlays";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crown } from "lucide-react";
 
 import { formatCredits } from "@/constant/credits";
 import { IconButton } from "@/pages/admin/ui/controls";
+import { cancelAdminMembership, grantAdminMembership, listAdminMembershipPlans, upgradeAdminMembership, type MembershipPlan } from "@/services/api/membership";
 import { AdminDataTable, AdminEmpty, AdminStatusBadge, AdminTableEmpty, PaginationBar, type AdminStatusTone } from "./admin-ui";
 import { getAdminUserDetail, listAdminUserAuditEvents, listAdminUserLedger, listAdminUserTasks, type AdminAuditEvent, type AdminUserDetail, type AdminUserTask } from "@/services/api/auth";
 import type { CreditLedgerEntry } from "@/services/api/wallet";
@@ -122,6 +123,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
                                             { key: "role", label: "角色", children: detail.user.role === "admin" ? "管理员" : "普通用户" },
                                             { key: "status", label: "状态", children: <AdminStatusBadge label={detail.user.status === "active" ? "启用" : "停用"} tone={detail.user.status === "active" ? "success" : "neutral"} /> },
                                             { key: "available", label: "可用积分", children: formatCredits(detail.account.availableMicrocredits) },
+                                            { key: "membership-pool", label: "会员积分", children: `${formatCredits(detail.account.membershipMicrocredits)}${detail.account.membershipExpiresAt ? `（${new Date(detail.account.membershipExpiresAt).toLocaleDateString("zh-CN")} 前有效）` : ""}` },
                                             { key: "recharge", label: "累计充值积分", children: formatCredits(detail.counts.rechargeMicrocredits) },
                                             { key: "checkin", label: "累计签到积分", children: formatCredits(detail.counts.checkinMicrocredits) },
                                             { key: "reserved", label: "冻结积分", children: formatCredits(detail.account.reservedMicrocredits) },
@@ -137,6 +139,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
                                             </div>
                                         ))}
                                     </div>
+                                    <UserMembershipSection detail={detail} onUpdated={() => void getAdminUserDetail(detail.user.id).then((next) => setDetail(next))} />
                                     <div>
                                         <div className="mb-3 text-sm font-medium">资源与配额占用</div>
                                         <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
@@ -235,6 +238,120 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
 
 function formatTime(value?: string) {
     return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "--";
+}
+
+type MembershipAction = "grant" | "upgrade";
+
+function UserMembershipSection({ detail, onUpdated }: { detail: AdminUserDetail; onUpdated: () => void }) {
+    const { message } = App.useApp();
+    const [open, setOpen] = useState(false);
+    const [action, setAction] = useState<MembershipAction>("grant");
+    const [plans, setPlans] = useState<MembershipPlan[]>([]);
+    const [submitting, setSubmitting] = useState(false);
+    const [form] = Form.useForm<{ planId?: string; months?: number; note?: string }>();
+
+    const openAction = async (next: MembershipAction) => {
+        setAction(next);
+        setOpen(true);
+        try {
+            const result = await listAdminMembershipPlans();
+            setPlans(result.plans);
+            form.setFieldValue("planId", next === "upgrade" ? result.plans.find((plan) => plan.level > 1)?.id || result.plans[0]?.id : detail.membership?.planId || result.plans[0]?.id);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "读取会员等级失败");
+        }
+    };
+
+    const submit = async () => {
+        const values = await form.validateFields();
+        const planId = String(values.planId || "");
+        if (!planId) return;
+        setSubmitting(true);
+        try {
+            if (action === "grant") {
+                await grantAdminMembership(detail.user.id, { planId, months: Number(values.months) || 1, note: values.note });
+                message.success("会员已开通/续费，积分按锚点发放");
+            } else {
+                await upgradeAdminMembership(detail.user.id, { planId, note: values.note });
+                message.success("会员已升级，补差积分已入会员池");
+            }
+            setOpen(false);
+            onUpdated();
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "操作失败");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const cancel = async () => {
+        setSubmitting(true);
+        try {
+            await cancelAdminMembership(detail.user.id, { note: "管理员作废" });
+            message.success("会员已作废，已发放积分保留到自然过期");
+            onUpdated();
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "作废失败");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const membership = detail.membership;
+    return (
+        <div className="rounded-md border border-border p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                    <Crown className="size-4 text-primary" />
+                    会员
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button size="small" onClick={() => void openAction("grant")}>{membership ? "续费" : "开通"}</Button>
+                    <Button size="small" disabled={!membership} onClick={() => void openAction("upgrade")}>升级</Button>
+                    <Button size="small" danger disabled={!membership} loading={submitting} onClick={() => void cancel()}>作废</Button>
+                </div>
+            </div>
+            {membership ? (
+                <div className="text-xs text-foreground/70">
+                    当前：{detail.membershipName || membership.planId} · {new Date(membership.periodStart).toLocaleDateString("zh-CN")} ~ {new Date(membership.periodEnd).toLocaleDateString("zh-CN")} · 已发放 {membership.grantedMonths} 个窗口
+                    {membership.note ? ` · 备注：${membership.note}` : ""}
+                </div>
+            ) : (
+                <div className="text-xs text-foreground/50">暂无生效中的会员。</div>
+            )}
+            <Modal
+                title={action === "grant" ? (membership ? "续费会员" : "开通会员") : "升级会员"}
+                open={open}
+                onCancel={() => setOpen(false)}
+                onOk={() => void submit()}
+                confirmLoading={submitting}
+                okText={action === "grant" ? "确认开通" : "确认升级"}
+                destroyOnHidden
+            >
+                <Form form={form} layout="vertical" className="mt-2">
+                    <Form.Item name="planId" label="会员等级" rules={[{ required: true, message: "请选择等级" }]}>
+                        <Select
+                            options={plans.map((plan) => ({
+                                value: plan.id,
+                                label: `${plan.name}（Level ${plan.level} · 每月 ${formatCredits(plan.monthlyGrantMicrocredits)} 积分）`,
+                                disabled: action === "upgrade" && detail.membership ? plan.level <= 0 && plan.id === detail.membership.planId : false,
+                            }))}
+                        />
+                    </Form.Item>
+                    {action === "grant" ? (
+                        <Form.Item name="months" label="周期（月）" initialValue={1} rules={[{ required: true, message: "请填写周期" }]}>
+                            <Input type="number" min={1} max={36} placeholder="1-36" />
+                        </Form.Item>
+                    ) : (
+                        <p className="text-xs text-foreground/60">升级立即生效：补差 = 新等级月额度 − 旧等级月额度，整额补进会员池，有效期跟随当前会员池。</p>
+                    )}
+                    <Form.Item name="note" label="备注（写入审计）">
+                        <Input maxLength={100} placeholder="选填" />
+                    </Form.Item>
+                </Form>
+            </Modal>
+        </div>
+    );
 }
 
 function taskStatusTone(value?: string): AdminStatusTone {

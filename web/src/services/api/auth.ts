@@ -125,7 +125,9 @@ export type AdminAuditEvent = {
 
 export type AdminUserDetail = {
     user: LocalUser;
-    account: { userId: string; availableMicrocredits: number; reservedMicrocredits: number; version: number };
+    account: { userId: string; availableMicrocredits: number; reservedMicrocredits: number; membershipMicrocredits: number; membershipExpiresAt?: string; version: number };
+    membership?: { id: string; userId: string; planId: string; status: "active" | "cancelled"; periodStart: string; periodEnd: string; grantedMonths: number; note?: string };
+    membershipName?: string;
     counts: { ledgerEntries: number; tasks: number; apiCalls: number; auditEvents: number; rechargeMicrocredits: number; checkinMicrocredits: number };
     storageUsage: {
         assetCount: number;
