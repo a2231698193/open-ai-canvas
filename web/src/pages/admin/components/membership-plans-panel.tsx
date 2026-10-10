@@ -48,30 +48,33 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // 页头「新建等级」按钮的入口：只在该开关从 false 变 true 时打开新增弹窗。
+    // 行内「编辑」直接调 openEditor(plan)，不能经过 createOpen，否则会把表单重置成新增态。
     useEffect(() => {
-        if (createOpen) openEditor(null);
+        if (createOpen) openCreateEditor();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [createOpen]);
 
-    const openEditor = (plan: MembershipPlan | null) => {
-        setEditing(plan);
-        form.setFieldsValue(
-            plan
-                ? {
-                      name: plan.name,
-                      level: plan.level,
-                      enabled: plan.enabled,
-                      sortOrder: plan.sortOrder,
-                      monthlyGrantCredits: plan.monthlyGrantMicrocredits / MICRO_CREDITS_PER_CREDIT,
-                      activeTaskLimit: plan.activeTaskLimit,
-                      storageGB: plan.storageGB,
-                      dailyUploadGB: plan.dailyUploadMB / 1024,
-                      checkinBonusCredits: plan.checkinBonusOverrideMicrocredits / MICRO_CREDITS_PER_CREDIT,
-                  }
-                : { enabled: true, level: plans.length + 1, monthlyGrantCredits: 0, activeTaskLimit: 0, storageGB: 0, dailyUploadGB: 0, checkinBonusCredits: 0 },
-        );
+    const openCreateEditor = () => {
+        setEditing(null);
+        form.setFieldsValue({ enabled: true, level: plans.length + 1, monthlyGrantCredits: 0, activeTaskLimit: 0, storageGB: 0, dailyUploadGB: 0, checkinBonusCredits: 0 });
         setEditorOpen(true);
-        onCreateOpenChange(true);
+    };
+
+    const openEditor = (plan: MembershipPlan) => {
+        setEditing(plan);
+        form.setFieldsValue({
+            name: plan.name,
+            level: plan.level,
+            enabled: plan.enabled,
+            sortOrder: plan.sortOrder,
+            monthlyGrantCredits: plan.monthlyGrantMicrocredits / MICRO_CREDITS_PER_CREDIT,
+            activeTaskLimit: plan.activeTaskLimit,
+            storageGB: plan.storageGB,
+            dailyUploadGB: plan.dailyUploadMB / 1024,
+            checkinBonusCredits: plan.checkinBonusOverrideMicrocredits / MICRO_CREDITS_PER_CREDIT,
+        });
+        setEditorOpen(true);
     };
 
     const save = async () => {
