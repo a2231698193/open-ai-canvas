@@ -18,13 +18,18 @@ func (s *Service) AccountFileStorageUsage(userID string) (*AccountFileStorageUsa
 	if err != nil {
 		return nil, err
 	}
+	// 容量展示与上传执行点同源：会员等级覆盖后的存储上限。
+	resource, err := applyMembershipResourceLimits(s.repo, userID, policy.Resource)
+	if err != nil {
+		return nil, err
+	}
 	usedBytes, err := s.repo.UserStoredFileBytes(userID)
 	if err != nil {
 		return nil, err
 	}
 	return &AccountFileStorageUsage{
 		UsedBytes:  usedBytes,
-		TotalBytes: gigabytes(policy.Resource.StoredFileGB),
+		TotalBytes: gigabytes(resource.StoredFileGB),
 	}, nil
 }
 

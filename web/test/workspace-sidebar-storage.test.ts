@@ -67,3 +67,11 @@ describe("workspace sidebar storage meter", () => {
         expect(css).toContain(".app-workspace-sidebar-storage.is-critical");
     });
 });
+
+test("会员不限容量显示为「不限」，进度条不参与告警", () => {
+    const meter = accountStorageMeter({ usedBytes: 250 * 1024 * 1024, totalBytes: 2 ** 50 });
+    expect(meter.totalLabel).toBe("不限");
+    expect(meter.remainingLabel).toBe("不限");
+    expect(meter.percent).toBe(0);
+    expect(meter.tone).toBe("ok");
+});
