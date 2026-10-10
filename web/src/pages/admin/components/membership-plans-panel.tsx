@@ -22,7 +22,7 @@ type PlanFormValues = {
     checkinBonusCredits?: number;
 };
 
-export default function MembershipPlansPanel() {
+export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }: { createOpen: boolean; onCreateOpenChange: (open: boolean) => void }) {
     const { message } = App.useApp();
     const [plans, setPlans] = useState<MembershipPlan[]>([]);
     const [loading, setLoading] = useState(true);
@@ -48,6 +48,11 @@ export default function MembershipPlansPanel() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        if (createOpen) openEditor(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [createOpen]);
+
     const openEditor = (plan: MembershipPlan | null) => {
         setEditing(plan);
         form.setFieldsValue(
@@ -66,6 +71,7 @@ export default function MembershipPlansPanel() {
                 : { enabled: true, level: plans.length + 1, monthlyGrantCredits: 0, activeTaskLimit: 0, storageGB: 0, dailyUploadGB: 0, checkinBonusCredits: 0 },
         );
         setEditorOpen(true);
+        onCreateOpenChange(true);
     };
 
     const save = async () => {
@@ -150,6 +156,7 @@ export default function MembershipPlansPanel() {
                 confirmLoading={saving}
                 okText="保存"
                 destroyOnHidden
+                afterClose={() => onCreateOpenChange(false)}
             >
                 <Form form={form} layout="vertical" className="mt-2">
                     <div className="grid grid-cols-2 gap-x-4">
