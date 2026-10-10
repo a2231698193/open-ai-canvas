@@ -390,6 +390,8 @@ func migrations() []tableMigration {
 		migrateTable[model.ModelPricing]("model_pricings"),
 		migrateTable[model.CreditAccount]("credit_accounts"),
 		migrateTable[model.CreditLedgerEntry]("credit_ledger_entries"),
+		migrateTable[model.MembershipPlan]("membership_plans"),
+		migrateTable[model.UserMembership]("user_memberships"),
 		migrateTable[model.BillingOrder]("billing_orders"),
 		migrateTable[model.TopupProduct]("topup_products"),
 		migrateTable[model.PaymentProviderConfig]("payment_provider_configs"),
