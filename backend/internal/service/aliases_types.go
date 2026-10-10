@@ -58,6 +58,7 @@ type (
 	AdminTaskPage                          = app.AdminTaskPage
 	AdminUser                              = app.AdminUser
 	AdminUserDetail                        = app.AdminUserDetail
+	AdminMembershipPlanRequest             = app.AdminMembershipPlanRequest
 	AdminUserPage                          = app.AdminUserPage
 	AdminUserReference                     = app.AdminUserReference
 	AnalyticsFailureRow                    = app.AnalyticsFailureRow

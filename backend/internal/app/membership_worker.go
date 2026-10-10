@@ -11,6 +11,7 @@ import (
 func (s *Service) startMembershipWorker(ctx context.Context) {
 	s.runWorkerLoop(func(ctx context.Context) {
 		s.expireMembershipPools()
+		s.grantMembershipWindows()
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
 		for {
@@ -19,6 +20,7 @@ func (s *Service) startMembershipWorker(ctx context.Context) {
 				return
 			case <-ticker.C:
 				s.expireMembershipPools()
+				s.grantMembershipWindows()
 			}
 		}
 	})
@@ -32,5 +34,12 @@ func (s *Service) expireMembershipPools() {
 	}
 	if cleared > 0 {
 		slog.Info("membership pools expired", "cleared", cleared)
+	}
+}
+
+// grantMembershipWindows 按锚点补发到期的会员积分窗口；GrantMembershipCredits 幂等。
+func (s *Service) grantMembershipWindows() {
+	if err := s.runMembershipGrantSweep(); err != nil {
+		slog.Warn("membership anchor grant sweep failed", "error", err)
 	}
 }

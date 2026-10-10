@@ -229,6 +229,8 @@ Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考
 
 `GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
 
+管理端会员接口（均需管理员权限并写入审计）：`GET/POST /admin/membership/plans` 列出与保存等级配置（名称、level 唯一、排序、每月到账积分、并发任务、存储/日上传、签到覆盖）；`POST /admin/users/:id/membership/grant` 开通或续费（`planId` + `months` 1-36，周期顺延，锚点不变，到期的窗口立即补发）；`POST /admin/users/:id/membership/upgrade` 立即升级并整额补差（新月额度 − 旧月额度，有效期跟随当前会员池），service 层拒绝降级与同等级；`POST /admin/users/:id/membership/cancel` 作废（已发放积分保留到自然过期）。锚点窗口为开通日起每 30 天一期，窗口末超过周期末按实际剩余天数发放，额度仍为整月；发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等，后台每小时清扫补发。
+
 ## 画布保存、历史与恢复
 
 画布内容使用数据库递增的 `revision` 做乐观并发校验；`updatedAt` 仅用于展示，不作为版本依据。新建 `PUT /canvas-projects/:id` 的 `project.revision` 为 0，已有画布必须带上读取到的版本。数据库在同一次条件更新中匹配 ID、用户与版本，成功后返回 `data.project` 摘要及递增后的版本；缺失版本返回 428，陈旧版本返回 409，非法版本返回 400。客户端不能获取新版号后直接重发旧内容。
