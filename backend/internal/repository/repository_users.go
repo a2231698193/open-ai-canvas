@@ -65,10 +65,11 @@ func (r *Repository) Users() ([]model.User, error) {
 
 func (r *Repository) TotalCreditBalance() (int64, error) {
 	var total int64
-	err := r.db.Model(&model.CreditAccount{}).Select("COALESCE(SUM(available_microcredits), 0)").Scan(&total).Error
+	// 运营口径：用户总余额 = 通用池 + 会员池之和（会员池到期清零后自然回落）。
+	err := r.db.Model(&model.CreditAccount{}).Select("COALESCE(SUM(available_microcredits + membership_microcredits), 0)").Scan(&total).Error
 	// Some analytics fixtures predate the wallet table; the balance card is a
 	// read-only enhancement and must not make the existing overview unavailable.
-	if err != nil && (strings.Contains(err.Error(), "no such table") || strings.Contains(strings.ToLower(err.Error()), "does not exist")) {
+	if err != nil && (strings.Contains(err.Error(), "no such table") || strings.Contains(strings.ToLower(err.Error()), "does not exist") || strings.Contains(err.Error(), "no such column")) {
 		return 0, nil
 	}
 	return total, err

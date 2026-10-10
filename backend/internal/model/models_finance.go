@@ -21,18 +21,21 @@ type CreditLedgerEntry struct {
 	AmountMicrocredits         int64            `json:"amountMicrocredits"`
 	AvailableDeltaMicrocredits int64            `json:"availableDeltaMicrocredits"`
 	ReservedDeltaMicrocredits  int64            `json:"reservedDeltaMicrocredits"`
-	AvailableAfterMicrocredits int64            `json:"availableAfterMicrocredits"`
-	ReservedAfterMicrocredits  int64            `json:"reservedAfterMicrocredits"`
-	BillingOrderID             string           `json:"billingOrderId,omitempty" gorm:"index;size:36"`
-	PaymentOrderID             string           `json:"paymentOrderId,omitempty" gorm:"index;size:36"`
-	RedeemCodeID               string           `json:"redeemCodeId,omitempty" gorm:"index;size:36"`
-	ActorUserID                string           `json:"actorUserId,omitempty" gorm:"index;size:36"`
-	Model                      string           `json:"model,omitempty" gorm:"size:120;index"`
-	ChannelID                  string           `json:"channelId,omitempty" gorm:"size:36;index"`
-	Scene                      string           `json:"scene,omitempty" gorm:"size:80;index"`
-	Note                       string           `json:"note,omitempty" gorm:"size:500"`
-	ReferenceKey               *string          `json:"referenceKey,omitempty" gorm:"size:180;uniqueIndex"`
-	CreatedAt                  time.Time        `json:"createdAt" gorm:"index:idx_credit_ledger_user_created,priority:2"`
+	// MembershipDelta/MembershipAfter 记录会员积分池变动；预留 -m、消耗 -c、退款 +r 全周期对账归零。
+	MembershipDeltaMicrocredits int64     `json:"membershipDeltaMicrocredits"`
+	MembershipAfterMicrocredits int64     `json:"membershipAfterMicrocredits"`
+	AvailableAfterMicrocredits  int64     `json:"availableAfterMicrocredits"`
+	ReservedAfterMicrocredits   int64     `json:"reservedAfterMicrocredits"`
+	BillingOrderID              string    `json:"billingOrderId,omitempty" gorm:"index;size:36"`
+	PaymentOrderID              string    `json:"paymentOrderId,omitempty" gorm:"index;size:36"`
+	RedeemCodeID                string    `json:"redeemCodeId,omitempty" gorm:"index;size:36"`
+	ActorUserID                 string    `json:"actorUserId,omitempty" gorm:"index;size:36"`
+	Model                       string    `json:"model,omitempty" gorm:"size:120;index"`
+	ChannelID                   string    `json:"channelId,omitempty" gorm:"size:36;index"`
+	Scene                       string    `json:"scene,omitempty" gorm:"size:80;index"`
+	Note                        string    `json:"note,omitempty" gorm:"size:500"`
+	ReferenceKey                *string   `json:"referenceKey,omitempty" gorm:"size:180;uniqueIndex"`
+	CreatedAt                   time.Time `json:"createdAt" gorm:"index:idx_credit_ledger_user_created,priority:2"`
 }
 
 type BillingOrder struct {
@@ -44,19 +47,21 @@ type BillingOrder struct {
 	ChannelID           string `json:"channelId" gorm:"index;size:36"`
 	ChannelModelID      string `json:"channelModelId" gorm:"index;size:36"`
 	// PriceTierID/Version 记录任务实际命中的规格档；金额字段仍是不可变结算快照。
-	PriceTierID                string `json:"priceTierId,omitempty" gorm:"index;size:36"`
-	PriceTierVersion           int64  `json:"priceTierVersion"`
-	PriceSelectorJSON          string `json:"-" gorm:"type:text"`
-	Model                      string `json:"model" gorm:"index;size:120"`
-	Capability                 string `json:"capability" gorm:"index;size:32"`
-	Scene                      string `json:"scene" gorm:"index;size:80"`
-	BillingMode                string `json:"billingMode" gorm:"size:32"`
-	PriceVersion               int64  `json:"priceVersion"`
-	UnitPriceMicrocredits      int64  `json:"unitPriceMicrocredits"`
-	MultiplierBasisPoints      int64  `json:"multiplierBasisPoints"`
-	Quantity                   int64  `json:"quantity"`
-	AmountMicrocredits         int64  `json:"amountMicrocredits"`
-	ReservedAmountMicrocredits int64  `json:"reservedAmountMicrocredits"`
+	PriceTierID      string `json:"priceTierId,omitempty" gorm:"index;size:36"`
+	PriceTierVersion int64  `json:"priceTierVersion"`
+	// MembershipAmountMicrocredits 记录预留时从会员积分池扣掉的部分，退款按此拆回两池。
+	MembershipAmountMicrocredits int64  `json:"membershipAmountMicrocredits" gorm:"not null;default:0"`
+	PriceSelectorJSON            string `json:"-" gorm:"type:text"`
+	Model                        string `json:"model" gorm:"index;size:120"`
+	Capability                   string `json:"capability" gorm:"index;size:32"`
+	Scene                        string `json:"scene" gorm:"index;size:80"`
+	BillingMode                  string `json:"billingMode" gorm:"size:32"`
+	PriceVersion                 int64  `json:"priceVersion"`
+	UnitPriceMicrocredits        int64  `json:"unitPriceMicrocredits"`
+	MultiplierBasisPoints        int64  `json:"multiplierBasisPoints"`
+	Quantity                     int64  `json:"quantity"`
+	AmountMicrocredits           int64  `json:"amountMicrocredits"`
+	ReservedAmountMicrocredits   int64  `json:"reservedAmountMicrocredits"`
 	// ChargeLimitSet distinguishes an authorized zero price from an uncapped order.
 	// All Agent prices remain capped across route changes and settlement.
 	ChargeLimitSet               bool  `json:"chargeLimitSet,omitempty" gorm:"not null;default:false"`

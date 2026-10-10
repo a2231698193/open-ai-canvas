@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 50
+const CurrentSchemaVersion int64 = 51
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -164,6 +164,15 @@ var schemaMigrations = []migration{
 		return nil
 	}},
 	{version: 50, name: "membership_dual_pool", checksum: "sha256:membership-dual-pool-v50-20261010", apply: migrateMembershipDualPool},
+	{version: 51, name: "membership_billing_split", checksum: "sha256:membership-billing-split-v51-20261010", apply: migrateMembershipBillingSplit},
+}
+
+func migrateMembershipBillingSplit(tx *gorm.DB) error {
+	// 订单记录预留时的会员池拆分；台账增加会员池变动列供全周期对账。
+	if err := tx.AutoMigrate(&model.BillingOrder{}, &model.CreditLedgerEntry{}); err != nil {
+		return fmt.Errorf("账单与台账增加会员池拆分列：%w", err)
+	}
+	return nil
 }
 
 func migrateMembershipDualPool(tx *gorm.DB) error {

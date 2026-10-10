@@ -23,6 +23,34 @@ func (r *Repository) ReserveBillingOrder(order *model.BillingOrder) error {
 	})
 }
 
+// membershipAvailableCredits 返回当前可用的会员池余额；过期视为 0。
+func membershipAvailableCredits(account model.CreditAccount, now time.Time) int64 {
+	if account.MembershipMicrocredits <= 0 {
+		return 0
+	}
+	if !account.MembershipExpiresAt.IsZero() && now.After(account.MembershipExpiresAt) {
+		return 0
+	}
+	return account.MembershipMicrocredits
+}
+
+// splitBillingSettlement 计算结算/退款时的会员池拆分：
+// 消耗先计会员预留部分，多退优先退回剩余会员份额，其余退通用池。
+func splitBillingSettlement(membershipPart int64, actual int64, refund int64) struct {
+	ConsumedFromMembership int64
+	RefundToMembership     int64
+	RefundToGeneral        int64
+} {
+	consumedFromMembership := min(membershipPart, actual)
+	remainingMembership := membershipPart - consumedFromMembership
+	refundToMembership := min(refund, remainingMembership)
+	return struct {
+		ConsumedFromMembership int64
+		RefundToMembership     int64
+		RefundToGeneral        int64
+	}{consumedFromMembership, refundToMembership, refund - refundToMembership}
+}
+
 func reserveBillingOrder(tx *gorm.DB, order *model.BillingOrder) error {
 	if err := validateBillingChargeLimit(*order, order.AmountMicrocredits); err != nil {
 		return err
@@ -34,13 +62,36 @@ func reserveBillingOrder(tx *gorm.DB, order *model.BillingOrder) error {
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&account).Error; err != nil {
 		return err
 	}
+	if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	membershipPart := min(membershipAvailableCredits(account, now), order.AmountMicrocredits)
+	generalPart := order.AmountMicrocredits - membershipPart
+	// 过期会员池惰性清零并入台账，避免残留余额长期挂在账户上。
+	if account.MembershipMicrocredits > 0 && membershipAvailableCredits(account, now) == 0 {
+		if err := tx.Model(&model.CreditAccount{}).
+			Where("user_id = ? AND membership_microcredits > 0", order.UserID).
+			Update("membership_microcredits", int64(0)).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.CreditLedgerEntry{
+			ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerMembershipExpireClear,
+			AmountMicrocredits:         -account.MembershipMicrocredits,
+			AvailableAfterMicrocredits: account.AvailableMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
+			Note: "会员积分池已过期，预留时清零",
+		}).Error; err != nil {
+			return err
+		}
+	}
 	updated := tx.Model(&model.CreditAccount{}).
-		Where("user_id = ? AND available_microcredits >= ?", order.UserID, order.AmountMicrocredits).
+		Where("user_id = ? AND available_microcredits >= ? AND membership_microcredits >= ?", order.UserID, generalPart, membershipPart).
 		Updates(map[string]any{
-			"available_microcredits": gorm.Expr("available_microcredits - ?", order.AmountMicrocredits),
-			"reserved_microcredits":  gorm.Expr("reserved_microcredits + ?", order.AmountMicrocredits),
-			"version":                gorm.Expr("version + 1"),
-			"updated_at":             time.Now(),
+			"available_microcredits":  gorm.Expr("available_microcredits - ?", generalPart),
+			"membership_microcredits": gorm.Expr("membership_microcredits - ?", membershipPart),
+			"reserved_microcredits":   gorm.Expr("reserved_microcredits + ?", order.AmountMicrocredits),
+			"version":                 gorm.Expr("version + 1"),
+			"updated_at":              now,
 		})
 	if updated.Error != nil {
 		return updated.Error
@@ -51,21 +102,24 @@ func reserveBillingOrder(tx *gorm.DB, order *model.BillingOrder) error {
 	if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
 		return err
 	}
+	order.MembershipAmountMicrocredits = membershipPart
 	if err := tx.Create(order).Error; err != nil {
 		return err
 	}
 	return tx.Create(&model.CreditLedgerEntry{
-		ID:                         newRepositoryID(),
-		UserID:                     order.UserID,
-		Type:                       model.CreditLedgerReserve,
-		AvailableDeltaMicrocredits: -order.AmountMicrocredits,
-		ReservedDeltaMicrocredits:  order.AmountMicrocredits,
-		AvailableAfterMicrocredits: account.AvailableMicrocredits,
-		ReservedAfterMicrocredits:  account.ReservedMicrocredits,
-		BillingOrderID:             order.ID,
-		Model:                      order.Model,
-		ChannelID:                  order.ChannelID,
-		Scene:                      order.Scene,
+		ID:                          newRepositoryID(),
+		UserID:                      order.UserID,
+		Type:                        model.CreditLedgerReserve,
+		AvailableDeltaMicrocredits:  -generalPart,
+		MembershipDeltaMicrocredits: -membershipPart,
+		ReservedDeltaMicrocredits:   order.AmountMicrocredits,
+		AvailableAfterMicrocredits:  account.AvailableMicrocredits,
+		MembershipAfterMicrocredits: account.MembershipMicrocredits,
+		ReservedAfterMicrocredits:   account.ReservedMicrocredits,
+		BillingOrderID:              order.ID,
+		Model:                       order.Model,
+		ChannelID:                   order.ChannelID,
+		Scene:                       order.Scene,
 	}).Error
 }
 
@@ -305,12 +359,14 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			observedActualAvailable = true
 			refund := max(reserved-actual, int64(0))
 			supplement := max(actual-reserved, int64(0))
+			split := splitBillingSettlement(order.MembershipAmountMicrocredits, actual, refund)
 			updated := tx.Model(&model.CreditAccount{}).
 				Where("user_id = ? AND reserved_microcredits >= ?", order.UserID, reserved).
 				Updates(map[string]any{
-					"available_microcredits": gorm.Expr("available_microcredits + ?", refund-supplement),
-					"reserved_microcredits":  gorm.Expr("reserved_microcredits - ?", reserved),
-					"version":                gorm.Expr("version + 1"), "updated_at": time.Now(),
+					"available_microcredits":  gorm.Expr("available_microcredits + ?", split.RefundToGeneral-supplement),
+					"membership_microcredits": gorm.Expr("membership_microcredits + ?", split.RefundToMembership),
+					"reserved_microcredits":   gorm.Expr("reserved_microcredits - ?", reserved),
+					"version":                 gorm.Expr("version + 1"), "updated_at": time.Now(),
 				})
 			if updated.Error != nil {
 				return updated.Error
@@ -347,14 +403,16 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			}
 			if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerConsume,
 				AmountMicrocredits: -actual, AvailableDeltaMicrocredits: -supplement, ReservedDeltaMicrocredits: -reserved,
-				AvailableAfterMicrocredits: account.AvailableMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
+				MembershipDeltaMicrocredits: -split.ConsumedFromMembership,
+				AvailableAfterMicrocredits:  account.AvailableMicrocredits, MembershipAfterMicrocredits: account.MembershipMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
 				BillingOrderID: order.ID, Model: order.Model, ChannelID: order.ChannelID, Scene: order.Scene, Note: consumeNote}).Error; err != nil {
 				return err
 			}
 			if refund > 0 {
 				if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerRefund,
-					AmountMicrocredits: refund, AvailableDeltaMicrocredits: refund,
-					AvailableAfterMicrocredits: account.AvailableMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
+					AmountMicrocredits: refund, AvailableDeltaMicrocredits: split.RefundToGeneral,
+					MembershipDeltaMicrocredits: split.RefundToMembership,
+					AvailableAfterMicrocredits:  account.AvailableMicrocredits, MembershipAfterMicrocredits: account.MembershipMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
 					BillingOrderID: order.ID, Model: order.Model, ChannelID: order.ChannelID, Scene: order.Scene, Note: "Token 预授权差额退回"}).Error; err != nil {
 					return err
 				}
@@ -384,13 +442,15 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			}
 			refund = max(reserved-actual, int64(0))
 			supplement = max(actual-reserved, int64(0))
+			audioSplit := splitBillingSettlement(order.MembershipAmountMicrocredits, actual, refund)
 			updated := tx.Model(&model.CreditAccount{}).
 				Where("user_id = ? AND reserved_microcredits >= ? AND available_microcredits >= ?", order.UserID, reserved, supplement).
 				Updates(map[string]any{
-					"available_microcredits": gorm.Expr("available_microcredits + ?", refund-supplement),
-					"reserved_microcredits":  gorm.Expr("reserved_microcredits - ?", reserved),
-					"version":                gorm.Expr("version + 1"),
-					"updated_at":             time.Now(),
+					"available_microcredits":  gorm.Expr("available_microcredits + ?", audioSplit.RefundToGeneral-supplement),
+					"membership_microcredits": gorm.Expr("membership_microcredits + ?", audioSplit.RefundToMembership),
+					"reserved_microcredits":   gorm.Expr("reserved_microcredits - ?", reserved),
+					"version":                 gorm.Expr("version + 1"),
+					"updated_at":              time.Now(),
 				})
 			if updated.Error != nil {
 				return updated.Error
@@ -420,14 +480,16 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			}
 			if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerConsume,
 				AmountMicrocredits: -actual, AvailableDeltaMicrocredits: -supplement, ReservedDeltaMicrocredits: -reserved,
-				AvailableAfterMicrocredits: account.AvailableMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
+				MembershipDeltaMicrocredits: -audioSplit.ConsumedFromMembership,
+				AvailableAfterMicrocredits:  account.AvailableMicrocredits, MembershipAfterMicrocredits: account.MembershipMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
 				BillingOrderID: order.ID, Model: order.Model, ChannelID: order.ChannelID, Scene: order.Scene, Note: note}).Error; err != nil {
 				return err
 			}
 			if refund > 0 {
 				if err := tx.Create(&model.CreditLedgerEntry{ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerRefund,
-					AmountMicrocredits: refund, AvailableDeltaMicrocredits: refund,
-					AvailableAfterMicrocredits: account.AvailableMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
+					AmountMicrocredits: refund, AvailableDeltaMicrocredits: audioSplit.RefundToGeneral,
+					MembershipDeltaMicrocredits: audioSplit.RefundToMembership,
+					AvailableAfterMicrocredits:  account.AvailableMicrocredits, MembershipAfterMicrocredits: account.MembershipMicrocredits, ReservedAfterMicrocredits: account.ReservedMicrocredits,
 					BillingOrderID: order.ID, Model: order.Model, ChannelID: order.ChannelID, Scene: order.Scene, Note: "音频实际时长短于预授权，差额退回"}).Error; err != nil {
 					return err
 				}
@@ -452,6 +514,7 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			return err
 		}
 		now := time.Now()
+		fixedSplit := splitBillingSettlement(order.MembershipAmountMicrocredits, order.AmountMicrocredits, 0)
 		orderUpdates := map[string]any{"status": model.BillingStatusSettled, "actual_amount_microcredits": order.AmountMicrocredits, "settled_at": &now, "updated_at": now}
 		if providerRequestID != "" {
 			orderUpdates["provider_request_id"] = providerRequestID
@@ -460,17 +523,19 @@ func (r *Repository) settleBillingOrder(id string, providerRequestID string, aud
 			return err
 		}
 		return tx.Create(&model.CreditLedgerEntry{
-			ID:                         newRepositoryID(),
-			UserID:                     order.UserID,
-			Type:                       model.CreditLedgerConsume,
-			AmountMicrocredits:         -order.AmountMicrocredits,
-			ReservedDeltaMicrocredits:  -order.AmountMicrocredits,
-			AvailableAfterMicrocredits: account.AvailableMicrocredits,
-			ReservedAfterMicrocredits:  account.ReservedMicrocredits,
-			BillingOrderID:             order.ID,
-			Model:                      order.Model,
-			ChannelID:                  order.ChannelID,
-			Scene:                      order.Scene,
+			ID:                          newRepositoryID(),
+			UserID:                      order.UserID,
+			Type:                        model.CreditLedgerConsume,
+			AmountMicrocredits:          -order.AmountMicrocredits,
+			ReservedDeltaMicrocredits:   -order.AmountMicrocredits,
+			MembershipDeltaMicrocredits: -fixedSplit.ConsumedFromMembership,
+			AvailableAfterMicrocredits:  account.AvailableMicrocredits,
+			MembershipAfterMicrocredits: account.MembershipMicrocredits,
+			ReservedAfterMicrocredits:   account.ReservedMicrocredits,
+			BillingOrderID:              order.ID,
+			Model:                       order.Model,
+			ChannelID:                   order.ChannelID,
+			Scene:                       order.Scene,
 		}).Error
 	})
 	if err != nil && observedUsage != nil {
@@ -562,12 +627,21 @@ func (r *Repository) RestoreRefundedBillingOrder(id string, providerRequestID st
 			return errors.New("invalid restored billing amount")
 		}
 
+		// 恢复已退款订单时按「会员池优先」把资金重新扣回，与预留语义一致；
+		// 通用池沿用旧语义允许透支（退款可能已被花掉），会员池只在足额时参与。
+		var currentAccount model.CreditAccount
+		if err := tx.First(&currentAccount, "user_id = ?", order.UserID).Error; err != nil {
+			return err
+		}
+		restoreMembership := min(membershipAvailableCredits(currentAccount, time.Now()), actual)
+		restoreGeneral := actual - restoreMembership
 		updated := tx.Model(&model.CreditAccount{}).
-			Where("user_id = ?", order.UserID).
+			Where("user_id = ? AND membership_microcredits >= ?", order.UserID, restoreMembership).
 			Updates(map[string]any{
-				"available_microcredits": gorm.Expr("available_microcredits - ?", actual),
-				"version":                gorm.Expr("version + 1"),
-				"updated_at":             time.Now(),
+				"available_microcredits":  gorm.Expr("available_microcredits - ?", restoreGeneral),
+				"membership_microcredits": gorm.Expr("membership_microcredits - ?", restoreMembership),
+				"version":                 gorm.Expr("version + 1"),
+				"updated_at":              time.Now(),
 			})
 		if updated.Error != nil {
 			return updated.Error
@@ -656,13 +730,24 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 		if order.Status == model.BillingStatusSettled {
 			return errors.New("settled billing order requires a manual refund")
 		}
+		// 会员部分退回会员池；会员池不存在或已过期时并入通用池，避免退款被过期清零吞掉。
+		var account model.CreditAccount
+		if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
+			return err
+		}
+		membershipBack := order.MembershipAmountMicrocredits
+		if membershipBack > 0 && (account.MembershipExpiresAt.IsZero() || time.Now().After(account.MembershipExpiresAt)) {
+			membershipBack = 0
+		}
+		generalBack := order.AmountMicrocredits - membershipBack
 		updated := tx.Model(&model.CreditAccount{}).
 			Where("user_id = ? AND reserved_microcredits >= ?", order.UserID, order.AmountMicrocredits).
 			Updates(map[string]any{
-				"available_microcredits": gorm.Expr("available_microcredits + ?", order.AmountMicrocredits),
-				"reserved_microcredits":  gorm.Expr("reserved_microcredits - ?", order.AmountMicrocredits),
-				"version":                gorm.Expr("version + 1"),
-				"updated_at":             time.Now(),
+				"available_microcredits":  gorm.Expr("available_microcredits + ?", generalBack),
+				"membership_microcredits": gorm.Expr("membership_microcredits + ?", membershipBack),
+				"reserved_microcredits":   gorm.Expr("reserved_microcredits - ?", order.AmountMicrocredits),
+				"version":                 gorm.Expr("version + 1"),
+				"updated_at":              time.Now(),
 			})
 		if updated.Error != nil {
 			return updated.Error
@@ -670,7 +755,6 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 		if updated.RowsAffected != 1 {
 			return errors.New("reserved credit balance is inconsistent")
 		}
-		var account model.CreditAccount
 		if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
 			return err
 		}
@@ -680,19 +764,21 @@ func (r *Repository) RefundBillingOrder(id string, errorText string) error {
 			return err
 		}
 		return tx.Create(&model.CreditLedgerEntry{
-			ID:                         newRepositoryID(),
-			UserID:                     order.UserID,
-			Type:                       model.CreditLedgerRefund,
-			AmountMicrocredits:         order.AmountMicrocredits,
-			AvailableDeltaMicrocredits: order.AmountMicrocredits,
-			ReservedDeltaMicrocredits:  -order.AmountMicrocredits,
-			AvailableAfterMicrocredits: account.AvailableMicrocredits,
-			ReservedAfterMicrocredits:  account.ReservedMicrocredits,
-			BillingOrderID:             order.ID,
-			Model:                      order.Model,
-			ChannelID:                  order.ChannelID,
-			Scene:                      order.Scene,
-			Note:                       errorText,
+			ID:                          newRepositoryID(),
+			UserID:                      order.UserID,
+			Type:                        model.CreditLedgerRefund,
+			AmountMicrocredits:          order.AmountMicrocredits,
+			AvailableDeltaMicrocredits:  generalBack,
+			MembershipDeltaMicrocredits: membershipBack,
+			ReservedDeltaMicrocredits:   -order.AmountMicrocredits,
+			AvailableAfterMicrocredits:  account.AvailableMicrocredits,
+			MembershipAfterMicrocredits: account.MembershipMicrocredits,
+			ReservedAfterMicrocredits:   account.ReservedMicrocredits,
+			BillingOrderID:              order.ID,
+			Model:                       order.Model,
+			ChannelID:                   order.ChannelID,
+			Scene:                       order.Scene,
+			Note:                        errorText,
 		}).Error
 	})
 }

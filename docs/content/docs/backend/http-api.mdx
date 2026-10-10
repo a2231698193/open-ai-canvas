@@ -223,6 +223,12 @@ Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考
 
 上传、工作流结构查询、取消查询和取消请求也不参与财务归属，即使日志被标记为可计费；它们不能代替生成请求承载订单金额。订单是否已结算以账单状态为准，保留人工核账后结算订单的统计能力。
 
+## 双池积分与会员扣费
+
+`credit_accounts` 分为通用积分池（充值、签到、注册赠送，永不过期）和会员积分池（后台发放，带 `membershipExpiresAt` 到期时间）。生成扣费、系统代理计费等预留路径按「会员池优先 → 通用池」拆分：会员池未过期先扣，差额扣通用池；`billing_orders.membershipAmountMicrocredits` 记录预留时的会员池部分，退款按此拆回，会员池已过期时该部分并入通用池退回，避免退款被过期清零吞掉。结算多退部分优先退回剩余会员份额，少补从通用池扣除。台账 `membershipDeltaMicrocredits` 记录会员池变动，预留、消耗、退款全周期对账归零。
+
+`GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
+
 ## 画布保存、历史与恢复
 
 画布内容使用数据库递增的 `revision` 做乐观并发校验；`updatedAt` 仅用于展示，不作为版本依据。新建 `PUT /canvas-projects/:id` 的 `project.revision` 为 0，已有画布必须带上读取到的版本。数据库在同一次条件更新中匹配 ID、用户与版本，成功后返回 `data.project` 摘要及递增后的版本；缺失版本返回 428，陈旧版本返回 409，非法版本返回 400。客户端不能获取新版号后直接重发旧内容。
