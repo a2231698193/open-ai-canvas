@@ -38,7 +38,7 @@ func TestUpdateDrawingEngineSettingKeepsDefaultEngineAndStoresTldrawLicenseSepar
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	repo := repository.New(db)

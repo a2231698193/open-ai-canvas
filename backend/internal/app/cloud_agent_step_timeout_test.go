@@ -68,7 +68,7 @@ func TestCloudAgentStepLimitsFollowAdminPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir())
@@ -146,7 +146,7 @@ func TestRuntimePolicyBackfillsAgentStepLimitsForLegacyJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}); err != nil {
 		t.Fatal(err)
 	}
 	legacy := defaultRuntimePolicy()

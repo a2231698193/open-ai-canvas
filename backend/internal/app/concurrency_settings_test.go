@@ -23,7 +23,7 @@ func TestRuntimeConcurrencySettingPersistsAndChannelOverrideWins(t *testing.T) {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.AdminAuditEvent{}, &model.ModelChannel{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.ModelChannel{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir())

@@ -92,7 +92,7 @@ func cancelAuthorizationFixture(t *testing.T) (*Service, *gorm.DB, *model.Task) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(database.Models()...); err != nil {
+	if err := db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 		t.Fatal(err)
 	}
 	req := agentTestRequest()

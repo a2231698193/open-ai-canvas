@@ -176,11 +176,16 @@ func (s *Service) CheckinCredits(user *model.User) (*model.CreditAccount, bool, 
 	if err != nil {
 		return nil, false, err
 	}
-	if policy.CheckinBonusMicrocredits == 0 {
+	effective, err := s.effectiveMembership(user.ID)
+	if err != nil {
+		return nil, false, err
+	}
+	bonus := checkinBonusForMembership(policy, effective)
+	if bonus == 0 {
 		return nil, false, BadAuthRequest("当前未开启签到奖励")
 	}
 	day := time.Now().UTC().Format("2006-01-02")
-	return s.repo.GrantCreditsOnce(user.ID, model.CreditLedgerCheckinBonus, policy.CheckinBonusMicrocredits, "checkin:"+user.ID+":"+day, "每日签到奖励")
+	return s.repo.GrantCreditsOnce(user.ID, model.CreditLedgerCheckinBonus, bonus, "checkin:"+user.ID+":"+day, "每日签到奖励")
 }
 
 func (s *Service) publicCreditPolicy(userID string) (PublicCreditPolicy, error) {
@@ -190,7 +195,14 @@ func (s *Service) publicCreditPolicy(userID string) (PublicCreditPolicy, error) 
 	}
 	reference := "checkin:" + userID + ":" + time.Now().UTC().Format("2006-01-02")
 	checked, err := s.repo.CreditLedgerReferenceExists(reference)
-	return PublicCreditPolicy{SignupBonusMicrocredits: policy.SignupBonusMicrocredits, CheckinBonusMicrocredits: policy.CheckinBonusMicrocredits, CheckedInToday: checked}, err
+	if err != nil {
+		return PublicCreditPolicy{}, err
+	}
+	effective, err := s.effectiveMembership(userID)
+	if err != nil {
+		return PublicCreditPolicy{}, err
+	}
+	return PublicCreditPolicy{SignupBonusMicrocredits: policy.SignupBonusMicrocredits, CheckinBonusMicrocredits: checkinBonusForMembership(policy, effective), CheckedInToday: checked}, nil
 }
 
 // 单价、数量和倍率全程使用整数并向上取整，避免浮点误差造成少扣积分。

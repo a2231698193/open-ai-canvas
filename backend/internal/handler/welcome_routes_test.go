@@ -27,7 +27,7 @@ func TestWelcomeAvailabilityPublicRoute(t *testing.T) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}); err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()

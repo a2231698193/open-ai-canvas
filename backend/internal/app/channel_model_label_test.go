@@ -9,7 +9,7 @@ import (
 
 func TestChannelModelLabelSaveAndCatalogPreserveChannelIdentity(t *testing.T) {
 	svc, db := newChannelModelTestService(t)
-	if err := db.AutoMigrate(&model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}); err != nil {
 		t.Fatal(err)
 	}
 	admin := &model.User{ID: "admin", Role: model.UserRoleAdmin}

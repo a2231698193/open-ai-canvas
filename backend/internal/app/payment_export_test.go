@@ -101,7 +101,7 @@ func TestPaymentExportsAllRowsAndReconciliationSemantics(t *testing.T) {
 	}
 	sqlDB, _ := db.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.PaymentOrder{}, &model.PaymentReconciliationRun{}, &model.PaymentReconciliationItem{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.PaymentOrder{}, &model.PaymentReconciliationRun{}, &model.PaymentReconciliationItem{}); err != nil {
 		t.Fatal(err)
 	}
 	s := &Service{repo: repository.New(db)}
@@ -173,7 +173,7 @@ func TestPaymentExportRejectsTruncation(t *testing.T) {
 	}
 	sqlDB, _ := db.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.PaymentOrder{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.PaymentOrder{}); err != nil {
 		t.Fatal(err)
 	}
 	s := &Service{repo: repository.New(db)}

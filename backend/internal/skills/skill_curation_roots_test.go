@@ -131,7 +131,7 @@ func TestSkillCurationRootsValidation(t *testing.T) {
 
 func TestSkillCurationRootsDeletionAndPrivateVisibility(t *testing.T) {
 	svc, db, actor := newCurationTest(t)
-	if err := db.AutoMigrate(&model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"normal", "builtin", "private"} {

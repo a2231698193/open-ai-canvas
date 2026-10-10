@@ -169,7 +169,7 @@ func TestSanitizeChannelModelAppliesCreditMultiplier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.SystemSetting{Key: creditPolicySettingKey, ValueJSON: `{"signupBonusMicrocredits":0,"checkinBonusMicrocredits":0,"defaultMultiplierBasisPoints":20000,"modelMultiplierBasisPoints":{}}`}).Error; err != nil {

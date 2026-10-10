@@ -17,7 +17,7 @@ func TestPublicModelAvailabilityUsesCreateAttemptsAndFixedSevenDayTrend(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.ApiCallLog{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.ApiCallLog{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := &Service{repo: repository.New(db)}

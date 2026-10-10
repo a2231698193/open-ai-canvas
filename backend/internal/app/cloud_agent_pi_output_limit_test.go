@@ -31,7 +31,7 @@ func piOutputLimitFixture(t *testing.T) (*Service, *gorm.DB, string) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = sqlDB.Close() })
-		if err := db.AutoMigrate(database.Models()...); err != nil {
+		if err := db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 			t.Fatal(err)
 		}
 		profile := mustEncodeModelCapabilityConfig(t, DefaultModelCapabilityConfigForModel("chat-completion", "text-test"))

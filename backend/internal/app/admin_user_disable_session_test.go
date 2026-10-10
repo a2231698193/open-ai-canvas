@@ -21,7 +21,7 @@ func TestUpdateUserDisableRevokesSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.AuthSession{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.AuthSession{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := &Service{repo: repository.New(db)}

@@ -120,7 +120,7 @@ func TestPrepareOfficialGeminiAgentCacheCreatesAndReusesStablePrefix(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.ApiCallLog{}, &model.CloudAgentGeminiCache{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ApiCallLog{}, &model.CloudAgentGeminiCache{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir())

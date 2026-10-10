@@ -18,7 +18,7 @@ func TestDecorateAPICallLogsUsesBillingOrderSnapshot(t *testing.T) {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.ModelChannel{}, &model.BillingOrder{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.ModelChannel{}, &model.BillingOrder{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.User{ID: "user-1", Username: "creator", DisplayName: "创作者"}).Error; err != nil {

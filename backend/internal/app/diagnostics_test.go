@@ -20,7 +20,7 @@ func TestExportDiagnosticBundleRedactsSensitiveValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Task{}, &model.TaskLog{}, &model.ApiCallLog{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Task{}, &model.TaskLog{}, &model.ApiCallLog{}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
@@ -66,7 +66,7 @@ func TestExportDiagnosticBundleRejectsForeignTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Task{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Task{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.Task{ID: "foreign-task", UserID: "user-2", CreatedAt: time.Now(), UpdatedAt: time.Now()}).Error; err != nil {

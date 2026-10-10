@@ -40,7 +40,7 @@ func testStructuredProjectNameConflict(t *testing.T, service *Service, db *gorm.
 			t.Errorf("close test database: %v", err)
 		}
 	})
-	if err := db.AutoMigrate(&model.Project{}, &model.WorkflowTemplateVersion{}, &model.WorkflowInstance{}, &model.WorkflowStepInstance{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Project{}, &model.WorkflowTemplateVersion{}, &model.WorkflowInstance{}, &model.WorkflowStepInstance{}); err != nil {
 		t.Fatal(err)
 	}
 

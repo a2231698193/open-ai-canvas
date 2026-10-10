@@ -25,7 +25,7 @@ func creationTestService(t *testing.T) (*Service, *gorm.DB, string, CreationGuar
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = db.AutoMigrate(database.Models()...); err != nil {
+	if err = db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 		t.Fatal(err)
 	}
 	s := &Service{

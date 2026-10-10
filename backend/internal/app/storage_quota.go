@@ -103,6 +103,10 @@ func (s *Service) createTaskWithinStorageQuota(task *model.Task, billingOrder *m
 }
 
 func createTaskWithStorageQuotaRepository(repo *repository.Repository, task *model.Task, billingOrder *model.BillingOrder, policy RuntimePolicySetting) error {
+	activeTaskLimit, err := applyMembershipActiveTaskLimit(repo, task.UserID, policy.Task.ActiveTaskLimit)
+	if err != nil {
+		return err
+	}
 	usage, err := repo.UserStorageUsage(task.UserID)
 	if err != nil {
 		return err
@@ -112,9 +116,9 @@ func createTaskWithStorageQuotaRepository(repo *repository.Repository, task *mod
 		return err
 	}
 	if billingOrder != nil {
-		return repo.CreateTaskWithCreditReservation(task, billingOrder, policy.Task.ActiveTaskLimit)
+		return repo.CreateTaskWithCreditReservation(task, billingOrder, int(activeTaskLimit))
 	}
-	return repo.CreateTaskWithActiveLimit(task, policy.Task.ActiveTaskLimit)
+	return repo.CreateTaskWithActiveLimit(task, int(activeTaskLimit))
 }
 
 // 任务完成会同时扩张任务历史和画布操作数据，必须在同一临界区核算并原子写入。

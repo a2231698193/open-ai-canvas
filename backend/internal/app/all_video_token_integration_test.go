@@ -10,7 +10,7 @@ func TestAllVideoProtocolsQuoteReserveAndSettleWithoutProviderUsage(t *testing.T
 	for _, protocol := range []model.ChannelInterfaceType{"newapi-channel-2", "newapi-video", "custom-video"} {
 		t.Run(string(protocol), func(t *testing.T) {
 			svc, db, channel, channelModel, _ := newVideoTokenQuoteFixture(t)
-			if err := db.AutoMigrate(&model.ApiCallLog{}); err != nil {
+			if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.ApiCallLog{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := db.Model(&model.ChannelModel{}).Where("id = ?", channelModel.ID).Update("protocol", protocol).Error; err != nil {

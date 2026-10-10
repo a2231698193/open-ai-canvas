@@ -17,10 +17,10 @@ func TestSkillCurationManagementAvailable(t *testing.T) {
 func newCurationTest(t *testing.T) (*Service, *gorm.DB, *model.User) {
 	t.Helper()
 	svc, db := newSkillLibraryCategoryTestService(t)
-	if err := db.AutoMigrate(&model.SkillCurationRoot{}, &model.SkillCurationRootAssignment{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillCurationRoot{}, &model.SkillCurationRootAssignment{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SkillCurationSetting{}, &model.SkillCurationCategory{}, &model.SkillCurationAssignment{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillCurationSetting{}, &model.SkillCurationCategory{}, &model.SkillCurationAssignment{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.SkillCurationSetting{ID: 1}).Error; err != nil {
@@ -148,7 +148,7 @@ func TestSkillCurationAuditFailureRollsBack(t *testing.T) {
 
 func TestSkillCurationDeletionCleanup(t *testing.T) {
 	svc, db, _ := newCurationTest(t)
-	if err := db.AutoMigrate(&model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"normal", "builtin"} {

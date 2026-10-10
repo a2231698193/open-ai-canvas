@@ -35,7 +35,7 @@ func TestBindProjectCharacterVoiceWithSampleResource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{},
 		&model.Project{}, &model.Asset{}, &model.AssetVersion{}, &model.AssetRepresentation{}, &model.ProjectAssetLink{},
 		&model.CharacterVoiceBinding{}, &model.VoiceProfile{}, &model.Resource{}, &model.Shot{}, &model.ShotAssetReference{},
 	); err != nil {

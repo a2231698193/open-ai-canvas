@@ -183,7 +183,7 @@ func newSkillLibraryCategoryTestService(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.SkillLibraryCategory{}, &model.UserSkillState{}, &model.Skill{}, &model.User{}, &model.UserIdentity{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillLibraryCategory{}, &model.UserSkillState{}, &model.Skill{}, &model.User{}, &model.UserIdentity{}); err != nil {
 		t.Fatal(err)
 	}
 	return New(repository.New(db), t.TempDir(), nil), db

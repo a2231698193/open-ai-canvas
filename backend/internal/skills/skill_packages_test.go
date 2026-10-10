@@ -69,7 +69,7 @@ func TestEnsureSkillPackagesBoundsLegacyFallbackMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = sqlDB.Close() })
-		if err := db.AutoMigrate(&model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
+		if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
 			t.Fatal(err)
 		}
 		svc := New(repository.New(db), t.TempDir(), nil)
@@ -386,7 +386,7 @@ func TestEnsureSkillPackagesMigratesSkillWithLongInstructionMetadata(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir(), nil)
@@ -412,7 +412,7 @@ func TestEnsureSkillPackagesMigratesAndRefreshesBuiltinSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Skill{}, &model.SkillVersion{}, &model.SkillFile{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir(), nil)

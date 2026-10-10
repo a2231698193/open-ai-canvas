@@ -677,7 +677,7 @@ func newAnnouncementImageTestService(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(database.Models()...); err != nil {
+	if err := db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 		t.Fatal(err)
 	}
 	return New(repository.New(db), t.TempDir()), db

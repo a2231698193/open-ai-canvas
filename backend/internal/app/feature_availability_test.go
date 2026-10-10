@@ -208,7 +208,7 @@ func newFeatureAvailabilityTestService(t *testing.T) (*Service, *gorm.DB) {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	return New(repository.New(db), t.TempDir()), db

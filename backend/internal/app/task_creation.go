@@ -115,7 +115,11 @@ func (s *Service) CreateTask(userID string, req CreateTaskRequest) (*model.Task,
 	if err != nil {
 		return nil, err
 	}
-	if activeTasks >= int64(policy.Task.ActiveTaskLimit) {
+	activeTaskLimit, err := applyMembershipActiveTaskLimit(s.repo, userID, policy.Task.ActiveTaskLimit)
+	if err != nil {
+		return nil, err
+	}
+	if activeTasks >= activeTaskLimit {
 		return nil, BadAuthRequest(fmt.Sprintf("同时排队或运行的任务最多 %d 个，请等待已有任务完成", policy.Task.ActiveTaskLimit))
 	}
 	// 媒体任务在扣费和调用上游前确认账号文件容量，避免容量已满仍然计费却无法回存产物。

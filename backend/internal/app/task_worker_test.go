@@ -52,7 +52,7 @@ func TestTaskDeadlineRenewalAndTerminalFencing(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			db := newSQLiteTestDB(t)
-			if err := db.AutoMigrate(&model.Task{}); err != nil {
+			if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Task{}); err != nil {
 				t.Fatal(err)
 			}
 			repo := repository.New(db)

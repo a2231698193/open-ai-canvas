@@ -22,12 +22,12 @@ func TestSkillCurationHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	sqlDB, _ := db.DB()
-	if err := db.AutoMigrate(&model.SkillCurationRoot{}, &model.SkillCurationRootAssignment{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SkillCurationRoot{}, &model.SkillCurationRootAssignment{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
 	defer sqlDB.Close()
-	if err := db.AutoMigrate(&model.User{}, &model.AuthSession{}, &model.Skill{}, &model.SkillCurationSetting{}, &model.SkillCurationCategory{}, &model.SkillCurationAssignment{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.AuthSession{}, &model.Skill{}, &model.SkillCurationSetting{}, &model.SkillCurationCategory{}, &model.SkillCurationAssignment{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	db.Create(&model.SkillCurationSetting{ID: 1})

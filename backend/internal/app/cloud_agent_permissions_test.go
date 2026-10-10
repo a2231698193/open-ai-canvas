@@ -61,7 +61,7 @@ func agentPermissionsDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.CanvasProject{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CanvasProject{}); err != nil {
 		t.Fatal(err)
 	}
 	return db

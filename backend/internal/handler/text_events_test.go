@@ -57,7 +57,7 @@ func TestStreamTaskTextEventsCachedReplayReachesTerminalWithoutDuplicateDelta(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Task{}, &model.TaskTextDelta{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Task{}, &model.TaskTextDelta{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.Task{ID: "task", UserID: "user", Status: model.TaskStatusRunning}).Error; err != nil {

@@ -32,7 +32,11 @@ func (s *Service) requireStoredFileCapacityWhileLocked(userID string, taskType s
 	if !taskTypeProducesStoredFile(taskType) {
 		return nil
 	}
-	storedLimit := gigabytes(policy.Resource.StoredFileGB)
+	resource, err := applyMembershipResourceLimits(s.repo, userID, policy.Resource)
+	if err != nil {
+		return err
+	}
+	storedLimit := gigabytes(resource.StoredFileGB)
 	if storedLimit <= 0 {
 		return nil
 	}

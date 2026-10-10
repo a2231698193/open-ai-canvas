@@ -176,7 +176,7 @@ func newVideoTokenQuoteFixture(t *testing.T) (*Service, *gorm.DB, model.ModelCha
 	if err := db.Model(&model.ChannelModel{}).Where("id = ?", channelModel.ID).Update("provider_model_key", providerModel).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.BillingOrder{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.BillingOrder{}); err != nil {
 		t.Fatal(err)
 	}
 	account := model.CreditAccount{UserID: "quote-user", AvailableMicrocredits: 10_000_000, ReservedMicrocredits: 250_000, Version: 7}

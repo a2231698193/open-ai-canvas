@@ -182,7 +182,7 @@ func newSystemPerformanceTestService(t *testing.T) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.AdminAuditEvent{}); err != nil {
 		t.Fatal(err)
 	}
 	if sqlDB, err := db.DB(); err == nil {

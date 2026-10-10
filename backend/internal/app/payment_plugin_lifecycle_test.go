@@ -19,7 +19,7 @@ func newPaymentLifecycleService(t *testing.T, status model.PaymentOrderStatus) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.PaymentOrder{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.PaymentOrder{}); err != nil {
 		t.Fatal(err)
 	}
 	manifest := bundledPaymentPluginManifests()[0]

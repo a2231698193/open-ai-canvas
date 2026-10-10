@@ -30,7 +30,7 @@ func TestCLICanvasRoutesReportMissingCanvasAsNotFound(t *testing.T) {
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.User{}, &model.AuthSession{}, &model.CanvasProject{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}, &model.AuthSession{}, &model.CanvasProject{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.User{ID: "user", Username: "user", Email: "user@example.invalid", Role: model.UserRoleUser, Status: model.UserStatusActive}).Error; err != nil {

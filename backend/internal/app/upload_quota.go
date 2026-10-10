@@ -16,6 +16,9 @@ func (s *Service) reserveUserUploadQuota(userID string, size int64) (string, err
 	if err != nil {
 		return "", err
 	}
+	if policy.Resource, err = applyMembershipResourceLimits(s.repo, userID, policy.Resource); err != nil {
+		return "", err
+	}
 	return s.reserveUserStoredFileQuota(userID, size, megabytes(policy.Resource.ResourceUploadMB), megabytes(policy.Resource.DailyUploadMB), gigabytes(policy.Resource.StoredFileGB), fmt.Sprintf("单个上传文件必须小于 %dMB", policy.Resource.ResourceUploadMB))
 }
 
@@ -31,6 +34,9 @@ func (s *Service) ReserveChunkUploadSession(userID, id string, size int64, expir
 	}
 	if size <= 0 || size >= megabytes(policy.Resource.ResourceUploadMB) {
 		return BadAuthRequest(fmt.Sprintf("单个上传文件必须小于 %dMB", policy.Resource.ResourceUploadMB))
+	}
+	if policy.Resource, err = applyMembershipResourceLimits(s.repo, userID, policy.Resource); err != nil {
+		return err
 	}
 	if !expires.After(time.Now()) || maxSessions <= 0 {
 		return BadAuthRequest("上传会话参数无效")
@@ -61,12 +67,18 @@ func (s *Service) saveResourceWithinStorageLimit(resource *model.Resource, reser
 	if err != nil {
 		return err
 	}
+	if policy.Resource, err = applyMembershipResourceLimits(s.repo, resource.UserID, policy.Resource); err != nil {
+		return err
+	}
 	return uploadReservationError(s.repo.SaveResourceWithinStorageLimit(resource, gigabytes(policy.Resource.StoredFileGB), megabytes(policy.Resource.DailyUploadMB), reservationID))
 }
 
 func (s *Service) reserveGeneratedResourceQuota(userID string, size int64) (string, error) {
 	policy, err := s.RuntimePolicy()
 	if err != nil {
+		return "", err
+	}
+	if policy.Resource, err = applyMembershipResourceLimits(s.repo, userID, policy.Resource); err != nil {
 		return "", err
 	}
 	return s.reserveUserStoredFileQuota(userID, size, megabytes(policy.Resource.GeneratedFileMB)+1, megabytes(policy.Resource.DailyUploadMB), gigabytes(policy.Resource.StoredFileGB), fmt.Sprintf("单个生成文件不能超过 %dMB", policy.Resource.GeneratedFileMB))
@@ -83,6 +95,9 @@ func (s *Service) reserveRetryUploadQuota(userID string, size int64) (string, er
 	}
 	if size >= megabytes(policy.Resource.ResourceUploadMB) {
 		return "", BadAuthRequest(fmt.Sprintf("单个上传文件必须小于 %dMB", policy.Resource.ResourceUploadMB))
+	}
+	if policy.Resource, err = applyMembershipResourceLimits(s.repo, userID, policy.Resource); err != nil {
+		return "", err
 	}
 	day := time.Now().UTC().Format("2006-01-02")
 	s.storageMu.Lock()

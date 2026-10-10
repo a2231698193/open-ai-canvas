@@ -64,7 +64,7 @@ func TestAdminAnalyticsFinanceUsesSettledSnapshotsAndDeduplicates(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.BillingOrder{}, &model.ApiCallLog{}, &model.Task{}, &model.UserDailyActivity{}, &model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.BillingOrder{}, &model.ApiCallLog{}, &model.Task{}, &model.UserDailyActivity{}, &model.User{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := &Service{repo: repository.New(db)}
@@ -180,7 +180,7 @@ func TestAdminAnalyticsFinanceUsesSettledSnapshotsAndDeduplicates(t *testing.T) 
 
 func TestAdminReferencesIncludeExistingDisplayNameGroups(t *testing.T) {
 	svc, db := newChannelModelTestService(t)
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.User{}); err != nil {
 		t.Fatal(err)
 	}
 	channels := []model.ModelChannel{

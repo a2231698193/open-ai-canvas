@@ -58,7 +58,7 @@ func TestCloudAgentVideoFramesPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(database.Models()...); err != nil {
+	if err := db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 		t.Fatal(err)
 	}
 	s := &Service{repo: repository.New(db), dataDir: t.TempDir()}

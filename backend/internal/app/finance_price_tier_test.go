@@ -18,7 +18,7 @@ func TestImageSpecificationQuoteAgreesWithTaskBilling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
 		t.Fatal(err)
 	}
 	channelModel := model.ChannelModel{
@@ -84,7 +84,7 @@ func TestPublicCatalogPriceAppliesCreditMultiplier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.SystemSetting{Key: creditPolicySettingKey, ValueJSON: `{"signupBonusMicrocredits":0,"checkinBonusMicrocredits":0,"defaultMultiplierBasisPoints":15000,"modelMultiplierBasisPoints":{}}`}).Error; err != nil {
@@ -132,7 +132,7 @@ func TestTaskBillingOrderMatchesSystemImagePriceTierFromRequestedSpec(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
 		t.Fatal(err)
 	}
 	channelModel := model.ChannelModel{

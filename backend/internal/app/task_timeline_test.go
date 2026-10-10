@@ -25,7 +25,7 @@ func newTimelineTaskTestService(t *testing.T) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(database.Models()...); err != nil {
+	if err := db.AutoMigrate(append([]any{&model.MembershipPlan{}, &model.UserMembership{}}, database.Models()...)...); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return &Service{repo: repository.New(db)}, db
