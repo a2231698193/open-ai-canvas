@@ -254,3 +254,42 @@ func TestMembershipGrantSweepGrantsDueWindowsIdempotently(t *testing.T) {
 		t.Fatalf("pool after second sweep = %d", account.MembershipMicrocredits)
 	}
 }
+
+func TestAdminDeleteMembershipPlan(t *testing.T) {
+	db := newMembershipAdminDB(t)
+	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
+	actor := adminActor()
+	basic, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{Name: "基础", Level: 1, Enabled: true, MonthlyGrantMicrocredits: 10 * CreditScale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pro, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{Name: "专业", Level: 2, Enabled: true, MonthlyGrantMicrocredits: 30 * CreditScale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 专业档有生效订阅，删除必须被拒绝。
+	if _, err := svc.AdminGrantMembership(actor, "user-1", pro.ID, 1, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AdminDeleteMembershipPlan(actor, pro.ID); err == nil {
+		t.Fatal("deleting a plan with active subscribers must be rejected")
+	}
+
+	// 无订阅的等级可删除并写审计。
+	if err := svc.AdminDeleteMembershipPlan(actor, basic.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.repo.MembershipPlan(basic.ID); err == nil {
+		t.Fatal("deleted plan should be gone")
+	}
+	var audits int64
+	db.Model(&model.AdminAuditEvent{}).Where("action = ?", "membership.plan.delete").Count(&audits)
+	if audits != 1 {
+		t.Fatalf("delete audit events = %d", audits)
+	}
+
+	// 不存在的等级拒绝。
+	if err := svc.AdminDeleteMembershipPlan(actor, "plan-missing"); err == nil {
+		t.Fatal("deleting missing plan must fail")
+	}
+}

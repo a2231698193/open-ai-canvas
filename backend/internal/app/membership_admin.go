@@ -160,6 +160,29 @@ func (s *Service) AdminUpgradeMembership(actor *model.User, userID string, planI
 	return s.repo.UserMembershipByID(membership.ID)
 }
 
+// AdminDeleteMembershipPlan 删除等级配置；仍有生效订阅时拒绝，避免订阅悬空。
+func (s *Service) AdminDeleteMembershipPlan(actor *model.User, planID string) error {
+	if err := s.RequireAdmin(actor); err != nil {
+		return err
+	}
+	planID = strings.TrimSpace(planID)
+	plan, err := s.repo.MembershipPlan(planID)
+	if err != nil {
+		return BadAuthRequest("会员等级不存在")
+	}
+	subscribers, err := s.repo.ActiveMembershipsByPlanCount(planID)
+	if err != nil {
+		return err
+	}
+	if subscribers > 0 {
+		return BadAuthRequest(fmt.Sprintf("仍有 %d 个生效中的会员使用该等级，请先续费到其他等级或作废后再删除", subscribers))
+	}
+	if err := s.repo.DeleteMembershipPlan(planID); err != nil {
+		return err
+	}
+	return s.appendAdminAudit(actor, "membership.plan.delete", "membership_plan", planID, "删除会员等级 "+plan.Name, nil)
+}
+
 func (s *Service) AdminCancelMembership(actor *model.User, userID string, note string) error {
 	if err := s.RequireAdmin(actor); err != nil {
 		return err

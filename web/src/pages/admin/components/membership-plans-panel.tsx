@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { App, Button, Form, Input, Modal, Switch } from "antd";
+import { App, Button, Form, Input, Modal, Popconfirm, Switch } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Crown } from "lucide-react";
 
 import { formatCredits } from "@/constant/credits";
 import { ApiError } from "@/services/api/request";
-import { listAdminMembershipPlans, saveAdminMembershipPlan, type AdminMembershipPlanInput, type MembershipPlan } from "@/services/api/membership";
+import { deleteAdminMembershipPlan, listAdminMembershipPlans, saveAdminMembershipPlan, type AdminMembershipPlanInput, type MembershipPlan } from "@/services/api/membership";
 import { AdminDataTable, AdminStatusBadge, AdminTableEmpty } from "./admin-ui";
 
 const MICRO_CREDITS_PER_CREDIT = 1_000_000;
@@ -77,6 +77,16 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
         setEditorOpen(true);
     };
 
+    const remove = async (plan: MembershipPlan) => {
+        try {
+            await deleteAdminMembershipPlan(plan.id);
+            message.success(`会员等级「${plan.name}」已删除`);
+            await reload();
+        } catch (error) {
+            message.error(error instanceof ApiError ? error.message : "删除失败");
+        }
+    };
+
     const save = async () => {
         const values = await form.validateFields();
         const monthly = Math.round(Number(values.monthlyGrantCredits || 0) * MICRO_CREDITS_PER_CREDIT);
@@ -123,11 +133,24 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
         {
             title: "操作",
             key: "actions",
-            width: 80,
+            width: 130,
             render: (_, plan) => (
-                <Button size="small" type="text" onClick={() => openEditor(plan)}>
-                    编辑
-                </Button>
+                <div className="flex items-center gap-1">
+                    <Button size="small" type="text" onClick={() => openEditor(plan)}>
+                        编辑
+                    </Button>
+                    <Popconfirm
+                        title="删除会员等级"
+                        description="已发放未过期的积分不受影响；生效中的会员会阻止删除。"
+                        okText="删除"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => void remove(plan)}
+                    >
+                        <Button size="small" type="text" danger>
+                            删除
+                        </Button>
+                    </Popconfirm>
+                </div>
             ),
         },
     ];

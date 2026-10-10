@@ -73,6 +73,10 @@ export function saveAdminMembershipPlan(input: AdminMembershipPlanInput) {
     return http.post<{ plan: MembershipPlan }>("/admin/membership/plans", input);
 }
 
+export function deleteAdminMembershipPlan(planId: string) {
+    return http.delete<{ ok: boolean }>(`/admin/membership/plans/${encodeURIComponent(planId)}`);
+}
+
 export function grantAdminMembership(userId: string, input: { planId: string; months: number; note?: string }) {
     return http.post<{ membership: UserMembership }>(`/admin/users/${encodeURIComponent(userId)}/membership/grant`, input);
 }

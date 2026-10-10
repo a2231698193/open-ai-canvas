@@ -54,6 +54,18 @@ func RegisterMembershipRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		ok(c, gin.H{"plan": plan})
 	})
+	r.DELETE("/admin/membership/plans/:id", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		if err := svc.AdminDeleteMembershipPlan(user, c.Param("id")); err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"ok": true})
+	})
 	r.POST("/admin/users/:id/membership/grant", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

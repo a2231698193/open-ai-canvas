@@ -9,12 +9,12 @@ const (
 
 // MembershipPlan 是后台可配的会员等级；0 值限制表示沿用全局默认，-1 表示不限制。
 type MembershipPlan struct {
-	ID        string `json:"id" gorm:"primaryKey;size:36"`
-	Name      string `json:"name" gorm:"size:80;not null"`
-	Level     int    `json:"level" gorm:"not null;uniqueIndex"`
+	ID    string `json:"id" gorm:"primaryKey;size:36"`
+	Name  string `json:"name" gorm:"size:80;not null"`
+	Level int    `json:"level" gorm:"not null;uniqueIndex"`
 	// Enabled 不加 default 标签：false 是合法配置，零值也必须写入。
-	Enabled   bool      `json:"enabled" gorm:"not null"`
-	SortOrder int    `json:"sortOrder" gorm:"not null;default:0"`
+	Enabled   bool `json:"enabled" gorm:"not null"`
+	SortOrder int  `json:"sortOrder" gorm:"not null;default:0"`
 
 	MonthlyGrantMicrocredits         int64 `json:"monthlyGrantMicrocredits" gorm:"not null;default:0"`
 	ActiveTaskLimit                  int   `json:"activeTaskLimit" gorm:"not null;default:0"`

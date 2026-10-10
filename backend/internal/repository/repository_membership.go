@@ -69,6 +69,20 @@ func (r *Repository) UserMembershipByID(id string) (*model.UserMembership, error
 	return &membership, nil
 }
 
+// ActiveMembershipsByPlanCount 统计某等级下生效中的订阅数，删除等级前必须为零。
+func (r *Repository) ActiveMembershipsByPlanCount(planID string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.UserMembership{}).
+		Where("plan_id = ? AND status = ? AND period_end > ?", planID, model.MembershipStatusActive, time.Now()).
+		Count(&count).Error
+	return count, err
+}
+
+// DeleteMembershipPlan 硬删除等级配置；仅限无生效订阅时调用。
+func (r *Repository) DeleteMembershipPlan(planID string) error {
+	return r.db.Delete(&model.MembershipPlan{}, "id = ?", planID).Error
+}
+
 // SaveUserMembership 创建订阅记录。
 func (r *Repository) SaveUserMembership(membership *model.UserMembership) error {
 	return r.db.Create(membership).Error
