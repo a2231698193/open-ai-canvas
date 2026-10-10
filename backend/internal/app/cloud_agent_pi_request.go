@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"path/filepath"
 )
@@ -169,9 +170,29 @@ func (s *Service) buildFeaturesConfig(state *cloudAgentRuntime) map[string]any {
 	}
 }
 
-// buildPermissionsConfig 构建权限配置
+// buildPermissionsConfig 根据当前账号的画布归属生成运行时权限。
+// userID 是登录账号，canvasID 是画布 ID（不是所属项目 ID）；查询失败时拒绝访问。
 func (s *Service) buildPermissionsConfig(userID, canvasID string) map[string]any {
-	// 画布归属在运行入口已校验；旧的 canvas 表不存在，不能再查询它。
+	// 与画布读写工具共用账号归属查询，不访问旧的 Canvas 扩展模型。
+	_, err := s.repo.CanvasProjectForUser(userID, canvasID)
+	if err != nil {
+		log.Printf("[Agent] failed to get canvas for permissions: %v", err)
+		// 返回最小权限集
+		return map[string]any{
+			"canReadCanvas":      false,
+			"canWriteCanvas":     false,
+			"canDeleteNodes":     false,
+			"canCreateNodes":     false,
+			"canMoveNodes":       false,
+			"canDuplicateNodes":  false,
+			"canManageRelations": false,
+			"canInviteUsers":     false,
+			"canExportCanvas":    false,
+			"maxTokenBudget":     200000,
+			"maxSteps":           50,
+		}
+	}
+
 	return map[string]any{
 		"canReadCanvas":      true,
 		"canWriteCanvas":     true,
@@ -180,7 +201,7 @@ func (s *Service) buildPermissionsConfig(userID, canvasID string) map[string]any
 		"canMoveNodes":       true,
 		"canDuplicateNodes":  true,
 		"canManageRelations": true,
-		"canInviteUsers":     false,
+		"canInviteUsers":     true,
 		"canExportCanvas":    true,
 		"maxTokenBudget":     200000,
 		"maxSteps":           50,

@@ -93,6 +93,7 @@ type ChannelRequest struct {
 	Models               []string         `json:"models"`
 	Headers              []OutboundHeader `json:"headers"`
 	Enabled              *bool            `json:"enabled"`
+	ProxyURL             string           `json:"proxyUrl"`
 }
 
 type PublicModelChannel struct {
@@ -106,6 +107,7 @@ type PublicModelChannel struct {
 	APIKey           string                    `json:"apiKey"`
 	APIFormat        string                    `json:"apiFormat"`
 	ConcurrencyLimit int                       `json:"concurrencyLimit"`
+	ProxyURL         string                    `json:"proxyUrl"`
 	Models           []string                  `json:"models"`
 	ModelCosts       []PublicChannelModelPrice `json:"modelCosts"`
 	Headers          []OutboundHeader          `json:"headers,omitempty"`
@@ -188,6 +190,11 @@ func (s *Service) channelFromRequest(req ChannelRequest, channel model.ModelChan
 	}
 	channel.ModelsJSON = string(modelsJSON)
 	channel.HeadersJSON = headersJSON
+	proxyURL := strings.TrimSpace(req.ProxyURL)
+	if _, err := ValidateProxyURL(proxyURL); err != nil {
+		return channel, err
+	}
+	channel.ProxyURL = proxyURL
 	if req.Enabled != nil {
 		channel.Enabled = *req.Enabled
 	}
@@ -206,6 +213,9 @@ func mergeChannelRequest(req ChannelRequest, channel model.ModelChannel) Channel
 	}
 	if req.Headers == nil {
 		req.Headers, _ = ParseOutboundHeadersJSON(channel.HeadersJSON)
+	}
+	if strings.TrimSpace(req.ProxyURL) == "" {
+		req.ProxyURL = channel.ProxyURL
 	}
 	return req
 }
@@ -233,6 +243,7 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 	}
 	apiKey := ""
 	baseURL := channel.BaseURL
+	proxyURL := ""
 	var headers []OutboundHeader
 	if channel.Scope == model.ChannelScopeSystem {
 		if !admin {
@@ -245,6 +256,9 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 	} else if admin {
 		apiKey = channel.APIKey
 	}
+	if admin {
+		proxyURL = channel.ProxyURL
+	}
 	return PublicModelChannel{
 		ID:               channel.ID,
 		UserID:           channel.UserID,
@@ -256,6 +270,7 @@ func publicChannel(channel model.ModelChannel, admin bool, channelModels []model
 		APIKey:           apiKey,
 		APIFormat:        channel.APIFormat,
 		ConcurrencyLimit: channel.ConcurrencyLimit,
+		ProxyURL:         proxyURL,
 		Models:           models,
 		ModelCosts:       modelCosts,
 		Headers:          headers,

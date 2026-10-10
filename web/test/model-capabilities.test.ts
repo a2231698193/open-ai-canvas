@@ -3,7 +3,24 @@ import test from "node:test";
 
 // Bun 直接执行 TypeScript 测试时需要保留扩展名；生产 tsconfig 不包含 test/。
 import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, normalizeImageValue, normalizeVideoValue } from "../src/lib/model-capabilities.ts";
-import { imageTierAvailable } from "../src/lib/image-size-presets.ts";
+import { imageTierAvailable, imageResolutionTiers } from "../src/lib/image-size-presets.ts";
+
+test("Kemei Seedream defaults retain official 1K/1.5K/2K sizes without a 4K preset", () => {
+    for (const model of ["doubao-seedream-5-0-pro-260628", "doubao-seedream-5-0-flash-260915"]) {
+        const image = defaultModelCapabilityConfig("km-kemei-seedream", model).image!;
+        assert.equal(image.references.maxImages, 10);
+        assert.equal(image.references.maskSupported, false);
+        assert.equal(image.maxOutputs, 1);
+        assert.equal(image.size.default, "2048x2048");
+        assert.equal(image.quality.supported, false);
+        assert.equal(image.size.presets!.length, 24);
+        assert.deepEqual([...new Set(image.size.presets!.map((p) => p.tier))], ["1k", "1.5k", "2k"]);
+        assert.equal(image.size.presets!.find((p) => p.size === "2816x1584")?.tier, "2k");
+        assert.ok(imageResolutionTiers(image).includes("1.5k"));
+    }
+    // 本仓库基础档位含 3K（即梦）；1.5K 仍只对显式配置的模型（可美 Seedream）出现。
+    assert.deepEqual(imageResolutionTiers(defaultModelCapabilityConfig("openai-image").image!), ["1k", "2k", "3k", "4k"]);
+});
 
 test("text multimodal capability is not guessed from a model name", () => {
     for (const model of ["gpt-4o", "gemini-2.5-pro", "doubao-seed"]) {
