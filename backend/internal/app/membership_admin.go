@@ -43,8 +43,12 @@ func (s *Service) AdminSaveMembershipPlan(actor *model.User, req AdminMembership
 	if req.Level < 1 || req.Level > 100 {
 		return nil, BadAuthRequest("等级必须是 1-100 的整数")
 	}
-	if req.MonthlyGrantMicrocredits < 0 || req.StorageGB < 0 || req.DailyUploadMB < 0 || req.CheckinBonusOverrideMicrocredits < 0 {
-		return nil, BadAuthRequest("等级额度不能为负数（-1 仅用于不限制类字段）")
+	if req.MonthlyGrantMicrocredits < 0 || req.CheckinBonusOverrideMicrocredits < 0 {
+		return nil, BadAuthRequest("积分额度不能为负数")
+	}
+	// 存储空间、日上传、并发任务支持 -1 表示不限制。
+	if req.StorageGB < -1 || req.DailyUploadMB < -1 || req.ActiveTaskLimit < -1 {
+		return nil, BadAuthRequest("限制类字段仅支持 -1（不限制）、0（全局默认）或正数")
 	}
 	plan := &model.MembershipPlan{
 		ID:                               firstNonEmpty(strings.TrimSpace(req.ID), newID()),

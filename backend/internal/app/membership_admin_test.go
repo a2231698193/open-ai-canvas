@@ -17,7 +17,7 @@ func newMembershipAdminDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.Task{}, &model.ApiCallLog{}, &model.UserDailyUploadUsage{}, &model.Resource{}, &model.Asset{}, &model.CanvasProject{}, &model.TaskLog{}, &model.Result{}, &model.TaskTextDelta{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memberships_active_user ON user_memberships(user_id) WHERE status = 'active'").Error; err != nil {
@@ -291,5 +291,45 @@ func TestAdminDeleteMembershipPlan(t *testing.T) {
 	// 不存在的等级拒绝。
 	if err := svc.AdminDeleteMembershipPlan(actor, "plan-missing"); err == nil {
 		t.Fatal("deleting missing plan must fail")
+	}
+}
+
+func TestAdminUserDetailQuotaReflectsMembershipOverrides(t *testing.T) {
+	db := newMembershipAdminDB(t)
+	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
+	actor := adminActor()
+	plan, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{Name: "至尊", Level: 4, Enabled: true, MonthlyGrantMicrocredits: CreditScale, ActiveTaskLimit: 50, StorageGB: 50, DailyUploadMB: 10240})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AdminGrantMembership(actor, "user-1", plan.ID, 1, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "user-1", Username: "member", Role: model.UserRoleUser, Status: model.UserStatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := svc.AdminUserDetail(actor, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Quota.StoredFileGB != 50 || detail.Quota.DailyUploadMB != 10240 {
+		t.Fatalf("quota not membership-adjusted: %+v", detail.Quota)
+	}
+
+	// -1 显示为不限制哨兵值。
+	unlimited, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{Name: "无限", Level: 5, Enabled: true, StorageGB: -1, DailyUploadMB: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AdminUpgradeMembership(actor, "user-1", unlimited.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = svc.AdminUserDetail(actor, "user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Quota.StoredFileGB != unlimitedStoredFileGB || detail.Quota.DailyUploadMB != unlimitedDailyUploadMB {
+		t.Fatalf("unlimited quota = %+v", detail.Quota)
 	}
 }

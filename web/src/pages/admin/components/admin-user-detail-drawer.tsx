@@ -375,9 +375,13 @@ function quotaUsageItems(detail: AdminUserDetail) {
     const structuredBytes = detail.storageUsage.assetBytes + detail.storageUsage.canvasBytes;
     const bytes = (value: number) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GB` : `${(value / 1024 ** 2).toFixed(1)} MB`;
     const number = (value: number) => new Intl.NumberFormat("zh-CN").format(value);
+    // 会员等级 -1（不限制）在配额里表现为哨兵大值；直接显示「不限」，不渲染天文数字。
+    const unlimited = (limit: number) => limit >= 1024 ** 4 || limit < 0;
+    const storageLimit = detail.quota.storedFileGB;
+    const dailyLimit = detail.quota.dailyUploadMB;
     return [
-        { label: "资源与附件", value: detail.storedFileBytes, limit: detail.quota.storedFileGB * 1024 ** 3, display: `${bytes(detail.storedFileBytes)} / ${detail.quota.storedFileGB} GB` },
-        { label: "今日上传（UTC）", value: detail.dailyUploadBytes, limit: detail.quota.dailyUploadMB * 1024 ** 2, display: `${bytes(detail.dailyUploadBytes)} / ${detail.quota.dailyUploadMB} MB` },
+        { label: "资源与附件", value: detail.storedFileBytes, limit: storageLimit * 1024 ** 3, display: unlimited(storageLimit) ? `${bytes(detail.storedFileBytes)} / 不限` : `${bytes(detail.storedFileBytes)} / ${storageLimit} GB` },
+        { label: "今日上传（UTC）", value: detail.dailyUploadBytes, limit: dailyLimit * 1024 ** 2, display: unlimited(dailyLimit) ? `${bytes(detail.dailyUploadBytes)} / 不限` : `${bytes(detail.dailyUploadBytes)} / ${dailyLimit} MB` },
         { label: "画布、素材与会话数据", value: structuredBytes, limit: detail.quota.structuredDataMB * 1024 ** 2, display: `${bytes(structuredBytes)} / ${detail.quota.structuredDataMB} MB` },
         { label: "任务与请求日志数据", value: detail.storageUsage.taskBytes, limit: detail.quota.taskDataGB * 1024 ** 3, display: `${bytes(detail.storageUsage.taskBytes)} / ${detail.quota.taskDataGB} GB` },
         { label: "素材数量", value: detail.storageUsage.assetCount, limit: detail.quota.assetCount, display: `${number(detail.storageUsage.assetCount)} / ${number(detail.quota.assetCount)}` },
