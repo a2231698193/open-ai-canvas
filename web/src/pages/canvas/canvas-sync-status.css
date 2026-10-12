@@ -16,7 +16,6 @@
 .canvas-sync-status-trigger:hover,
 .canvas-sync-status-trigger[aria-expanded="true"] {
     background: var(--user-surface-hover, var(--accent));
-    color: var(--user-ink, var(--foreground));
 }
 
 .canvas-sync-status-trigger--done {

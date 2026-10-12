@@ -35,7 +35,7 @@ type CanvasNodeProps = {
     connectionApproach?: Position;
     forceInputVisible?: boolean;
     showImageInfo: boolean;
-    reduceMediaEffects?: boolean;
+    disableMediaEffects?: boolean;
     readOnly?: boolean;
     resourceLabel?: CanvasResourceReference;
     mentionReferences?: CanvasResourceReference[];
@@ -61,7 +61,6 @@ type CanvasNodeProps = {
     onRetry?: (node: CanvasNodeData) => void;
     onReloadResource?: (node: CanvasNodeData) => void;
     onOpenTaskDetails?: (node: CanvasNodeData) => void;
-    onOpenVersions?: (node: CanvasNodeData) => void;
     onViewImage?: (node: CanvasNodeData) => void;
     onReplaceMedia?: (node: CanvasNodeData) => void;
     onOpenTextEditor?: (node: CanvasNodeData) => void;
@@ -84,7 +83,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     connectionApproach,
     forceInputVisible = false,
     showImageInfo,
-    reduceMediaEffects = false,
+    disableMediaEffects = false,
     readOnly = false,
     resourceLabel,
     mentionReferences = [],
@@ -110,7 +109,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     onRetry,
     onReloadResource,
     onOpenTaskDetails,
-    onOpenVersions,
     onViewImage,
     onOpenTextEditor,
     onOpenPrevis,
@@ -190,7 +188,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         if (next !== data.title) onTitleChange?.(data.id, next);
     };
 
-    const connectionTilt = isConnectionTarget && !reduceMediaEffects && !dragOffset
+    const connectionTilt = isConnectionTarget && !disableMediaEffects && !dragOffset
         ? canvasConnectionTilt(data, connectionApproach) : undefined;
 
     return (
@@ -318,7 +316,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onReloadResource={onReloadResource}
                         onOpenTaskDetails={onOpenTaskDetails}
                         onToggleBatch={() => onToggleBatch?.(data.id)}
-                        reduceMediaEffects={reduceMediaEffects}
+                        disableMediaEffects={disableMediaEffects}
                         mediaActive={mediaActive}
                         onMediaPlayRequest={onMediaPlayRequest}
                     />
@@ -343,26 +341,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                     </div>
                 ) : null}
 
-                {showChrome && data.metadata?.versionLabel ? (
-                    <button
-                        type="button"
-                        className="absolute left-3 top-3 z-[var(--node-z-overlay)] grid size-7 place-items-center rounded-[var(--r-full)] border p-0.5 text-[var(--node-badge-fs)] font-semibold leading-none backdrop-blur-md transition-[transform,background,border-color,box-shadow] hover:-translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:hover:translate-y-0"
-                        style={{
-                            background: data.metadata.versionPrimary ? theme.accent.primarySoft : theme.toolbar.panel,
-                            borderColor: data.metadata.versionPrimary ? theme.accent.primary : theme.toolbar.border,
-                            color: data.metadata.versionPrimary ? theme.accent.primary : theme.node.text,
-                            outlineColor: theme.accent.primary,
-                        }}
-                        title={data.metadata.versionLabel + (data.metadata.versionPrimary ? " · 主版本" : "") + "，点击查看版本对比"}
-                        aria-label={data.metadata.versionLabel + (data.metadata.versionPrimary ? "，主版本" : "") + "，查看版本对比"}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => { event.stopPropagation(); onOpenVersions?.(data); }}
-                    >
-                        {data.metadata.versionLabel}
-                    </button>
-                ) : null}
                 {showChrome && showStatusTrack ? (
-                    <div className={`absolute right-3 top-3 z-[var(--node-z-overlay)] flex min-w-0 items-center justify-end gap-1 ${data.metadata?.versionLabel ? "max-w-[calc(100%-104px)]" : "max-w-[calc(100%-24px)]"}`}>
+                    <div className="absolute right-3 top-3 z-[var(--node-z-overlay)] flex min-w-0 items-center justify-end gap-1 max-w-[calc(100%-24px)]">
                         {resourceLabel && data.type !== CanvasNodeType.Image ? <ResourceLabelBadge reference={resourceLabel} theme={theme} /> : null}
                         {hasMediaContent && !readOnly ? <ResourceStorageBadge storageKey={data.metadata?.storageKey} active={isActive} theme={theme} /> : null}
                         {isBatchRoot ? <BatchToggleBadge count={batchCount} expanded={batchExpanded} theme={theme} onToggle={() => onToggleBatch?.(data.id)} /> : null}
@@ -437,7 +417,7 @@ function areCanvasNodePropsEqual(previous: CanvasNodeProps, next: CanvasNodeProp
         previous.connectionApproach?.y === next.connectionApproach?.y &&
         previous.forceInputVisible === next.forceInputVisible &&
         previous.showImageInfo === next.showImageInfo &&
-        previous.reduceMediaEffects === next.reduceMediaEffects &&
+        previous.disableMediaEffects === next.disableMediaEffects &&
         previous.readOnly === next.readOnly &&
         previous.resourceLabel === next.resourceLabel &&
         previous.mentionReferences === next.mentionReferences &&
@@ -465,7 +445,6 @@ function areCanvasNodePropsEqual(previous: CanvasNodeProps, next: CanvasNodeProp
         previous.onRetry === next.onRetry &&
         previous.onReloadResource === next.onReloadResource &&
         previous.onOpenTaskDetails === next.onOpenTaskDetails &&
-        previous.onOpenVersions === next.onOpenVersions &&
         previous.onViewImage === next.onViewImage &&
         previous.onReplaceMedia === next.onReplaceMedia &&
         previous.onOpenTextEditor === next.onOpenTextEditor &&
