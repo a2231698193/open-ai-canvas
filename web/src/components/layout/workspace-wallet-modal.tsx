@@ -257,7 +257,9 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
         }
     };
 
-    const available = wallet?.account.availableMicrocredits ?? 0;
+    const purchasedAvailable = wallet?.account.availableMicrocredits ?? 0;
+    const membershipAvailable = wallet?.membershipPoolValid ? (wallet.account.membershipMicrocredits ?? 0) : 0;
+    const available = purchasedAvailable + membershipAvailable;
     const totalPages = Math.max(1, Math.ceil((wallet?.total || 0) / 20));
 
     return (
@@ -276,11 +278,16 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
                         <div className="workspace-wallet-balance">
                             <span>可用积分</span>
                             <strong>{wallet ? formatCredits(available, 6) : "--"}</strong>
+                            {wallet?.membership ? (
+                                <span className="workspace-wallet-balance-split">
+                                    会员 {formatCredits(membershipAvailable, 6)} · 充值 {formatCredits(purchasedAvailable, 6)}
+                                </span>
+                            ) : null}
                             <small>冻结 {wallet ? formatCredits(wallet.account.reservedMicrocredits, 6) : "--"}</small>
                         </div>
                     </header>
 
-                    {wallet ? <WalletMembershipCard wallet={wallet} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
+                    {wallet ? <WalletMembershipCard wallet={wallet} totalAvailable={available} purchasedAvailable={purchasedAvailable} membershipAvailable={membershipAvailable} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
 
                     <div className="workspace-wallet-tabs" role="tablist" aria-label="积分中心">
                         <button type="button" role="tab" aria-selected={tab === "topup"} onClick={() => setTab("topup")}>
@@ -504,7 +511,7 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
     );
 }
 
-function WalletMembershipCard({ wallet, onOpenMembership }: { wallet: WalletSummary; onOpenMembership: () => void }) {
+function WalletMembershipCard({ wallet, totalAvailable, purchasedAvailable, membershipAvailable, onOpenMembership }: { wallet: WalletSummary; totalAvailable: number; purchasedAvailable: number; membershipAvailable: number; onOpenMembership: () => void }) {
     const { membership, membershipPlanName, account, membershipPoolValid } = wallet;
     if (!membership) {
         return (
@@ -527,9 +534,13 @@ function WalletMembershipCard({ wallet, onOpenMembership }: { wallet: WalletSumm
             <div className="min-w-0 flex-1">
                 <strong>
                     {membershipPlanName || "会员"}
-                    <span> {expiry ? `${expiry} 前有效` : ""}</span>
+                    <span> {expiry ? `${expiry} 前有效` : membershipPoolValid ? "" : " 已过期"}</span>
                 </strong>
-                <span>会员积分 {formatCredits(account.membershipMicrocredits, 6)} · 生成扣费优先抵扣，当期未用完清零。</span>
+                <span>会员 {formatCredits(membershipAvailable, 6)} · 充值 {formatCredits(purchasedAvailable, 6)} · 生成优先扣会员，到期清零</span>
+            </div>
+            <div className="workspace-wallet-membership-figure">
+                <strong>{formatCredits(totalAvailable, 6)}</strong>
+                <span>合计可用</span>
             </div>
             <button type="button" onClick={onOpenMembership}>
                 查看会员权益

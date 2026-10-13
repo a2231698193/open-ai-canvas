@@ -16989,14 +16989,20 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
 
 .workspace-wallet-balance {
     display: grid;
-    min-width: 156px;
+    min-width: 210px;
     gap: 2px;
     border: 1px solid rgba(107, 94, 231, .13);
     border-radius: 18px;
     background: var(--user-surface-raised);
     padding: 14px 17px;
     box-shadow: none;
-    
+}
+
+.workspace-wallet-balance-split {
+    color: var(--user-ink-muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.45;
 }
 
 .workspace-wallet-balance span,
@@ -17015,15 +17021,35 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
 .workspace-wallet-membership {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 0 0 10px;
-    padding: 10px 14px;
+    gap: 12px;
+    margin: 0 24px 4px;
+    padding: 12px 14px;
     border: 1px solid color-mix(in srgb, var(--user-ink) 10%, transparent);
-    border-radius: 12px;
+    border-radius: 14px;
     background: color-mix(in srgb, var(--user-ink) 3%, transparent);
 }
 
-.workspace-wallet-membership > div {
+.workspace-wallet-membership-figure {
+    display: grid;
+    flex-shrink: 0;
+    justify-items: end;
+    gap: 1px;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+.workspace-wallet-membership .workspace-wallet-membership-figure strong {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+.workspace-wallet-membership-figure span {
+    color: var(--user-ink-muted);
+    font-size: 10px;
+}
+
+.workspace-wallet-membership > div:not(.workspace-wallet-membership-figure) {
     display: flex;
     flex-direction: column;
     gap: 2px;
