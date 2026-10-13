@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { App, Button, Checkbox, Input, Modal, Popconfirm, Space } from "antd";
+import { App, Button, Checkbox, Input, Modal, Popconfirm, Space, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
 import { PaginationBar } from "@/pages/admin/components/admin-ui";
 import { ModelIcon } from "@/components/model-picker";
@@ -14,6 +14,8 @@ import { AdminBatchBar, AdminDataTable, AdminFilterChip, AdminStatusBadge, Admin
 import { ChannelOrderDialog } from "./channel-order-dialog";
 import { ChannelModelCostSummary } from "./channel-model-cost-summary";
 import { ChannelModelRepriceDialog } from "./channel-model-reprice-dialog";
+import { deselectVisibleModels, filterImportModels, selectVisibleModels } from "./channel-model-import-selection";
+import { duplicateChannelModelValues, type ChannelModelFormValues } from "./channel-model-editor-form";
 import { Select } from "@/components/ui/base/select";
 
 export function ChannelModelManager({ channel, onChanged }: { channel: ModelChannel; onChanged: () => void | Promise<void> }) {
@@ -23,12 +25,14 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
     const [deletingSelected, setDeletingSelected] = useState(false);
     const [repriceItems, setRepriceItems] = useState<ChannelModel[]>([]);
     const [editing, setEditing] = useState<ChannelModel | null>(null);
+    const [copyDraft, setCopyDraft] = useState<ChannelModelFormValues | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [fetching, setFetching] = useState(false);
     const [fetchPreviewOpen, setFetchPreviewOpen] = useState(false);
     const [fetchPreviewModels, setFetchPreviewModels] = useState<string[]>([]);
     const [selectedFetchModels, setSelectedFetchModels] = useState<string[]>([]);
+    const [fetchKeyword, setFetchKeyword] = useState("");
     const [importing, setImporting] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
     const [keyword, setKeyword] = useState("");
@@ -71,6 +75,7 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
         void reload();
         void loadProtocols();
         setEditing(null);
+        setCopyDraft(null);
         setEditorOpen(false);
         setSelectedModelIds([]);
         setRepriceItems([]);
@@ -108,6 +113,7 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
         setFetchPreviewOpen(false);
         setFetchPreviewModels([]);
         setSelectedFetchModels([]);
+        setFetchKeyword("");
     };
 
     const importSelectedModels = async () => {
@@ -134,10 +140,17 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
 
     const startCreate = () => {
         setEditing(null);
+        setCopyDraft(null);
         setEditorOpen(true);
     };
     const startEdit = (item: ChannelModel) => {
         setEditing(item);
+        setCopyDraft(null);
+        setEditorOpen(true);
+    };
+    const startCopy = (item: ChannelModel) => {
+        setEditing(null);
+        setCopyDraft(duplicateChannelModelValues(item, availableProtocols));
         setEditorOpen(true);
     };
 
@@ -218,13 +231,16 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
         { title: "状态", dataIndex: "enabled", width: 85, render: (enabled) => <AdminStatusBadge label={enabled ? "启用" : "停用"} tone={enabled ? "success" : "neutral"} /> },
         {
             title: "操作",
-            width: 120,
+            width: 130,
             fixed: "right",
             render: (_, item) => (
-                <Space>
+                <Space size={4}>
                     <Button size="small" icon={<Pencil className="size-3.5" />} disabled={deletingSelected} onClick={() => startEdit(item)}>
                         编辑
                     </Button>
+                    <Tooltip title="复制模型">
+                        <Button size="small" aria-label={`复制模型 ${item.displayName || item.modelKey}`} disabled={deletingSelected} icon={<Copy className="size-3.5" />} onClick={() => startCopy(item)} />
+                    </Tooltip>
                     <Popconfirm title="删除模型" description="已被前台供应线路或进行中任务使用的模型不能删除；删除后模型不再显示，且不能在页面恢复。" okText="删除" cancelText="取消" onConfirm={() => void remove(item)}>
                         <Button size="small" danger disabled={deletingSelected} title="删除模型" aria-label="删除模型" icon={<Trash2 className="size-3.5" />} />
                     </Popconfirm>
@@ -245,8 +261,11 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
     const existingFetchModelKeys = new Set(items.flatMap((item) => [item.modelKey, item.providerModelKey].filter(Boolean).map(normalizeFetchModelKey)));
     const selectedNewFetchModels = selectedFetchModels.filter((name) => !existingFetchModelKeys.has(normalizeFetchModelKey(name)));
     const selectedExistingFetchCount = selectedFetchModels.length - selectedNewFetchModels.length;
-    const allFetchModelsSelected = fetchPreviewModels.length > 0 && fetchPreviewModels.every((name) => selectedFetchModels.includes(name));
-    const fetchModelOptions = fetchPreviewModels.map((name) => {
+    const fetchKeywordQuery = fetchKeyword.trim().toLowerCase();
+    const visibleFetchModels = filterImportModels(fetchPreviewModels, fetchKeyword);
+    const allVisibleFetchModelsSelected = visibleFetchModels.length > 0 && visibleFetchModels.every((name) => selectedFetchModels.includes(name));
+    const selectedVisibleFetchCount = visibleFetchModels.filter((name) => selectedFetchModels.includes(name)).length;
+    const fetchModelOptions = visibleFetchModels.map((name) => {
         const alreadyExists = existingFetchModelKeys.has(normalizeFetchModelKey(name));
         return {
             label: alreadyExists ? (
@@ -451,27 +470,53 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
             >
                 <div className="space-y-3">
                     <p className="m-0 text-sm text-foreground/65">上游共返回 {fetchPreviewModels.length} 个模型。默认已全选，可批量全选或取消全选；已存在的模型不会重复导入。</p>
+                    <Input
+                        allowClear
+                        autoFocus
+                        className="app-list-search"
+                        prefix={<Search className="size-4 text-foreground/40" />}
+                        value={fetchKeyword}
+                        placeholder="搜索模型标识，例如 minimax、sd2.5"
+                        aria-label="搜索上游模型"
+                        disabled={importing}
+                        onChange={(event) => setFetchKeyword(event.target.value)}
+                    />
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/25 px-3 py-2">
                         <span className="text-sm font-medium text-foreground/70" aria-live="polite">
                             已选择 {selectedFetchModels.length} / {fetchPreviewModels.length} 个模型
+                            {fetchKeywordQuery ? `，当前匹配 ${visibleFetchModels.length} 个（其中 ${selectedVisibleFetchCount} 个已勾选）` : ""}
                         </span>
                         <Space size={4}>
-                            <Button size="small" disabled={importing || allFetchModelsSelected} onClick={() => setSelectedFetchModels(fetchPreviewModels)}>
-                                全选
+                            <Button
+                                size="small"
+                                disabled={importing || !visibleFetchModels.length || allVisibleFetchModelsSelected}
+                                onClick={() => setSelectedFetchModels((current) => selectVisibleModels(current, visibleFetchModels))}
+                            >
+                                {fetchKeywordQuery ? `全选匹配的 ${visibleFetchModels.length} 个` : "全选"}
                             </Button>
-                            <Button size="small" disabled={importing || selectedFetchModels.length === 0} onClick={() => setSelectedFetchModels([])}>
-                                取消全选
+                            <Button
+                                size="small"
+                                disabled={importing || selectedVisibleFetchCount === 0}
+                                onClick={() => setSelectedFetchModels((current) => deselectVisibleModels(current, visibleFetchModels))}
+                            >
+                                {fetchKeywordQuery ? "取消选中匹配的" : "取消全选"}
                             </Button>
                         </Space>
                     </div>
                     <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-md border border-border/70 p-3">
-                        <Checkbox.Group
-                            className="channel-model-import-picker grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
-                            value={selectedFetchModels}
-                            options={fetchModelOptions}
-                            disabled={importing}
-                            onChange={(values) => setSelectedFetchModels(values as string[])}
-                        />
+                        {visibleFetchModels.length ? (
+                            <Checkbox.Group
+                                className="channel-model-import-picker grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
+                                value={selectedFetchModels}
+                                options={fetchModelOptions}
+                                disabled={importing}
+                                onChange={(values) => setSelectedFetchModels(values as string[])}
+                            />
+                        ) : (
+                            <p className="m-0 py-6 text-center text-sm text-foreground/55">
+                                没有匹配「{fetchKeyword.trim()}」的模型
+                            </p>
+                        )}
                     </div>
                     <div className="text-xs text-foreground/50">
                         {selectedNewFetchModels.length > 0 ? `将导入 ${selectedNewFetchModels.length} 个新模型` : "当前勾选的模型均已存在"}
@@ -483,11 +528,16 @@ export function ChannelModelManager({ channel, onChanged }: { channel: ModelChan
                 <ChannelModelEditor
                     channel={channel}
                     editing={editing}
+                    draftValues={copyDraft ?? undefined}
                     protocols={availableProtocols}
                     protocolLoading={protocolLoading}
                     protocolError={protocolError}
                     onRetryProtocols={() => void loadProtocols()}
-                    onClose={() => setEditorOpen(false)}
+                    onClose={() => {
+                        setEditorOpen(false);
+                        setCopyDraft(null);
+                        setEditing(null);
+                    }}
                     onSaved={async () => {
                         await reload();
                         await onChanged();

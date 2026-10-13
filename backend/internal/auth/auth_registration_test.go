@@ -160,11 +160,27 @@ func TestLinuxDORegistrationAgreement(t *testing.T) {
 			if err := db.Where("state_hash = ?", HashToken(stateValue)).First(&saved).Error; err != nil || saved.AcceptedTerms != tc.accepted {
 				t.Fatalf("saved consent = %v, err=%v", saved.AcceptedTerms, err)
 			}
-			result, err := svc.CompleteLinuxDOLogin(stateValue, "test-code")
+			result, err := svc.CompleteLinuxDOLogin(stateValue, "test-code", "")
 			wantError := tc.wantError
 			if tc.wantAgreementDeny {
 				// 协议标题跟随后台品牌名，本仓库是二次开发品牌，不能像上游那样写死品牌名。
 				wantError = "请先同意" + svc.AgreementTitleForMessage()
+			}
+			var event model.LoginLog
+			if logErr := db.First(&event).Error; logErr != nil {
+				t.Fatal(logErr)
+			}
+			if event.Method != "linuxdo" || event.Event != "login" {
+				t.Fatalf("OAuth log: %#v", event)
+			}
+			if wantError == "" && event.Result != "success" {
+				t.Fatalf("OAuth success log: %#v", event)
+			}
+			if wantError != "" && event.Result != "failed" {
+				t.Fatalf("OAuth failure log: %#v", event)
+			}
+			if !tc.existing && wantError == "" && event.Source != "registration" {
+				t.Fatalf("OAuth registration source: %q", event.Source)
 			}
 			wantUsers, wantRecords := int64(2), int64(1)
 			if wantError != "" {
@@ -185,7 +201,7 @@ func TestLinuxDORegistrationAgreement(t *testing.T) {
 					t.Fatalf("%T count=%d want=%d err=%v", entity, count, wantRecords, err)
 				}
 			}
-			if _, err := svc.CompleteLinuxDOLogin(stateValue, "test-code"); err == nil {
+			if _, err := svc.CompleteLinuxDOLogin(stateValue, "test-code", ""); err == nil {
 				t.Fatal("consumed OAuth state was accepted twice")
 			}
 		})
