@@ -1240,8 +1240,17 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             } else {
                 const operations = buildCanvasOperations(base, prepared);
                 if (!operations.length) {
-                    acknowledgedProjects.set(source.id, { ...prepared, revision: current.revision, remoteContentHash: await canvasContentHash(prepared) });
+                    // 可选字段的空值和缺省值不再生成操作，但比较仍可能把画布当成未保存。
+                    // 这里按当前画布确认基线，否则进度会停在 saving，同步指示一直转。
+                    acknowledgedProjects.set(source.id, { ...current, remoteContentHash: await canvasContentHash(current) });
                     verifiedProjects.add(source.id);
+                    useSyncProgressStore.getState().setProjectProgress(source.id, {
+                        phase: "done",
+                        cloudRevision: Number(current.revision) || undefined,
+                        pendingChanges: 0,
+                        errorKind: undefined,
+                        message: "已保存到云端",
+                    });
                     continue;
                 }
                 const request: CanvasOperationsRequest = {
