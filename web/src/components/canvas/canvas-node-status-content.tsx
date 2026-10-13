@@ -2,13 +2,13 @@
 
 import { type GenerationTask } from "@/services/api/task-center";
 import { generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, isGenerationTaskSubmissionUncertain } from "@/lib/generation-task-display";
-import { AlertCircle, Clock3, Download, FileText, RefreshCw } from "lucide-react";
+import { AlertCircle, Clock3, Download, RefreshCw } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { idleTaskTickerSubscribe, subscribeTaskTicker, taskTickerSnapshot } from "@/lib/canvas/task-ticker";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
 import type { CanvasNodeContentProps } from "./canvas-node-content";
 
-export function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNodeContentProps, "node" | "theme" | "onOpenTaskDetails">) {
+export function LoadingContent({ node, theme }: Pick<CanvasNodeContentProps, "node" | "theme">) {
     const taskId = node.metadata?.taskId;
     const displayTask = {
         provider: node.metadata?.taskProvider,
@@ -52,21 +52,6 @@ export function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNo
                     <div className="max-w-full truncate text-[var(--fs-tiny)] tabular-nums" style={{ color: theme.node.muted }}>
                         <Clock3 className="mr-1 inline size-3" />
                         {workflow ? shortTaskId(taskId) : `${elapsed} · ${shortTaskId(taskId)}`}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                        <button
-                            type="button"
-                            className="inline-flex h-7 items-center gap-1 rounded-[var(--r-sm)] px-2 text-[var(--fs-tiny)] font-medium transition-colors"
-                            style={{ background: theme.toolbar.itemHover, color: theme.node.text }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onOpenTaskDetails?.(node);
-                            }}
-                        >
-                            <FileText className="size-3" />
-                            详情
-                        </button>
                     </div>
                 </div>
             ) : null}
