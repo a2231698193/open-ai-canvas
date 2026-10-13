@@ -23,7 +23,8 @@ export function useWalletBalance(userId?: string, enabled = true) {
         queryFn: async (): Promise<WalletSnapshot> => {
             const wallet = await getWallet(1, 1);
             if (wallet.account.userId !== activeUserId) throw new Error("积分账户与当前用户不一致");
-            return { availableMicrocredits: wallet.account.availableMicrocredits, policy: wallet.policy };
+            const membershipAvailable = wallet.membershipPoolValid ? wallet.account.membershipMicrocredits : 0;
+            return { availableMicrocredits: wallet.account.availableMicrocredits + membershipAvailable, policy: wallet.policy };
         },
         staleTime: WALLET_STALE_TIME_MS,
         refetchOnWindowFocus: false,
