@@ -14,6 +14,25 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 工作台工具目录补齐后，已下线或改过的工具不被启动同步盖回。
 - [ ] 画布助手仍可用 resourceId 挂素材，并只能删除自己刚建的空节点。
 
+## 本仓库合并官方 v1.6.8 之后
+
+已接入官方 `6a118ae9..f45112c3`。产品版本仍为 `v1.5.7.10`，没有新的数据库表。模型选择器仍是单层，每项增加最近 10 次调用的红绿状态。图片分辨率选择已打通。Live2D 首帧闪现已修。
+
+## 千问 AI 平台（QianWenAI MAAS）图像协议插件
+
+- 已实现：新增独立协议插件 `qianwenai-maas-image`，Base URL `https://maas.qianwenaiapi.com`，创建端点 `POST /api/v1/services/aigc/multimodal-generation/generation`，查询 `GET /api/v1/tasks/{{taskId}}`。与百炼的 `dashscope-qwen-image` 报文形状一致，但网关域名不同，不能互相替代。
+- 已验证：manifest 关键字段与百炼多模态模板逐字段对照一致（仅 id/name/baseUrl/endpoint/providerOptions 命名空间按预期不同）；JSON 合法；插件包 `qianwenai-maas-image.yingce-plugin` 已生成。Go 测试已补齐，真实 API 请求未发出。
+- 实现位置：`plugin-packages/qianwenai-maas-image/`、`plugin-packages/generate-catalog.mjs`、`backend/internal/protocol/qianwenai_maas_image_test.go`。
+- [ ] 用户验收：用千问 AI 平台真实 API Key 配置渠道，文生图与图生图各跑一次，确认返回图片能正常落盘；确认渠道 Base URL 填 `https://maas.qianwenaiapi.com`。
+- [ ] 未验证：真实请求未发出，模型 ID（`qwen-image-3.0-pro` 等）是否在平台侧全部开通需按实际账号确认。
+
+
+## 灵感库中文提示词
+
+- 已实现：内置目录与首页画廊的提示词统一为中文；复用来源中文正文，补齐外文翻译；导入时校验原文摘要，缺译或旧译文阻止覆盖。
+- [ ] 用户验收：抽查图片、长视频分镜和模板参数，确认中文表达、时长、镜头要求和参考素材语义符合预期。
+- [ ] 用户验收：本地及线上刷新后，详情、复制、编辑和一键创作均使用中文，收藏与自定义修改保持正常。
+
 ## 本仓库合并官方 v1.6.6.1 / v1.6.7
 
 已接入官方 `27c8066e..26dfb8d9` 共 8 个提交。产品版本仍为 `v1.5.7.10`。数据库从 v53 升到 v57：v54 个人资料、v55 头像预设、v56 登录日志、v57 工作台工具与预设。v50–v53 会员账本和画布回执不改号，也不把官方废弃的 v51 工作台账本归一进来。

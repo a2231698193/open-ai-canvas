@@ -30,7 +30,7 @@ test("模型行只保留选中高亮，价格使用独立的彩色标签", async
 
 test("模型标签与渠道副标题共存，选中后关闭菜单并回到触发器焦点", async () => {
     const component = await Bun.file(new URL("../src/components/model-picker.tsx", import.meta.url)).text();
-    expect(component).toContain("<ModelTags tags={logicalCost?.tags} />");
+    expect(component).toContain("<ModelTags tags={modelTags} />");
     const selection = component.match(/onClick=\{\(\) => \{\s*if \(!model\) return;([\s\S]*?)\}\}/)?.[1] || "";
     expect(selection).toContain("onChange(model)");
     expect(selection).toContain("setOpen(false)");

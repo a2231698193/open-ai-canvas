@@ -516,6 +516,57 @@ func TestParameterizedOpenAIAspectPresetSystemChannelPersistsPixelExecutionSize(
 	}
 }
 
+func TestParameterizedOpenAIPixelSizeSelectionAcceptsDeclaredSizeAndResolution(t *testing.T) {
+	profile := DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceOpenAIImage), "GPT Image 2.5")
+	minCount, maxCount := 1.0, 5.0
+	profile.Image.Parameters = []protocol.ImageParameter{
+		{
+			Name: "size", Label: "画幅 / 尺寸", Type: "string",
+			Values: []any{"auto", "1824x1024", "2752x1536", "3840x2160"}, Default: "1824x1024",
+			Pricing: true, Binding: "aspectRatio", Encoding: "pixels",
+		},
+		{
+			Name: "imageResolution", Label: "分辨率", Type: "string",
+			Values: []any{"1k", "2k", "4k"}, Default: "1k", Pricing: true, Binding: "resolution",
+		},
+		{Name: "count", Label: "生成数量", Type: "integer", Min: &minCount, Max: &maxCount, Default: 1, Pricing: true, Binding: "imageCount"},
+		{Name: "transparentBackground", Label: "透明背景", Type: "boolean", Default: false, Binding: "transparentBackground"},
+	}
+	profile.Image.Size = ImageSizeConfig{
+		Parameter: "size", Values: []string{"auto", "1824x1024", "2752x1536", "3840x2160"}, Default: "1824x1024",
+		Presets: []ImageSizePreset{
+			{Tier: "1k", Ratio: "16:9", Size: "1824x1024", Width: 1824, Height: 1024},
+			{Tier: "2k", Ratio: "16:9", Size: "2752x1536", Width: 2752, Height: 1536},
+			{Tier: "4k", Ratio: "16:9", Size: "3840x2160", Width: 3840, Height: 2160},
+		},
+	}
+	if err := projectImageParameters(profile.Image); err != nil {
+		t.Fatal(err)
+	}
+	svc, _, channel, channelModel := createSystemChannelSelectionFixture(t, "image", model.ChannelInterfaceOpenAIImage, profile, []model.ChannelModelPriceTier{
+		newSelectionPriceTier("tier-1k", `{"imageResolution":"1k"}`, "provider-1k", "fixed_request"),
+		newSelectionPriceTier("tier-2k", `{"imageResolution":"2k"}`, "provider-2k", "fixed_request"),
+		newSelectionPriceTier("tier-4k", `{"imageResolution":"4k"}`, "provider-4k", "fixed_request"),
+	})
+	input := map[string]any{
+		"mode": "image",
+		"config": map[string]any{
+			"channelId": channel.ID, "model": channelModel.ModelKey,
+			"size": "1824x1024", "imageResolution": "1k",
+			"imageParameters": map[string]any{"size": "1824x1024", "imageResolution": "1k", "count": 1, "transparentBackground": false},
+		},
+	}
+	resolved, err := svc.resolveSystemChannelModelSelection(input, "canvas_image", "")
+	if err != nil {
+		t.Fatalf("resolve error = %v", err)
+	}
+	config := resolved["config"].(map[string]any)
+	parameters := config["imageParameters"].(map[string]any)
+	if parameters["size"] != "1824x1024" || parameters["imageResolution"] != "1k" || config["priceTierId"] != "tier-1k" {
+		t.Fatalf("resolved parameters = %#v, config = %#v", parameters, config)
+	}
+}
+
 func TestOpenAIAspectPresetSystemChannelPersistsPixelExecutionSize(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceOpenAIImage), "gpt-image-2.5-4k")
 	profile.Image.Size = ImageSizeConfig{
