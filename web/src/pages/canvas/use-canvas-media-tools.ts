@@ -19,6 +19,7 @@ import type { PanoramaGenerateConfig } from "@/components/canvas/canvas-panorama
 import type { CanvasVideoFrameParams } from "@/components/canvas/canvas-video-frame-dialog";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
+import { prepareRasterSource } from "@/lib/image-raster";
 import { isValidGridSplit, layoutGridSplitCells } from "@/lib/canvas/canvas-grid-split";
 import { audioMetadata, buildSourceImageLayerNodeResult, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-generation-task-sync";
 import { commitProducedModel } from "@/lib/canvas/produced-model";
@@ -236,11 +237,9 @@ export function useCanvasMediaTools({
 
     const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
         if (!node.metadata?.content) return;
-        // 云端图片地址通常不带 CORS 头，直接画到 canvas 会被判定为跨域而无法导出。
-        // 优先用本地缓存里的 Blob 构造同源地址，裁剪才能读取像素。
         let releaseSource = () => {};
         try {
-            const source = await resolveReadableImageSource(node);
+            const source = await resolveProcessableImageSource(node);
             releaseSource = source.release;
             const cropped = await cropDataUrl(source.url, crop);
             const image = await uploadImage(cropped);
@@ -656,11 +655,9 @@ export function useCanvasMediaTools({
 
     const splitImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageSplitParams, options?: { silent?: boolean }) => {
         if (!node.metadata?.content || !isValidGridSplit(params)) return;
-        // 直接拿 content 画到 canvas 时，若它是跨域地址（或命中了不带 CORS 头的缓存响应），
-        // 画布会被污染，切分的 toDataURL 抛 "Tainted canvases may not be exported"。
         let releaseSource = () => {};
         try {
-            const source = await resolveReadableImageSource(node);
+            const source = await resolveProcessableImageSource(node);
             releaseSource = source.release;
             const pieces = await splitDataUrl(source.url, params);
             const sizedPieces = await Promise.all(pieces.map(async (piece) => {
@@ -697,7 +694,7 @@ export function useCanvasMediaTools({
     const maskEditImageNode = useCallback(async (node: CanvasNodeData, payload: CanvasImageMaskEditPayload) => {
         if (!node.metadata?.content) return;
         const baseGenerationConfig = buildGenerationConfig(effectiveConfig, node, "image");
-        const selectedModel = payload.generationConfig?.model || payload.generationConfig?.imageModel || baseGenerationConfig.model;
+        const selectedModel = payload.generationConfig?.imageModel || payload.generationConfig?.model || baseGenerationConfig.model;
         const modelDefaults = defaultImageParamsForModel(baseGenerationConfig, selectedModel);
         const selectedImageProfile = modelCapabilityConfigFor(baseGenerationConfig, selectedModel).image;
         if (!selectedImageProfile?.references.maskSupported) {
@@ -708,7 +705,7 @@ export function useCanvasMediaTools({
             ...baseGenerationConfig,
             ...payload.generationConfig,
             model: selectedModel,
-            imageModel: payload.generationConfig?.imageModel || payload.generationConfig?.model || effectiveConfig.imageModel,
+            imageModel: selectedModel,
             quality: normalizeMaskEditQuality(payload.generationConfig?.quality || node.metadata?.quality || baseGenerationConfig.quality || modelDefaults.quality, payload.generationConfig?.size || node.metadata?.size || baseGenerationConfig.size || modelDefaults.size),
             count: String(payload.generationConfig?.count || 1),
             // 原图像素尺寸不是模型的输出尺寸合同；非高级设置时使用模型默认尺寸，避免把节点尺寸误发给上游。
@@ -1523,10 +1520,9 @@ export function useCanvasMediaTools({
     const upscaleImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageUpscaleParams) => {
         if (!node.metadata?.content) return;
         setUpscaleNodeId(null);
-        // 与裁剪、切分同一原因：跨域源图会让 canvas 被污染，导出时抛 Tainted canvases。
         let releaseSource = () => {};
         try {
-            const source = await resolveReadableImageSource(node);
+            const source = await resolveProcessableImageSource(node);
             releaseSource = source.release;
             const upscaled = await upscaleDataUrl(source.url, params);
             const image = await uploadImage(upscaled);
@@ -1860,35 +1856,11 @@ export function useCanvasMediaTools({
     };
 }
 
-// 裁剪、切分等像素级操作要求图片同源可读：云端地址若不带 CORS 头，
-// canvas 会被标记为跨域，toDataURL 直接抛 SecurityError。
-// 这里优先用本地缓存 Blob 构造同源 objectURL，取不到时再回退原始地址。
-/**
- * 取一份「可以安全读像素」的图片地址：本地缓存 Blob → 同源 object URL；
- * data:/blob: 原样返回。跨域 HTTP 地址优先尝试用 fetch 取回同源副本，
- * 因为浏览器可能复用不带 CORS 头的缓存响应，此时 canvas 会被污染，
- * 任何 toDataURL 都会抛 "Tainted canvases may not be exported"。
- */
-async function resolveReadableImageSource(node: CanvasNodeData): Promise<{ url: string; release: () => void }> {
+// 资源 Blob 读取使用 browser-process 授权，复用缓存；读取失败时保留错误，不退回展示地址。
+async function resolveProcessableImageSource(node: CanvasNodeData): Promise<{ url: string; release: () => void }> {
     const content = node.metadata?.content ?? "";
-    if (content.startsWith("data:") || content.startsWith("blob:")) return { url: content, release: () => {} };
     const storageKey = node.metadata?.storageKey;
-    if (storageKey) {
-        const readBlob = storageKey.startsWith("image:") || storageKey.startsWith("generation-image:") ? getImageBlob : getMediaBlob;
-        const blob = await readBlob(storageKey).catch(() => null);
-        if (blob) {
-            const url = URL.createObjectURL(blob);
-            return { url, release: () => URL.revokeObjectURL(url) };
-        }
-    }
-    if (/^https?:/i.test(content)) {
-        const blob = await fetch(content, { credentials: "omit" })
-            .then((response) => (response.ok ? response.blob() : null))
-            .catch(() => null);
-        if (blob) {
-            const url = URL.createObjectURL(blob);
-            return { url, release: () => URL.revokeObjectURL(url) };
-        }
-    }
-    return { url: content, release: () => {} };
+    if (!storageKey) return prepareRasterSource(content);
+    const readBlob = storageKey.startsWith("image:") || storageKey.startsWith("generation-image:") ? getImageBlob : getMediaBlob;
+    return prepareRasterSource(content, () => readBlob(storageKey));
 }
