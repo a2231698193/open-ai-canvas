@@ -8,6 +8,7 @@ import { useLk888MjOptionsStore } from "@/stores/use-lk888-mj-options-store";
 import { Lk888Image25OptionsPanel } from "@/components/lk888-image-options-panel";
 import { isTtImage25, lk888Image25Summary } from "@/lib/lk888-image-options";
 import { useLk888ImageOptionsStore } from "@/stores/use-lk888-image-options-store";
+import { ImageParameterFields } from "@/components/image-parameter-fields";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { createPortal } from "react-dom";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
@@ -131,6 +132,11 @@ type ComposerProps = {
     setSeconds: (value: string) => void;
     quality: string;
     setQuality: (value: string) => void;
+    imageResolution: string;
+    setImageResolution: (value: string) => void;
+    imageParameters?: string;
+    setImageParameters: (value: string) => void;
+    setTransparentBackground: (value: string) => void;
     videoQuality: string;
     setVideoQuality: (value: string) => void;
     count: string;
@@ -616,8 +622,11 @@ function GenerationSettingsMenu(props: ComposerProps) {
     ].join(" · ");
     const videoRatioSupported = props.mode === "video" && ratios.length > 0;
     const summary = props.mode === "video" ? [...(videoRatioSupported ? [props.ratio] : []), ...(videoResolutionSupported ? [videoResolutionLabel(props.videoQuality)] : [])].join(" · ") : [imageSummary, showMjOptions ? lk888MjSummary(mjOptions) : "", showApimartMjOptions ? apimartMjSummary(apimartMjOptions) : "", showTt25Options ? lk888Image25Summary(tt25Options) : ""].filter(Boolean).join(" · ");
-    const panel = <div className="creation-parameter-menu">
-        {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} onChange={(size, quality) => { props.setRatio(size); if (quality) props.setQuality(quality); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={props.ratio}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{value}</span></button>)}</div></SettingSection> : null}
+    const panel = props.mode === "image" && props.imageProfile.parameters ? <div className="creation-parameter-menu max-h-[65vh] overflow-y-auto"><ImageParameterFields profile={props.imageProfile} config={{ ...props.config, model: props.model, size: props.ratio, quality: props.quality, imageResolution: props.imageResolution, imageParameters: props.imageParameters, count: props.count }} onChange={(key, value) => {
+        const setters = { size: props.setRatio, quality: props.setQuality, imageResolution: props.setImageResolution, imageParameters: props.setImageParameters, count: props.setCount, transparentBackground: props.setTransparentBackground };
+        setters[key](value);
+    }} /></div> : <div className="creation-parameter-menu">
+        {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} imageResolution={props.imageResolution} onChange={(size, quality, resolution) => { props.setRatio(size); if (quality) props.setQuality(quality); if (resolution) props.setImageResolution(resolution); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={props.ratio}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{value}</span></button>)}</div></SettingSection> : null}
         {showMjOptions ? <Lk888MjOptionsPanel /> : null}
         {showApimartMjOptions ? <ApimartMjOptionsPanel /> : null}
         {showTt25Options ? <Lk888Image25OptionsPanel /> : null}

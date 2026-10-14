@@ -64,6 +64,10 @@ func (s *Service) workbenchDomain() *workbench.Service {
 	return workbench.New(s.repo, workbenchAdminGate{svc: s}, workbenchAdminGate{svc: s})
 }
 
+func (s *Service) EnsureBuiltinWorkbenchCatalog() error {
+	return s.workbenchDomain().EnsureBuiltinCatalog()
+}
+
 func (s *Service) PublicWorkbenchTools(kind string) ([]WorkbenchToolView, error) {
 	if kind == workbench.KindImage {
 		if err := s.RequireFeature(FeatureImageWorkbench); err != nil {

@@ -36,7 +36,8 @@ func (s *Service) PublicLogicalModels(intent *ModelRequestIntent) ([]PublicLogic
 			available = false
 			if coverageValid {
 				for _, route := range cached.Routes {
-					if route.Route.Enabled && route.Route.Weight > 0 && !s.logicalRouteBlocked(route) && MatchCapability(route.CapabilitySpec, resolvedIntent).Matched && (cached.Model.PricePolicy != "channel" || channelModelPriceTierForIntent(route.ChannelModel, resolvedIntent) != nil) {
+					priceCompatible := cached.Model.PricePolicy != "channel" || channelModelHasCompatiblePriceTier(route.ChannelModel, resolvedIntent, route.CapabilitySpec)
+					if route.Route.Enabled && route.Route.Weight > 0 && !s.logicalRouteBlocked(route) && MatchCapability(route.CapabilitySpec, resolvedIntent).Matched && priceCompatible {
 						available = true
 						break
 					}
@@ -101,6 +102,12 @@ func publicLogicalModelPriceTiers(cached cachedLogicalModel, policy *CreditPolic
 				continue
 			}
 			selector := skuSelectorForTier(tier)
+			if parameters := route.CapabilitySpec.ImageParameters; parameters != nil {
+				selector = model.DecodeSKUSelector(tier.SelectorJSON)
+				if validateImageParameterPriceSelector(parameters, selector) != nil {
+					continue
+				}
+			}
 			_, selectorKey, selectorErr := model.CanonicalSKUSelector(selector)
 			if selectorErr != nil {
 				continue
@@ -159,6 +166,13 @@ func enabledLogicalRouteSpecs(routes []cachedLogicalRoute) []CapabilitySpec {
 // Callers must pass only currently enabled routes; disabled or zero-weight
 // routes would otherwise advertise size tiers the public catalog cannot route.
 func capabilitySpecWithRoutePresets(spec CapabilitySpec, routes []CapabilitySpec) CapabilitySpec {
+	if spec.Capability == "image" {
+		for _, route := range routes {
+			if route.ImageParameters != nil {
+				return effectiveImageParameterSpec(spec, routes)
+			}
+		}
+	}
 	result := spec
 	result.Options = make(map[string]OptionConstraint, len(spec.Options))
 	for name, constraint := range spec.Options {

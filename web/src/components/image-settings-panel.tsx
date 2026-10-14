@@ -1,7 +1,8 @@
 import { ImageSizePicker } from "./image-size-picker";
 import { ApimartMjOptionsPanel } from "./apimart-mj-options-panel";
 import { Lk888MjOptionsPanel } from "./lk888-mj-options-panel";
-import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
+import { ImageParameterFields } from "./image-parameter-fields";
+import { imageResolutionUsesQuality, imageSizePresets } from "@/lib/image-size-presets";
 import { isApimartMjProtocol } from "@/lib/apimart-mj-options";
 import { isLk888MjProtocol } from "@/lib/lk888-mj-options";
 import { Lk888Image25OptionsPanel } from "./lk888-image-options-panel";
@@ -42,7 +43,7 @@ const aspectOptions: AspectOption[] = [
 
 type ImageSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "quality" | "size" | "transparentBackground" | "count", value: string) => void;
+    onConfigChange: (key: "quality" | "imageResolution" | "size" | "transparentBackground" | "count" | "imageParameters", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     showQuality?: boolean;
@@ -67,6 +68,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const activeQualityOptions = profile.quality.values.map((value) => ({ value, label: imageQualityLabel(value) }));
     const priceTiers = imageModelPriceTiers(config);
     const protocol = resolveModelChannel(config, config.model || config.imageModel).modelCosts?.find((item) => item.model === modelOptionName(config.model || config.imageModel))?.protocol || resolveModelChannel(config, config.model || config.imageModel).interfaceType;
+    if (profile.parameters) return <ImageSettingsTheme theme={theme}><div className={className}>{showTitle ? <div className="mb-3 text-base font-semibold">图像设置</div> : null}<ImageParameterFields profile={profile} config={config} onChange={onConfigChange} showSize={showSize} showCount={showCount} showQuality={showQuality} showTransparent={showTransparent} /></div></ImageSettingsTheme>;
 
     return (
         <ImageSettingsTheme theme={theme}>

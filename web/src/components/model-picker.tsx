@@ -157,7 +157,7 @@ export function ModelPicker({
         window.requestAnimationFrame(() => {
             const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>('[data-model-picker-item]:not(:disabled)');
             const target = last ? buttons?.item((buttons?.length || 1) - 1) : buttons?.item(0);
-            target?.focus();
+            focusPickerOption(target);
         });
     };
     const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -170,7 +170,7 @@ export function ModelPicker({
         if (event.key === "Escape") {
             event.preventDefault();
             setOpen(false);
-            triggerRef.current?.focus();
+            triggerRef.current?.focus({ preventScroll: true });
             return;
         }
         if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -179,7 +179,7 @@ export function ModelPicker({
         event.preventDefault();
         const activeIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
         const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : event.key === "ArrowUp" ? Math.max(0, activeIndex - 1) : Math.min(buttons.length - 1, activeIndex + 1);
-        buttons[nextIndex]?.focus();
+        focusPickerOption(buttons[nextIndex]);
     };
     const content = (
         <div
@@ -260,6 +260,7 @@ export function ModelPicker({
                 placement="bottomLeft"
                 align={{ overflow: { adjustY: true, shiftX: true } }}
                 arrow={false}
+                motion={{ motionName: "" }}
                 content={content}
                 classNames={{
                     root: cn("canvas-model-picker-popover", creationVariant && "creation-model-picker-popover", popoverClassName),
@@ -289,6 +290,19 @@ export function ModelPicker({
             </Popover>
         </div>
     );
+}
+
+function focusPickerOption(target: HTMLButtonElement | null | undefined) {
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    // Only reveal the focused row inside its pane; scrolling portal ancestors moves the page.
+    const pane = target.closest<HTMLElement>(".canvas-model-picker-model-pane, .canvas-model-picker-menu");
+    if (!pane) return;
+    const row = target.getBoundingClientRect();
+    const top = pane.getBoundingClientRect().top + pane.clientTop;
+    const bottom = top + pane.clientHeight;
+    const delta = row.top < top ? row.top - top : row.bottom > bottom ? row.bottom - bottom : 0;
+    if (delta) pane.scrollTop += delta;
 }
 
 function emptyModelLabel(config: AiConfig, capability?: ModelCapability) {
