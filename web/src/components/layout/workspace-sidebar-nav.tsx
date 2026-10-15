@@ -333,6 +333,7 @@ export function workspaceNavActiveId(pathname: string, section?: string | null) 
     const segments = pathname.split("/").filter(Boolean);
     if (segments[0] === "toolbox" && segments[1]) return `toolbox-${segments[1]}`;
     const slug = segments[0] || "home";
+    if (slug === "create") return "home";
     return slug === "settings" && section ? `settings:${section}` : slug;
 }
 

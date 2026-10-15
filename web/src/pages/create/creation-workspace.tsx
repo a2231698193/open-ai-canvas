@@ -435,6 +435,7 @@ export function CreationComposer(props: ComposerProps) {
         <footer className="creation-chat-dock">
             <div className="creation-chat-controls">
                 {props.variant === "thread" ? <ModePicker mode={props.mode} onModeChange={props.onModeChange} /> : null}
+                {referencesSupported && !props.attachments.length ? <Tooltip title={addReferenceLabel}><button type="button" className="creation-chat-control" onClick={props.onOpenLibrary} disabled={interactionBusy || !canAddMoreReferences} aria-label={addReferenceLabel}><Plus aria-hidden="true" /><span>参考内容</span></button></Tooltip> : null}
                 <VoiceRecordingButton
                     className="creation-voice-trigger"
                     disabled={interactionBusy}
