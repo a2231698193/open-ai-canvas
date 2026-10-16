@@ -1,4 +1,5 @@
 import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
+import { unboundManagedGenerationIdentity } from "@/lib/canvas/generation-asset-identity";
 import { refreshResource, resourceIdFromStorageKey } from "@/services/api/resources";
 import { ApiError } from "@/services/api/request";
 import { useAssetStore, type Asset, type NewAsset } from "@/stores/use-asset-store";
@@ -47,7 +48,9 @@ export function repairMissingCanvasAssets(projectIds?: Set<string>, partialAsset
                 }
             }
         }
-        const repaired = repairProject(project, knownAssetIds, assetIdByStorageKey, storageKeyByAssetId, (node) => {
+        const rebound = bindMaterializedGenerationAssets(project);
+        const base = rebound ? { ...project, nodes: rebound.nodes } : project;
+        const repaired = repairProject(base, knownAssetIds, assetIdByStorageKey, storageKeyByAssetId, (node) => {
             // 受管生成结果由完成流程绑定身份，后台修复不能另建随机素材。
             if (node.metadata?.taskId && node.metadata.storageKey?.startsWith("resource:")) return undefined;
             const input = canvasNodeToAsset(node, { canvasId: project.id, source: "canvas-upload" });
@@ -62,11 +65,37 @@ export function repairMissingCanvasAssets(projectIds?: Set<string>, partialAsset
             createdAssets += 1;
             return assetId;
         });
-        if (!repaired) continue;
-        canvasStore.updateProject(project.id, repaired);
+        if (!repaired && !rebound) continue;
+        canvasStore.updateProject(project.id, {
+            nodes: repaired?.nodes ?? base.nodes,
+            timeline: repaired?.timeline ?? project.timeline,
+        });
         updatedProjects += 1;
     }
     return { createdAssets, updatedProjects };
+}
+
+/**
+ * 生成结果没有云端 storageKey 时，同一个输出会在两条路径上各拿一个本地 key：
+ * 画布节点走 uploadImage 的随机 `image:<scope>:<nanoid>`，物化素材走 `generation-image:<effectKey>`。
+ * 按 storageKey 全等匹配的修复永远绑不上，而受管节点又不允许新建素材，于是画布会带着
+ * 「有资源引用、没有 assetId」的媒体节点提交，被服务端永久拒绝保存。
+ * 这里按 taskId + 输出序号找到物化素材，把节点的 assetId 与 storageKey 对齐到素材，
+ * 让节点和素材引用同一个资源；本地没有该素材时保持原样，绝不新建。
+ */
+function bindMaterializedGenerationAssets(project: CanvasProject): Pick<CanvasProject, "nodes"> | null {
+    const assets = useAssetStore.getState().assets;
+    let changed = false;
+    const nodes = project.nodes.map((node) => {
+        const identity = unboundManagedGenerationIdentity(node);
+        if (!identity) return node;
+        const asset = assets.find((candidate) => candidate.metadata?.taskId === identity.taskId && (candidate.metadata?.outputIndex ?? 0) === identity.outputIndex && Boolean(assetStorageKey(candidate)));
+        const storageKey = asset && assetStorageKey(asset);
+        if (!asset || !storageKey) return node;
+        changed = true;
+        return { ...node, metadata: { ...node.metadata, assetId: asset.id, storageKey } };
+    });
+    return changed ? { nodes } : null;
 }
 
 function repairProject(

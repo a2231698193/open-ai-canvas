@@ -18,6 +18,7 @@ import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use
 import { useSyncProgressStore } from "@/stores/use-sync-progress-store";
 import { useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store";
 import { repairMissingCanvasAssets } from "@/services/canvas-asset-repair";
+import { collectUnboundManagedGenerationIdentities, generationAssetId } from "@/lib/canvas/generation-asset-identity";
 import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
 import { applyAgentCanvasPatch, mergeAgentCanvasEditor, mergeThreeWayValue, type AgentCanvasPatch } from "@/lib/canvas/agent-canvas-patch";
 import { collectLocalMediaKeys, ensureRemoteResourceReferences, restoreRemoteTextNodeContents } from "./user-data-sync-media";
@@ -40,6 +41,19 @@ let acknowledgedProjects = new Map<string, CanvasProject>();
 type PendingCanvasMutation = { projectId: string; request: CanvasOperationsRequest; baseline?: CanvasProject; prepared: CanvasProject; createdAt: string };
 const pendingCanvasMutations = new Map<string, PendingCanvasMutation>();
 const pendingCanvasMutationKey = "yingce:canvas-mutation-journal";
+// 已经按"当前本地内容重建"处理过的永久拒绝原因，按画布记录：同一张画布同一个原因只重建一次，
+// 避免重建与重放互相触发形成死循环；该画布重新保存成功后清空，允许以后再自愈一次。
+const rebuiltRejectedJournals = new Map<string, Set<string>>();
+
+function rejectedJournalReason(error: unknown) {
+    return error instanceof ApiError ? String(error.reason || error.status || "unknown") : "unknown";
+}
+
+function markJournalRebuilt(projectId: string, error: unknown) {
+    const reasons = rebuiltRejectedJournals.get(projectId);
+    if (reasons) reasons.add(rejectedJournalReason(error));
+    else rebuiltRejectedJournals.set(projectId, new Set([rejectedJournalReason(error)]));
+}
 let pendingJournalScope = "";
 let pendingJournalLoaded = false;
 let incrementalSession = false;
@@ -419,6 +433,28 @@ async function loadReferencedAssets(ids: Iterable<string>) {
     }
 }
 
+/**
+ * 画布上的生成节点可能只在本地拿到结果：物化素材还没进本地素材库（换设备、清过缓存、分页未加载），
+ * 而云端校验要求媒体节点必须绑定引用同一资源的素材。这里按确定性 ID 把缺失的物化素材补回来，
+ * 后面的 repairMissingCanvasAssets 才能把它们绑到节点上；查不到就交给原来的修复与报错路径。
+ */
+async function loadMissingManagedGenerationAssets(projectIds: Set<string> | undefined) {
+    if (!activeRemoteUserId || !projectIds?.size) return;
+    const projects = useCanvasStore.getState().projects.filter((project) => projectIds.has(project.id) && !remoteDeletedProjects.has(project.id));
+    const identities = collectUnboundManagedGenerationIdentities(projects);
+    if (!identities.length) return;
+    const loadedIds = new Set(useAssetStore.getState().assets.map((asset) => asset.id));
+    const requestedIds: string[] = [];
+    for (const identity of identities) {
+        const id = await generationAssetId(identity.taskId, identity.outputIndex);
+        if (!loadedIds.has(id) || !verifiedAssets.has(id)) requestedIds.push(id);
+    }
+    for (let offset = 0; offset < requestedIds.length; offset += 100) {
+        const { assets } = await getRemoteAssetsByIds(requestedIds.slice(offset, offset + 100));
+        acceptRemoteAssets(assets);
+    }
+}
+
 export async function loadAssetsForUse(ids: Iterable<string>) {
     const epoch = sessionEpoch;
     const requestedIds = [...new Set(ids)];
@@ -576,6 +612,7 @@ export function resetRemoteUserDataSync() {
     acknowledgedAssets.clear();
     acknowledgedProjects.clear();
     pendingCanvasMutations.clear();
+    rebuiltRejectedJournals.clear();
     pendingJournalScope = "";
     pendingJournalLoaded = false;
     clearSyncTimer();
@@ -1069,6 +1106,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             .filter((project) => !remoteDeletedProjects.has(project.id) && (syncProjectIds === undefined || syncProjectIds.has(project.id)) && (pendingCanvasMutations.has(project.id) || !sameCanvasContent(acknowledgedProjects.get(project.id), project)))
             .map((project) => project.id),
     );
+    await loadMissingManagedGenerationAssets(changedProjectIds);
     repairMissingCanvasAssets(changedProjectIds, incrementalSession);
     const currentProjects = useCanvasStore.getState().projects;
     const currentAssets = useAssetStore.getState().assets;
@@ -1224,7 +1262,8 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             let savedRevision: number | undefined;
             let remoteSnapshot: CanvasProject | undefined;
             if (pendingJournal) {
-                preparedForMutation = sameCanvasContent(prepared, pendingJournal.prepared) ? current : pendingJournal.prepared;
+                const journalMatchesLive = sameCanvasContent(prepared, pendingJournal.prepared);
+                preparedForMutation = journalMatchesLive ? current : pendingJournal.prepared;
                 const repairedRequest = repairPendingCanvasMutationRequest(pendingJournal.request, pendingJournal.baseline, pendingJournal.prepared);
                 if (repairedRequest !== pendingJournal.request) {
                     pendingJournal.request = repairedRequest;
@@ -1233,8 +1272,24 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                 useSyncProgressStore.getState().setProjectProgress(source.id, { phase: "saving", message: "正在重放未确认的画布操作" });
                 // 旧队列可能只记录了 undefined 与缺省值之间的无效变化，没有需要发送的修改。
                 if (pendingJournal.request.operations.length) {
-                    const response = await applyRemoteCanvasOperations(source.id, pendingJournal.request);
-                    savedRevision = Number(response.project.revision);
+                    try {
+                        const response = await applyRemoteCanvasOperations(source.id, pendingJournal.request);
+                        savedRevision = Number(response.project.revision);
+                        rebuiltRejectedJournals.delete(source.id);
+                    } catch (error) {
+                        // 重放优先于本地内容：服务端永久拒绝这条旧请求时，用户之后的本地改动（含删除、清空）
+                        // 永远发不出去，这张画布也不能再保存。丢弃日志并按当前本地内容重建一次。
+                        // 同因再被拒就停下报错，不再重建，避免与重放互相触发成死循环；
+                        // 资源缺失要等补齐后重放，不能丢。
+                        const permanentRejection = error instanceof ApiError && error.status === 400 && error.reason !== "canvas_history_resources_missing";
+                        if (!permanentRejection || rebuiltRejectedJournals.get(source.id)?.has(rejectedJournalReason(error))) throw error;
+                        markJournalRebuilt(source.id, error);
+                        pendingCanvasMutations.delete(source.id);
+                        await persistPendingCanvasMutationJournal();
+                        useSyncProgressStore.getState().setProjectProgress(source.id, { phase: "pending", errorKind: undefined, pendingChanges: 1, message: "未确认操作已被服务端拒绝，正在按当前本地内容重新提交" });
+                        syncQueued = true;
+                        continue;
+                    }
                 } else {
                     savedRevision = Number(current.revision);
                 }
@@ -1258,6 +1313,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                     const response = await applyRemoteCanvasOperations(source.id, request);
                     savedRevision = Number(response.project.revision);
                     pendingCanvasMutations.delete(source.id);
+                    rebuiltRejectedJournals.delete(source.id);
                     await persistPendingCanvasMutationJournal();
                 }
             }

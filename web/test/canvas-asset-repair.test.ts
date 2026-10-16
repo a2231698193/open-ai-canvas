@@ -75,6 +75,32 @@ describe("repairMissingCanvasAssets 增量会话", () => {
         expect(result.createdAssets).toBe(0);
         expect(useCanvasStore.getState().projects[0].nodes[0].metadata?.assetId).toBe("remote-only");
     });
+
+    test("受管生成节点按 taskId 绑回物化素材，并对齐 storageKey", () => {
+        const asset = videoAsset("generation_abc", "generation-video:local:materialize:task-1:0");
+        asset.metadata = { taskId: "task-1", outputIndex: 0 };
+        useAssetStore.setState({ assets: [asset] });
+        const node = { ...videoNode("node-1", undefined, "resource:R1"), metadata: { ...videoNode("node-1", undefined, "resource:R1").metadata, taskId: "task-1" } };
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+
+        const result = repairMissingCanvasAssets(new Set(["canvas-1"]));
+
+        expect(result.createdAssets).toBe(0);
+        expect(useCanvasStore.getState().projects[0].nodes[0].metadata).toMatchObject({
+            assetId: "generation_abc",
+            storageKey: "generation-video:local:materialize:task-1:0",
+        });
+    });
+
+    test("受管生成节点找不到物化素材时保持原样，不新建随机素材", () => {
+        const node = { ...videoNode("node-1", undefined, "resource:R1"), metadata: { ...videoNode("node-1", undefined, "resource:R1").metadata, taskId: "task-1" } };
+        useCanvasStore.setState({ projects: [project("canvas-1", [node])] });
+
+        const result = repairMissingCanvasAssets(new Set(["canvas-1"]));
+
+        expect(result.createdAssets).toBe(0);
+        expect(useCanvasStore.getState().projects[0].nodes[0].metadata?.assetId).toBeUndefined();
+    });
 });
 
 describe("rebindInconsistentCanvasAssets 强制对齐", () => {

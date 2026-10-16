@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import type { CanvasProject } from "@/stores/canvas/use-canvas-store";
+import { generationAssetId } from "@/lib/canvas/generation-asset-identity";
 
 // Isolate transport/storage without leaking module mocks into other test suites.
 // Sync, resource conversion, content comparison and progress use production code.
@@ -14,6 +15,7 @@ const paths: Record<string, string> = {
     zustand: import.meta.resolve("zustand"),
     "@/services/api/resources": join(dir, "resources.ts"),
     "@/lib/canvas/canvas-content": join(dir, "content.ts"),
+    "@/lib/canvas/generation-asset-identity": join(dir, "identity.ts"),
     "@/stores/use-sync-progress-store": join(dir, "progress.ts"),
     "./user-data-sync-media": join(dir, "media.ts"),
 };
@@ -26,7 +28,7 @@ writeFileSync(
     stubPath,
     `
 import { createStore } from ${JSON.stringify(import.meta.resolve("zustand/vanilla"))};
-export const fixture = { remote: undefined, writes: [], reads: 0, flushes: 0, beforeFlush: undefined, readHook: undefined, flushError: undefined, data: new Map() };
+export const fixture = { remote: undefined, writes: [], reads: 0, flushes: 0, beforeFlush: undefined, readHook: undefined, flushError: undefined, shouldReject: undefined, remoteAssets: [], assetRequests: [], data: new Map() };
 export const useCanvasStore = createStore((set, get) => ({ projects: [], openProject: id => get().projects.find(project => project.id === id) }));
 export const useAssetStore = createStore(() => ({ assets: [] }));
 export const getActiveUserScope = () => "sync-test-user";
@@ -38,13 +40,14 @@ export const appQueryClient = { invalidateQueries: async () => {} };
 	export const accountFileStorageUsageQueryKey = ["account-file-storage"];
 	export const isLibraryClearKind = () => false;
 export const repairMissingCanvasAssets = () => ({ createdAssets: 0, updatedProjects: 0 });
-export class ApiError extends Error { retryable = false; }
+export class ApiError extends Error { retryable = false; status; reason; constructor(message, options) { super(message); this.status = options?.status; this.reason = options?.reason; } }
 export const apiBaseURL = "/api";
 const unexpected = () => { throw new Error("unexpected dependency call"); };
 	export const clearLibraryAssetsByKind = unexpected;
 export const http = { get: unexpected, post: unexpected, put: unexpected, patch: unexpected, delete: unexpected };
 export async function applyRemoteCanvasOperations(id, request) {
     fixture.writes.push(structuredClone(request));
+    if (fixture.shouldReject?.(request)) throw new ApiError("画布媒体尚未进入素材库，请等待同步完成后重试", { status: 400, reason: "bad_request" });
     for (const operation of request.operations) {
         if (operation.type !== "set_field") throw new Error("unexpected operation");
         if (fixture.remote[operation.field] !== operation.beforeValue) throw new Error("invalid operation baseline");
@@ -54,8 +57,10 @@ export async function applyRemoteCanvasOperations(id, request) {
     return { project: fixture.remote };
 }
 export async function getRemoteCanvasProject() { fixture.reads++; const hook = fixture.readHook; fixture.readHook = undefined; hook?.(); return { project: structuredClone(fixture.remote) }; }
-export const deleteRemoteAssets = unexpected, deleteRemoteCanvasProject = unexpected, getRemoteAsset = unexpected, getRemoteAssetsByIds = unexpected, getRemoteUserDataSnapshot = unexpected, listRemoteAssetsPage = unexpected, upsertRemoteAsset = unexpected;
-export const getImageBlob = unexpected, getMediaBlob = unexpected, parseAssetRecordList = unexpected, assetForRemoteSync = unexpected, canvasNodeToAsset = unexpected;
+export const deleteRemoteAssets = unexpected, deleteRemoteCanvasProject = unexpected, getRemoteAsset = unexpected, getRemoteUserDataSnapshot = unexpected, listRemoteAssetsPage = unexpected, upsertRemoteAsset = unexpected;
+export async function getRemoteAssetsByIds(ids) { fixture.assetRequests.push(ids); return { assets: fixture.remoteAssets.filter((asset) => ids.includes(asset.id)) }; }
+export const getImageBlob = unexpected, getMediaBlob = unexpected, assetForRemoteSync = unexpected, canvasNodeToAsset = unexpected;
+export const parseAssetRecordList = (assets) => assets;
 export const applyAgentCanvasPatch = unexpected, mergeAgentCanvasEditor = unexpected, mergeThreeWayValue = unexpected;
 export const useCanvasHistoryStore = {};
 `,
@@ -63,11 +68,12 @@ export const useCanvasHistoryStore = {};
 copySource("services/api/resources.ts", "resources.ts");
 copySource("services/user-data-sync-media.ts", "media.ts");
 copySource("lib/canvas/canvas-content.ts", "content.ts");
+copySource("lib/canvas/generation-asset-identity.ts", "identity.ts");
 copySource("stores/use-sync-progress-store.ts", "progress.ts");
 copySource("services/user-data-sync.ts", "sync.ts");
 const sync: typeof import("@/services/user-data-sync") = await import(join(dir, "sync.ts"));
 const { useSyncProgressStore }: typeof import("@/stores/use-sync-progress-store") = await import(join(dir, "progress.ts"));
-const { fixture, useCanvasStore } = await import(stubPath);
+const { fixture, useCanvasStore, useAssetStore } = await import(stubPath);
 sync.installRemoteUserDataAutoSync();
 
 const base = (): CanvasProject => ({
@@ -100,7 +106,9 @@ beforeEach(async () => {
     fixture.data.clear();
     fixture.writes = [];
     fixture.reads = fixture.flushes = 0;
-    fixture.beforeFlush = fixture.readHook = fixture.flushError = undefined;
+    fixture.beforeFlush = fixture.readHook = fixture.flushError = fixture.shouldReject = undefined;
+    fixture.remoteAssets = [];
+    fixture.assetRequests = [];
     useCanvasStore.setState({ projects: [base()] });
     await sync.initializeRemoteUserDataSession("sync-test-user");
 });
@@ -189,5 +197,74 @@ describe("画布云端同步状态收尾", () => {
         expect(fixture.writes[0].mutationId).toBe("pending-mutation");
         expect(fixture.data.has("yingce:canvas-mutation-journal")).toBe(false);
         expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
+    });
+
+    test("journal 被服务端永久拒绝时丢弃日志并按当前内容重建", async () => {
+        sync.resetRemoteUserDataSync();
+        const prepared = { ...base(), title: "Queued edit" };
+        fixture.data.set(
+            "yingce:canvas-mutation-journal",
+            JSON.stringify([
+                { projectId: "canvas", request: { mutationId: "rejected-mutation", baseRevision: 7, operations: [{ type: "set_field", field: "title", value: prepared.title, beforeValue: "Canvas" }] }, baseline: base(), prepared, createdAt: "2026-01-01" },
+            ]),
+        );
+        fixture.shouldReject = (request) => request.mutationId === "rejected-mutation";
+        useCanvasStore.setState({ projects: [withCdnUrl({ ...base(), title: "Newer edit" })] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        await sync.saveRemoteUserDataNow("canvas");
+        expect(fixture.writes).toHaveLength(2);
+        expect(fixture.writes[0].mutationId).toBe("rejected-mutation");
+        expect(live().title).toBe("Newer edit");
+        expect(fixture.remote.title).toBe("Newer edit");
+        expect(fixture.data.has("yingce:canvas-mutation-journal")).toBe(false);
+        expect(useSyncProgressStore.getState().syncingProjects.canvas.phase).toBe("done");
+    });
+
+    test("重建后仍被同一原因拒绝时停止重建并如实报错", async () => {
+        sync.resetRemoteUserDataSync();
+        const prepared = { ...base(), title: "Poisoned" };
+        fixture.data.set(
+            "yingce:canvas-mutation-journal",
+            JSON.stringify([
+                { projectId: "canvas", request: { mutationId: "poisoned-mutation", baseRevision: 7, operations: [{ type: "set_field", field: "title", value: prepared.title, beforeValue: "Canvas" }] }, baseline: base(), prepared, createdAt: "2026-01-01" },
+            ]),
+        );
+        fixture.shouldReject = () => true;
+        useCanvasStore.setState({ projects: [withCdnUrl(prepared)] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        await expect(sync.saveRemoteUserDataNow("canvas")).rejects.toThrow("画布媒体尚未进入素材库");
+        // 重放 + 一次重建，之后不再重建，避免与重放互相触发成死循环。
+        expect(fixture.writes).toHaveLength(2);
+        expect(fixture.data.has("yingce:canvas-mutation-journal")).toBe(true);
+        expect(useSyncProgressStore.getState().syncingProjects.canvas).toMatchObject({ phase: "error", pendingChanges: 1 });
+    });
+
+    test("画布缺少物化素材时按确定性 ID 从服务端补回素材库", async () => {
+        sync.resetRemoteUserDataSync();
+        const taskId = "task-missing-asset";
+        const assetId = await generationAssetId(taskId, 0);
+        const unbound = { ...base().nodes[0], metadata: { ...base().nodes[0].metadata, assetId: undefined, taskId, storageKey: "resource:R1", content: "/api/resources/R1/file" } };
+        const project = (title: string) => ({ ...base(), title, nodes: [unbound] });
+        fixture.remote = project("Canvas");
+        fixture.remoteAssets = [
+            {
+                id: assetId,
+                kind: "image",
+                title: "生成图片",
+                coverUrl: "",
+                tags: [],
+                createdAt: "2026-01-01",
+                updatedAt: "2026-01-01",
+                data: { dataUrl: "/api/resources/R1/file", storageKey: "resource:R1", width: 1, height: 1, bytes: 1, mimeType: "image/png" },
+                metadata: { taskId, outputIndex: 0 },
+            },
+        ];
+        useCanvasStore.setState({ projects: [project("Canvas")] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        // 节点与云端一致，只改标题让画布变脏，确保这一步只验证素材补齐。
+        useCanvasStore.setState({ projects: [project("Renamed")] });
+        await sync.saveRemoteUserDataNow("canvas");
+        expect(fixture.assetRequests).toEqual([[assetId]]);
+        expect(useAssetStore.getState().assets.map((asset) => asset.id)).toEqual([assetId]);
     });
 });
