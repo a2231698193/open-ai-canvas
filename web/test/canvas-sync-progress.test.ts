@@ -16,6 +16,7 @@ const paths: Record<string, string> = {
     "@/services/api/resources": join(dir, "resources.ts"),
     "@/lib/canvas/canvas-content": join(dir, "content.ts"),
     "@/lib/canvas/generation-asset-identity": join(dir, "identity.ts"),
+    "@/lib/canvas/agent-canvas-patch": join(dir, "patch.ts"),
     "@/stores/use-sync-progress-store": join(dir, "progress.ts"),
     "./user-data-sync-media": join(dir, "media.ts"),
 };
@@ -28,7 +29,7 @@ writeFileSync(
     stubPath,
     `
 import { createStore } from ${JSON.stringify(import.meta.resolve("zustand/vanilla"))};
-export const fixture = { remote: undefined, writes: [], reads: 0, flushes: 0, beforeFlush: undefined, readHook: undefined, flushError: undefined, shouldReject: undefined, remoteAssets: [], assetRequests: [], data: new Map() };
+export const fixture = { remote: undefined, writes: [], reads: 0, flushes: 0, beforeFlush: undefined, readHook: undefined, flushError: undefined, shouldReject: undefined, remoteAssets: [], assetRequests: [], assetReads: [], data: new Map() };
 export const useCanvasStore = createStore((set, get) => ({ projects: [], openProject: id => get().projects.find(project => project.id === id) }));
 export const useAssetStore = createStore(() => ({ assets: [] }));
 export const getActiveUserScope = () => "sync-test-user";
@@ -57,11 +58,12 @@ export async function applyRemoteCanvasOperations(id, request) {
     return { project: fixture.remote };
 }
 export async function getRemoteCanvasProject() { fixture.reads++; const hook = fixture.readHook; fixture.readHook = undefined; hook?.(); return { project: structuredClone(fixture.remote) }; }
-export const deleteRemoteAssets = unexpected, deleteRemoteCanvasProject = unexpected, getRemoteAsset = unexpected, getRemoteUserDataSnapshot = unexpected, listRemoteAssetsPage = unexpected, upsertRemoteAsset = unexpected;
+export const deleteRemoteAssets = unexpected, deleteRemoteCanvasProject = unexpected, getRemoteUserDataSnapshot = unexpected, listRemoteAssetsPage = unexpected, upsertRemoteAsset = unexpected;
+export async function getRemoteAsset(id) { fixture.assetReads.push(id); const asset = fixture.remoteAssets.find((item) => item.id === id); if (!asset) throw new ApiError("missing", { status: 404 }); return { asset: structuredClone(asset) }; }
 export async function getRemoteAssetsByIds(ids) { fixture.assetRequests.push(ids); return { assets: fixture.remoteAssets.filter((asset) => ids.includes(asset.id)) }; }
 export const getImageBlob = unexpected, getMediaBlob = unexpected, assetForRemoteSync = unexpected, canvasNodeToAsset = unexpected;
 export const parseAssetRecordList = (assets) => assets;
-export const applyAgentCanvasPatch = unexpected, mergeAgentCanvasEditor = unexpected, mergeThreeWayValue = unexpected;
+export const applyAgentCanvasPatch = unexpected, mergeAgentCanvasEditor = unexpected;
 export const useCanvasHistoryStore = {};
 `,
 );
@@ -69,6 +71,7 @@ copySource("services/api/resources.ts", "resources.ts");
 copySource("services/user-data-sync-media.ts", "media.ts");
 copySource("lib/canvas/canvas-content.ts", "content.ts");
 copySource("lib/canvas/generation-asset-identity.ts", "identity.ts");
+copySource("lib/canvas/agent-canvas-patch.ts", "patch.ts");
 copySource("stores/use-sync-progress-store.ts", "progress.ts");
 copySource("services/user-data-sync.ts", "sync.ts");
 const sync: typeof import("@/services/user-data-sync") = await import(join(dir, "sync.ts"));
@@ -109,6 +112,7 @@ beforeEach(async () => {
     fixture.beforeFlush = fixture.readHook = fixture.flushError = fixture.shouldReject = undefined;
     fixture.remoteAssets = [];
     fixture.assetRequests = [];
+    fixture.assetReads = [];
     useCanvasStore.setState({ projects: [base()] });
     await sync.initializeRemoteUserDataSession("sync-test-user");
 });
@@ -266,5 +270,70 @@ describe("画布云端同步状态收尾", () => {
         await sync.saveRemoteUserDataNow("canvas");
         expect(fixture.assetRequests).toEqual([[assetId]]);
         expect(useAssetStore.getState().assets.map((asset) => asset.id)).toEqual([assetId]);
+    });
+
+    const generationAsset = (overrides: Record<string, unknown> = {}) => ({
+        id: "generation_aa",
+        kind: "image",
+        title: "我的标题",
+        coverUrl: "https://oss.example.com/generated.png",
+        tags: ["生成"],
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        data: { dataUrl: "https://oss.example.com/generated.png", storageKey: "resource:R1", width: 10, height: 10, bytes: 5, mimeType: "image/png" },
+        metadata: { taskId: "task-1", outputIndex: 0 },
+        ...overrides,
+    });
+    const remoteGenerationAsset = (overrides: Record<string, unknown> = {}) =>
+        generationAsset({
+            coverUrl: "/api/resources/R1/file",
+            createdAt: "2026-01-01T00:00:00.123456789Z",
+            updatedAt: "2026-01-01T00:00:00.123456789Z",
+            data: { dataUrl: "/api/resources/R1/file", storageKey: "resource:R1", width: 10, height: 10, bytes: 5, mimeType: "image/png" },
+            ...overrides,
+        });
+
+    test("素材只差 resource 地址形态和时间戳时不算冲突，采纳远端", async () => {
+        sync.resetRemoteUserDataSync();
+        useAssetStore.setState({ assets: [] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        // 本地素材在会话初始化之后才出现：没有已确认基线，走三方合并。
+        useAssetStore.setState({ assets: [generationAsset() as never] });
+        fixture.remoteAssets = [remoteGenerationAsset()];
+        useCanvasStore.setState({ projects: [{ ...base(), title: "Renamed" }] });
+        await sync.saveRemoteUserDataNow("canvas");
+        expect(fixture.assetReads).toEqual(["generation_aa"]);
+        expect(fixture.writes).toHaveLength(1);
+        expect(fixture.remote.title).toBe("Renamed");
+        expect(useAssetStore.getState().assets[0].updatedAt).toBe("2026-01-01T00:00:00.123456789Z");
+    });
+
+    test("没有可证明的生成默认值且内容真的不同时，保留本地且不拖垮画布保存", async () => {
+        sync.resetRemoteUserDataSync();
+        useAssetStore.setState({ assets: [] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        useAssetStore.setState({ assets: [generationAsset() as never] });
+        fixture.remoteAssets = [remoteGenerationAsset({ title: "生成图片" })];
+        useCanvasStore.setState({ projects: [{ ...base(), title: "Renamed" }] });
+        await sync.saveRemoteUserDataNow("canvas");
+        expect(fixture.writes).toHaveLength(1);
+        expect(fixture.remote.title).toBe("Renamed");
+        expect(useAssetStore.getState().assets[0].title).toBe("我的标题");
+    });
+
+    test("远端基线内容已变化时保留本地且不拖垮画布保存", async () => {
+        sync.resetRemoteUserDataSync();
+        useAssetStore.setState({ assets: [] });
+        // 本地素材在会话初始化时已存在：基线来自本地缓存，走增量校验。
+        useAssetStore.setState({ assets: [generationAsset() as never] });
+        await sync.initializeRemoteUserDataSession("sync-test-user");
+        useAssetStore.setState({ assets: [generationAsset({ folderId: "folder-1" }) as never] });
+        fixture.remoteAssets = [remoteGenerationAsset({ title: "远端标题" })];
+        useCanvasStore.setState({ projects: [{ ...base(), title: "Renamed" }] });
+        await sync.saveRemoteUserDataNow("canvas");
+        expect(fixture.assetReads).toEqual(["generation_aa"]);
+        expect(fixture.writes).toHaveLength(1);
+        expect(fixture.remote.title).toBe("Renamed");
+        expect(useAssetStore.getState().assets[0].folderId).toBe("folder-1");
     });
 });

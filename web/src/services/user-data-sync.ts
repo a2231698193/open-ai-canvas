@@ -1122,6 +1122,8 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
     if (!dirtyProjects.length && !dirtyAssets.length) return;
 
     const adoptedAssetIds = new Set<string>();
+    // 合并/校验给不出结论的素材：保留本地、不上传、不覆盖远端，并跳过本轮；画布照常保存。
+    const deferredAssetIds = new Set<string>();
     const mergedAssets = new Map<string, Asset>();
     const assetSyncEpoch = sessionEpoch;
     for (const source of dirtyAssets) {
@@ -1145,34 +1147,9 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             let edited: boolean;
             try {
                 const contextKeys = ["clientContext", "conversationId", "messageId", "batchIndex"];
-                // 创建/更新时间是各端记账信息，不属于用户编辑的字段。
-                const content = (value: Asset): Asset => {
-                    let result = { ...value, createdAt: asset.createdAt, updatedAt: asset.updatedAt };
-                    if (!defaults) return result;
-                    // 客户端上下文不是素材编辑；保留 projectIds 等业务元数据参与合并。
-                    const metadata = { ...result.metadata };
-                    for (const key of contextKeys) delete metadata[key];
-                    result = { ...result, metadata };
-                    if (result.kind === "image" || result.kind === "video" || result.kind === "audio") {
-                        const resourceId = resourceIdFromStorageKey(result.data.storageKey);
-                        if (resourceId) {
-                            // 同一不可变资源的授权/缓存 URL 不代表编辑；独立封面仍参与比较。
-                            const url = resourceFileUrl(resourceId);
-                            const displayUrl = result.kind === "image" ? result.data.dataUrl : result.data.url;
-                            const coverUrl = result.coverUrl === displayUrl ? (result.kind === "image" ? url : "") : result.coverUrl;
-                            result =
-                                result.kind === "image"
-                                    ? { ...result, coverUrl, data: { ...result.data, dataUrl: url } }
-                                    : result.kind === "video"
-                                      ? { ...result, coverUrl, data: { ...result.data, url } }
-                                      : { ...result, coverUrl, data: { ...result.data, url } };
-                        }
-                    }
-                    return result;
-                };
                 // 无法证明生成默认值时保持保守；刷新后的旧缓存不能充当编辑基线。
-                const remoteContent = content(asset);
-                const mergedContent = mergeThreeWayValue(content(source), defaults ? content(defaults) : undefined, remoteContent) as Asset;
+                const remoteContent = assetContentSnapshot(asset);
+                const mergedContent = mergeThreeWayValue(assetContentSnapshot(source), defaults ? assetContentSnapshot(defaults) : undefined, remoteContent);
                 edited = canonicalize(remoteContent) !== canonicalize(mergedContent);
                 // 投影只用于判断编辑；未改字段保留远端原值，改动字段取本机真实 payload。
                 const applyEdits = (stored: unknown, local: unknown, before: unknown, after: unknown): unknown => {
@@ -1196,8 +1173,13 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                     }
                     merged = { ...merged, metadata };
                 }
-            } catch {
-                throw assetRemoteVersionConflict();
+            } catch (error) {
+                // 合并给不出结论（缺少可证明的生成默认值，或两边都改过同一字段）时保持本地内容：
+                // 不覆盖远端、也不上传本地产物，并跳过这一条素材。上传失败不能连累同一批次的画布保存，
+                // 下一次同步会重新校验；用户刷新后本地缓存就是基线，状态同样收敛到"本地未上传"。
+                deferredAssetIds.add(source.id);
+                console.warn("素材未确认，已保留本地内容，稍后重试:", source.id, error);
+                continue;
             }
             acknowledgedAssets.set(source.id, edited ? asset : merged);
             verifiedAssets.add(source.id);
@@ -1215,7 +1197,13 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             const baseline = acknowledgedAssets.get(source.id);
             if (!baseline || verifiedAssets.has(source.id)) continue;
             const { asset } = await getRemoteAsset(source.id);
-            if (Date.parse(asset.updatedAt) !== Date.parse(baseline.updatedAt)) throw assetRemoteVersionConflict();
+            // 基线可能来自本地缓存，它的记录时间本来就和远端不同；只有内容真的变了才需要保护远端改动，
+            // 纯时间戳差异不能当成冲突，更不能让整批保存（含画布）失败。
+            if (canonicalize(assetContentSnapshot(asset)) !== canonicalize(assetContentSnapshot(baseline))) {
+                deferredAssetIds.add(source.id);
+                console.warn("素材远端内容已变化，已保留本地内容，稍后重新校验:", source.id);
+                continue;
+            }
             verifiedAssets.add(source.id);
         }
     }
@@ -1225,7 +1213,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
     // 素材先于画布提交。这样画布中的 resource: 引用一旦成为远端事实，
     // 对应 Asset 已经存在，刷新或换设备不会出现只占容量、不见素材的窗口。
     for (const dirty of dirtyAssets) {
-        if (adoptedAssetIds.has(dirty.id)) continue;
+        if (adoptedAssetIds.has(dirty.id) || deferredAssetIds.has(dirty.id)) continue;
         const source = mergedAssets.get(dirty.id) ?? dirty;
         const remotePayload = await ensureRemoteResourceReferences(assetForRemoteSync(source), uploaded);
         await upsertRemoteAsset(remotePayload);
@@ -1357,14 +1345,38 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
     if (dirtyProjects.length) void appQueryClient.invalidateQueries({ queryKey: ["canvas-library"] });
 }
 
-function assetRemoteVersionConflict() {
-    return new Error("素材远端基线已变化，未确认修改会在下一轮同步中重新校验");
-}
-
 function requireRemoteUserDataBaseline() {
     if (remoteUserDataPhase !== "ready") throw new Error("云端数据基线尚未建立，已停止写入");
 }
 
 function sameEntitySnapshot<T>(acknowledged: T | undefined, current: T) {
     return acknowledged !== undefined && (acknowledged === current || JSON.stringify(acknowledged) === JSON.stringify(current));
+}
+
+const ASSET_CONTEXT_KEYS = ["clientContext", "conversationId", "messageId", "batchIndex"] as const;
+
+/**
+ * 素材内容比较前的归一化，合并、判断"是否编辑"和远端基线校验共用。
+ * 创建/更新时间是各端记账信息；客户端上下文和资源 URL 形态（本地缓存地址、OSS 授权地址与
+ * resource 文件地址）都不代表用户编辑，必须无条件剔除，否则纯形态差异会被当成内容冲突。
+ */
+function assetContentSnapshot(value: Asset): Record<string, unknown> {
+    const { createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = value as unknown as Record<string, unknown>;
+    const metadata = { ...(rest.metadata as Record<string, unknown> | undefined) };
+    for (const key of ASSET_CONTEXT_KEYS) delete metadata[key];
+    const snapshot: Record<string, unknown> = { ...rest, metadata };
+    const kind = snapshot.kind;
+    if (kind === "image" || kind === "video" || kind === "audio") {
+        const data = { ...(snapshot.data as Record<string, unknown> | undefined) };
+        const resourceId = resourceIdFromStorageKey(typeof data.storageKey === "string" ? data.storageKey : "");
+        if (resourceId) {
+            // 同一不可变资源的授权/缓存 URL 不代表编辑；独立封面仍参与比较。
+            const url = resourceFileUrl(resourceId);
+            const displayUrl = kind === "image" ? data.dataUrl : data.url;
+            snapshot.coverUrl = snapshot.coverUrl === displayUrl ? (kind === "image" ? url : "") : snapshot.coverUrl;
+            data[kind === "image" ? "dataUrl" : "url"] = url;
+            snapshot.data = data;
+        }
+    }
+    return snapshot;
 }
