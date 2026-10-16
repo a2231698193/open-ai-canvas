@@ -39,13 +39,17 @@ Schema 45 新增 `upload_reservations`：`id`、`user_id`、`size`、`day`、`ex
 
 ## 结构迁移与版本
 
-当前结构版本为 57。版本 53 新增 `canvas_mutation_receipts`，按 `(user_id, canvas_id, mutation_id)` 唯一记录画布 operations 请求摘要、确定性结果和提交 revision，供响应丢失后的幂等重放使用；receipt 与画布内容、revision 在同一事务提交。
+当前结构版本为 59。版本 53 新增 `canvas_mutation_receipts`，按 `(user_id, canvas_id, mutation_id)` 唯一记录画布 operations 请求摘要、确定性结果和提交 revision，供响应丢失后的幂等重放使用；receipt 与画布内容、revision 在同一事务提交。
 
 版本 36 `cloud_agent_gemini_cache` 创建 `cloud_agent_gemini_caches`，保存用户范围内的官方 Gemini 缓存元数据；版本 37 `cloud_agent_gemini_cache_identity` 将缓存标识约束修正为 `(user_id, cache_key)`，移除旧的全局 cache_key 唯一索引。版本 35 `auth_notifications` 为认证通知与组合验证补齐 `auth_verifications`、`notification_quotas`、`sms_channels`、`sms_records` 四张表，并为 `users` 增加 `phone`、`email_verified_at`、`phone_verified_at`，为 `email_verification_codes` 增加 `attempts`；同时创建非空手机号唯一索引。版本 34 `task_media_recovery` 为 `tasks` 增加 `media_recovery_json`（text）和 `media_stage`（最长 24 字）。版本 33 `oauth_state_accepted_terms` 为 `o_auth_states` 增加非空布尔列 `accepted_terms`，默认 `false`，不替历史流程补造同意记录。
 
 版本 54 `personal_profile_security` 增加个人信息与身份重新核验结构：`users.avatar_mode`（空字符串沿用第三方头像、`custom` 为个人上传、`default` 为系统头像）、`users.avatar_version`（只用于头像地址，不作为用户 JSON 返回）；新增 `user_avatars`。头像与用户选择同一事务保存，独立于创作素材。上传最大 5 MiB、1600 万像素，服务端居中裁剪到不超过 512×512。`auth_sessions.reauthenticated_at` 记录 Linux.do 重新核验，有效 5 分钟。密码、邮箱修改和旧会话撤销同一事务提交。
 
 版本 55 `user_avatar_presets` 为 `users` 增加 `avatar_preset`，只接受 `person`、`director`、`camera`、`cat`、`rabbit`、`robot`、`rocket`、`sparkles`。选择系统头像时更新 default 模式和预设，并清除上传图片。
+
+版本 58 `provider_catalog_source` 为 `model_channels` 增加 `catalog_provider_id`（最长 64 字、非空、默认空字符串、带索引），为 `channel_models` 增加 `catalog_model_key`（最长 120 字、非空、默认空字符串）。这两个字段只记录一键接入的目录服务商和推荐模型，用于来源展示和“已接入”计数，不参与路由、启停或计费。
+
+版本 59 `sql_perf_indexes` 为 `api_call_logs` 与 `tasks` 增加 `created_at_epoch`（Unix 秒），回填既有 `created_at`，并分别创建 `idx_api_logs_created_epoch`、`idx_tasks_created_epoch`。SQLite 时间范围查询使用裸列以命中索引；新记录通过 `BeforeCreate` 从 `created_at` 派生。另增加 `api_call_logs(request_kind, status, created_at)` 与 `credit_ledger_entries(user_id, type)` 复合索引。
 
 版本 56 `user_login_logs` 新增 `login_logs`。记录密码、邮箱、短信、Linux.do、注册自动登录和主动退出；不记录密码或会话凭据。
 
