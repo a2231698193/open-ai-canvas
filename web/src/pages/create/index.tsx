@@ -1039,6 +1039,21 @@ export default function CreatePage() {
         restoreMessageDraft(previous);
     };
 
+    // 独立灵感页通过路由 state 回填提示词；消费后清除，避免刷新重复填充。
+    // 必须放在提前 return 之前，保持每次渲染的 hook 数量一致。
+    useEffect(() => {
+        const inspiration = (location.state as { inspiration?: { mode?: CreationMode; prompt?: string } } | null)?.inspiration;
+        if (!inspiration?.prompt) return;
+        setAgentMode(false);
+        selectMode(inspiration.mode || mode);
+        setPrompt(inspiration.prompt);
+        threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+        window.requestAnimationFrame(() => composerFocusRef.current?.focus({ preventScroll: true }));
+        navigate(location.pathname + location.search, { replace: true, state: null });
+        // 只应在进入页面或再次收到灵感时执行。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.key]);
+
     if (!hydrated || !activeConversation) return <div className="grid h-full place-items-center"><Spin /></div>;
 
     const handleThreadScroll = () => {
@@ -1066,16 +1081,6 @@ export default function CreatePage() {
         threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
         window.requestAnimationFrame(() => composerFocusRef.current?.focus({ preventScroll: true }));
     };
-
-    // 独立灵感页通过路由 state 回填提示词；消费后清除，避免刷新重复填充。
-    const inspirationState = (location.state as { inspiration?: { mode?: CreationMode; prompt?: string } } | null)?.inspiration;
-    useEffect(() => {
-        if (!inspirationState?.prompt) return;
-        startPrompt(inspirationState.mode || mode, inspirationState.prompt);
-        navigate(location.pathname + location.search, { replace: true, state: null });
-        // 只应在进入页面或再次收到灵感时执行。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.key]);
 
     const composerProps = {
         mode,
