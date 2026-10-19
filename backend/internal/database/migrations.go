@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 59
+const CurrentSchemaVersion int64 = 60
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -198,6 +198,7 @@ var schemaMigrations = []migration{
 		return nil
 	}},
 	{version: 59, name: "sql_perf_indexes", checksum: "sha256:sql-perf-indexes-v59-20261016", apply: migrateSchemaV59},
+	{version: 60, name: "canvas_multi_session_sync", checksum: "sha256:canvas-multi-session-sync-v60", apply: migrateCanvasCollaboration},
 }
 
 func migrateMembershipPoolBackfill(tx *gorm.DB) error {

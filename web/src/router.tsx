@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from "react";
-import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 
 import { RequireAuth } from "@/components/auth/require-auth";
 import { FullScreenLoader, WorkspaceRouteLoader } from "@/components/ui/aceternity/full-screen-loader";
@@ -8,6 +8,8 @@ import { CanvasRefreshShell } from "@/pages/canvas/canvas-refresh-shell";
 import { AuthScene } from "@/pages/auth/auth-scene";
 import RouteErrorPage from "@/pages/route-error";
 import { isGuestWorkspacePath } from "@/lib/guest-workspace";
+import { fillablePrompt } from "@/lib/inspirations/resolve";
+import type { CreationInspiration } from "@/lib/inspirations/catalog";
 
 const AdminPage = lazy(() => import("@/pages/admin"));
 const AnalyticsPage = lazy(() => import("@/pages/admin/admin-route-pages").then((module) => ({ default: module.AnalyticsPage })));
@@ -51,6 +53,12 @@ const CanvasProjectPage = lazy(loadCanvasProjectPage);
 const SharedCanvasPage = lazy(() => import("@/pages/canvas/shared"));
 const CreatePage = lazy(loadCreatePage);
 const InspirationsPage = lazy(loadInspirationsPage);
+
+// 本仓库保留独立灵感页：使用灵感后回到创作页并回填提示词。
+function InspirationsRoute() {
+    const navigate = useNavigate();
+    return <InspirationsPage onUse={(item: CreationInspiration) => navigate("/create", { state: { inspiration: { mode: item.mode, prompt: fillablePrompt(item) } } })} />;
+}
 const ImageWorkbenchPage = lazy(() => import("@/pages/workbench/image-workbench-route"));
 const VideoWorkbenchPage = lazy(() => import("@/pages/workbench/video-workbench-page"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -140,7 +148,7 @@ export const router = createBrowserRouter([
                     </RequireAuth>
                 ),
             },
-            { path: "/inspirations", element: deferred(<InspirationsPage />) },
+            { path: "/inspirations", element: deferred(<InspirationsRoute />) },
             { path: "/membership", element: <RequireAuth>{deferred(<MembershipPage />)}</RequireAuth> },
             {
                 path: "/tasks",

@@ -93,7 +93,8 @@ type ImageResolutionConfig struct {
 }
 
 type ParameterSupport struct {
-	Supported bool `json:"supported"`
+	Supported bool   `json:"supported"`
+	Default   string `json:"default,omitempty"`
 }
 
 type VideoCapabilityConfig struct {

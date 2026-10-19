@@ -190,6 +190,219 @@ func TestApplyCanvasOperationsIgnoresNodeUpdatedAtBase(t *testing.T) {
 	}
 }
 
+func TestApplyCanvasOperationsMergesSameTaskTimestampMonotonically(t *testing.T) {
+	t.Run("stale observer cannot roll back newer task time", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskUpdatedAt":"2026-04-01T00:00:02Z","taskStatus":"running","prompt":"original"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		stale := CanvasOperationsRequest{MutationID: "task-timestamp-stale", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`)}, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:00Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", stale); err != nil {
+			t.Fatalf("stale same-task timestamp rejected: %v", err)
+		}
+		project, err := svc.repo.CanvasProjectForUser("user", "canvas")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			Nodes []struct {
+				Metadata map[string]any `json:"metadata"`
+			} `json:"nodes"`
+		}
+		if err := json.Unmarshal([]byte(project.PayloadJSON), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if got := payload.Nodes[0].Metadata["taskUpdatedAt"]; got != "2026-04-01T00:00:02Z" {
+			t.Fatalf("taskUpdatedAt regressed: got %v", got)
+		}
+	})
+
+	t.Run("newer observer advances task time", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskUpdatedAt":"2026-04-01T00:00:02Z"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		request := CanvasOperationsRequest{MutationID: "task-timestamp-newer", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:03Z"`)}, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", request); err != nil {
+			t.Fatalf("newer same-task timestamp rejected: %v", err)
+		}
+		project, err := svc.repo.CanvasProjectForUser("user", "canvas")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			Nodes []struct {
+				Metadata map[string]any `json:"metadata"`
+			} `json:"nodes"`
+		}
+		if err := json.Unmarshal([]byte(project.PayloadJSON), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if got := payload.Nodes[0].Metadata["taskUpdatedAt"]; got != "2026-04-01T00:00:03Z" {
+			t.Fatalf("newer taskUpdatedAt not applied: got %v", got)
+		}
+	})
+}
+
+func TestApplyCanvasOperationsTaskTimestampFenceDoesNotRelaxOtherConflicts(t *testing.T) {
+	t.Run("rebound task rejected", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-2","taskUpdatedAt":"2026-04-01T00:00:02Z"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		request := CanvasOperationsRequest{MutationID: "old-task-update", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:03Z"`)}, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", request); err == nil {
+			t.Fatal("old task timestamp crossed the task identity fence")
+		}
+	})
+
+	t.Run("other stale field still rejected atomically", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskUpdatedAt":"2026-04-01T00:00:02Z","prompt":"new prompt"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		request := CanvasOperationsRequest{
+			MutationID: "mixed-task-update",
+			Operations: []CanvasOperation{{
+				Type: "patch_node",
+				ID:   "node",
+				Patch: map[string]json.RawMessage{
+					"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:03Z"`),
+					"metadata.prompt":        json.RawMessage(`"stale prompt"`),
+				},
+				Before: map[string]json.RawMessage{
+					"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`),
+					"metadata.taskId":        json.RawMessage(`"task-1"`),
+					"metadata.prompt":        json.RawMessage(`"old prompt"`),
+				},
+			}},
+		}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", request); err == nil {
+			t.Fatal("stale prompt conflict was hidden by timestamp merge")
+		}
+		project, err := svc.repo.CanvasProjectForUser("user", "canvas")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			Nodes []struct {
+				Metadata map[string]any `json:"metadata"`
+			} `json:"nodes"`
+		}
+		if err := json.Unmarshal([]byte(project.PayloadJSON), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if got := payload.Nodes[0].Metadata["taskUpdatedAt"]; got != "2026-04-01T00:00:02Z" {
+			t.Fatalf("failed batch partially changed timestamp: got %v", got)
+		}
+	})
+}
+
+func TestApplyCanvasOperationsTaskTimestampFenceRequiresMergeablePatch(t *testing.T) {
+	t.Run("same-task null deletion uses strict CAS", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskUpdatedAt":"2026-04-01T00:00:02Z"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		matching := CanvasOperationsRequest{MutationID: "delete-task-time", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`null`)}, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:02Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", matching); err != nil {
+			t.Fatalf("matching null deletion rejected: %v", err)
+		}
+		mismatch := CanvasOperationsRequest{MutationID: "delete-task-time-stale", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`null`)}, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:02Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+		if _, err := svc.ApplyUserCanvasOperations("user", "canvas", mismatch); err == nil {
+			t.Fatal("mismatched null deletion accepted")
+		}
+	})
+
+	t.Run("task rebind and whole metadata patch stay strict", func(t *testing.T) {
+		svc := newCanvasOperationTestService(t)
+		if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-2","taskUpdatedAt":"2026-04-01T00:00:02Z"}}],"connections":[]}`}); err != nil {
+			t.Fatal(err)
+		}
+		for name, patch := range map[string]map[string]json.RawMessage{
+			"rebind":         {"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:03Z"`), "metadata.taskId": json.RawMessage(`"task-2"`)},
+			"whole metadata": {"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:03Z"`), "metadata": json.RawMessage(`{"taskId":"task-2"}`)},
+		} {
+			t.Run(name, func(t *testing.T) {
+				request := CanvasOperationsRequest{MutationID: "strict-" + name, Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: patch, Before: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`), "metadata.taskId": json.RawMessage(`"task-1"`)}}}}
+				if _, err := svc.ApplyUserCanvasOperations("user", "canvas", request); err == nil {
+					t.Fatal("strict task patch accepted across rebound identity")
+				}
+			})
+		}
+	})
+}
+
+func TestApplyCanvasOperationsConvergesSameTaskAlreadyAppliedFields(t *testing.T) {
+	svc := newCanvasOperationTestService(t)
+	if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskStatus":"succeeded","content":"done","taskUpdatedAt":"2026-04-01T00:00:03Z"}}],"connections":[]}`}); err != nil {
+		t.Fatal(err)
+	}
+	request := CanvasOperationsRequest{MutationID: "same-completion", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{
+		"metadata.taskStatus":    json.RawMessage(`"succeeded"`),
+		"metadata.content":       json.RawMessage(`"done"`),
+		"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:02Z"`),
+	}, Before: map[string]json.RawMessage{
+		"metadata.taskId":        json.RawMessage(`"task-1"`),
+		"metadata.taskStatus":    json.RawMessage(`"queued"`),
+		"metadata.content":       json.RawMessage(`"pending"`),
+		"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`),
+	}}}}
+	if _, err := svc.ApplyUserCanvasOperations("user", "canvas", request); err != nil {
+		t.Fatalf("same-task repeated completion rejected: %v", err)
+	}
+	project, err := svc.repo.CanvasProjectForUser("user", "canvas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(project.PayloadJSON, `"taskUpdatedAt":"2026-04-01T00:00:03Z"`) {
+		t.Fatalf("server task time regressed: %s", project.PayloadJSON)
+	}
+
+	for name, patch := range map[string]map[string]json.RawMessage{
+		"different content": {"metadata.content": json.RawMessage(`"other"`), "metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:04Z"`)},
+		"different prompt":  {"metadata.prompt": json.RawMessage(`"other"`), "metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:04Z"`)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := request
+			bad.MutationID = "different-" + name
+			bad.Operations = []CanvasOperation{{Type: "patch_node", ID: "node", Patch: patch, Before: request.Operations[0].Before}}
+			if _, err := svc.ApplyUserCanvasOperations("user", "canvas", bad); err == nil {
+				t.Fatal("different desired value was accepted")
+			}
+		})
+	}
+}
+
+func TestApplyCanvasOperationsDoesNotRelaxTaskIdentityOrLegacyNoFence(t *testing.T) {
+	svc := newCanvasOperationTestService(t)
+	if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", PayloadJSON: `{"nodes":[{"id":"node","metadata":{"taskId":"task-1","taskStatus":"succeeded","content":"done","taskUpdatedAt":"2026-04-01T00:00:03Z"}}],"connections":[]}`}); err != nil {
+		t.Fatal(err)
+	}
+	beforeOnly := CanvasOperationsRequest{MutationID: "before-only-task-id", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:02Z"`)}, Before: map[string]json.RawMessage{"metadata.taskId": json.RawMessage(`"task-1"`), "metadata.taskStatus": json.RawMessage(`"queued"`)}}}}
+	if _, err := svc.ApplyUserCanvasOperations("user", "canvas", beforeOnly); err == nil {
+		t.Fatal("before-only task identity patch was accepted")
+	}
+	noFence := CanvasOperationsRequest{MutationID: "legacy-no-fence", Operations: []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskStatus": json.RawMessage(`"succeeded"`), "metadata.content": json.RawMessage(`"done"`)}, Before: map[string]json.RawMessage{"metadata.taskStatus": json.RawMessage(`"queued"`), "metadata.content": json.RawMessage(`"pending"`)}}}}
+	if _, err := svc.ApplyUserCanvasOperations("user", "canvas", noFence); err == nil {
+		t.Fatal("legacy no-fence request was accepted")
+	}
+	if _, err := svc.repo.CanvasMutationReceiptForUser("user", "canvas", "legacy-no-fence"); err == nil {
+		t.Fatal("failed legacy request created a receipt")
+	}
+	fixed := noFence
+	fixed.MutationID = "fixed-with-fence"
+	fixed.Operations = []CanvasOperation{{Type: "patch_node", ID: "node", Patch: map[string]json.RawMessage{"metadata.taskStatus": json.RawMessage(`"succeeded"`), "metadata.content": json.RawMessage(`"done"`), "metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:02Z"`)}, Before: map[string]json.RawMessage{"metadata.taskId": json.RawMessage(`"task-1"`), "metadata.taskStatus": json.RawMessage(`"queued"`), "metadata.content": json.RawMessage(`"pending"`), "metadata.taskUpdatedAt": json.RawMessage(`"2026-04-01T00:00:01Z"`)}}}
+	result, err := svc.ApplyUserCanvasOperations("user", "canvas", fixed)
+	if err != nil {
+		t.Fatalf("fenced retry rejected: %v", err)
+	}
+	replayed, err := svc.ApplyUserCanvasOperations("user", "canvas", fixed)
+	if err != nil || replayed.Revision != result.Revision {
+		t.Fatalf("fenced retry replay failed: result=%#v err=%v", replayed, err)
+	}
+}
+
 func TestApplyCanvasOperationsRejectsStaleCanvasField(t *testing.T) {
 	svc := newCanvasOperationTestService(t)
 	if err := svc.repo.Create(&model.CanvasProject{ID: "canvas", UserID: "user", Title: "旧标题", PayloadJSON: `{"nodes":[],"connections":[],"title":"旧标题"}`}); err != nil {
@@ -282,6 +495,34 @@ func TestApplyCanvasOperationsAcceptsLegacyOmittedOptionalFieldValues(t *testing
 	}
 }
 
+func TestApplyCanvasOperationsRejectsDuplicateCreateWithStructuredConflict(t *testing.T) {
+	svc := newCanvasOperationTestService(t)
+	request := CanvasOperationsRequest{MutationID: "first-create", Operations: []CanvasOperation{{Type: "create_canvas", ID: "canvas", Patch: map[string]json.RawMessage{"title": json.RawMessage(`"已保存"`)}}}}
+	first, err := svc.ApplyUserCanvasOperations("user", "canvas", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A lost response must remain replayable with its original mutation ID.
+	replayed, err := svc.ApplyUserCanvasOperations("user", "canvas", request)
+	if err != nil || replayed.Revision != first.Revision {
+		t.Fatalf("original creation replay = %#v, %v", replayed, err)
+	}
+	request.MutationID = "stale-create-with-new-id"
+	request.Operations[0].Patch["title"] = json.RawMessage(`"不应覆盖"`)
+	_, err = svc.ApplyUserCanvasOperations("user", "canvas", request)
+	var appError *kernel.AppError
+	if !errors.As(err, &appError) || appError.Status != http.StatusConflict || appError.Reason != "canvas_field_conflict" || appError.Retryable {
+		t.Fatalf("duplicate create error = %#v, want non-retryable field conflict", err)
+	}
+	stored, err := svc.repo.CanvasProjectForUser("user", "canvas")
+	if err != nil || stored.Title != "已保存" || stored.Revision != first.Revision {
+		t.Fatalf("duplicate create changed stored canvas: %#v, %v", stored, err)
+	}
+	if _, err := svc.repo.CanvasMutationReceiptForUser("user", "canvas", request.MutationID); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("rejected creation retained a receipt: %v", err)
+	}
+}
+
 func TestApplyCanvasOperationsDoesNotRecreateDeletedCanvas(t *testing.T) {
 	svc := newCanvasOperationTestService(t)
 	if _, err := svc.ApplyUserCanvasOperations("user", "canvas", CanvasOperationsRequest{MutationID: "create", Operations: []CanvasOperation{{Type: "create_canvas", ID: "canvas", Patch: map[string]json.RawMessage{"title": json.RawMessage(`"初始"`)}}}}); err != nil {
@@ -325,7 +566,7 @@ func newCanvasOperationTestService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.CanvasProject{}, &model.CanvasSnapshot{}, &model.CanvasSnapshotResource{}, &model.CanvasMutationReceipt{}, &model.CanvasShare{}, &model.CanvasUnitLink{}, &model.Task{}, &model.Resource{}, &model.Asset{}); err != nil {
+	if err := db.AutoMigrate(&model.CanvasEditLease{}, &model.CanvasProject{}, &model.CanvasSnapshot{}, &model.CanvasSnapshotResource{}, &model.CanvasMutationReceipt{}, &model.CanvasShare{}, &model.CanvasUnitLink{}, &model.Task{}, &model.CloudAgentExecution{}, &model.Resource{}, &model.Asset{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlDB, _ := db.DB()

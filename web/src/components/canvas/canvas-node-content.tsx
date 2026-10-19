@@ -40,6 +40,7 @@ export type CanvasNodeContentProps = {
     theme: CanvasTheme;
     renderLOD?: CanvasNodeRenderLOD;
     isEditingContent: boolean;
+    contentReadOnly?: boolean;
     textareaRef: RefObject<HTMLTextAreaElement | null>;
     isBatchRoot: boolean;
     batchCount: number;
@@ -218,27 +219,7 @@ function DrawingContent({ node, theme, drawingProjectId }: CanvasNodeContentProp
     );
 }
 
-function TextContent({ node, theme, isEditingContent, textareaRef, mentionReferences, onContentChange, onStopEditing }: CanvasNodeContentProps) {
-    const restoredNode = restoreOneTextNode(node);
-    const displayContent = restoredNode.metadata?.content || "";
-    useEffect(() => {
-        const current = node.metadata?.content || "";
-        if (displayContent && displayContent !== current) {
-            onContentChange(node.id, displayContent);
-            return;
-        }
-        if (!isBareResourceFileUrl(current) || !node.metadata?.storageKey) return;
-        let cancelled = false;
-        void getResourceBlob(node.metadata.storageKey).then(async (blob) => {
-            if (!blob || cancelled) return;
-            const mime = blob.type || node.metadata?.mimeType || "";
-            if (mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/")) return;
-            const text = await blob.text();
-            if (!text || isBareResourceFileUrl(text) || cancelled) return;
-            onContentChange(node.id, text);
-        });
-        return () => { cancelled = true; };
-    }, [displayContent, node.id, node.metadata?.content, node.metadata?.mimeType, node.metadata?.storageKey, onContentChange]);
+function TextContent({ node, theme, isEditingContent, contentReadOnly, textareaRef, mentionReferences, onContentChange, onStopEditing }: CanvasNodeContentProps) {
     const fontSize = canvasTextFontSize(node.width, node.height, node.metadata?.fontSize);
     const textStyle = { fontSize: `${fontSize}px`, lineHeight: `${Math.round(fontSize * 1.65)}px`, color: theme.node.text, boxSizing: "border-box" } as CSSProperties;
     const richTextHTML = useMemo(() => canvasRichTextHTML(node.metadata?.richText), [node.metadata?.richText]);
@@ -255,7 +236,8 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                     ref={textareaRef}
                     className="thin-scrollbar m-0 block h-full w-full resize-none appearance-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent px-4 pb-4 pt-0 font-mono outline-none select-text"
                     style={textStyle}
-                    value={displayContent || textContent}
+                    value={textContent}
+                    readOnly={contentReadOnly}
                     references={mentionReferences}
                     highlightLabels={false}
                     onChange={(value) => onContentChange(node.id, value)}
@@ -276,7 +258,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                 />
             ) : (
                 <div className="thin-scrollbar block h-full w-full select-text overflow-y-auto whitespace-pre-wrap break-words bg-transparent px-4 pb-4 pt-0 font-mono" style={textStyle} onWheel={(event) => event.stopPropagation()}>
-                    {displayContent || textContent || <span style={{ color: theme.node.placeholder }}>双击编辑文字</span>}
+                    {textContent || <span style={{ color: theme.node.placeholder }}>双击编辑文字</span>}
                 </div>
             )}
         </div>
