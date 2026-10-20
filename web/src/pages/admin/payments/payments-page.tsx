@@ -532,8 +532,11 @@ export default function AdminPaymentsPage() {
                     <Typography.Text className="font-mono text-xs" title={order.merchantOrderNo} copyable={{ text: order.merchantOrderNo }}>
                         {order.merchantOrderNo.length > 20 ? `${order.merchantOrderNo.slice(0, 10)}…${order.merchantOrderNo.slice(-6)}` : order.merchantOrderNo}
                     </Typography.Text>
-                    <div className="mt-1 truncate text-xs text-foreground/45" title={order.productName}>
-                        {order.productName}
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <AdminStatusBadge label={order.kind === "membership" ? "会员" : "积分"} tone={order.kind === "membership" ? "info" : "neutral"} />
+                        <span className="truncate text-xs text-foreground/45" title={order.productName}>
+                            {order.productName}
+                        </span>
                     </div>
                 </div>
             ),
@@ -557,7 +560,7 @@ export default function AdminPaymentsPage() {
             render: (_, order) => (
                 <div>
                     <div className="font-medium tabular-nums">¥ {(order.amountFen / 100).toFixed(2)}</div>
-                    <div className="text-xs text-foreground/45">{formatCredits(order.creditsMicrocredits)} 积分</div>
+                    <div className="text-xs text-foreground/45">{order.kind === "membership" ? membershipOrderLabel(order) : `${formatCredits(order.creditsMicrocredits)} 积分`}</div>
                 </div>
             ),
         },
@@ -870,8 +873,17 @@ export default function AdminPaymentsPage() {
                                 ),
                             },
                             { key: "product", label: "商品", children: selectedOrder.productName },
+                            { key: "kind", label: "订单类型", children: selectedOrder.kind === "membership" ? "会员" : "积分充值" },
+                            ...(selectedOrder.kind === "membership" ? [{ key: "membership", label: "会员方案", children: `${selectedOrder.membershipPlanName || "--"} · ${membershipOrderLabel(selectedOrder)}` }] : []),
                             { key: "channel", label: "支付渠道", children: providerNames[selectedOrder.providerId] || selectedOrder.providerId },
-                            { key: "amount", label: "金额 / 积分", children: `¥ ${(selectedOrder.amountFen / 100).toFixed(2)} / ${formatCredits(selectedOrder.creditsMicrocredits)} 积分` },
+                            {
+                                key: "amount",
+                                label: "金额 / 积分",
+                                children:
+                                    selectedOrder.kind === "membership"
+                                        ? `¥ ${(selectedOrder.amountFen / 100).toFixed(2)} / ${membershipOrderLabel(selectedOrder)}`
+                                        : `¥ ${(selectedOrder.amountFen / 100).toFixed(2)} / ${formatCredits(selectedOrder.creditsMicrocredits)} 积分`,
+                            },
                             { key: "status", label: "状态", children: paymentOrderStatus[selectedOrder.status]?.label || selectedOrder.status },
                             ...(
                                 [
@@ -1071,6 +1083,19 @@ export default function AdminPaymentsPage() {
             </Drawer>
         </AdminPageFrame>
     );
+}
+
+function membershipOrderLabel(order: AdminPaymentOrder) {
+    switch (order.membershipChange) {
+        case "new":
+            return `新开通 · ${order.membershipMonths || 0} 个月`;
+        case "renew":
+            return `续费 · ${order.membershipMonths || 0} 个月`;
+        case "upgrade":
+            return order.membershipPreviousPlanName ? `升级 · 原 ${order.membershipPreviousPlanName}` : "升级";
+        default:
+            return "会员订单";
+    }
 }
 
 function formatDateTime(value: string) {

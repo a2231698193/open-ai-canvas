@@ -291,9 +291,11 @@ Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考
 
 `credit_accounts` 分为通用积分池（充值、签到、注册赠送，永不过期）和会员积分池（后台发放，带 `membershipExpiresAt` 到期时间）。生成扣费、系统代理计费等预留路径按「会员池优先 → 通用池」拆分：会员池未过期先扣，差额扣通用池；`billing_orders.membershipAmountMicrocredits` 记录预留时的会员池部分，退款按此拆回，会员池已过期时该部分并入通用池退回，避免退款被过期清零吞掉。结算多退部分优先退回剩余会员份额，少补从通用池扣除。台账 `membershipDeltaMicrocredits` 记录会员池变动，预留、消耗、退款全周期对账归零。
 
-`GET /membership/plans` 返回启用中的会员等级（level 升序）与当前登录用户的订阅状态（`membership`、`effective`），供会员权益页一次拉取。`GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`，并附带 `membership`（当前订阅）、`membershipPlanName` 与 `membershipPoolValid`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
+`GET /membership/plans` 返回启用中的会员等级（level 升序）、当前登录用户的订阅状态（`membership`、`effective`）、三档价格字段（`monthPriceFen`、`quarterPriceFen`、`yearPriceFen`，单位分；0 表示该时长未开放购买）、`paymentAvailable`（是否存在已启用且配置完成的支付渠道）以及当前会员对更高等级的 `upgradeQuotes`（补差金额、剩余天数、是否可升级及原因）。`GET /wallet` 的 `account` 包含 `membershipMicrocredits` 与 `membershipExpiresAt`，并附带 `membership`（当前订阅）、`membershipPlanName` 与 `membershipPoolValid`；管理员用户详情 `account` 同样分列两池余额。会员池过期后由后台清扫任务清零并写入 `membership_expire_clear` 台账；预留时遇到过期余额也会惰性清零。管理端运营数据的「用户总余额」为两池之和。
 
-管理端会员接口（均需管理员权限并写入审计）：`GET/POST /admin/membership/plans` 列出与保存等级配置（名称、level 唯一、排序、每月到账积分、并发任务、存储/日上传、签到覆盖）；`POST /admin/users/:id/membership/grant` 开通或续费（`planId` + `months` 1-36，周期顺延，锚点不变，到期的窗口立即补发）；`POST /admin/users/:id/membership/upgrade` 立即升级并整额补差（新月额度 − 旧月额度，有效期跟随当前会员池），service 层拒绝降级与同等级；`POST /admin/users/:id/membership/cancel` 作废（已发放积分保留到自然过期）。锚点窗口为开通日起每 30 天一期，窗口末超过周期末按实际剩余天数发放，额度仍为整月；发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等，后台每小时清扫补发。
+`POST /membership/orders` 创建会员支付订单（需登录且积分功能开启）。请求为 `{ planId, months, providerId, idempotencyKey }`，客户端不提交金额。服务端按当前订阅推导变更类型：无生效会员为 `new`，同等级为 `renew`（周期顺延），更高等级为 `upgrade`（立即切换等级、周期不变，金额 = `ceil((新等级月价 − 旧等级月价) × 剩余天数 / 30)`），更低等级拒绝。`months` 仅支持 1/3/12；价格和金额全部由服务端读取并快照。返回与积分充值相同的订单视图，后续查询、关单、刷新收银台复用 `/payments/orders/*`。同一用户同时只允许一笔未完成的会员订单，重复幂等键仍返回原订单；`GET /membership/orders/active` 返回当前用户未完成的会员订单（没有时为 `null`），前台据此恢复收银台或先关闭旧订单。会员变更与订单入账在同一事务提交；会员订单支付回跳 `/membership?paymentOrder=...`，积分订单仍回 `/wallet?paymentOrder=...`。
+
+管理端会员接口（均需管理员权限并写入审计）：`GET/POST /admin/membership/plans` 列出与保存等级配置（名称、level 唯一、排序、每月到账积分、并发任务、存储/日上传、签到覆盖、月/季/年价格）；`POST /admin/users/:id/membership/grant` 开通或续费（`planId` + `months` 1-36，周期顺延，锚点不变，到期的窗口立即补发）；`POST /admin/users/:id/membership/upgrade` 立即升级并整额补差（新月额度 − 旧月额度，有效期跟随当前会员池），service 层拒绝降级与同等级；`POST /admin/users/:id/membership/cancel` 作废（已发放积分保留到自然过期）。锚点窗口为开通日起每 30 天一期，窗口末超过周期末按实际剩余天数发放，额度仍为整月；发放以 `membership-grant:{订阅ID}:{窗口序号}` 幂等，后台每小时清扫补发。会员过期后再次开通或续费会先结束旧 `active` 行，再创建新周期，避免撞用户级 active 唯一索引。
 
 ## 画布保存与 operations 同步
 
@@ -407,6 +409,8 @@ Skills 的 `tool_completed` / `tool_failed` 事件附带 `skillId`、`skillName`
 
 每条管理员列表订单在原有字段之外包含 `user: { id, username, displayName, email }`，由当前页用户 ID 批量读取；用户不存在时返回 `user: null`，保留原 `userId` 与历史订单。此身份摘要仅用于管理员订单列表，不添加到普通用户支付接口或支付状态同步响应。
 
+订单视图包含 `kind`（`topup` / `membership`）及会员订单快照：`membershipPlanId`、`membershipPlanName`、`membershipLevel`、`membershipMonths`、`membershipChange`（`new` / `renew` / `upgrade`）、`membershipPreviousPlanId`、`membershipPreviousPlanName`、`membershipRemainingDays`、`membershipMonthlyGrantMicrocredits`、`membershipCreditDiffMicrocredits`。会员订单的 `creditsMicrocredits` 为 0，金额仍为 `amountFen`；首月发放额度取订单快照，不随等级配置后续修改而变化。
+
 后台支付订单列表展示用户身份，点击名称打开用户详情；订单详情提供完整订单号、渠道交易号、用户 ID 和各阶段时间。同步支付状态与关闭订单位于更多菜单，关闭订单仍需确认。
 
 官方易支付插件 `official-payment-epay` 通过既有支付接口接入，不新增业务路由。管理员必须显式填写可信支付网关；V1 支持 MD5 下单、查单与通知验签，未付款订单的关单仅关闭本地记录。V2 目前只支持 RSA 下单和通知验签，不支持查单、刷新收银台及自动关单；相应操作返回明确失败，不能按“订单已关闭”处理。启用前需在实际网关验收回调和到账，不能用插件安装成功代替支付链路验收。
@@ -419,7 +423,7 @@ Skills 的 `tool_completed` / `tool_failed` 事件附带 `skillId`、`skillName`
 
 | 接口 | 参数与内容 |
 | --- | --- |
-| `GET /api/admin/payments/orders/export.csv` | 与订单列表相同的筛选；完整订单号、渠道交易号、用户身份、商品、渠道、金额、币种、积分、订单/渠道状态及各阶段时间 |
+| `GET /api/admin/payments/orders/export.csv` | 与订单列表相同的筛选；完整订单号、渠道交易号、用户身份、商品、订单类型、会员变更/周期、渠道、金额、币种、积分、订单/渠道状态及各阶段时间 |
 | `GET /api/admin/payments/reconciliations/export.csv` | 与对账列表相同的筛选；每日执行状态、总笔数、一致/补发/异常笔数、失败原因、发起人 ID 或系统、开始/完成时间 |
 | `GET /api/admin/payments/reconciliations/:id/items/export.csv` | `result`；单次对账的完整交易明细及对账开始/完成时间，便于区分同日重跑结果 |
 

@@ -84,28 +84,32 @@
     background: color-mix(in srgb, var(--card-accent) 14%, transparent);
 }
 
-.membership-card-grant {
+.membership-card-price {
     margin: 0;
     display: flex;
     align-items: baseline;
-    gap: 5px;
+    gap: 6px;
 }
 
-.membership-card-grant strong {
+.membership-card-price strong {
     font-size: 30px;
     font-weight: 750;
     line-height: 1.15;
     letter-spacing: -0.02em;
 }
 
-.membership-card.is-featured .membership-card-grant strong,
-.membership-card.is-current .membership-card-grant strong {
+.membership-card.is-featured .membership-card-price strong,
+.membership-card.is-current .membership-card-price strong {
     color: #fbbf24;
 }
 
-.membership-card-grant span {
+.membership-card-price span {
     font-size: 13px;
     opacity: 0.65;
+}
+
+.membership-card-price.is-muted strong {
+    opacity: 0.45;
 }
 
 .membership-card-note {
@@ -156,6 +160,53 @@
     color: #1c1917;
     background: linear-gradient(135deg, #fbbf24, #f59e0b);
     box-shadow: 0 8px 18px -10px color-mix(in srgb, #f59e0b 70%, transparent);
+}
+
+.membership-plans {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 16px);
+}
+
+.membership-duration-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3, 12px);
+    flex-wrap: wrap;
+}
+
+.membership-duration-switch {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid color-mix(in srgb, var(--user-ink) 12%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--user-ink) 4%, transparent);
+}
+
+.membership-duration-switch button {
+    min-width: 68px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 999px;
+    color: inherit;
+    font-size: 13px;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.membership-duration-switch button.is-selected {
+    color: #fff;
+    background: var(--primary);
+    opacity: 1;
+    box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+.membership-duration-hint {
+    font-size: 12px;
+    opacity: 0.55;
 }
 
 /* 当前方案横幅：深蓝渐变 + 金色徽标 + 皇冠装饰图。 */
@@ -257,6 +308,130 @@
     font-size: 13px;
     font-weight: 400;
     opacity: 0.6;
+}
+
+/* 会员收银台与回退提示。 */
+
+.membership-checkout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 4px;
+    text-align: center;
+}
+
+.membership-checkout-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    color: #fbbf24;
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
+
+.membership-checkout > strong {
+    font-size: 24px;
+}
+
+.membership-checkout > p {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.7;
+}
+
+.membership-checkout-hint {
+    font-size: 12px;
+    opacity: 0.55;
+}
+
+.membership-checkout-providers {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.membership-checkout-providers button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid color-mix(in srgb, var(--user-ink) 14%, transparent);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.membership-checkout-providers button.is-selected {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.membership-checkout-providers svg {
+    width: 16px;
+    height: 16px;
+}
+
+.membership-checkout-empty {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    text-align: left;
+    background: color-mix(in srgb, #f59e0b 10%, transparent);
+    color: #b45309;
+}
+
+.membership-checkout-empty svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.membership-checkout-empty strong,
+.membership-checkout-empty span {
+    display: block;
+    font-size: 13px;
+}
+
+.membership-checkout-empty span {
+    opacity: 0.75;
+}
+
+.membership-checkout-status {
+    font-size: 12px;
+    opacity: 0.65;
+}
+
+.membership-checkout-status.is-success {
+    color: #16a34a;
+    opacity: 1;
+}
+
+.membership-checkout-status.is-error {
+    color: #dc2626;
+    opacity: 1;
+}
+
+.membership-contact-notice {
+    margin: 0 0 var(--space-2, 8px);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
 }
 
 /* 联系开通弹窗。 */

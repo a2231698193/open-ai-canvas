@@ -65,6 +65,8 @@ Schema 45 新增 `upload_reservations`：`id`、`user_id`、`size`、`day`、`ex
 
 本地 v50–v53 不变：v50 会员双池、v51 会员计费拆分、v52 会员池回填、v53 画布 mutation 回执。不把官方曾占用 v51 的工作台账本改写进本地库。
 
+本地 v61 新增会员定价与在线购买：`membership_plans` 增加 `month_price_fen`、`quarter_price_fen`、`year_price_fen`（单位分，0 表示该时长未开放购买）；`payment_orders` 增加 `kind`（`topup` / `membership`）以及会员方案、等级、时长、变更类型、原等级、剩余天数和升级积分差快照。会员订单同时快照每月发放积分，履约不依赖下单后可能变动的等级配置。存量支付订单的 `kind` 回填为 `topup`。
+
 升级前备份，按既有流程执行 `migrate-schema up` 和 `verify` 后再启动新后端。旧版本二进制不支持版本 42，回退需恢复匹配的数据库备份，并评估备份之后的新写入；不能只切回旧镜像。关闭自动迁移的生产环境必须运行正式迁移；手工改表不能更新 `schema_migrations` 的版本与校验和记录。
 
 ### 生成成功后的作品保存恢复
@@ -254,9 +256,11 @@ docker compose -f docker-compose.deploy.yml up -d backend web
 
 | 表 | 用途 | 关键边界 |
 | --- | --- | --- |
+| `membership_plans` | 会员等级、权益与三档价格配置 | `level` 全局唯一；schema v61 增加 `month_price_fen`、`quarter_price_fen`、`year_price_fen`，0 = 该时长未开放购买；价格只在服务端读取并写入订单快照 |
+| `user_memberships` | 用户会员订阅周期与等级 | 同一用户仅一条 `active`；过期后开通/续费先结束旧 `active` 行再创建新周期，避免撞 partial unique index |
 | `topup_products` | 保存服务端维护的充值商品、金额、积分快照和上架策略 | 客户端只能提交商品 ID；金额和积分由 service 读取，不能由请求覆盖。schema v43 增加销售策略、周期限购、库存和销售时间；`payment_orders.stock_reserved` 标记未支付库存预占 |
 | `payment_provider_configs` | 保存支付插件某个渠道配置的不可变版本 | `provider_id + version` 唯一；密钥只保存加密密文；`plugin_id` / `plugin_version` 记录配置对应的插件版本 |
-| `payment_orders` | 保存充值订单、幂等键、渠道交易号和入账状态 | 创建订单时固定 `plugin_id`、`plugin_version`、配置 ID 与配置版本；回调、查单、关单必须使用同一运行时版本 |
+| `payment_orders` | 保存积分充值或会员购买订单、幂等键、渠道交易号和入账状态 | 创建订单时固定 `plugin_id`、`plugin_version`、配置 ID 与配置版本；回调、查单、关单必须使用同一运行时版本。schema v61 增加 `kind` 与会员订单快照；会员订单的金额、等级和周期由服务端计算，履约与订单入账同事务 |
 | `payment_notifications` | 保存已验签的支付通知收件箱 | 以渠道事件 ID 幂等；只保存用于异步入账的标准化证据，重复通知不会重复发放积分 |
 | `payment_reconciliation_runs` / `payment_reconciliation_items` | 保存渠道账单下载和对账结果 | 账单只能作为发现线索，金额、币种和交易号仍需由插件查单确认；历史订单继续绑定原插件版本 |
 

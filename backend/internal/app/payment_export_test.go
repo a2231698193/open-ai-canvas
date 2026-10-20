@@ -49,6 +49,43 @@ func TestPaymentCSVEncodingAndPrecision(t *testing.T) {
 	}
 }
 
+func TestPaymentOrderExportIncludesMembershipSnapshot(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&model.PaymentOrder{}, &model.User{}); err != nil {
+		t.Fatal(err)
+	}
+	order := model.PaymentOrder{
+		ID: "membership-order", UserID: "user-1", IdempotencyKey: "idem", MerchantOrderNo: "merchant-1",
+		Kind: model.PaymentOrderKindMembership, ProductName: "2级会员会员升级",
+		MembershipPlanID: "plan-2", MembershipPlanName: "2级会员", MembershipLevel: 2,
+		MembershipChange: model.MembershipChangeUpgrade, MembershipPreviousPlanID: "plan-1",
+		MembershipPreviousPlanName: "1级会员", MembershipRemainingDays: 10,
+		AmountFen: 3667, Currency: "CNY", Status: model.PaymentOrderCredited, CreatedAt: time.Now(),
+	}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	s := &Service{repo: repository.New(db)}
+	admin := &model.User{ID: "admin", Role: model.UserRoleAdmin}
+	data, err := s.AdminPaymentOrdersCSV(context.Background(), admin, PaymentOrderQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := readPaymentTestCSV(t, data)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d", len(rows))
+	}
+	row := rows[1]
+	if row[8] != "会员" || row[9] != "升级 · 原 1级会员" || row[11] != "36.67" || row[13] != "0" {
+		t.Fatalf("membership export row = %#v", row)
+	}
+}
+
 func TestPaymentExportDateValidation(t *testing.T) {
 	f, err := (PaymentOrderQuery{From: "2026-09-01", To: "2026-09-01", TimeField: "paid"}).filter()
 	if err != nil {
@@ -119,7 +156,7 @@ func TestPaymentExportsAllRowsAndReconciliationSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := readPaymentTestCSV(t, data)
-	if len(rows) != 32 || rows[1][3] != "missing" || rows[1][4] != "" || rows[1][9] != "10.01" || rows[1][11] != "1.000001" || rows[1][14] != "2026-09-17 16:00:00" {
+	if len(rows) != 32 || rows[1][3] != "missing" || rows[1][4] != "" || rows[1][8] != "积分充值" || rows[1][9] != "" || rows[1][11] != "10.01" || rows[1][13] != "1.000001" || rows[1][16] != "2026-09-17 16:00:00" {
 		t.Fatalf("wrong order export: count=%d row=%#v", len(rows), rows[1])
 	}
 	run := model.PaymentReconciliationRun{ID: "run", ProviderID: "wechat-native", BillDate: "2026-09-17", Status: model.PaymentReconciliationCompleted, TotalItems: 2, MatchItems: 1, ErrorItems: 1, StartedBy: "system", StartedAt: now, CompletedAt: &now}

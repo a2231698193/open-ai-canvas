@@ -81,11 +81,24 @@ type PaymentCheckoutView struct {
 }
 
 type PaymentOrderView struct {
-	ID                  string                   `json:"id"`
-	UserID              string                   `json:"userId,omitempty"`
-	MerchantOrderNo     string                   `json:"merchantOrderNo"`
-	ProductID           string                   `json:"productId"`
-	ProductName         string                   `json:"productName"`
+	ID              string                 `json:"id"`
+	UserID          string                 `json:"userId,omitempty"`
+	MerchantOrderNo string                 `json:"merchantOrderNo"`
+	Kind            model.PaymentOrderKind `json:"kind"`
+	ProductID       string                 `json:"productId"`
+	ProductName     string                 `json:"productName"`
+
+	MembershipPlanID                   string                     `json:"membershipPlanId,omitempty"`
+	MembershipPlanName                 string                     `json:"membershipPlanName,omitempty"`
+	MembershipLevel                    int                        `json:"membershipLevel,omitempty"`
+	MembershipMonths                   int                        `json:"membershipMonths,omitempty"`
+	MembershipChange                   model.MembershipChangeType `json:"membershipChange,omitempty"`
+	MembershipPreviousPlanID           string                     `json:"membershipPreviousPlanId,omitempty"`
+	MembershipPreviousPlanName         string                     `json:"membershipPreviousPlanName,omitempty"`
+	MembershipRemainingDays            int                        `json:"membershipRemainingDays,omitempty"`
+	MembershipMonthlyGrantMicrocredits int64                      `json:"membershipMonthlyGrantMicrocredits,omitempty"`
+	MembershipCreditDiffMicrocredits   int64                      `json:"membershipCreditDiffMicrocredits,omitempty"`
+
 	ProviderID          string                   `json:"providerId"`
 	AmountFen           int64                    `json:"amountFen"`
 	Currency            string                   `json:"currency"`
@@ -171,6 +184,7 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 	now := time.Now()
 	order := &model.PaymentOrder{
 		ID: newID(), UserID: actor.ID, IdempotencyKey: idempotencyKey, MerchantOrderNo: newID(),
+		Kind:      model.PaymentOrderKindTopup,
 		ProductID: product.ID, ProductName: product.Name, ProviderID: provider.Descriptor().ID,
 		PluginID: provider.Descriptor().PluginID, PluginVersion: provider.Descriptor().PluginVersion, ProviderConfigID: config.ID, ProviderConfigVersion: config.Version,
 		AmountFen: product.AmountFen, Currency: "CNY", CreditsMicrocredits: product.CreditsMicrocredits,
@@ -188,6 +202,12 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 		view := paymentOrderView(*order)
 		return &view, nil
 	}
+	return s.createPaymentCheckout(ctx, order, provider, config)
+}
+
+// createPaymentCheckout 是充值/会员订单共用的渠道下单尾段：解密配置、调用渠道、
+// 保存收银台并返回最新订单视图。渠道失败只标记当前订单，不隐式重试。
+func (s *Service) createPaymentCheckout(ctx context.Context, order *model.PaymentOrder, provider payment.Provider, config *model.PaymentProviderConfig) (*PaymentOrderView, error) {
 	values, err := s.decryptPaymentConfig(config)
 	if err != nil {
 		_ = s.repo.SetPaymentOrderCreateFailure(order.ID, safePaymentError(err))
@@ -195,7 +215,7 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 	}
 	baseURL := strings.TrimRight(values["publicBaseUrl"], "/")
 	checkout, err := provider.CreateOrder(ctx, values, payment.CreateRequest{
-		MerchantOrderNo: order.MerchantOrderNo, Description: product.Name, AmountFen: order.AmountFen,
+		MerchantOrderNo: order.MerchantOrderNo, Description: order.ProductName, AmountFen: order.AmountFen,
 		Currency: order.Currency, ExpiresAt: order.ExpiresAt,
 		NotifyURL: baseURL + "/api/payments/notify/" + url.PathEscape(order.ProviderID) + "/" + url.PathEscape(config.ID),
 		ReturnURL: baseURL + "/api/payments/return/" + url.PathEscape(order.ProviderID) + "?orderId=" + url.QueryEscape(order.ID),
@@ -208,12 +228,24 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 		_ = s.repo.SetPaymentOrderCreateFailure(order.ID, safePaymentError(err))
 		return nil, err
 	}
-	order, err = s.repo.PaymentOrder(order.ID)
+	updated, err := s.repo.PaymentOrder(order.ID)
 	if err != nil {
 		return nil, err
 	}
-	result := paymentOrderView(*order)
+	result := paymentOrderView(*updated)
 	return &result, nil
+}
+
+// PaymentReturnPath 按订单类型决定支付完成后的前台落点；会员订单不能落进积分充值弹窗。
+func (s *Service) PaymentReturnPath(orderID string) string {
+	order, err := s.repo.PaymentOrder(strings.TrimSpace(orderID))
+	if err != nil {
+		return "/wallet?payment=invalid"
+	}
+	if order.Kind == model.PaymentOrderKindMembership {
+		return "/membership?paymentOrder=" + url.QueryEscape(order.ID)
+	}
+	return "/wallet?paymentOrder=" + url.QueryEscape(order.ID)
 }
 
 func (s *Service) PaymentOrder(actor *model.User, id string) (*PaymentOrderView, error) {
@@ -540,6 +572,10 @@ func paymentOrderView(order model.PaymentOrder) PaymentOrderView {
 	if order.ProviderTradeNo != nil {
 		providerTradeNo = *order.ProviderTradeNo
 	}
+	kind := order.Kind
+	if kind == "" {
+		kind = model.PaymentOrderKindTopup
+	}
 	checkout := PaymentCheckoutView{Mode: order.CheckoutMode, ExpiresAt: order.CheckoutExpiresAt}
 	if order.Status == model.PaymentOrderPending && order.ExpiresAt.After(time.Now()) {
 		if order.CheckoutMode == "qr_code" {
@@ -549,8 +585,15 @@ func paymentOrderView(order model.PaymentOrder) PaymentOrderView {
 		}
 	}
 	return PaymentOrderView{
-		ID: order.ID, UserID: order.UserID, MerchantOrderNo: order.MerchantOrderNo, ProductID: order.ProductID, ProductName: order.ProductName,
-		ProviderID: order.ProviderID, AmountFen: order.AmountFen, Currency: order.Currency,
+		ID: order.ID, UserID: order.UserID, MerchantOrderNo: order.MerchantOrderNo, Kind: kind,
+		ProductID: order.ProductID, ProductName: order.ProductName,
+		MembershipPlanID: order.MembershipPlanID, MembershipPlanName: order.MembershipPlanName,
+		MembershipLevel: order.MembershipLevel, MembershipMonths: order.MembershipMonths,
+		MembershipChange: order.MembershipChange, MembershipPreviousPlanID: order.MembershipPreviousPlanID,
+		MembershipPreviousPlanName: order.MembershipPreviousPlanName, MembershipRemainingDays: order.MembershipRemainingDays,
+		MembershipMonthlyGrantMicrocredits: order.MembershipMonthlyGrantMicrocredits,
+		MembershipCreditDiffMicrocredits:   order.MembershipCreditDiffMicrocredits,
+		ProviderID:                         order.ProviderID, AmountFen: order.AmountFen, Currency: order.Currency,
 		CreditsMicrocredits: order.CreditsMicrocredits, Status: order.Status, ProviderStatus: order.ProviderStatus,
 		ProviderTradeNo: providerTradeNo, Checkout: checkout, ExpiresAt: order.ExpiresAt,
 		ProviderPaidAt: order.ProviderPaidAt, CreditedAt: order.CreditedAt, ClosedAt: order.ClosedAt,

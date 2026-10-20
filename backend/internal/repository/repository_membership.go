@@ -23,6 +23,27 @@ func (r *Repository) ActiveUserMembership(userID string) (*model.UserMembership,
 	return &membership, nil
 }
 
+// OpenUserMembership 返回 status=active 的订阅（不按 period_end 过滤）。
+// 过期后旧行仍是 active，开通新周期前必须结束它，否则会撞 active 唯一索引。
+func (r *Repository) OpenUserMembership(userID string) (*model.UserMembership, error) {
+	var membership model.UserMembership
+	err := r.db.Where("user_id = ? AND status = ?", userID, model.MembershipStatusActive).First(&membership).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &membership, nil
+}
+
+// CancelUserMembershipByID 结束单条 active 订阅。
+func (r *Repository) CancelUserMembershipByID(id string) error {
+	return r.db.Model(&model.UserMembership{}).
+		Where("id = ? AND status = ?", id, model.MembershipStatusActive).
+		Update("status", model.MembershipStatusCancelled).Error
+}
+
 // MembershipPlan 按 ID 读取等级配置；不存在时返回 gorm.ErrRecordNotFound。
 func (r *Repository) MembershipPlan(planID string) (*model.MembershipPlan, error) {
 	var plan model.MembershipPlan
@@ -54,10 +75,11 @@ func (r *Repository) SaveMembershipPlan(plan *model.MembershipPlan) error {
 			"monthly_grant_microcredits": plan.MonthlyGrantMicrocredits, "active_task_limit": plan.ActiveTaskLimit,
 			"storage_gb": plan.StorageGB, "daily_upload_mb": plan.DailyUploadMB,
 			"checkin_bonus_override_microcredits": plan.CheckinBonusOverrideMicrocredits,
+			"month_price_fen":                     plan.MonthPriceFen, "quarter_price_fen": plan.QuarterPriceFen, "year_price_fen": plan.YearPriceFen,
 		}).Error
 	}
 	// Enabled=false 是合法配置；GORM 会把零值字段交给 default 标签，必须 Select 强制写入。
-	return r.db.Select("ID", "Name", "Level", "Enabled", "SortOrder", "MonthlyGrantMicrocredits", "ActiveTaskLimit", "StorageGB", "DailyUploadMB", "CheckinBonusOverrideMicrocredits").Create(plan).Error
+	return r.db.Select("ID", "Name", "Level", "Enabled", "SortOrder", "MonthlyGrantMicrocredits", "ActiveTaskLimit", "StorageGB", "DailyUploadMB", "CheckinBonusOverrideMicrocredits", "MonthPriceFen", "QuarterPriceFen", "YearPriceFen").Create(plan).Error
 }
 
 // UserMembershipByID 按 ID 读取订阅。
@@ -117,7 +139,11 @@ func (r *Repository) ActiveUserMemberships() ([]model.UserMembership, error) {
 
 // UpdateMembershipGrantedMonths 以 CAS 方式推进已发放窗口数，防止清扫任务并发重复计数。
 func (r *Repository) UpdateMembershipGrantedMonths(id string, from int, to int) error {
-	result := r.db.Model(&model.UserMembership{}).
+	return updateMembershipGrantedMonthsTx(r.db, id, from, to)
+}
+
+func updateMembershipGrantedMonthsTx(tx *gorm.DB, id string, from int, to int) error {
+	result := tx.Model(&model.UserMembership{}).
 		Where("id = ? AND granted_months = ?", id, from).
 		Update("granted_months", to)
 	if result.Error != nil {
@@ -135,60 +161,66 @@ func (r *Repository) GrantMembershipCredits(userID string, amount int64, expires
 	var account model.CreditAccount
 	var granted bool
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.CreditAccount{UserID: userID}).Error; err != nil {
-			return err
-		}
-		if err := tx.First(&account, "user_id = ?", userID).Error; err != nil {
-			return err
-		}
-		var count int64
-		if err := tx.Model(&model.CreditLedgerEntry{}).Where("reference_key = ?", referenceKey).Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
-			return nil
-		}
-		newExpiry := expiresAt
-		if !account.MembershipExpiresAt.IsZero() && account.MembershipExpiresAt.After(time.Now()) && account.MembershipExpiresAt.After(newExpiry) {
-			newExpiry = account.MembershipExpiresAt
-		}
-		updated := tx.Model(&model.CreditAccount{}).
-			Where("user_id = ?", userID).
-			Updates(map[string]any{
-				"membership_microcredits": gorm.Expr("membership_microcredits + ?", amount),
-				"membership_expires_at":   newExpiry,
-				"version":                 gorm.Expr("version + 1"),
-				"updated_at":              time.Now(),
-			})
-		if updated.Error != nil {
-			return updated.Error
-		}
-		if updated.RowsAffected != 1 {
-			return gorm.ErrRecordNotFound
-		}
-		if err := tx.First(&account, "user_id = ?", userID).Error; err != nil {
-			return err
-		}
-		key := referenceKey
-		if err := tx.Create(&model.CreditLedgerEntry{
-			ID:                          newRepositoryID(),
-			UserID:                      userID,
-			Type:                        entryType,
-			AmountMicrocredits:          amount,
-			MembershipDeltaMicrocredits: amount,
-			MembershipAfterMicrocredits: account.MembershipMicrocredits,
-			AvailableAfterMicrocredits:  account.AvailableMicrocredits,
-			ReservedAfterMicrocredits:   account.ReservedMicrocredits,
-			ReferenceKey:                &key,
-			Note:                        note,
-		}).Error; err != nil {
-			return err
-		}
-		granted = true
-		return nil
+		var err error
+		account, granted, err = grantMembershipCreditsTx(tx, userID, amount, expiresAt, entryType, referenceKey, note)
+		return err
 	})
 	if err != nil {
 		return nil, false, err
 	}
 	return &account, granted, nil
+}
+
+func grantMembershipCreditsTx(tx *gorm.DB, userID string, amount int64, expiresAt time.Time, entryType model.CreditLedgerType, referenceKey string, note string) (model.CreditAccount, bool, error) {
+	var account model.CreditAccount
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.CreditAccount{UserID: userID}).Error; err != nil {
+		return account, false, err
+	}
+	if err := tx.First(&account, "user_id = ?", userID).Error; err != nil {
+		return account, false, err
+	}
+	var count int64
+	if err := tx.Model(&model.CreditLedgerEntry{}).Where("reference_key = ?", referenceKey).Count(&count).Error; err != nil {
+		return account, false, err
+	}
+	if count > 0 {
+		return account, false, nil
+	}
+	newExpiry := expiresAt
+	if !account.MembershipExpiresAt.IsZero() && account.MembershipExpiresAt.After(time.Now()) && account.MembershipExpiresAt.After(newExpiry) {
+		newExpiry = account.MembershipExpiresAt
+	}
+	updated := tx.Model(&model.CreditAccount{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]any{
+			"membership_microcredits": gorm.Expr("membership_microcredits + ?", amount),
+			"membership_expires_at":   newExpiry,
+			"version":                 gorm.Expr("version + 1"),
+			"updated_at":              time.Now(),
+		})
+	if updated.Error != nil {
+		return account, false, updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return account, false, gorm.ErrRecordNotFound
+	}
+	if err := tx.First(&account, "user_id = ?", userID).Error; err != nil {
+		return account, false, err
+	}
+	key := referenceKey
+	if err := tx.Create(&model.CreditLedgerEntry{
+		ID:                          newRepositoryID(),
+		UserID:                      userID,
+		Type:                        entryType,
+		AmountMicrocredits:          amount,
+		MembershipDeltaMicrocredits: amount,
+		MembershipAfterMicrocredits: account.MembershipMicrocredits,
+		AvailableAfterMicrocredits:  account.AvailableMicrocredits,
+		ReservedAfterMicrocredits:   account.ReservedMicrocredits,
+		ReferenceKey:                &key,
+		Note:                        note,
+	}).Error; err != nil {
+		return account, false, err
+	}
+	return account, true, nil
 }

@@ -1,16 +1,26 @@
 import { Button } from "antd";
 import { RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router";
 
-import { MembershipContactModal, MembershipCurrentStrip, MembershipPlanCards, useMembershipPlans } from "@/components/membership/membership-plan-cards";
+import { MembershipCurrentStrip, MembershipPlanCards, useMembershipPlans } from "@/components/membership/membership-plan-cards";
+import { useMembershipPurchase } from "@/components/membership/use-membership-purchase";
 import { PageHeader, WorkspacePage } from "@/components/layout/workspace-page";
 import { WorkspaceErrorState, WorkspaceLoadingState } from "@/components/layout/workspace-state";
-import type { MembershipPlan } from "@/services/api/membership";
 
 export default function MembershipPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const paymentOrderId = searchParams.get("paymentOrder") || "";
     const { data, loading, loadError, reload } = useMembershipPlans(true);
-    const [contactPlan, setContactPlan] = useState<MembershipPlan | null>(null);
+    const { onPurchase, purchaseModals } = useMembershipPurchase(data, reload, paymentOrderId);
     const plans = data?.plans || [];
+
+    useEffect(() => {
+        if (!paymentOrderId) return;
+        const next = new URLSearchParams(searchParams);
+        next.delete("paymentOrder");
+        setSearchParams(next, { replace: true });
+    }, [paymentOrderId, searchParams, setSearchParams]);
 
     return (
         <WorkspacePage>
@@ -32,17 +42,17 @@ export default function MembershipPage() {
                 <div className="mt-4 flex flex-col gap-4">
                     <MembershipCurrentStrip effective={data?.effective} membership={data?.membership} />
                     {plans.length ? (
-                        <MembershipPlanCards plans={plans} effective={data?.effective} membership={data?.membership} onContact={(plan) => setContactPlan(plan)} />
+                        <MembershipPlanCards plans={plans} effective={data?.effective} upgradeQuotes={data?.upgradeQuotes} onPurchase={onPurchase} />
                     ) : (
                         <WorkspaceErrorState title="暂无可选会员方案" description="管理员还没有配置启用中的会员等级，请稍后再来。" />
                     )}
                     <p className="membership-footnote">
-                        会员由管理员人工开通与升级；已发放的会员积分在有效期内有效，到期未用完会自动清零并记录台账。通用积分（充值、兑换、签到）不受影响。
+                        支持在线开通、续费与升级；升级按剩余周期补差、到期日不变。支付渠道未开通时请联系管理员办理。会员积分在有效期内有效，到期未用完会自动清零并记录台账；通用积分（充值、兑换、签到）不受影响。
                     </p>
                 </div>
             )}
 
-            <MembershipContactModal plan={contactPlan} membership={data?.membership} open={Boolean(contactPlan)} onCancel={() => setContactPlan(null)} />
+            {purchaseModals}
         </WorkspacePage>
     );
 }

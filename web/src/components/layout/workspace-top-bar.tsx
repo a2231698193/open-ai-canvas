@@ -1,5 +1,5 @@
 import { Crown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { SystemAnnouncementCenter } from "@/components/layout/system-announcement-center";
@@ -12,6 +12,7 @@ import { useUserStore } from "@/stores/use-user-store";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { MembershipPlansModal } from "@/components/membership/membership-plans-modal";
+import { formatMembershipPrice, useMembershipPlans } from "@/components/membership/membership-plan-cards";
 import { openWorkspaceWallet } from "@/lib/workspace-wallet";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -35,10 +36,19 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
     const user = useUserStore((state) => state.user);
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const { availableMicrocredits } = useWalletBalance(user?.id, creditsEnabled);
+    const { data: membershipPlans } = useMembershipPlans(creditsEnabled);
     const { pathname } = useLocation();
     const slug = pathname.split("/").filter(Boolean)[0];
     const pageTitle = slug ? PAGE_TITLES[slug] || brandName : PAGE_TITLES.home;
     const balance = availableMicrocredits === null ? "--" : (availableMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+    const plans = membershipPlans?.plans;
+    const minMonthlyPriceFen = useMemo(() => {
+        const prices = (plans || []).map((plan) => plan.monthPriceFen).filter((price) => price > 0);
+        return prices.length ? Math.min(...prices) : 0;
+    }, [plans]);
+    const currentPlan = membershipPlans?.effective.active ? plans?.find((plan) => plan.id === membershipPlans.effective.planId) : undefined;
+    const membershipLabel = membershipPlans?.effective.active ? "续费" : "开通会员";
+    const membershipPriceFen = currentPlan && currentPlan.monthPriceFen > 0 ? currentPlan.monthPriceFen : minMonthlyPriceFen;
 
     return (
         <header className="app-workspace-topbar">
@@ -54,9 +64,15 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
             <div className="app-workspace-topbar-actions">
                 {creditsEnabled ? (
                     <>
-                        <button type="button" className="app-workspace-topbar-credit-pill" aria-label="查看会员权益" onClick={() => setMembershipOpen(true)}>
+                        <button
+                            type="button"
+                            className="app-workspace-topbar-credit-pill"
+                            aria-label={membershipPriceFen > 0 ? `${membershipLabel}，${formatMembershipPrice(membershipPriceFen)} 起` : "查看会员权益"}
+                            onClick={() => setMembershipOpen(true)}
+                        >
                             <Crown className="size-4" />
-                            <span>开通会员</span>
+                            <span>{membershipLabel}</span>
+                            {membershipPriceFen > 0 ? <small className="app-workspace-topbar-credit-price">{formatMembershipPrice(membershipPriceFen)} 起</small> : null}
                         </button>
                         <button type="button" className="app-workspace-topbar-credit-pill" aria-label={`打开积分中心，可用 ${balance} 积分`} onClick={() => openWorkspaceWallet()}>
                             <WorkspaceCreditGiftMark />

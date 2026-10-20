@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +23,40 @@ func RegisterMembershipRoutes(r *gin.RouterGroup, svc *service.Service) {
 			return
 		}
 		ok(c, result)
+	})
+	r.GET("/membership/orders/active", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		order, err := svc.ActiveMembershipOrder(user)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"order": order})
+	})
+	r.POST("/membership/orders", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		if !enforceRateLimit(c, "membership-order:"+user.ID, 20, time.Hour) {
+			return
+		}
+		var request service.CreateMembershipOrderRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		order, err := svc.CreateMembershipOrder(c.Request.Context(), user, request)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"order": order})
 	})
 	r.GET("/admin/membership/plans", func(c *gin.Context) {
 		user, err := currentUser(c, svc)

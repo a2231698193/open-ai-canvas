@@ -38,13 +38,26 @@ export type TopupProduct = {
 };
 
 export type PaymentOrderStatus = "created" | "pending" | "closing" | "closed" | "credited" | "create_failed";
+export type PaymentOrderKind = "topup" | "membership";
+export type MembershipChangeType = "new" | "renew" | "upgrade";
 
 export type PaymentOrder = {
     id: string;
     userId?: string;
     merchantOrderNo: string;
+    kind: PaymentOrderKind;
     productId: string;
     productName: string;
+    membershipPlanId?: string;
+    membershipPlanName?: string;
+    membershipLevel?: number;
+    membershipMonths?: number;
+    membershipChange?: MembershipChangeType;
+    membershipPreviousPlanId?: string;
+    membershipPreviousPlanName?: string;
+    membershipRemainingDays?: number;
+    membershipMonthlyGrantMicrocredits?: number;
+    membershipCreditDiffMicrocredits?: number;
     providerId: string;
     amountFen: number;
     currency: "CNY" | string;

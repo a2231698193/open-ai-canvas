@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -180,7 +179,7 @@ func RegisterPaymentRoutes(r *gin.RouterGroup, svc *service.Service) {
 			c.Redirect(http.StatusFound, "/wallet?payment=invalid")
 			return
 		}
-		c.Redirect(http.StatusFound, "/wallet?paymentOrder="+url.QueryEscape(orderID))
+		c.Redirect(http.StatusFound, svc.PaymentReturnPath(orderID))
 	})
 
 	admin := r.Group("/admin/payments")

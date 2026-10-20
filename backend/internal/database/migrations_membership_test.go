@@ -89,6 +89,29 @@ func TestMembershipMigrationUpgradesV49Database(t *testing.T) {
 	_ = dsn
 }
 
+func TestMembershipPricingMigrationAddsPlanPricesAndOrderSnapshots(t *testing.T) {
+	db, _ := openMigratedMembershipDB(t)
+
+	if CurrentSchemaVersion < 61 {
+		t.Fatalf("expected schema version at least 61, got %d", CurrentSchemaVersion)
+	}
+	for _, column := range []string{"MonthPriceFen", "QuarterPriceFen", "YearPriceFen"} {
+		if !db.Migrator().HasColumn(&model.MembershipPlan{}, column) {
+			t.Fatalf("missing membership plan column %s", column)
+		}
+	}
+	for _, column := range []string{
+		"Kind", "MembershipPlanID", "MembershipPlanName", "MembershipLevel",
+		"MembershipMonths", "MembershipChange", "MembershipPreviousPlanID",
+		"MembershipPreviousPlanName", "MembershipRemainingDays",
+		"MembershipMonthlyGrantMicrocredits", "MembershipCreditDiffMicrocredits",
+	} {
+		if !db.Migrator().HasColumn(&model.PaymentOrder{}, column) {
+			t.Fatalf("missing payment order column %s", column)
+		}
+	}
+}
+
 func TestMembershipMigrationBackfillsExistingCreditAccounts(t *testing.T) {
 	// 模拟 v49 生产库：已有积分账户行，升级后会员列必须回填 0 而不是 NULL，
 	// 否则发放的 `membership_microcredits + ?` 会算出 NULL，余额永远是空。

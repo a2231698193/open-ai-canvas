@@ -63,6 +63,42 @@ func TestAdminSaveMembershipPlanCreatesAndUpdates(t *testing.T) {
 	}
 }
 
+func TestAdminSaveMembershipPlanPersistsDurationPrices(t *testing.T) {
+	svc := &Service{repo: repository.New(newMembershipAdminDB(t)), dataDir: t.TempDir()}
+	actor := adminActor()
+
+	created, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{
+		Name: "1级会员", Level: 1, Enabled: true, MonthlyGrantMicrocredits: 950 * CreditScale,
+		MonthPriceFen: 8800, QuarterPriceFen: 21900, YearPriceFen: 78000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.MonthPriceFen != 8800 || created.QuarterPriceFen != 21900 || created.YearPriceFen != 78000 {
+		t.Fatalf("created prices = %d/%d/%d", created.MonthPriceFen, created.QuarterPriceFen, created.YearPriceFen)
+	}
+
+	reloaded, err := svc.repo.MembershipPlan(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.MonthPriceFen != 8800 || reloaded.QuarterPriceFen != 21900 || reloaded.YearPriceFen != 78000 {
+		t.Fatalf("persisted prices = %d/%d/%d", reloaded.MonthPriceFen, reloaded.QuarterPriceFen, reloaded.YearPriceFen)
+	}
+}
+
+func TestAdminSaveMembershipPlanRejectsInvalidDurationPrices(t *testing.T) {
+	svc := &Service{repo: repository.New(newMembershipAdminDB(t)), dataDir: t.TempDir()}
+	actor := adminActor()
+	for _, price := range []int64{-1, 100_000_001} {
+		if _, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{
+			Name: "越界价格", Level: 1, Enabled: true, MonthPriceFen: price,
+		}); err == nil {
+			t.Fatalf("price %d must be rejected", price)
+		}
+	}
+}
+
 func TestAdminGrantMembershipOpensAndGrantsFirstWindow(t *testing.T) {
 	db := newMembershipAdminDB(t)
 	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
@@ -103,6 +139,41 @@ func TestAdminGrantMembershipOpensAndGrantsFirstWindow(t *testing.T) {
 	db.Model(&model.AdminAuditEvent{}).Where("target_id = ?", "user-1").Count(&audits)
 	if audits == 0 {
 		t.Fatal("grant must write admin audit")
+	}
+}
+
+func TestAdminGrantMembershipStartsNewCycleAfterExpiry(t *testing.T) {
+	db := newMembershipAdminDB(t)
+	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
+	actor := adminActor()
+	plan, err := svc.AdminSaveMembershipPlan(actor, AdminMembershipPlanRequest{Name: "专业版", Level: 2, Enabled: true, MonthlyGrantMicrocredits: 30 * CreditScale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired := model.UserMembership{
+		ID: "expired-membership", UserID: "user-1", PlanID: plan.ID, Status: model.MembershipStatusActive,
+		PeriodStart: time.Now().AddDate(0, 0, -40), PeriodEnd: time.Now().AddDate(0, 0, -10), GrantedMonths: 2,
+	}
+	if err := db.Create(&expired).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	membership, err := svc.AdminGrantMembership(actor, "user-1", plan.ID, 1, "重新开通")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.ID == expired.ID {
+		t.Fatal("expired active row must be closed and a new cycle created")
+	}
+	if membership.GrantedMonths != 1 {
+		t.Fatalf("new cycle granted months = %d", membership.GrantedMonths)
+	}
+	var closed model.UserMembership
+	if err := db.First(&closed, "id = ?", expired.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if closed.Status != model.MembershipStatusCancelled {
+		t.Fatalf("expired row status = %s", closed.Status)
 	}
 }
 

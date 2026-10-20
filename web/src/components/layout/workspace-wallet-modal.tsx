@@ -1,9 +1,10 @@
 import { App, Button, Input, Skeleton } from "antd";
-import { Check, ChevronLeft, ChevronRight, CircleAlert, Coins, CreditCard, Crown, History, RefreshCw, TicketCheck, WalletCards } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleAlert, Coins, CreditCard, Crown, History, RefreshCw, TicketCheck, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { PaymentCheckoutCode } from "@/components/payment-checkout-code";
+import { formatMembershipPrice, useMembershipPlans, type MembershipPlansData } from "@/components/membership/membership-plan-cards";
 import { AppModal } from "@/components/ui/product/app-modal";
 import { formatCredits } from "@/constant/credits";
 import { generationErrorMessage } from "@/lib/generation-error";
@@ -68,6 +69,7 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
     const navigate = useNavigate();
     const { message } = App.useApp();
     const redeemPurchaseUrl = useAppearanceStore((state) => state.appearance.redeemPurchaseUrl);
+    const { data: membershipPlans } = useMembershipPlans(open);
     const [tab, setTab] = useState<WalletModalTab>("topup");
     const [wallet, setWallet] = useState<WalletSummary | null>(null);
     const [walletLoading, setWalletLoading] = useState(false);
@@ -91,6 +93,11 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
 
     const selectedProduct = useMemo(() => products.find((item) => item.id === selectedProductId), [products, selectedProductId]);
     const selectedProvider = useMemo(() => providers.find((item) => item.id === selectedProviderId), [providers, selectedProviderId]);
+    const membershipPlanList = membershipPlans?.plans;
+    const minMembershipPriceFen = useMemo(() => {
+        const prices = (membershipPlanList || []).map((plan) => plan.monthPriceFen).filter((price) => price > 0);
+        return prices.length ? Math.min(...prices) : 0;
+    }, [membershipPlanList]);
 
     const reloadWallet = async (targetPage = page) => {
         const sequence = ++requestSequence.current;
@@ -288,7 +295,7 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
                         </div>
                     </header>
 
-                    {wallet ? <WalletMembershipCard wallet={wallet} totalAvailable={available} purchasedAvailable={purchasedAvailable} membershipAvailable={membershipAvailable} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
+                    {wallet ? <WalletMembershipCard wallet={wallet} membershipPlans={membershipPlans} minMembershipPriceFen={minMembershipPriceFen} totalAvailable={available} purchasedAvailable={purchasedAvailable} membershipAvailable={membershipAvailable} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
 
                     <div className="workspace-wallet-tabs" role="tablist" aria-label="积分中心">
                         <button type="button" role="tab" aria-selected={tab === "topup"} onClick={() => setTab("topup")}>
@@ -307,6 +314,16 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
 
                     {tab === "topup" ? (
                         <div className="workspace-wallet-content is-topup">
+                            {minMembershipPriceFen > 0 ? (
+                                <button type="button" className="workspace-wallet-membership-promo" onClick={() => { onClose(); navigate("/membership"); }}>
+                                    <Crown />
+                                    <div>
+                                        <strong>会员套餐 {formatMembershipPrice(minMembershipPriceFen)}/月起</strong>
+                                        <span>每月到账积分，生成扣费优先抵扣</span>
+                                    </div>
+                                    <ArrowRight />
+                                </button>
+                            ) : null}
                             <section className="workspace-wallet-section">
                                 <div className="workspace-wallet-section-heading">
                                     <div>
@@ -483,7 +500,7 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
 
             <AppModal
                 open={paymentOpen}
-                title={paymentOrder?.status === "credited" ? "充值完成" : paymentOrder?.checkout.mode === "qr_code" ? "扫码支付" : "确认支付结果"}
+                title={paymentOrder?.status === "credited" ? (paymentOrder.kind === "membership" ? "支付完成" : "充值完成") : paymentOrder?.checkout.mode === "qr_code" ? "扫码支付" : "确认支付结果"}
                 centered
                 width={430}
                 onCancel={() => setPaymentOpen(false)}
@@ -496,7 +513,8 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
                         </span>
                         <strong>¥ {(paymentOrder.amountFen / 100).toFixed(2)}</strong>
                         <p>
-                            {paymentOrder.productName} · {formatCredits(paymentOrder.creditsMicrocredits, 6)} 积分
+                            {paymentOrder.productName}
+                            {paymentOrder.kind === "membership" ? "" : ` · ${formatCredits(paymentOrder.creditsMicrocredits, 6)} 积分`}
                         </p>
                         {paymentOrder.status === "pending" && paymentOrder.checkout.mode === "qr_code" && paymentOrder.checkout.value ? (
                             <>
@@ -512,23 +530,41 @@ export function WorkspaceWalletModal({ open, onClose, pendingPaymentOrderId, pay
     );
 }
 
-function WalletMembershipCard({ wallet, totalAvailable, purchasedAvailable, membershipAvailable, onOpenMembership }: { wallet: WalletSummary; totalAvailable: number; purchasedAvailable: number; membershipAvailable: number; onOpenMembership: () => void }) {
+function WalletMembershipCard({
+    wallet,
+    membershipPlans,
+    minMembershipPriceFen,
+    totalAvailable,
+    purchasedAvailable,
+    membershipAvailable,
+    onOpenMembership,
+}: {
+    wallet: WalletSummary;
+    membershipPlans?: MembershipPlansData | null;
+    minMembershipPriceFen: number;
+    totalAvailable: number;
+    purchasedAvailable: number;
+    membershipAvailable: number;
+    onOpenMembership: () => void;
+}) {
     const { membership, membershipPlanName, account, membershipPoolValid } = wallet;
+    const currentPlan = membershipPlans?.plans.find((plan) => plan.id === membership?.planId);
     if (!membership) {
         return (
             <div className="workspace-wallet-membership" role="region" aria-label="会员">
                 <Crown className="size-4" />
                 <div className="min-w-0 flex-1">
                     <strong>会员积分</strong>
-                    <span>开通会员每月到账专属积分，生成扣费优先抵扣。</span>
+                    <span>{minMembershipPriceFen > 0 ? `${formatMembershipPrice(minMembershipPriceFen)}/月起开通会员，` : "开通会员"}每月到账专属积分，生成扣费优先抵扣。</span>
                 </div>
                 <button type="button" onClick={onOpenMembership}>
-                    查看会员权益
+                    开通会员
                 </button>
             </div>
         );
     }
     const expiry = membershipPoolValid && account.membershipExpiresAt ? new Date(account.membershipExpiresAt).toLocaleDateString("zh-CN") : "";
+    const renewalPriceFen = currentPlan && currentPlan.monthPriceFen > 0 ? currentPlan.monthPriceFen : minMembershipPriceFen;
     return (
         <div className="workspace-wallet-membership is-active" role="region" aria-label="当前会员">
             <Crown className="size-4" />
@@ -537,14 +573,17 @@ function WalletMembershipCard({ wallet, totalAvailable, purchasedAvailable, memb
                     {membershipPlanName || "会员"}
                     <span> {expiry ? `${expiry} 前有效` : membershipPoolValid ? "" : " 已过期"}</span>
                 </strong>
-                <span>会员 {formatCredits(membershipAvailable, 6)} · 充值 {formatCredits(purchasedAvailable, 6)} · 生成优先扣会员，到期清零</span>
+                <span>
+                    会员 {formatCredits(membershipAvailable, 6)} · 充值 {formatCredits(purchasedAvailable, 6)}
+                    {renewalPriceFen > 0 ? ` · 续费 ${formatMembershipPrice(renewalPriceFen)}/月起` : " · 生成优先扣会员，到期清零"}
+                </span>
             </div>
             <div className="workspace-wallet-membership-figure">
                 <strong>{formatCredits(totalAvailable, 6)}</strong>
                 <span>合计可用</span>
             </div>
             <button type="button" onClick={onOpenMembership}>
-                查看会员权益
+                续费会员
             </button>
         </div>
     );
@@ -571,8 +610,10 @@ function WalletLedgerRow({ entry }: { entry: CreditLedgerEntry }) {
 }
 
 function PaymentStatus({ order, now }: { order: PaymentOrder; now: number }) {
-    if (order.status === "credited") return <div className="workspace-wallet-payment-status is-success">支付已确认，积分已经到账</div>;
-    if (order.status === "closed") return <div className="workspace-wallet-payment-status">订单已关闭，未产生积分充值</div>;
+    if (order.status === "credited") {
+        return <div className="workspace-wallet-payment-status is-success">{order.kind === "membership" ? "会员已开通，权益立即生效" : "支付已确认，积分已经到账"}</div>;
+    }
+    if (order.status === "closed") return <div className="workspace-wallet-payment-status">{order.kind === "membership" ? "订单已关闭，未开通会员" : "订单已关闭，未产生积分充值"}</div>;
     if (order.status === "create_failed") return <div className="workspace-wallet-payment-status is-error">支付入口创建失败，请重新生成支付入口。</div>;
     const remaining = Math.max(0, Math.floor((new Date(order.expiresAt).getTime() - now) / 1000));
     const hours = Math.floor(remaining / 3600);

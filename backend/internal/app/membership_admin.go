@@ -9,9 +9,6 @@ import (
 	"yingce/backend/internal/model"
 )
 
-// membershipWindowDays 是发放锚点窗口长度：开通日起每 30 天一个窗口。
-const membershipWindowDays = 30 * 24 * time.Hour
-
 type AdminMembershipPlanRequest struct {
 	ID                               string `json:"id,omitempty"`
 	Name                             string `json:"name"`
@@ -23,6 +20,9 @@ type AdminMembershipPlanRequest struct {
 	StorageGB                        int64  `json:"storageGB"`
 	DailyUploadMB                    int64  `json:"dailyUploadMB"`
 	CheckinBonusOverrideMicrocredits int64  `json:"checkinBonusOverrideMicrocredits"`
+	MonthPriceFen                    int64  `json:"monthPriceFen"`
+	QuarterPriceFen                  int64  `json:"quarterPriceFen"`
+	YearPriceFen                     int64  `json:"yearPriceFen"`
 }
 
 func (s *Service) AdminMembershipPlans(actor *model.User) ([]model.MembershipPlan, error) {
@@ -46,6 +46,11 @@ func (s *Service) AdminSaveMembershipPlan(actor *model.User, req AdminMembership
 	if req.MonthlyGrantMicrocredits < 0 || req.CheckinBonusOverrideMicrocredits < 0 {
 		return nil, BadAuthRequest("积分额度不能为负数")
 	}
+	for _, price := range []int64{req.MonthPriceFen, req.QuarterPriceFen, req.YearPriceFen} {
+		if price < 0 || price > 100_000_000 {
+			return nil, BadAuthRequest("会员价格必须为 0 至 100 万元")
+		}
+	}
 	// 存储空间、日上传、并发任务支持 -1 表示不限制。
 	if req.StorageGB < -1 || req.DailyUploadMB < -1 || req.ActiveTaskLimit < -1 {
 		return nil, BadAuthRequest("限制类字段仅支持 -1（不限制）、0（全局默认）或正数")
@@ -61,6 +66,9 @@ func (s *Service) AdminSaveMembershipPlan(actor *model.User, req AdminMembership
 		StorageGB:                        req.StorageGB,
 		DailyUploadMB:                    req.DailyUploadMB,
 		CheckinBonusOverrideMicrocredits: req.CheckinBonusOverrideMicrocredits,
+		MonthPriceFen:                    req.MonthPriceFen,
+		QuarterPriceFen:                  req.QuarterPriceFen,
+		YearPriceFen:                     req.YearPriceFen,
 	}
 	if err := s.repo.SaveMembershipPlan(plan); err != nil {
 		return nil, err
@@ -92,6 +100,19 @@ func (s *Service) AdminGrantMembership(actor *model.User, userID string, planID 
 		return nil, err
 	}
 	now := time.Now()
+	if membership == nil {
+		stale, staleErr := s.repo.OpenUserMembership(userID)
+		if staleErr != nil {
+			return nil, staleErr
+		}
+		if stale != nil && stale.PeriodEnd.After(now) {
+			membership = stale
+		} else if stale != nil {
+			if err := s.repo.CancelUserMembershipByID(stale.ID); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if membership == nil {
 		membership = &model.UserMembership{
 			ID: newID(), UserID: userID, PlanID: plan.ID, Status: model.MembershipStatusActive,
@@ -203,30 +224,20 @@ func (s *Service) AdminCancelMembership(actor *model.User, userID string, note s
 	return s.appendAdminAudit(actor, "membership.cancel", "user", userID, "作废会员", map[string]any{"note": note})
 }
 
-// grantDueMembershipWindow 按锚点发放下一个应发放的窗口：
-// 窗口 k 覆盖 [periodStart+(k-1)*30d, periodStart+k*30d)，now 到达窗口起点且尚未发放时发放，
-// 有效期 = min(窗口末, periodEnd)；周期末尾不足 30 天按实际剩余天数，额度仍为整月。
+// grantDueMembershipWindow 按锚点发放应发放的窗口；窗口计算与在线购买共用 model.MembershipDueWindows。
 func (s *Service) grantDueMembershipWindow(membership *model.UserMembership, plan *model.MembershipPlan) error {
-	for {
-		next := membership.GrantedMonths + 1
-		windowStart := membership.PeriodStart.Add(time.Duration(next-1) * membershipWindowDays)
-		if !windowStart.Before(membership.PeriodEnd) || !windowStart.Before(time.Now()) {
-			return nil
-		}
-		windowEnd := windowStart.Add(membershipWindowDays)
-		if windowEnd.After(membership.PeriodEnd) {
-			windowEnd = membership.PeriodEnd
-		}
-		if _, _, err := s.repo.GrantMembershipCredits(membership.UserID, plan.MonthlyGrantMicrocredits, windowEnd,
-			model.CreditLedgerMembershipGrant, fmt.Sprintf("membership-grant:%s:%d", membership.ID, next),
-			fmt.Sprintf("会员积分发放（第 %d 个 30 天窗口）", next)); err != nil {
+	for _, window := range model.MembershipDueWindows(membership.PeriodStart, membership.PeriodEnd, membership.GrantedMonths, time.Now()) {
+		if _, _, err := s.repo.GrantMembershipCredits(membership.UserID, plan.MonthlyGrantMicrocredits, window.End,
+			model.CreditLedgerMembershipGrant, fmt.Sprintf("membership-grant:%s:%d", membership.ID, window.Index),
+			fmt.Sprintf("会员积分发放（第 %d 个 30 天窗口）", window.Index)); err != nil {
 			return err
 		}
-		if err := s.repo.UpdateMembershipGrantedMonths(membership.ID, membership.GrantedMonths, next); err != nil {
+		if err := s.repo.UpdateMembershipGrantedMonths(membership.ID, membership.GrantedMonths, window.Index); err != nil {
 			return err
 		}
-		membership.GrantedMonths = next
+		membership.GrantedMonths = window.Index
 	}
+	return nil
 }
 
 // runMembershipGrantSweep 每日任务：扫描全部生效会员，补发到期的锚点窗口。
@@ -254,7 +265,7 @@ func (s *Service) membershipPoolExpiryFallback(membership *model.UserMembership)
 	if err == nil && !account.MembershipExpiresAt.IsZero() && account.MembershipExpiresAt.After(time.Now()) {
 		return account.MembershipExpiresAt
 	}
-	windowEnd := membership.PeriodStart.Add(time.Duration(membership.GrantedMonths) * membershipWindowDays)
+	windowEnd := membership.PeriodStart.Add(time.Duration(membership.GrantedMonths) * model.MembershipWindowDays)
 	if windowEnd.After(membership.PeriodEnd) {
 		windowEnd = membership.PeriodEnd
 	}

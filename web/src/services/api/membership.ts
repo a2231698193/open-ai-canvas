@@ -1,4 +1,5 @@
 import { http } from "@/services/api/request";
+import type { PaymentOrder } from "@/services/api/payments";
 
 export type MembershipPlan = {
     id: string;
@@ -11,6 +12,9 @@ export type MembershipPlan = {
     storageGB: number;
     dailyUploadMB: number;
     checkinBonusOverrideMicrocredits: number;
+    monthPriceFen: number;
+    quarterPriceFen: number;
+    yearPriceFen: number;
     createdAt: string;
     updatedAt: string;
 };
@@ -42,14 +46,39 @@ export type EffectiveMembership = {
     checkinBonusOverrideMicrocredits: number;
 };
 
+export type MembershipUpgradeQuote = {
+    planId: string;
+    amountFen: number;
+    remainingDays: number;
+    canUpgrade: boolean;
+    reason?: string;
+};
+
 export type MembershipPlansResult = {
     plans: MembershipPlan[];
     membership?: UserMembership;
     effective: EffectiveMembership;
+    paymentAvailable: boolean;
+    upgradeQuotes?: Record<string, MembershipUpgradeQuote>;
 };
 
 export function getMembershipPlans() {
     return http.get<MembershipPlansResult>("/membership/plans");
+}
+
+export type CreateMembershipOrderInput = {
+    planId: string;
+    months?: number;
+    providerId: string;
+    idempotencyKey: string;
+};
+
+export function createMembershipOrder(input: CreateMembershipOrderInput) {
+    return http.post<{ order: PaymentOrder }>("/membership/orders", input);
+}
+
+export function getActiveMembershipOrder() {
+    return http.get<{ order: PaymentOrder | null }>("/membership/orders/active");
 }
 
 export type AdminMembershipPlanInput = {
@@ -63,6 +92,9 @@ export type AdminMembershipPlanInput = {
     storageGB?: number;
     dailyUploadMB?: number;
     checkinBonusOverrideMicrocredits?: number;
+    monthPriceFen?: number;
+    quarterPriceFen?: number;
+    yearPriceFen?: number;
 };
 
 export function listAdminMembershipPlans() {

@@ -20,6 +20,9 @@ type PlanFormValues = {
     storageGB?: number;
     dailyUploadGB?: number;
     checkinBonusCredits?: number;
+    monthPrice?: number;
+    quarterPrice?: number;
+    yearPrice?: number;
 };
 
 export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }: { createOpen: boolean; onCreateOpenChange: (open: boolean) => void }) {
@@ -57,7 +60,7 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
 
     const openCreateEditor = () => {
         setEditing(null);
-        form.setFieldsValue({ enabled: true, level: plans.length + 1, monthlyGrantCredits: 0, activeTaskLimit: 0, storageGB: 0, dailyUploadGB: 0, checkinBonusCredits: 0 });
+        form.setFieldsValue({ enabled: true, level: plans.length + 1, monthlyGrantCredits: 0, activeTaskLimit: 0, storageGB: 0, dailyUploadGB: 0, checkinBonusCredits: 0, monthPrice: 0, quarterPrice: 0, yearPrice: 0 });
         setEditorOpen(true);
     };
 
@@ -73,6 +76,9 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
             storageGB: plan.storageGB,
             dailyUploadGB: plan.dailyUploadMB / 1024,
             checkinBonusCredits: plan.checkinBonusOverrideMicrocredits / MICRO_CREDITS_PER_CREDIT,
+            monthPrice: plan.monthPriceFen / 100,
+            quarterPrice: plan.quarterPriceFen / 100,
+            yearPrice: plan.yearPriceFen / 100,
         });
         setEditorOpen(true);
     };
@@ -92,8 +98,11 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
         const monthly = Math.round(Number(values.monthlyGrantCredits || 0) * MICRO_CREDITS_PER_CREDIT);
         const checkin = Math.round(Number(values.checkinBonusCredits || 0) * MICRO_CREDITS_PER_CREDIT);
         const dailyUploadMB = Math.round(Number(values.dailyUploadGB || 0) * 1024);
-        if (!Number.isSafeInteger(monthly) || !Number.isSafeInteger(checkin)) {
-            message.error("积分数值超出允许范围");
+        const monthPriceFen = Math.round(Number(values.monthPrice || 0) * 100);
+        const quarterPriceFen = Math.round(Number(values.quarterPrice || 0) * 100);
+        const yearPriceFen = Math.round(Number(values.yearPrice || 0) * 100);
+        if (!Number.isSafeInteger(monthly) || !Number.isSafeInteger(checkin) || !Number.isSafeInteger(monthPriceFen) || !Number.isSafeInteger(quarterPriceFen) || !Number.isSafeInteger(yearPriceFen)) {
+            message.error("积分数值或价格超出允许范围");
             return;
         }
         const input: AdminMembershipPlanInput = {
@@ -107,6 +116,9 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
             storageGB: Number(values.storageGB) || 0,
             dailyUploadMB,
             checkinBonusOverrideMicrocredits: checkin,
+            monthPriceFen,
+            quarterPriceFen,
+            yearPriceFen,
         };
         setSaving(true);
         try {
@@ -126,6 +138,7 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
         { title: "名称", dataIndex: "name", width: 140 },
         { title: "状态", dataIndex: "enabled", width: 90, render: (enabled) => <AdminStatusBadge label={enabled ? "启用" : "停用"} tone={enabled ? "success" : "neutral"} /> },
         { title: "每月到账", dataIndex: "monthlyGrantMicrocredits", width: 120, align: "right", render: (value) => `${formatCredits(value)} 积分` },
+        { title: "价格（月/季/年）", key: "prices", width: 190, render: (_, plan) => priceSummary(plan) },
         { title: "并发任务", dataIndex: "activeTaskLimit", width: 100, render: limitLabel },
         { title: "存储空间", dataIndex: "storageGB", width: 100, render: storageLabel },
         { title: "日上传", dataIndex: "dailyUploadMB", width: 100, render: dailyUploadLabel },
@@ -165,7 +178,7 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
                     dataSource: plans,
                     pagination: false,
                     columns,
-                    scroll: { x: 860 },
+                    scroll: { x: 1060 },
                 }}
                 empty={<AdminTableEmpty title="还没有会员等级" description="点击右上角「新建等级」创建第一个会员方案。" />}
             />
@@ -195,6 +208,15 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
                         <Form.Item name="monthlyGrantCredits" label="每月到账积分（当期清零）" rules={[{ required: true, message: "请填写每月到账积分" }]}>
                             <Input type="number" min={0} step="0.000001" />
                         </Form.Item>
+                        <Form.Item name="monthPrice" label="月卡价格（元，0=不开放）">
+                            <Input type="number" min={0} step="0.01" />
+                        </Form.Item>
+                        <Form.Item name="quarterPrice" label="季卡价格（元，0=不开放）">
+                            <Input type="number" min={0} step="0.01" />
+                        </Form.Item>
+                        <Form.Item name="yearPrice" label="年卡价格（元，0=不开放）">
+                            <Input type="number" min={0} step="0.01" />
+                        </Form.Item>
                         <Form.Item name="activeTaskLimit" label="并发任务数（0=全局默认，-1=无限）">
                             <Input type="number" min={-1} />
                         </Form.Item>
@@ -214,11 +236,22 @@ export default function MembershipPlansPanel({ createOpen, onCreateOpenChange }:
                             <Switch />
                         </Form.Item>
                     </div>
-                    <p className="text-xs text-foreground/55">等级保存即写审计；修改月额度不重算已发放窗口，下次锚点发放起按新额度执行。</p>
+                    <p className="text-xs text-foreground/55">等级保存即写审计；修改月额度不重算已发放窗口，下次锚点发放起按新额度执行。价格为 0 表示该时长不开放购买。</p>
                 </Form>
             </Modal>
         </div>
     );
+}
+
+function priceLabel(fen: number) {
+    return fen > 0 ? `¥${(fen / 100).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}` : "—";
+}
+
+function priceSummary(plan: MembershipPlan) {
+    if (plan.monthPriceFen <= 0 && plan.quarterPriceFen <= 0 && plan.yearPriceFen <= 0) {
+        return <span className="text-foreground/45">未定价</span>;
+    }
+    return <span className="tabular-nums">{[priceLabel(plan.monthPriceFen), priceLabel(plan.quarterPriceFen), priceLabel(plan.yearPriceFen)].join(" / ")}</span>;
 }
 
 function limitLabel(limit: number) {

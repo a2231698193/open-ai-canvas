@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 60
+const CurrentSchemaVersion int64 = 61
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -199,6 +199,7 @@ var schemaMigrations = []migration{
 	}},
 	{version: 59, name: "sql_perf_indexes", checksum: "sha256:sql-perf-indexes-v59-20261016", apply: migrateSchemaV59},
 	{version: 60, name: "canvas_multi_session_sync", checksum: "sha256:canvas-multi-session-sync-v60", apply: migrateCanvasCollaboration},
+	{version: 61, name: "membership_pricing_purchase", checksum: "sha256:membership-pricing-purchase-v61-20261020", apply: migrateMembershipPricingPurchase},
 }
 
 func migrateMembershipPoolBackfill(tx *gorm.DB) error {
@@ -214,6 +215,17 @@ func migrateMembershipPoolBackfill(tx *gorm.DB) error {
 		if err := tx.Exec(statement).Error; err != nil {
 			return fmt.Errorf("回填会员池列默认值：%w", err)
 		}
+	}
+	return nil
+}
+
+func migrateMembershipPricingPurchase(tx *gorm.DB) error {
+	if err := tx.AutoMigrate(&model.MembershipPlan{}, &model.PaymentOrder{}); err != nil {
+		return fmt.Errorf("会员定价与支付订单快照迁移：%w", err)
+	}
+	// 存量订单在旧库中没有 kind；AutoMigrate 的列默认值之外再显式回填空值。
+	if err := tx.Exec("UPDATE payment_orders SET kind = ? WHERE kind IS NULL OR kind = ''", model.PaymentOrderKindTopup).Error; err != nil {
+		return fmt.Errorf("回填支付订单类型：%w", err)
 	}
 	return nil
 }

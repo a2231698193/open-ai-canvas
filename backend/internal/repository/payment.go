@@ -178,6 +178,25 @@ func (r *Repository) CreatePaymentOrderWithProductReservation(order *model.Payme
 	return order, true, nil
 }
 
+// CreateMembershipPaymentOrder 只依赖支付订单自身的幂等键，不锁定充值商品库存。
+func (r *Repository) CreateMembershipPaymentOrder(order *model.PaymentOrder) (*model.PaymentOrder, bool, error) {
+	created := r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "idempotency_key"}},
+		DoNothing: true,
+	}).Create(order)
+	if created.Error != nil {
+		return nil, false, created.Error
+	}
+	if created.RowsAffected == 1 {
+		return order, true, nil
+	}
+	var existing model.PaymentOrder
+	if err := r.db.First(&existing, "user_id = ? AND idempotency_key = ?", order.UserID, order.IdempotencyKey).Error; err != nil {
+		return nil, false, err
+	}
+	return &existing, false, nil
+}
+
 func (r *Repository) SetPaymentOrderCheckout(id string, checkoutMode, checkoutValue string, checkoutExpiresAt time.Time) error {
 	updated := r.db.Model(&model.PaymentOrder{}).
 		Where("id = ? AND status IN ?", id, []model.PaymentOrderStatus{model.PaymentOrderCreated, model.PaymentOrderCreateFailed, model.PaymentOrderPending}).
@@ -226,6 +245,31 @@ func (r *Repository) ActivePaymentOrderCount(userID string) (int64, error) {
 		model.PaymentOrderCreated, model.PaymentOrderPending, model.PaymentOrderClosing, model.PaymentOrderCreateFailed,
 	}).Count(&count).Error
 	return count, err
+}
+
+// ActiveMembershipPaymentOrderCount 统计用户未完成的会员订单；同一用户同时只允许一笔，
+// 避免两笔会员订单都支付后互相覆盖会员周期。
+func (r *Repository) ActiveMembershipPaymentOrderCount(userID string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.PaymentOrder{}).Where("user_id = ? AND kind = ? AND status IN ?", strings.TrimSpace(userID), model.PaymentOrderKindMembership, []model.PaymentOrderStatus{
+		model.PaymentOrderCreated, model.PaymentOrderPending, model.PaymentOrderClosing, model.PaymentOrderCreateFailed,
+	}).Count(&count).Error
+	return count, err
+}
+
+// ActiveMembershipPaymentOrder 返回用户最新一笔未完成的会员订单，用于前端恢复收银台。
+func (r *Repository) ActiveMembershipPaymentOrder(userID string) (*model.PaymentOrder, error) {
+	var order model.PaymentOrder
+	err := r.db.Where("user_id = ? AND kind = ? AND status IN ?", strings.TrimSpace(userID), model.PaymentOrderKindMembership, []model.PaymentOrderStatus{
+		model.PaymentOrderCreated, model.PaymentOrderPending, model.PaymentOrderClosing, model.PaymentOrderCreateFailed,
+	}).Order("created_at desc, id desc").First(&order).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &order, nil
 }
 
 func (r *Repository) PaymentOrderCountForProvider(providerID string) (int64, error) {
@@ -297,7 +341,7 @@ func (r *Repository) CompletePaymentOrder(providerID, merchantOrderNo string, ev
 		if order.AmountFen != evidence.AmountFen || order.Currency != evidence.Currency || strings.TrimSpace(evidence.ProviderTradeNo) == "" {
 			return ErrPaymentEvidenceMismatch
 		}
-		if order.AmountFen <= 0 || order.CreditsMicrocredits <= 0 {
+		if order.AmountFen <= 0 {
 			return ErrPaymentOrderStateConflict
 		}
 		if order.Status == model.PaymentOrderCredited {
@@ -313,48 +357,57 @@ func (r *Repository) CompletePaymentOrder(providerID, merchantOrderNo string, ev
 		if duplicate > 0 {
 			return ErrPaymentTradeNoConflict
 		}
-		referenceKey := "payment:" + providerID + ":" + merchantOrderNo
-		entry := model.CreditLedgerEntry{
-			ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerPaymentTopup,
-			AmountMicrocredits: order.CreditsMicrocredits, PaymentOrderID: order.ID,
-			ReferenceKey: &referenceKey, Note: order.ProductName + " · 在线支付充值",
-		}
-		created := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "reference_key"}}, DoNothing: true}).Create(&entry)
-		if created.Error != nil {
-			return created.Error
-		}
-		if created.RowsAffected == 0 {
-			// A credited order is handled above. Reaching this branch means a
-			// ledger row exists while the order is still non-terminal, so treating
-			// the operation as successful would hide an inconsistent credit state.
-			return ErrPaymentOrderStateConflict
-		}
-		account := model.CreditAccount{UserID: order.UserID}
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&account).Error; err != nil {
-			return err
-		}
 		now := time.Now()
-		accountUpdate := tx.Model(&model.CreditAccount{}).
-			Where("user_id = ? AND available_microcredits <= ?", order.UserID, maxPaymentCreditBalance-order.CreditsMicrocredits).
-			Updates(map[string]any{
-				"available_microcredits": gorm.Expr("available_microcredits + ?", order.CreditsMicrocredits),
-				"version":                gorm.Expr("version + 1"), "updated_at": now,
-			})
-		if accountUpdate.Error != nil {
-			return accountUpdate.Error
-		}
-		if accountUpdate.RowsAffected != 1 {
-			return ErrPaymentCreditOverflow
-		}
-		if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&entry).Updates(map[string]any{
-			"available_delta_microcredits": order.CreditsMicrocredits,
-			"available_after_microcredits": account.AvailableMicrocredits,
-			"reserved_after_microcredits":  account.ReservedMicrocredits,
-		}).Error; err != nil {
-			return err
+		if order.Kind == model.PaymentOrderKindMembership {
+			if err := applyMembershipPayment(tx, &order); err != nil {
+				return err
+			}
+		} else {
+			if order.CreditsMicrocredits <= 0 {
+				return ErrPaymentOrderStateConflict
+			}
+			referenceKey := "payment:" + providerID + ":" + merchantOrderNo
+			entry := model.CreditLedgerEntry{
+				ID: newRepositoryID(), UserID: order.UserID, Type: model.CreditLedgerPaymentTopup,
+				AmountMicrocredits: order.CreditsMicrocredits, PaymentOrderID: order.ID,
+				ReferenceKey: &referenceKey, Note: order.ProductName + " · 在线支付充值",
+			}
+			created := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "reference_key"}}, DoNothing: true}).Create(&entry)
+			if created.Error != nil {
+				return created.Error
+			}
+			if created.RowsAffected == 0 {
+				// A credited order is handled above. Reaching this branch means a
+				// ledger row exists while the order is still non-terminal, so treating
+				// the operation as successful would hide an inconsistent credit state.
+				return ErrPaymentOrderStateConflict
+			}
+			account := model.CreditAccount{UserID: order.UserID}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&account).Error; err != nil {
+				return err
+			}
+			accountUpdate := tx.Model(&model.CreditAccount{}).
+				Where("user_id = ? AND available_microcredits <= ?", order.UserID, maxPaymentCreditBalance-order.CreditsMicrocredits).
+				Updates(map[string]any{
+					"available_microcredits": gorm.Expr("available_microcredits + ?", order.CreditsMicrocredits),
+					"version":                gorm.Expr("version + 1"), "updated_at": now,
+				})
+			if accountUpdate.Error != nil {
+				return accountUpdate.Error
+			}
+			if accountUpdate.RowsAffected != 1 {
+				return ErrPaymentCreditOverflow
+			}
+			if err := tx.First(&account, "user_id = ?", order.UserID).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&entry).Updates(map[string]any{
+				"available_delta_microcredits": order.CreditsMicrocredits,
+				"available_after_microcredits": account.AvailableMicrocredits,
+				"reserved_after_microcredits":  account.ReservedMicrocredits,
+			}).Error; err != nil {
+				return err
+			}
 		}
 		paidAt := evidence.PaidAt
 		if paidAt.IsZero() {

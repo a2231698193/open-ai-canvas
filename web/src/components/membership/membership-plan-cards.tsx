@@ -1,12 +1,14 @@
 import { App, Button, Skeleton } from "antd";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BadgeCheck, Check, Copy, Crown, RefreshCw, ShieldAlert } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { AppModal } from "@/components/ui/product/app-modal";
 import { formatCredits } from "@/constant/credits";
 import { MEMBERSHIP_CONTACT_NOTE, MEMBERSHIP_WECHAT_ID, MEMBERSHIP_WECHAT_QR_URL } from "@/lib/membership-contact";
-import { getMembershipPlans, type EffectiveMembership, type MembershipPlan, type UserMembership } from "@/services/api/membership";
+import { getMembershipPlans, type EffectiveMembership, type MembershipPlan, type MembershipUpgradeQuote, type UserMembership } from "@/services/api/membership";
 import { cn } from "@/lib/utils";
+import { useUserStore } from "@/stores/use-user-store";
 import "./membership.css";
 
 export type MembershipPlansData = Awaited<ReturnType<typeof getMembershipPlans>>;
@@ -20,29 +22,23 @@ const MEMBERSHIP_ACCENTS: [string, string][] = [
 ];
 
 export function useMembershipPlans(enabled: boolean) {
-    const [data, setData] = useState<MembershipPlansData | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [loadError, setLoadError] = useState("");
-
+    const userId = useUserStore((state) => state.user?.id || "");
+    const query = useQuery({
+        queryKey: ["membership-plans", userId],
+        enabled: enabled && Boolean(userId),
+        queryFn: getMembershipPlans,
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
+    });
     const reload = async () => {
-        setLoading(true);
-        setLoadError("");
-        try {
-            setData(await getMembershipPlans());
-        } catch (error) {
-            setLoadError(error instanceof Error ? error.message : "读取会员方案失败");
-        } finally {
-            setLoading(false);
-        }
+        await query.refetch();
     };
-
-    useEffect(() => {
-        if (!enabled) return;
-        void reload();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [enabled]);
-
-    return { data, loading, loadError, reload };
+    return {
+        data: query.data ?? null,
+        loading: query.isFetching,
+        loadError: query.error instanceof Error ? query.error.message : "",
+        reload,
+    };
 }
 
 export function MembershipCurrentStrip({ effective, membership }: { effective?: EffectiveMembership; membership?: UserMembership }) {
@@ -70,90 +66,191 @@ export function MembershipCurrentStrip({ effective, membership }: { effective?: 
             </span>
             <div className="min-w-0 flex-1">
                 <strong>还没有生效中的会员</strong>
-                <span>选择下面的方案，点击「立即开通」联系管理员办理；开通后积分立即到账。</span>
+                <span>选择下面的方案在线开通，支付完成后权益立即生效；如支付方式未开通，可联系管理员办理。</span>
             </div>
         </section>
     );
 }
 
+const MEMBERSHIP_DURATIONS = [
+    { months: 1, label: "月卡", priceKey: "monthPriceFen" },
+    { months: 3, label: "季卡", priceKey: "quarterPriceFen" },
+    { months: 12, label: "年卡", priceKey: "yearPriceFen" },
+] as const;
+
+type MembershipDuration = (typeof MEMBERSHIP_DURATIONS)[number];
+
+export function membershipDurationPrice(plan: MembershipPlan, months: number) {
+    if (months === 3) return plan.quarterPriceFen;
+    if (months === 12) return plan.yearPriceFen;
+    return plan.monthPriceFen;
+}
+
+export function membershipDurationLabel(months: number) {
+    if (months === 3) return "季卡";
+    if (months === 12) return "年卡";
+    return "月卡";
+}
+
+export function formatMembershipPrice(fen: number) {
+    return `¥${(fen / 100).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+}
+
+function priceNote(plan: MembershipPlan, duration: MembershipDuration, priceFen: number) {
+    if (priceFen <= 0) return "该时长暂未开放购买";
+    if (duration.months === 1) return `每月到账 ${formatCredits(plan.monthlyGrantMicrocredits)} 积分，当期未用完清零`;
+    return `折合 ¥${Math.floor(priceFen / 100 / duration.months)}/月 · 周期内共 ${formatCredits(plan.monthlyGrantMicrocredits * duration.months)} 积分`;
+}
+
+function cardAction({
+    current,
+    isHigher,
+    isLower,
+    quote,
+    priceFen,
+}: {
+    current: boolean;
+    isHigher: boolean;
+    isLower: boolean;
+    quote?: MembershipUpgradeQuote;
+    priceFen: number;
+}) {
+    if (isLower) return { disabled: true, label: "暂不支持降级" };
+    if (isHigher) {
+        if (!quote?.canUpgrade) return { disabled: true, label: quote?.reason || "暂不可在线升级" };
+        return { disabled: false, label: `升级补差价 ${formatMembershipPrice(quote.amountFen)}` };
+    }
+    if (priceFen <= 0) return { disabled: true, label: "暂未定价" };
+    return { disabled: false, label: `${current ? "续费" : "立即开通"} ${formatMembershipPrice(priceFen)}` };
+}
+
 export function MembershipPlanCards({
     plans,
     effective,
-    membership,
-    onContact,
+    upgradeQuotes,
+    onPurchase,
 }: {
     plans: MembershipPlan[];
     effective?: EffectiveMembership;
-    membership?: UserMembership;
-    onContact: (plan: MembershipPlan) => void;
+    upgradeQuotes?: Record<string, MembershipUpgradeQuote>;
+    onPurchase: (plan: MembershipPlan, months: number) => void;
 }) {
+    const [duration, setDuration] = useState<MembershipDuration>(MEMBERSHIP_DURATIONS[0]);
     const topPlanId = plans.length ? plans.reduce((best, plan) => (plan.level > best.level ? plan : best)).id : "";
     const currentPlanId = effective?.active ? effective.planId : "";
+    const activeLevel = effective?.active ? effective.level : 0;
     return (
-        <div className="membership-grid">
-            {plans.map((plan, index) => {
-                const featured = plan.id === topPlanId && plans.length > 1;
-                const current = plan.id === currentPlanId;
-                // 档位强调色循环：蓝 → 紫 → 金 → 银，勾选图标与按钮渐变随档位变化。
-                const accent = MEMBERSHIP_ACCENTS[index % MEMBERSHIP_ACCENTS.length];
-                return (
-                    <article
-                        key={plan.id}
-                        className={cn("membership-card", featured && "is-featured", current && "is-current")}
-                        style={{ "--card-accent": accent[0], "--card-accent-deep": accent[1] } as CSSProperties}
-                    >
-                        {featured ? (
-                            <span className="membership-card-badge">
-                                <Crown className="size-3" />
-                                旗舰方案
-                            </span>
-                        ) : null}
-                        {current ? (
-                            <span className="membership-card-badge is-current">
-                                <BadgeCheck className="size-3" />
-                                当前方案
-                            </span>
-                        ) : null}
-                        <h3>
-                            <span className="membership-card-crown" aria-hidden="true">
-                                <Crown className="size-4" />
-                            </span>
-                            {plan.name}
-                        </h3>
-                        <p className="membership-card-grant">
-                            <strong>{formatCredits(plan.monthlyGrantMicrocredits)}</strong>
-                            <span>积分 / 月</span>
-                        </p>
-                        <p className="membership-card-note">每月到账，当期未用完清零</p>
-                        <ul>
-                            <MembershipFeature label={concurrencyLabel(plan.activeTaskLimit)} />
-                            <MembershipFeature label={storageLabel(plan.storageGB)} />
-                            {plan.dailyUploadMB > 0 ? <MembershipFeature label={dailyUploadLabel(plan.dailyUploadMB)} /> : null}
-                            <MembershipFeature label={checkinLabel(plan.checkinBonusOverrideMicrocredits)} />
-                            <MembershipFeature label="生成扣费会员积分优先抵扣" />
-                        </ul>
-                        {current ? (
-                            <Button block size="large" className="membership-card-cta is-current" disabled>
-                                当前方案
+        <div className="membership-plans">
+            <div className="membership-duration-toggle">
+                <div className="membership-duration-switch" role="tablist" aria-label="会员时长">
+                    {MEMBERSHIP_DURATIONS.map((item) => (
+                        <button
+                            key={item.months}
+                            type="button"
+                            role="tab"
+                            aria-selected={duration.months === item.months}
+                            className={cn(duration.months === item.months && "is-selected")}
+                            onClick={() => setDuration(item)}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+                {activeLevel > 0 ? <span className="membership-duration-hint">升级按剩余周期补差，到期日不变</span> : null}
+            </div>
+            <div className="membership-grid">
+                {plans.map((plan, index) => {
+                    const featured = plan.id === topPlanId && plans.length > 1;
+                    const current = plan.id === currentPlanId;
+                    const isHigher = activeLevel > 0 && plan.level > activeLevel;
+                    const isLower = activeLevel > 0 && plan.level < activeLevel;
+                    const quote = isHigher ? upgradeQuotes?.[plan.id] : undefined;
+                    const priceFen = membershipDurationPrice(plan, duration.months);
+                    const action = cardAction({ current, isHigher, isLower, quote, priceFen });
+                    // 档位强调色循环：蓝 → 紫 → 金 → 银，勾选图标与按钮渐变随档位变化。
+                    const accent = MEMBERSHIP_ACCENTS[index % MEMBERSHIP_ACCENTS.length];
+                    return (
+                        <article
+                            key={plan.id}
+                            className={cn("membership-card", featured && "is-featured", current && "is-current")}
+                            style={{ "--card-accent": accent[0], "--card-accent-deep": accent[1] } as CSSProperties}
+                        >
+                            {current ? (
+                                <span className="membership-card-badge is-current">
+                                    <BadgeCheck className="size-3" />
+                                    当前方案
+                                </span>
+                            ) : featured ? (
+                                <span className="membership-card-badge">
+                                    <Crown className="size-3" />
+                                    旗舰方案
+                                </span>
+                            ) : null}
+                            <h3>
+                                <span className="membership-card-crown" aria-hidden="true">
+                                    <Crown className="size-4" />
+                                </span>
+                                {plan.name}
+                            </h3>
+                            {isHigher ? (
+                                quote?.canUpgrade ? (
+                                    <>
+                                        <p className="membership-card-price">
+                                            <strong>{formatMembershipPrice(quote.amountFen)}</strong>
+                                            <span>升级补差价</span>
+                                        </p>
+                                        <p className="membership-card-note">剩余 {quote.remainingDays} 天 · 升级后到期日不变</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="membership-card-price is-muted">
+                                            <strong>—</strong>
+                                            <span>升级补差价</span>
+                                        </p>
+                                        <p className="membership-card-note">{quote?.reason || "当前不可在线升级，请联系管理员"}</p>
+                                    </>
+                                )
+                            ) : (
+                                <>
+                                    <p className="membership-card-price">
+                                        <strong>{priceFen > 0 ? formatMembershipPrice(priceFen) : "待定价"}</strong>
+                                        <span>{duration.label}</span>
+                                    </p>
+                                    <p className="membership-card-note">{priceNote(plan, duration, priceFen)}</p>
+                                </>
+                            )}
+                            <ul>
+                                <MembershipFeature label={`每月到账 ${formatCredits(plan.monthlyGrantMicrocredits)} 积分`} />
+                                <MembershipFeature label={concurrencyLabel(plan.activeTaskLimit)} />
+                                <MembershipFeature label={storageLabel(plan.storageGB)} />
+                                {plan.dailyUploadMB > 0 ? <MembershipFeature label={dailyUploadLabel(plan.dailyUploadMB)} /> : null}
+                                <MembershipFeature label={checkinLabel(plan.checkinBonusOverrideMicrocredits)} />
+                                <MembershipFeature label="生成扣费会员积分优先抵扣" />
+                            </ul>
+                            <Button
+                                block
+                                size="large"
+                                className={cn("membership-card-cta", current && "is-current")}
+                                disabled={action.disabled}
+                                onClick={() => onPurchase(plan, duration.months)}
+                            >
+                                {action.label}
+                                {!action.disabled ? <ArrowRight className="size-4" /> : null}
                             </Button>
-                        ) : (
-                            <Button block size="large" className="membership-card-cta" onClick={() => onContact(plan)}>
-                                {membership ? "升级 / 续费" : "立即开通"}
-                                <ArrowRight className="size-4" />
-                            </Button>
-                        )}
-                    </article>
-                );
-            })}
+                        </article>
+                    );
+                })}
+            </div>
         </div>
     );
 }
 
-export function MembershipContactModal({ plan, membership, open, onCancel }: { plan: MembershipPlan | null; membership?: UserMembership; open: boolean; onCancel: () => void }) {
+export function MembershipContactModal({ plan, membership, open, onCancel, message: notice }: { plan: MembershipPlan | null; membership?: UserMembership; open: boolean; onCancel: () => void; message?: string }) {
     const { message } = App.useApp();
     return (
-        <AppModal open={open} title={plan ? `开通 ${plan.name}` : "开通会员"} centered width={400} footer={null} onCancel={onCancel}>
+        <AppModal open={open} title={notice ? "联系管理员" : plan ? `开通 ${plan.name}` : "开通会员"} centered width={400} footer={null} onCancel={onCancel}>
             <div className="membership-contact">
+                {notice ? <p className="membership-contact-notice">{notice}</p> : null}
                 {MEMBERSHIP_WECHAT_QR_URL ? (
                     <div className="membership-contact-qr">
                         <img
@@ -167,6 +264,7 @@ export function MembershipContactModal({ plan, membership, open, onCancel }: { p
                     </div>
                 ) : null}
                 {MEMBERSHIP_WECHAT_QR_URL || MEMBERSHIP_WECHAT_ID ? <p className="membership-contact-note">{MEMBERSHIP_CONTACT_NOTE}</p> : null}
+                {!notice && !MEMBERSHIP_WECHAT_QR_URL && !MEMBERSHIP_WECHAT_ID ? <p className="membership-contact-note">请联系管理员开通会员。</p> : null}
                 {plan ? (
                     <p className="membership-contact-plan">
                         {plan.name} · 每月 {formatCredits(plan.monthlyGrantMicrocredits)} 积分
