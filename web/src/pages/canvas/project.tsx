@@ -5,6 +5,7 @@ import { useCanvasImageLayerGroups } from "./use-canvas-image-layer-groups";
 import { useCanvasImageLayerMaterials } from "./use-canvas-image-layer-materials";
 import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { createCanvasStateWriter } from "@/lib/canvas/canvas-editor-state";
+import { useCanvasImageWheelResize } from "./use-canvas-image-wheel-resize";
 import { canCancelGenerationTask } from "@/lib/generation-task-display";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -81,7 +82,10 @@ import { normalizeStoryboardAssetBindings } from "@/lib/canvas/canvas-storyboard
 import { normalizeAssetCategory } from "@/lib/asset-category";
 import { CanvasBatchTableNodeContent } from "@/components/canvas/canvas-batch-table-node";
 import { BatchGenerationSettingsDialog } from "@/components/canvas/batch-generation-settings-dialog";
-import { batchReferenceColumns, promoteLegacyBatchTableSize } from "@/lib/canvas/canvas-batch-table";
+import { promoteLegacyBatchTableSize } from "@/lib/canvas/canvas-batch-table";
+import { filterBatchCellConnections, reconcileBatchCellConnections, syncBatchColumnReferences, type BatchScroll } from "@/lib/canvas/canvas-batch-references";
+import { useCanvasBatchReferences } from "./use-canvas-batch-references";
+import { useCanvasImageRotation } from "./use-canvas-image-rotation";
 import { storyboardMinNodeHeight } from "@/lib/canvas/canvas-storyboard-layout";
 import { CanvasPrevisNodePanel } from "@/components/canvas/previs/canvas-previs-node-panel";
 import { useFocusMode } from "@/hooks/use-focus-mode";
@@ -256,6 +260,13 @@ function CanvasViewportPage() {
     const [canvasTool, setCanvasTool] = useState<CanvasToolMode>("box-select");
     const [hideNodeConnections, setHideNodeConnections] = useState(readCanvasHideNodeConnections);
     const [projectLoaded, setProjectLoaded] = useState(false);
+    useLayoutEffect(() => {
+        if (!projectLoaded) return;
+        const nextNodes = syncBatchColumnReferences(nodesRef.current, connectionsRef.current);
+        const nextConnections = reconcileBatchCellConnections(nextNodes, connectionsRef.current);
+        if (nextNodes !== nodesRef.current) setNodes(nextNodes);
+        if (nextConnections !== connectionsRef.current) setConnections(nextConnections);
+    }, [projectLoaded, nodes, connections, setNodes, setConnections]);
     const workspaceMode: CanvasWorkspaceMode = "professional";
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -283,6 +294,7 @@ function CanvasViewportPage() {
     const artCritiqueRunningRef = useRef(false);
     const [artCritiqueStartRequest, setArtCritiqueStartRequest] = useState<{ nodeId: string; id: string; restart: boolean } | null>(null);
     const [scriptScrollTopById, setScriptScrollTopById] = useState<Record<string, number>>({});
+    const [batchScrollById, setBatchScrollById] = useState<Record<string, BatchScroll>>({});
     const [previsNodeId, setPrevisNodeId] = useState<string | null>(null);
     const [libTVImportOpen, setLibTVImportOpen] = useState(false);
     const [titleEditing, setTitleEditing] = useState(false);
@@ -760,6 +772,8 @@ function CanvasViewportPage() {
         setDialogNodeId,
     });
     const replaceCanvasNodeMedia = useCallback((node: CanvasNodeData) => handleUploadRequest(node.id), [handleUploadRequest]);
+    const { actions: batchReferences, pickerModal: batchReferencePickerModal } = useCanvasBatchReferences({ nodesRef, connectionsRef, setNodes, setConnections, createFileNode });
+    const { rotateImageNode, rotatingNodeId } = useCanvasImageRotation({ projectId, nodesRef, setNodes, setConnections, setSelectedNodeIds, readOnly: false });
     const {
         timelineAddNodeRef,
         timelineMediaAddRef,
@@ -1083,6 +1097,7 @@ function CanvasViewportPage() {
         closeConnectionCreateMenu,
         connectionTargetAnchorRatio,
         connectionTargetNodeId,
+        connectionTargetHandleId,
         connectionApproach,
         connectionReplaceHover,
         connectingParams,
@@ -1104,6 +1119,8 @@ function CanvasViewportPage() {
         connectionsRef,
         viewportRef,
         scriptScrollTopById,
+        batchScrollById,
+        onBatchCellConnect: batchReferences.connectCell,
         screenToCanvas,
         setNodes,
         setConnections,
@@ -1450,16 +1467,21 @@ function CanvasViewportPage() {
         dialogNodeId,
     });
 
+    const handleSelectedImageWheel = useCanvasImageWheelResize({ projectId, nodesRef, selectedNodeIdsRef, historyPausedRef, setNodes, onResize: handleNodeResize });
     const visibleDisplayConnections = useMemo(
         () =>
-            filterCanvasDisplayConnections(displayConnections, {
-                enabled: hideNodeConnections,
-                hoveredNodeId,
-                selectedNodeIds,
-                activeNodeId,
+            filterBatchCellConnections(
+                filterCanvasDisplayConnections(displayConnections, {
+                    enabled: hideNodeConnections,
+                    hoveredNodeId,
+                    selectedNodeIds,
+                    activeNodeId,
+                    selectedConnectionId,
+                }),
+                batchScrollById,
                 selectedConnectionId,
-            }),
-        [activeNodeId, displayConnections, hideNodeConnections, hoveredNodeId, selectedConnectionId, selectedNodeIds],
+            ),
+        [activeNodeId, batchScrollById, displayConnections, hideNodeConnections, hoveredNodeId, selectedConnectionId, selectedNodeIds],
     );
     useEffect(() => {
         setNodes((current) => {
@@ -1935,6 +1957,8 @@ function CanvasViewportPage() {
         projectLoaded,
         nodes,
         nodesRef,
+        connectionsRef,
+        assets,
         setNodes,
         handleGenerateNode,
     });
@@ -1948,16 +1972,14 @@ function CanvasViewportPage() {
         batchGenDialogRowCount,
         closeBatchGenDialog,
         confirmBatchGenDialog,
-        fillRowsFromConnections,
         generateRows: generateBatchRows,
-        moveReferenceCell: moveBatchReferenceCell,
         patchTable: patchBatchTable,
         removeReferenceColumn: removeBatchReferenceColumn,
         removeRow: removeBatchRow,
         reorderReferenceColumns: reorderBatchReferenceColumns,
-        syncRowsFromConnections,
         updateRow: updateBatchRow,
     } = useCanvasBatchTable({
+        assets,
         nodesRef,
         connectionsRef,
         setNodes,
@@ -1977,37 +1999,7 @@ function CanvasViewportPage() {
             });
             return changed ? next : current;
         });
-        nodesRef.current
-            .filter((node) => node.type === CanvasNodeType.BatchTable)
-            .forEach((node) => {
-                syncRowsFromConnections(node.id, true);
-            });
-    }, [connections, projectLoaded, setNodes, syncRowsFromConnections]);
-
-    const handleUploadBatchReference = useCallback(
-        async (tableNodeId: string, rowId: string, columnIndex: number, file: File) => {
-            const tableNode = nodesRef.current.find((item) => item.id === tableNodeId);
-            const table = tableNode?.metadata?.batchTable;
-            const row = table?.rows.find((item) => item.id === rowId);
-            if (!tableNode || !table || !row) return;
-            const existingId = row.inputNodeIds[columnIndex];
-            if (existingId) {
-                await replaceNodeMedia(existingId, file);
-                return;
-            }
-            const rowIndex = table.rows.findIndex((item) => item.id === rowId);
-            const uploadedNodeId = await createFileNode(file, {
-                x: tableNode.position.x - 240,
-                y: tableNode.position.y + 170 + Math.max(0, rowIndex) * 220,
-            });
-            if (!uploadedNodeId) return;
-            const inputNodeIds = Array.from({ length: Math.max(batchReferenceColumns(table).length, columnIndex + 1) }, (_, index) => row.inputNodeIds[index] || "");
-            inputNodeIds[columnIndex] = uploadedNodeId;
-            updateBatchRow(tableNodeId, rowId, { inputNodeIds });
-            message.success(`已上传并填入参考图 ${columnIndex + 1}`);
-        },
-        [createFileNode, message, nodesRef, replaceNodeMedia, updateBatchRow],
-    );
+    }, [projectLoaded, setNodes]);
 
     const { addScriptRow, createAndGenerateScriptVideos, createScriptActionBoards, createScriptImageNodes, createScriptVideoNodes, generateScriptImages, generateScriptRows, generateScriptVideos, removeScriptRow, replaceScriptRows, updateScriptRow } =
         useCanvasStoryboard({
@@ -2307,10 +2299,10 @@ function CanvasViewportPage() {
                         batch={visibleGenerationBatch(contentNode)}
                         theme={theme}
                         onPatchTable={(patch) => patchBatchTable(contentNode.id, patch)}
-                        onAddRow={() => addBatchRow(contentNode.id)}
+                        onAddRow={(afterRowId) => addBatchRow(contentNode.id, afterRowId)}
                         onRemoveRow={(rowId) => removeBatchRow(contentNode.id, rowId)}
                         onUpdateRow={(rowId, patch) => updateBatchRow(contentNode.id, rowId, patch)}
-                        onFillRows={() => fillRowsFromConnections(contentNode.id)}
+                        onFillRows={() => void batchReferences.fillColumns(contentNode.id)}
                         onGenerate={(rowIds) => void generateBatchRows(contentNode.id, rowIds)}
                         onCreateStoryboard={() => createStoryboardFromBatchTable(contentNode.id)}
                         onRetryItem={(batchId, itemId) => retryFailedBatchItems(contentNode.id, batchId, itemId)}
@@ -2318,9 +2310,13 @@ function CanvasViewportPage() {
                         onRemoveReferenceColumn={() => removeBatchReferenceColumn(contentNode.id)}
                         onFocusOutput={(nodeId) => focusCanvasImageNode(nodeId)}
                         onReorderReferenceColumns={(fromColumnId, toColumnId) => reorderBatchReferenceColumns(contentNode.id, fromColumnId, toColumnId)}
-                        onMoveReferenceCell={(sourceRowId, sourceColumnIndex, targetRowId, targetColumnIndex) => moveBatchReferenceCell(contentNode.id, sourceRowId, sourceColumnIndex, targetRowId, targetColumnIndex)}
+                        readOnly={Boolean(contentNode.metadata?.locked)}
+                        onPickReference={(rowId, columnIndex) => batchReferences.pick(contentNode.id, rowId, columnIndex)}
+                        onRemoveReference={(rowId, columnIndex) => batchReferences.remove(contentNode.id, rowId, columnIndex)}
+                        onScrollChange={(scroll) => setBatchScrollById((previous) => (previous[contentNode.id]?.top === scroll.top && previous[contentNode.id]?.left === scroll.left ? previous : { ...previous, [contentNode.id]: scroll }))}
+                        onMoveReferenceCell={(sourceRowId, sourceColumnIndex, targetRowId, targetColumnIndex) => void batchReferences.move(contentNode.id, sourceRowId, sourceColumnIndex, targetRowId, targetColumnIndex)}
                         onUploadReference={(rowId, columnIndex, file) => {
-                            void handleUploadBatchReference(contentNode.id, rowId, columnIndex, file);
+                            batchReferences.upload(contentNode.id, rowId, columnIndex, file);
                         }}
                         onConnectStart={(event, handleId) => handleConnectStart(event, contentNode.id, "target", handleId)}
                         onConnectDrop={(event, handleId) => handleConnectDrop(event, contentNode.id, handleId)}
@@ -2411,14 +2407,12 @@ function CanvasViewportPage() {
             createScriptImageNodes,
             createScriptVideoNodes,
             currentProject?.previsScenes,
-            fillRowsFromConnections,
+            batchReferences,
             focusCanvasImageNode,
             generateBatchRows,
             generateScriptImages,
             generateScriptRows,
             generateScriptVideos,
-            handleUploadBatchReference,
-            moveBatchReferenceCell,
             handleConfigNodeChange,
             handleConnectDrop,
             handleConnectStart,
@@ -2694,6 +2688,7 @@ function CanvasViewportPage() {
                                 <CanvasShortDramaGuide progress={shortDramaGuide.progress} collapsed={shortDramaGuide.collapsed} onToggle={shortDramaGuide.onToggle} onSkip={skipShortDramaGuide} onStepClick={activateShortDramaStep} />
                             ) : null}
 
+                            {batchReferencePickerModal}
                             <CanvasShareModal projectId={projectId} open={shareModalOpen} onClose={() => setShareModalOpen(false)} beforeCreate={saveCanvasProject} />
                             <LibTVImportDialog open={libTVImportOpen} projectId={projectId} viewport={viewport} viewportSize={size} onClose={() => setLibTVImportOpen(false)} onApply={applyLibTVImport} />
                             <TapNowImportDialog open={tapNowImportOpen} projectId={projectId} viewport={viewport} viewportSize={size} onClose={() => setTapNowImportOpen(false)} onApply={applyTapNowImport} />
@@ -2706,6 +2701,7 @@ function CanvasViewportPage() {
                                 <div className="relative min-w-0 flex-1 overflow-clip">
                                     <CanvasViewport
                                         interactive
+                                        onSelectedImageWheel={handleSelectedImageWheel}
                                         containerRef={containerRef}
                                         viewport={viewport}
                                         appearance={canvasAppearance}
@@ -2719,6 +2715,8 @@ function CanvasViewportPage() {
                                                 selectedConnectionId={selectedConnectionId}
                                                 relatedConnectionIds={relatedHighlight.connectionIds}
                                                 scriptScrollTopById={scriptScrollTopById}
+                                                batchScrollById={batchScrollById}
+                                                connectionTargetHandleId={connectionTargetHandleId}
                                                 connectingParams={connectingParams}
                                                 batchConnectionPreview={batchConnectionPreview}
                                                 mouseWorld={mouseWorld}
@@ -2753,6 +2751,8 @@ function CanvasViewportPage() {
                                                     selectedConnectionId={selectedConnectionId}
                                                     relatedConnectionIds={relatedHighlight.connectionIds}
                                                     scriptScrollTopById={scriptScrollTopById}
+                                                    batchScrollById={batchScrollById}
+                                                    connectionTargetHandleId={connectionTargetHandleId}
                                                     connectingParams={connectingParams}
                                                     mouseWorld={mouseWorld}
                                                     connectionTargetNodeId={connectionTargetNodeId}
@@ -3047,6 +3047,9 @@ function CanvasViewportPage() {
                             ) : null}
 
                             <CanvasNodeToolbar
+                                onRotateImage={(node, direction) => void rotateImageNode(node.id, direction)}
+                                onCreateEditCopy={(node) => duplicateNode(node.id, "linked-copy")}
+                                rotatingImage={rotatingNodeId !== null}
                                 node={isCanvasNodeMoving || nodeImageSettingsOpen || emotionNodeId || angleNodeId ? null : toolbarNode}
                                 workspaceMode={workspaceMode}
                                 viewport={viewport}

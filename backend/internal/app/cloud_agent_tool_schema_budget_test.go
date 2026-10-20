@@ -27,8 +27,12 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 
 	// 条件必填不是 type 枚举能表达的约束，压缩描述不能删掉协议语义。
 	found := false
+	foundVision := false
 	for _, tool := range tools {
 		function, _ := tool["function"].(map[string]any)
+		if function["name"] == "canvas_inspect_image" {
+			foundVision = true
+		}
 		if function["name"] != "canvas_apply_ops" {
 			continue
 		}
@@ -53,10 +57,14 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 	if !found {
 		t.Fatal("canvas_apply_ops 未暴露")
 	}
+	if !foundVision {
+		t.Fatal("启用视觉能力后 canvas_inspect_image 未暴露")
+	}
 
 	// 官方 v1.6.1 的预演台工具与本仓库的批量识图、素材事实、空节点删除和带角色参考叠在一起。
-	// 实测 29 个工具、38,531 字节，预算 40,000（约 3.8% 余量）。新增工具或字段时须重新度量。
-	if len(raw) > 40000 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 40000：请压缩描述或显式调整预算", len(raw))
+	// 合并官方 v1.6.8.12 后实测 30 个工具、40,935 字节，预算显式上调到 42,000（约 2.6% 余量）。
+	// 新增工具或字段时须重新度量，不要悄悄膨胀。
+	if len(raw) > 42000 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 42000：请压缩描述或显式调整预算", len(raw))
 	}
 }

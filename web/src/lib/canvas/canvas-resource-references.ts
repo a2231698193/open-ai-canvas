@@ -262,6 +262,7 @@ function rewriteCanvasPromptAfterReferenceChange(prompt: string, previousReferen
 }
 
 export function applyCanvasConnectionPromptSync(previousNodes: CanvasNodeData[], previousConnections: CanvasConnection[], nextNodes: CanvasNodeData[], nextConnections: CanvasConnection[], options: { clearPromptTemplate?: boolean } = {}) {
+    nextNodes = detachRemovedBatchCellConnections(nextNodes, previousConnections, nextConnections);
     const previousMap = buildCanvasNodeMentionReferenceMap(previousNodes, previousConnections, nextNodes);
     const nextMap = buildCanvasNodeMentionReferenceMap(nextNodes, nextConnections, nextNodes);
     let changed = false;
@@ -601,3 +602,4 @@ export function buildToolMentionReference(toolId: number, label: string, type: s
         mentionToken: canvasToolMentionToken(toolId, label, type, icon),
     };
 }
+import { detachRemovedBatchCellConnections } from "./canvas-batch-references";
