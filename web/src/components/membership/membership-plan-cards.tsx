@@ -154,38 +154,42 @@ export function MembershipContactModal({ plan, membership, open, onCancel }: { p
     return (
         <AppModal open={open} title={plan ? `开通 ${plan.name}` : "开通会员"} centered width={400} footer={null} onCancel={onCancel}>
             <div className="membership-contact">
-                <div className="membership-contact-qr">
-                    <img
-                        src={MEMBERSHIP_WECHAT_QR_URL}
-                        alt="管理员微信二维码"
-                        onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                            event.currentTarget.parentElement?.classList.add("is-qr-missing");
-                        }}
-                    />
-                </div>
-                <p className="membership-contact-note">{MEMBERSHIP_CONTACT_NOTE}</p>
+                {MEMBERSHIP_WECHAT_QR_URL ? (
+                    <div className="membership-contact-qr">
+                        <img
+                            src={MEMBERSHIP_WECHAT_QR_URL}
+                            alt="管理员微信二维码"
+                            onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                                event.currentTarget.parentElement?.classList.add("is-qr-missing");
+                            }}
+                        />
+                    </div>
+                ) : null}
+                {MEMBERSHIP_WECHAT_QR_URL || MEMBERSHIP_WECHAT_ID ? <p className="membership-contact-note">{MEMBERSHIP_CONTACT_NOTE}</p> : null}
                 {plan ? (
                     <p className="membership-contact-plan">
                         {plan.name} · 每月 {formatCredits(plan.monthlyGrantMicrocredits)} 积分
                         {membership ? " · 支持升级补差与续费顺延" : ""}
                     </p>
                 ) : null}
-                <button
-                    type="button"
-                    className="membership-contact-wechat"
-                    onClick={async () => {
-                        try {
-                            await navigator.clipboard.writeText(MEMBERSHIP_WECHAT_ID);
-                            message.success("微信号已复制");
-                        } catch {
-                            message.info(`微信号：${MEMBERSHIP_WECHAT_ID}`);
-                        }
-                    }}
-                >
-                    <Copy className="size-4" />
-                    微信号：{MEMBERSHIP_WECHAT_ID}
-                </button>
+                {MEMBERSHIP_WECHAT_ID ? (
+                    <button
+                        type="button"
+                        className="membership-contact-wechat"
+                        onClick={async () => {
+                            try {
+                                await navigator.clipboard.writeText(MEMBERSHIP_WECHAT_ID);
+                                message.success("微信号已复制");
+                            } catch {
+                                message.info(`微信号：${MEMBERSHIP_WECHAT_ID}`);
+                            }
+                        }}
+                    >
+                        <Copy className="size-4" />
+                        微信号：{MEMBERSHIP_WECHAT_ID}
+                    </button>
+                ) : null}
             </div>
         </AppModal>
     );
