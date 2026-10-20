@@ -422,8 +422,8 @@ async function smokeWorkbench(cdp, baseUrl) {
     // 使用真实产品 dock（FloatingDock）验证提示的 hover 与键盘触发，不能只验证按钮存在。
     const dockSelector = '[role="toolbar"][aria-label="预演台视口工具"]';
     assert(await cdp.poll(`!!document.querySelector(${JSON.stringify(dockSelector)})`, "previs dock", 10000), "A5b 预演台视口工具条已渲染");
-    assert(await cdp.evaluate(`!!document.querySelector('${dockSelector} [role="radiogroup"][aria-label="变换模式"] [role="radio"][aria-label="移动对象 (W)"]')`), "A5b 变换模式切换包含移动对象 (W)");
-    const tooltipButton = `${dockSelector} button[aria-label="适配全部对象"]`;
+    assert(await cdp.evaluate(`!!document.querySelector('${dockSelector} [role="radiogroup"][aria-label="变换模式"] [role="radio"][aria-label="移动 (W)"]')`), "A5b 变换模式切换包含移动 (W)");
+    const tooltipButton = `${dockSelector} button[aria-label="适配全部对象 (A)"]`;
     const hoverPoint = await cdp.evaluate(`(() => { const b = document.querySelector(${JSON.stringify(tooltipButton)}); if (!b) return null; const r = b.getBoundingClientRect(); return {x:r.x+r.width/2, y:r.y+r.height/2}; })()`);
     if (!hoverPoint) throw new Error("A: 适配全部对象 dock button not found");
     await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...hoverPoint });
@@ -784,6 +784,106 @@ async function saveFailureCloseGuard(cdp, baseUrl) {
     assert(cdp.problems.length === 0, "F8 no browser problems in scenario F", JSON.stringify(cdp.problems));
 }
 
+/** 从真实 React 组件取公开 viewport handle，不挂生产调试 API、不另建仿制页面。 */
+async function shotOutputs(cdp, baseUrl) {
+    console.log("\n=== G. shot capture, depth, recording and monitor ===");
+    await cdp.navigateFresh(`${baseUrl}/dev/previs-repro`);
+    await cdp.click('[data-testid="toggle-workbench"]');
+    if (!(await cdp.poll(`document.querySelector('.previs-viewport-shell')?.dataset.rendererReady === 'true'`, "capture ready", 40000))) throw new Error("capture renderer unavailable");
+    const setup = await cdp.evaluate(`(async () => {
+        const el = document.querySelector('.previs-viewport-shell');
+        let fiber = el[Object.keys(el).find(key => key.startsWith('__reactFiber'))];
+        while (fiber && !fiber.ref?.current?.capture) fiber = fiber.return;
+        const resources = performance.getEntriesByType('resource').map(item => item.name);
+        const r3f = await import(resources.find(url => url.includes('/@react-three_fiber.js')));
+        const root = [...r3f._roots.values()].find(item => item.store.getState().gl.domElement === el.querySelector('canvas')).store.getState();
+        const three = await import(resources.find(url => url.includes('/three.js')));
+        window.__previsCaptureTest = { handle: fiber.ref.current, data: fiber.memoizedProps.scene, root, three };
+        return !!fiber.ref.current;
+    })()`);
+    assert(setup, "G1 actual viewport capture handle available");
+    const result = await cdp.evaluate(`(async () => {
+        const { handle, data, root, three } = window.__previsCaptureTest;
+        const surface = handle.createShotSurface({ longEdge: 320, depthNear: 0, depthFar: 30 });
+        const read = () => new Uint8ClampedArray(surface.canvas.getContext('2d').getImageData(0, 0, surface.canvas.width, surface.canvas.height).data);
+        try {
+            surface.render('depth', 0); const firstDepth = read();
+            surface.render('beauty', 0); const beauty = read();
+            surface.render('depth', 0); const secondDepth = read();
+            const stableDepth = firstDepth.every((value, i) => value === secondDepth[i]);
+            const { resolvePrevisViewFraming } = await import('/src/lib/canvas/previs/previs-view-modes.ts');
+            const framing = resolvePrevisViewFraming({ scene: data, mode: 'camera', playhead: 0 });
+            const camera = new three.PerspectiveCamera(framing.fov, surface.canvas.width / surface.canvas.height, framing.near, framing.far);
+            camera.position.set(...framing.position); camera.up.set(...framing.up); camera.lookAt(...framing.target); camera.updateMatrixWorld(true);
+            const meshes = [];
+            root.scene.traverse(o => {
+                let helper = false; for(let p=o;p;p=p.parent) if(p.userData.previsCaptureExclude || p.isTransformControlsGizmo || p.isTransformControlsPlane) helper=true;
+                if(o.isMesh && o.visible && !helper) meshes.push(o);
+            });
+            const errors = [];
+            for (const [u,v] of [[0.5,0.54],[0.5,0.78],[0.5,0.94]]) {
+                const x=Math.floor(u*surface.canvas.width), y=Math.floor(v*surface.canvas.height);
+                const ray = new three.Raycaster(); ray.setFromCamera(new three.Vector2((x+.5)/surface.canvas.width*2-1,1-(y+.5)/surface.canvas.height*2), camera);
+                const hit=ray.intersectObjects(meshes,false)[0]; if(!hit) throw new Error('depth probe missed scene');
+                const z=-hit.point.clone().applyMatrix4(camera.matrixWorldInverse).z;
+                const expected=Math.round((1-Math.min(1,Math.max(0,z/30)))*255);
+                errors.push(Math.abs(firstDepth[(y*surface.canvas.width+x)*4]-expected));
+            }
+            // 同一相机直接渲染到当前真实 renderer 默认帧缓冲，对比中心物体与地面色彩。
+            const size=root.gl.getSize(new three.Vector2()), dpr=root.gl.getPixelRatio(), target=root.gl.getRenderTarget();
+            const helpers=[];
+            root.scene.traverse(o => { if(o.visible && (o.userData.previsCaptureExclude || o.isTransformControlsGizmo || o.isTransformControlsPlane)) { helpers.push(o);o.visible=false; } });
+            let maxColorError=0;
+            try {
+                root.gl.setPixelRatio(1); root.gl.setSize(surface.canvas.width,surface.canvas.height,false); root.gl.setRenderTarget(null); root.gl.render(root.scene,camera);
+                const copy=document.createElement('canvas'); copy.width=surface.canvas.width;copy.height=surface.canvas.height;
+                copy.getContext('2d').drawImage(root.gl.domElement,0,0);
+                const direct=copy.getContext('2d').getImageData(0,0,copy.width,copy.height).data;
+                for(const [u,v] of [[.47,.54],[.5,.78],[.5,.2]]) {
+                    const i=(Math.floor(v*copy.height)*copy.width+Math.floor(u*copy.width))*4;
+                    for(let c=0;c<3;c++) maxColorError=Math.max(maxColorError,Math.abs(direct[i+c]-beauty[i+c]));
+                }
+            } finally { helpers.forEach(o=>o.visible=true);root.gl.setPixelRatio(dpr); root.gl.setSize(size.x,size.y,false);root.gl.setRenderTarget(target);root.invalidate(); }
+            return { width:surface.canvas.width,height:surface.canvas.height,stableDepth,depthErrors:errors,maxColorError };
+        } finally { surface.dispose(); }
+    })()`);
+    assert(result.width === 180 && result.height === 320, "G2 capture respects portrait shot ratio", JSON.stringify(result));
+    assert(result.stableDepth, "G3 beauty/depth switching preserves exact depth bytes");
+    assert(
+        result.depthErrors.every((error) => error <= 1),
+        "G4 linear metric depth matches raycast distance",
+        JSON.stringify(result.depthErrors),
+    );
+    assert(result.maxColorError <= 2, "G5 beauty matches default framebuffer tone mapping", `max error=${result.maxColorError}`);
+    const recording = await cdp.evaluate(`(async () => {
+        const handle=window.__previsCaptureTest.handle;
+        const blob=await handle.recordVideo(.6,12,'depth',{longEdge:320});
+        const video=document.createElement('video'),url=URL.createObjectURL(blob);video.muted=true;
+        try { await new Promise((resolve,reject)=>{video.onloadeddata=resolve;video.onerror=()=>reject(new Error('recording cannot decode'));video.src=url;});
+            const abort=new AbortController();const pending=handle.recordVideo(2,12,'beauty',{longEdge:320,signal:abort.signal});abort.abort();
+            let cancelled=false;try{await pending;}catch{cancelled=true;}
+            return {bytes:blob.size,width:video.videoWidth,height:video.videoHeight,cancelled};
+        } finally {video.removeAttribute('src');video.load();URL.revokeObjectURL(url);}
+    })()`);
+    assert(recording.bytes > 0 && recording.width === 180 && recording.height === 320, "G6 recording is decodable at shot dimensions", JSON.stringify(recording));
+    assert(recording.cancelled, "G7 recording cancellation rejects and releases session");
+    await cdp.evaluate(`(() => { const open=window.open.bind(window);window.open=(...args)=>{const popup=open(...args);window.__previsPopup=popup;return popup;}; })()`);
+    await cdp.click('button[aria-label="投放到第二屏幕"]');
+    assert(await cdp.poll(`window.__previsPopup?.document.querySelector('canvas')?.width === 1080`, "monitor frame", 20000), "G8 monitor displays full portrait shot");
+    const reused = await cdp.evaluate(`(async () => {
+        const {openPrevisMonitorWindow}=await import('/src/components/canvas/previs/previs-monitor-window.ts');
+        let firstClosed=0,secondClosed=0;
+        const first=openPrevisMonitorWindow({renderFrame:()=>null,onClosed:()=>firstClosed++});
+        const second=openPrevisMonitorWindow({renderFrame:()=>null,onClosed:()=>secondClosed++});
+        const count=window.__previsPopup.document.querySelectorAll('canvas').length;
+        first.close();const live=!second.closed();second.close();
+        return {count,live,firstClosed,secondClosed};
+    })()`);
+    assert(reused.count === 1 && reused.live && reused.firstClosed === 1 && reused.secondClosed === 1, "G9 named monitor reuse cleans old session without closing new window", JSON.stringify(reused));
+    assert(await cdp.poll(`document.querySelector('button[aria-label="投放到第二屏幕"]')?.getAttribute('aria-pressed') === 'false'`, "monitor closed"), "G10 monitor UI resets on close");
+    assert(cdp.problems.length === 0, "G11 no browser problems in output scenario", JSON.stringify(cdp.problems));
+}
+
 async function main() {
     const chromePath = resolveChrome();
     console.log(`Chrome binary: ${chromePath}`);
@@ -809,7 +909,11 @@ async function main() {
         cdp = await connectCdp(cdpPort);
         console.log("      CDP connected (Runtime, Page, Log, Network enabled)");
 
-        for (const scenario of [smokeWorkbench, localModel, missingRetry, deleteWhileLoading, webglLossRestore, saveFailureCloseGuard]) {
+        // 故意保存失败的场景最后运行：它保留 beforeunload 保护，后续导航会被浏览器拦住。
+        const scenarios = [smokeWorkbench, localModel, missingRetry, deleteWhileLoading, webglLossRestore, shotOutputs, saveFailureCloseGuard];
+        const selected = process.env.PREVIS_E2E_SCENARIO;
+        if (selected && !scenarios.some((scenario) => scenario.name === selected)) throw new Error(`Unknown scenario: ${selected}`);
+        for (const scenario of scenarios.filter((scenario) => !selected || scenario.name === selected)) {
             try {
                 await scenario(cdp, baseUrl);
             } catch (error) {
