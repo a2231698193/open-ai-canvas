@@ -875,10 +875,27 @@ export function AgentToolCard({
                         任务 ID：{String(objectField(objectField(detail, "result"), "taskId"))}
                     </span>
                 ) : null}
-                {undoState?.status === "error" ? <span className="mt-1 block text-[11px] text-[var(--status-danger)]" role="alert">撤销失败：{undoState.error || "请检查画布状态后重试"}</span> : null}
-                {undoState?.status === "done" ? <span className="mt-1 block text-[11px] text-[var(--status-success)]" role="status">此步骤已撤销</span> : null}
+                {undoState?.status === "error" ? (
+                    <span className="mt-1 block text-[11px] text-[var(--status-danger)]" role="alert">
+                        撤销失败：{undoState.error || "请检查画布状态后重试"}
+                    </span>
+                ) : null}
+                {undoState?.status === "done" ? (
+                    <span className="mt-1 block text-[11px] text-[var(--status-success)]" role="status">
+                        此步骤已撤销
+                    </span>
+                ) : null}
                 {undoTarget && onUndo && undoState?.status !== "done" ? (
-                    <Button type="text" size="small" className="mt-1 !h-7 !px-1.5" aria-label="撤销本次画布写入" icon={undoState?.status === "pending" ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Undo2 className="size-3.5" />} loading={undoState?.status === "pending"} disabled={undoState?.status === "pending"} onClick={() => onUndo?.(undoTarget)}>
+                    <Button
+                        type="text"
+                        size="small"
+                        className="mt-1 !h-7 !px-1.5"
+                        aria-label="撤销本次画布写入"
+                        icon={undoState?.status === "pending" ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Undo2 className="size-3.5" />}
+                        loading={undoState?.status === "pending"}
+                        disabled={undoState?.status === "pending"}
+                        onClick={() => onUndo?.(undoTarget)}
+                    >
                         {undoState?.status === "pending" ? "撤销中" : undoState?.status === "error" ? "重新撤销" : "撤销这一步"}
                     </Button>
                 ) : null}

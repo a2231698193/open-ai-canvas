@@ -14,16 +14,7 @@ import { agentErrorPresentation } from "@/lib/canvas/agent-error-presentation";
 /** 待用户处理的 Agent 审批（面板状态与事件归约共用）。 */
 export type ApprovalState = { approvalId: string; detail: Record<string, unknown>; reason: string };
 
-const CANVAS_MUTATION_TOOLS = new Set([
-    "canvas_apply_ops",
-    "canvas_arrange_nodes",
-    "canvas_create_storyboard",
-    "canvas_edit_storyboard",
-    "canvas_create_character",
-    "canvas_edit_batch_table",
-    "previs_scene_create",
-    "previs_apply_patch",
-]);
+const CANVAS_MUTATION_TOOLS = new Set(["canvas_apply_ops", "canvas_arrange_nodes", "canvas_create_storyboard", "canvas_edit_storyboard", "canvas_create_character", "canvas_edit_batch_table", "previs_scene_create", "previs_apply_patch"]);
 
 export function positiveNumber(value: string) {
     const number = Number(value);
@@ -280,11 +271,13 @@ export function applyAgentEvent(
         return;
     }
     if (event.type === "canvas_undone") {
-        setMessages((current) => current.map((item) => {
-            const detail = toolDetailRecord(item.detail);
-            if (detail.runId !== event.runId || detail.callId !== payload.stepId) return item;
-            return { ...item, detail: { ...detail, undoStatus: "undone" } };
-        }));
+        setMessages((current) =>
+            current.map((item) => {
+                const detail = toolDetailRecord(item.detail);
+                if (detail.runId !== event.runId || detail.callId !== payload.stepId) return item;
+                return { ...item, detail: { ...detail, undoStatus: "undone" } };
+            }),
+        );
         return;
     }
     if (event.type === "canvas_updated" && (Array.isArray(payload.actions) || payload.undo)) {

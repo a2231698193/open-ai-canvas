@@ -6,10 +6,13 @@ import { join } from "node:path";
 // Isolate transport without module mocks leaking to unrelated API tests.
 const dir = mkdtempSync(join(tmpdir(), "memory-proposal-api-"));
 const requestPath = join(dir, "request.ts");
-writeFileSync(requestPath, `export const calls = []; export const http = {
+writeFileSync(
+    requestPath,
+    `export const calls = []; export const http = {
     get: async (...args) => { calls.push(["get", ...args]); return {}; },
     post: async (...args) => { calls.push(["post", ...args]); return {}; }
-}; export const compactApiParams = (value) => value;`);
+}; export const compactApiParams = (value) => value;`,
+);
 writeFileSync(join(dir, "memories.ts"), readFileSync(new URL("../src/services/api/agent-memories.ts", import.meta.url), "utf8").replace('"./request"', JSON.stringify(requestPath)));
 const api: typeof import("../src/services/api/agent-memories") = await import(join(dir, "memories.ts"));
 const transport = await import(requestPath);

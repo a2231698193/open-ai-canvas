@@ -30,18 +30,32 @@ const event = (type: string, payload: Record<string, unknown>, seq: number): Age
 
 test("canvas mutation completion maps callId and full canvas hash into a single operation row", () => {
     let messages: CloudAgentChatMessage[] = [];
-    messages = reduceEvent(messages, event("canvas_updated", {
-        callId: "call-1",
-        canvasId: "canvas-1",
-        operation: "canvas_apply_ops",
-        actions: [{ action: "updated", nodeId: "node-1", title: "镜头提示词", nodeType: "text" }],
-    }, 1));
-    messages = reduceEvent(messages, event("tool_completed", {
-        callId: "call-1",
-        toolName: "canvas_apply_ops",
-        result: { snapshotHash: canvasHash, committed: true },
-        text: "画布操作已完成",
-    }, 2));
+    messages = reduceEvent(
+        messages,
+        event(
+            "canvas_updated",
+            {
+                callId: "call-1",
+                canvasId: "canvas-1",
+                operation: "canvas_apply_ops",
+                actions: [{ action: "updated", nodeId: "node-1", title: "镜头提示词", nodeType: "text" }],
+            },
+            1,
+        ),
+    );
+    messages = reduceEvent(
+        messages,
+        event(
+            "tool_completed",
+            {
+                callId: "call-1",
+                toolName: "canvas_apply_ops",
+                result: { snapshotHash: canvasHash, committed: true },
+                text: "画布操作已完成",
+            },
+            2,
+        ),
+    );
 
     expect(messages).toHaveLength(1);
     expect(messages[0].detail).toMatchObject({ eventType: "canvas_updated", completionEventType: "tool_completed", callId: "call-1" });
@@ -56,7 +70,12 @@ test("undo target requires successful supported canvas writes and the full-canva
     expect(agentCanvasUndoTarget({ runId: "run-1", canvasId: "canvas-1", eventType: "tool_completed", toolName: "canvas_apply_ops", callId: "call-5", result: { snapshotHash: "not-a-canvas-hash" } })).toBeNull();
     expect(agentCanvasUndoTarget({ runId: "run-1", canvasId: "canvas-1", eventType: "tool_completed", toolName: "canvas_apply_ops", result: { snapshotHash: canvasHash } })).toBeNull();
     expect(agentCanvasUndoTarget({ runId: "run-1", canvasId: "canvas-1", eventType: "tool_completed", toolName: "previs_apply_patch", callId: "call-6", result: { snapshotHash: canvasHash } })).toBeNull();
-    expect(agentCanvasUndoTarget({ runId: "run-1", canvasId: "canvas-1", eventType: "tool_completed", toolName: "previs_apply_patch", callId: "call-7", result: { canvasSnapshotHash: canvasHash } })).toEqual({ runId: "run-1", canvasId: "canvas-1", stepId: "call-7", expectedSnapshotHash: canvasHash });
+    expect(agentCanvasUndoTarget({ runId: "run-1", canvasId: "canvas-1", eventType: "tool_completed", toolName: "previs_apply_patch", callId: "call-7", result: { canvasSnapshotHash: canvasHash } })).toEqual({
+        runId: "run-1",
+        canvasId: "canvas-1",
+        stepId: "call-7",
+        expectedSnapshotHash: canvasHash,
+    });
 });
 
 test("server receipts undo structured writes using the originating run and full canvas hash", () => {

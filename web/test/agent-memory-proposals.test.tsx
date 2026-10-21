@@ -5,12 +5,23 @@ import { AgentMemoryProposalChanges, AgentMemoryRevisionChanges } from "@/pages/
 import type { AgentMemory, AgentMemoryProposal, AgentMemoryRevision } from "@/services/api/agent-memories";
 
 const memory: AgentMemory = {
-    id: "first", topic: "canvas.safe-write", category: "canvas", situation: "修改画布之前",
-    lesson: "先读后写", source: "用户确认的来源", status: "approved", hits: 2, injected: 3,
-    createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
+    id: "first",
+    topic: "canvas.safe-write",
+    category: "canvas",
+    situation: "修改画布之前",
+    lesson: "先读后写",
+    source: "用户确认的来源",
+    status: "approved",
+    hits: 2,
+    injected: 3,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
 };
 const proposal: AgentMemoryProposal = {
-    id: "proposal", status: "pending", version: 2, summary: { merged: 1, rewritten: 0, removed: 1, skipped: 0 },
+    id: "proposal",
+    status: "pending",
+    version: 2,
+    summary: { merged: 1, rewritten: 0, removed: 1, skipped: 0 },
     changes: [{ kind: "merge", before: [memory, { ...memory, id: "second", topic: "canvas.verify" }], after: { ...memory, lesson: "读取、写入、验证结果" } }],
     createdAt: new Date(0).toISOString(),
 };
@@ -29,8 +40,12 @@ test("proposal preview shows all source memories and resulting content before ap
 
 test("restore preview shows complete batch and protects later edits", () => {
     const revision: AgentMemoryRevision = {
-        id: "revision", proposalId: proposal.id, version: 1,
-        before: proposal.changes[0].before, after: [proposal.changes[0].after], createdAt: proposal.createdAt,
+        id: "revision",
+        proposalId: proposal.id,
+        version: 1,
+        before: proposal.changes[0].before,
+        after: [proposal.changes[0].after],
+        createdAt: proposal.createdAt,
     };
     const html = renderToStaticMarkup(<AgentMemoryRevisionChanges revision={revision} />);
     expect(html).toContain("将恢复为");

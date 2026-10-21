@@ -236,7 +236,9 @@ function AgentMemoryCompactCard({ compact = false, onApplied }: { compact?: bool
             ) : null}
             <AgentMemoryProposalPanel
                 refreshKey={`${settings?.proposalId || ""}:${settings?.lastStatus || ""}`}
-                onApplied={async () => { await Promise.all([loadSettings(), onApplied()]); }}
+                onApplied={async () => {
+                    await Promise.all([loadSettings(), onApplied()]);
+                }}
             />
         </section>
     );
@@ -447,7 +449,15 @@ export default function AgentMemoryPane({ compact = false }: { compact?: boolean
                                                 <div className="mt-1 space-y-1">
                                                     {record.source ? <p>来源：{record.source}</p> : null}
                                                     {record.originRunId ? <p className="break-all">来源运行：{record.originRunId}</p> : null}
-                                                    {record.evidence?.length ? <ul className="ml-4 list-disc">{record.evidence.map((entry, index) => <li key={`${entry.sequence}-${index}`}>{entry.tool} · 事件 {entry.sequence}</li>)}</ul> : null}
+                                                    {record.evidence?.length ? (
+                                                        <ul className="ml-4 list-disc">
+                                                            {record.evidence.map((entry, index) => (
+                                                                <li key={`${entry.sequence}-${index}`}>
+                                                                    {entry.tool} · 事件 {entry.sequence}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : null}
                                                     <p>工具成功仅说明这条经验的来源；待审记忆尚未生效，不代表经验已验证有效。</p>
                                                 </div>
                                             </details>

@@ -65,7 +65,7 @@ func Run(ctx context.Context, request ProcessRequest, bridge Bridge) error {
 	}
 	defer release()
 	if bridge.Model == nil || bridge.Tool == nil || bridge.Event == nil {
-		return errors.New("Agent bridge handlers are incomplete")
+		return errors.New("agent bridge handlers are incomplete")
 	}
 	runtimeDir, err := RuntimeDir()
 	if err != nil {
@@ -111,14 +111,14 @@ func Run(ctx context.Context, request ProcessRequest, bridge Bridge) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return fmt.Errorf("Agent runtime exited: %w", waitErr)
+		return fmt.Errorf("agent runtime exited: %w", waitErr)
 	}
 	return nil
 }
 
 func StartBridge(listenAddr, advertiseHost string, bridge Bridge) (*BridgeServer, error) {
 	if bridge.Model == nil || bridge.Tool == nil || bridge.Event == nil {
-		return nil, errors.New("Agent bridge handlers are incomplete")
+		return nil, errors.New("agent bridge handlers are incomplete")
 	}
 	advertiseHost = strings.TrimSpace(advertiseHost)
 	if advertiseHost == "" || strings.ContainsAny(advertiseHost, `:/\\ `) {

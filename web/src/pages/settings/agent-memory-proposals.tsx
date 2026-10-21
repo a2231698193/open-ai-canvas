@@ -5,15 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBadge } from "@/components/ui/base/badges";
 import { AppModal } from "@/components/ui/product/app-modal";
 import { Callout } from "@/components/ui/product/callout";
-import {
-    decideAgentMemoryProposal,
-    listAgentMemoryProposals,
-    listAgentMemoryRevisions,
-    restoreAgentMemoryRevision,
-    type AgentMemory,
-    type AgentMemoryProposal,
-    type AgentMemoryRevision,
-} from "@/services/api/agent-memories";
+import { decideAgentMemoryProposal, listAgentMemoryProposals, listAgentMemoryRevisions, restoreAgentMemoryRevision, type AgentMemory, type AgentMemoryProposal, type AgentMemoryRevision } from "@/services/api/agent-memories";
 
 const PROPOSAL_LABELS: Record<AgentMemoryProposal["status"], string> = {
     generating: "生成中",
@@ -32,7 +24,12 @@ function MemorySnapshot({ memory }: { memory: AgentMemory }) {
             {memory.lesson ? <p className="mt-1 whitespace-pre-wrap text-foreground">{memory.lesson}</p> : null}
             {memory.steps?.length ? (
                 <ol className="mt-1 ml-4 list-decimal text-muted-foreground">
-                    {memory.steps.map((step, index) => <li key={`${memory.id}-${index}`}>{step.action}{step.note ? `（${step.note}）` : ""}</li>)}
+                    {memory.steps.map((step, index) => (
+                        <li key={`${memory.id}-${index}`}>
+                            {step.action}
+                            {step.note ? `（${step.note}）` : ""}
+                        </li>
+                    ))}
                 </ol>
             ) : null}
             {memory.source ? <p className="mt-2 text-muted-foreground">来源：{memory.source}</p> : null}
@@ -50,8 +47,16 @@ export function AgentMemoryProposalChanges({ proposal }: { proposal: AgentMemory
                 <section key={`${change.after.id}-${index}`} className="space-y-2">
                     <h3 className="text-sm font-medium text-foreground">{change.kind === "merge" ? `合并 ${change.before.length} 条记忆` : "改写记忆"}</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-2"><p className="text-caption text-muted-foreground">修改前</p>{change.before.map((memory) => <MemorySnapshot key={memory.id} memory={memory} />)}</div>
-                        <div className="space-y-2"><p className="text-caption text-muted-foreground">修改后</p><MemorySnapshot memory={change.after} /></div>
+                        <div className="space-y-2">
+                            <p className="text-caption text-muted-foreground">修改前</p>
+                            {change.before.map((memory) => (
+                                <MemorySnapshot key={memory.id} memory={memory} />
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-caption text-muted-foreground">修改后</p>
+                            <MemorySnapshot memory={change.after} />
+                        </div>
                     </div>
                 </section>
             ))}
@@ -67,8 +72,18 @@ export function AgentMemoryRevisionChanges({ revision }: { revision: AgentMemory
                 恢复会同时还原该批次的改写与合并。若记忆已被后续编辑、删除或重新创建，操作会被拒绝，保留新修改。
             </Callout>
             <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2"><p className="text-caption text-muted-foreground">压缩后的版本</p>{revision.after.map((memory) => <MemorySnapshot key={memory.id} memory={memory} />)}</div>
-                <div className="space-y-2"><p className="text-caption text-muted-foreground">将恢复为</p>{revision.before.map((memory) => <MemorySnapshot key={memory.id} memory={memory} />)}</div>
+                <div className="space-y-2">
+                    <p className="text-caption text-muted-foreground">压缩后的版本</p>
+                    {revision.after.map((memory) => (
+                        <MemorySnapshot key={memory.id} memory={memory} />
+                    ))}
+                </div>
+                <div className="space-y-2">
+                    <p className="text-caption text-muted-foreground">将恢复为</p>
+                    {revision.before.map((memory) => (
+                        <MemorySnapshot key={memory.id} memory={memory} />
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -143,41 +158,99 @@ export function AgentMemoryProposalPanel({ refreshKey, onApplied }: { refreshKey
 
     return (
         <div className="space-y-2">
-            <Button size="small" icon={<ListChecks className="size-3.5" />} onClick={() => { setOpen(true); setSelected(null); void load(); }} loading={loading}>
+            <Button
+                size="small"
+                icon={<ListChecks className="size-3.5" />}
+                onClick={() => {
+                    setOpen(true);
+                    setSelected(null);
+                    void load();
+                }}
+                loading={loading}
+            >
                 {pending ? `查看 ${pending} 个待审提案` : "压缩提案与历史"}
             </Button>
-            {error && !open ? <p role="alert" className="text-caption text-status-error">{error}</p> : null}
-            <AppModal open={open} title={proposal ? "查看压缩提案" : revision ? "恢复记忆版本" : "压缩提案与历史"} width={800} footer={null} onCancel={() => { if (!busy) setOpen(false); }}>
+            {error && !open ? (
+                <p role="alert" className="text-caption text-status-error">
+                    {error}
+                </p>
+            ) : null}
+            <AppModal
+                open={open}
+                title={proposal ? "查看压缩提案" : revision ? "恢复记忆版本" : "压缩提案与历史"}
+                width={800}
+                footer={null}
+                onCancel={() => {
+                    if (!busy) setOpen(false);
+                }}
+            >
                 <div className="space-y-4 pt-2">
-                    {error ? <div role="alert"><Callout tone="warning" title="操作未完成">{error}</Callout></div> : null}
-                    {selected ? <Button size="small" disabled={busy} onClick={() => setSelected(null)}>返回列表</Button> : null}
+                    {error ? (
+                        <div role="alert">
+                            <Callout tone="warning" title="操作未完成">
+                                {error}
+                            </Callout>
+                        </div>
+                    ) : null}
+                    {selected ? (
+                        <Button size="small" disabled={busy} onClick={() => setSelected(null)}>
+                            返回列表
+                        </Button>
+                    ) : null}
                     {proposal ? <AgentMemoryProposalChanges proposal={proposal} /> : null}
                     {proposal?.status === "pending" ? (
                         <div className="flex justify-end gap-2">
-                            <Button icon={<X className="size-3.5" />} disabled={busy} onClick={() => void decide("reject")}>拒绝提案</Button>
-                            <Button type="primary" icon={<Check className="size-3.5" />} loading={busy} onClick={() => void decide("approve")}>批准并应用</Button>
+                            <Button icon={<X className="size-3.5" />} disabled={busy} onClick={() => void decide("reject")}>
+                                拒绝提案
+                            </Button>
+                            <Button type="primary" icon={<Check className="size-3.5" />} loading={busy} onClick={() => void decide("approve")}>
+                                批准并应用
+                            </Button>
                         </div>
                     ) : null}
                     {revision ? <AgentMemoryRevisionChanges revision={revision} /> : null}
-                    {revision && !revision.restoredAt ? <div className="flex justify-end"><Button type="primary" icon={<RotateCcw className="size-3.5" />} loading={busy} onClick={() => void restore()}>恢复压缩前版本</Button></div> : null}
+                    {revision && !revision.restoredAt ? (
+                        <div className="flex justify-end">
+                            <Button type="primary" icon={<RotateCcw className="size-3.5" />} loading={busy} onClick={() => void restore()}>
+                                恢复压缩前版本
+                            </Button>
+                        </div>
+                    ) : null}
                     {!selected ? (
                         <>
                             <section className="space-y-2">
                                 <h3 className="text-sm font-medium text-foreground">压缩提案</h3>
                                 {proposals.length === 0 ? <p className="text-caption text-muted-foreground">生成压缩提案后，可在这里检查并批准。</p> : null}
                                 {proposals.map((item) => (
-                                    <button key={item.id} type="button" className="flex w-full items-center justify-between gap-3 rounded-xl bg-surface-secondary p-3 text-left hover:bg-surface-hover focus-visible:outline focus-visible:outline-2" onClick={() => setSelected({ kind: "proposal", id: item.id })}>
-                                        <span className="text-caption text-foreground">{new Date(item.createdAt).toLocaleString()} · {item.changes.length} 项变更</span>
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 rounded-xl bg-surface-secondary p-3 text-left hover:bg-surface-hover focus-visible:outline focus-visible:outline-2"
+                                        onClick={() => setSelected({ kind: "proposal", id: item.id })}
+                                    >
+                                        <span className="text-caption text-foreground">
+                                            {new Date(item.createdAt).toLocaleString()} · {item.changes.length} 项变更
+                                        </span>
                                         <StatusBadge size="sm" tone={item.status === "pending" ? "warning" : item.status === "approved" ? "success" : "neutral"} label={PROPOSAL_LABELS[item.status]} />
                                     </button>
                                 ))}
                             </section>
                             <section className="space-y-2">
-                                <h3 className="flex items-center gap-2 text-sm font-medium text-foreground"><History className="size-4" />可恢复版本</h3>
+                                <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                    <History className="size-4" />
+                                    可恢复版本
+                                </h3>
                                 {revisions.length === 0 ? <p className="text-caption text-muted-foreground">批准应用压缩后，会自动保留修改前的版本。</p> : null}
                                 {revisions.map((item) => (
-                                    <button key={item.id} type="button" className="flex w-full items-center justify-between gap-3 rounded-xl bg-surface-secondary p-3 text-left hover:bg-surface-hover focus-visible:outline focus-visible:outline-2" onClick={() => setSelected({ kind: "revision", id: item.id })}>
-                                        <span className="text-caption text-foreground">{new Date(item.createdAt).toLocaleString()} · {item.before.length} 条原始记忆</span>
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 rounded-xl bg-surface-secondary p-3 text-left hover:bg-surface-hover focus-visible:outline focus-visible:outline-2"
+                                        onClick={() => setSelected({ kind: "revision", id: item.id })}
+                                    >
+                                        <span className="text-caption text-foreground">
+                                            {new Date(item.createdAt).toLocaleString()} · {item.before.length} 条原始记忆
+                                        </span>
                                         <span className="text-caption text-muted-foreground">{item.restoredAt ? "已恢复" : "查看与恢复"}</span>
                                     </button>
                                 ))}

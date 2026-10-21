@@ -72,7 +72,7 @@ func (p Policy) Allowed(scope Scope) bool {
 		(!p.RequiresCanvas || scope.Canvas) &&
 		(!p.RequiresSkills || scope.Skills) &&
 		(!p.Vision || scope.Vision) &&
-		(!(p.Write() || p.RequiresWriteMode) || !scope.ReadOnly) &&
+		(!p.Write() && !p.RequiresWriteMode || !scope.ReadOnly) &&
 		(p.Name != AgentProfileRead || scope.IncludeProfile)
 }
 

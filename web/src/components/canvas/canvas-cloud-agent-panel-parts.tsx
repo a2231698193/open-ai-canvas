@@ -514,7 +514,16 @@ export function AgentConversation({
                     ) : segment.kind === "reasoning" ? (
                         <AgentReasoningFeed key={segment.key} items={segment.items} theme={theme} />
                     ) : (
-                        <AgentChatMessage key={segment.key} item={segment.item} theme={theme} references={references} onFocusNode={onFocusNode} onUndo={onUndo} undoStates={undoStates} isStreaming={busy && !approval && segment.item.streaming === true && segment.item === lastMessage} />
+                        <AgentChatMessage
+                            key={segment.key}
+                            item={segment.item}
+                            theme={theme}
+                            references={references}
+                            onFocusNode={onFocusNode}
+                            onUndo={onUndo}
+                            undoStates={undoStates}
+                            isStreaming={busy && !approval && segment.item.streaming === true && segment.item === lastMessage}
+                        />
                     ),
                 )}
                 {approval ? (
