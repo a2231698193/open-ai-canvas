@@ -18,6 +18,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 后台支付订单列表与 CSV 导出显示订单类型、会员方案和变更。
 - [ ] 验证命令：`cd backend && go test ./internal/app ./internal/repository ./internal/database ./internal/model`；`cd web && bun run typecheck && bun run build`。
 
+## 积分运营：冻结积分自动退回开关
+
+- 已实现：`/admin/credit-operations` 右上角新增「自动退回」开关，默认关闭；开启前二次确认。配置存于 `system_settings` 键 `billing_auto_refund`（`{"enabled": bool}`），不新增表结构；接口 `GET/PATCH /api/admin/settings/billing-auto-refund`，仅管理员可读写，修改写入管理员审计 `billing_auto_refund.update`。
+- 行为：开启后后台 worker 每分钟按「待核对队列」口径（费用待核对、运行超 40 分钟、任务已失败/取消但仍预授权）每轮最多 100 条调用既有退款路径，写退款流水并记录核对备注「系统自动退回」；开启时立即执行一轮，关闭后下一轮停止。
+- 已验证：`go test ./internal/app/`（默认关闭、非管理员不可修改）、`bun run build`。
+- [ ] 开启开关后，待核对订单在 1 分钟内变为已退款，用户可用积分恢复、冻结积分减少，积分流水出现退款记录。
+- [ ] 关闭开关后新的待核对订单保持冻结；刷新页面后开关状态保持；非管理员调用接口返回 403。
+
 ## 本仓库合并官方 v1.6.8.4
 
 已接入官方 `f368e630..f951d330`。产品版本仍为 `v1.5.7.10`。数据库从 v57 升到 v59：v58 服务商目录来源，v59 SQL 性能索引。v50–v57 不改号，也不改写本地 v51 会员账本。画布同步仍保留未绑定素材与素材合并冲突的本地修复。3K 分辨率档保留。
