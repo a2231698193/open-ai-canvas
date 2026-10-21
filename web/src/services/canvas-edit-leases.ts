@@ -1,3 +1,4 @@
+import { createClientUUID } from "@/lib/client-id";
 import { changeCanvasEditLease, type CanvasEditProof, type CanvasSyncStatus } from "@/services/api/user-data";
 import { getActiveUserScope } from "@/lib/user-scope";
 
@@ -330,5 +331,5 @@ export const canvasEditLeases = createCanvasEditLeaseClient({
     change: changeCanvasEditLease,
     now: () => Date.now(),
     scope: getActiveUserScope,
-    sessionId: () => crypto.randomUUID(),
+    sessionId: () => createClientUUID(),
 });
