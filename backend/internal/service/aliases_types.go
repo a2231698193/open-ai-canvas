@@ -124,6 +124,8 @@ type (
 	ChannelOrderItem                       = app.ChannelOrderItem
 	ChannelOrderRequest                    = app.ChannelOrderRequest
 	ChannelRequest                         = app.ChannelRequest
+	SystemChannelExport                    = app.SystemChannelExport
+	SystemChannelImportResult              = app.SystemChannelImportResult
 	ProviderCatalogVerifyRequest           = app.ProviderCatalogVerifyRequest
 	ProviderCatalogInstallRequest          = app.ProviderCatalogInstallRequest
 	CharacterAssetSummary                  = app.CharacterAssetSummary

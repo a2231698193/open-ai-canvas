@@ -20,7 +20,7 @@ import {
     type VideoEnhanceScene,
     type VideoEnhanceStyle,
     type VideoEnhanceVersion,
-} from "@/lib/canvas/canvas-video-enhance";
+} from "@/lib/canvas/canvas-video-super-resolution";
 import { modelDisplayName, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeData } from "@/types/canvas";
 

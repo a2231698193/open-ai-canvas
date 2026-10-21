@@ -1,118 +1,134 @@
-import { modelDisplayName, modelOptionName, modelOptionsFromChannels, type AiConfig } from "@/stores/use-config-store";
+import { DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS, modelCapabilityConfigFor, type VideoProcessingConfig } from "@/lib/model-capabilities";
+import type { ModelQuoteRequest } from "@/services/api/logical-models";
+import { decodeChannelModel, modelOptionName, modelOptionsFromChannels, resolveModelChannel, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
+import type { CanvasNodeData } from "@/types/canvas";
+import type { ReferenceVideo } from "@/types/media";
 
-export const VIDEO_ENHANCE_MODEL_KEY = "video-enhance";
-export const VIDEO_ENHANCE_MAX_SECONDS = 600;
+/** 与后端 VideoProcessingOperationEnhance 一致。 */
+export const VIDEO_ENHANCE_OPERATION = "enhance";
 
-export type VideoEnhanceResolution = "720p" | "1080p" | "2k" | "4k" | "8k";
-export type VideoEnhanceFps = "keep" | "60" | "120";
-export type VideoEnhanceVersion = "standard" | "professional";
-export type VideoEnhanceScene = "aigc" | "short_series" | "ugc" | "old_film";
-export type VideoEnhanceStyle = "natural" | "hd";
+export type VideoEnhanceBitrateLevel = "low" | "medium" | "high";
 
 export type VideoEnhanceParams = {
-    resolution: VideoEnhanceResolution;
-    fps: VideoEnhanceFps;
-    toolVersion: VideoEnhanceVersion;
-    scene?: VideoEnhanceScene;
-    enhanceStyle?: VideoEnhanceStyle;
+    model: string;
+    resolution: string;
+    /** 仅 fpsPolicy=user_select 时有值；保持原帧率时不发送。 */
+    fps?: number;
+    bitrateLevel?: VideoEnhanceBitrateLevel;
+    bitrate?: number;
 };
 
-export const VIDEO_ENHANCE_RESOLUTION_OPTIONS: Array<{ value: VideoEnhanceResolution; label: string }> = [
-    { value: "720p", label: "720P" },
-    { value: "1080p", label: "1080P" },
-    { value: "2k", label: "2K" },
-    { value: "4k", label: "4K" },
-    { value: "8k", label: "8K" },
-];
-
-export const VIDEO_ENHANCE_FPS_OPTIONS: Array<{ value: VideoEnhanceFps; label: string; description: string }> = [
-    { value: "keep", label: "原帧率", description: "保持源视频帧率" },
-    { value: "60", label: "60fps", description: "插帧到 60" },
-    { value: "120", label: "120fps", description: "插帧到 120" },
-];
-
-export const VIDEO_ENHANCE_VERSION_OPTIONS: Array<{ value: VideoEnhanceVersion; label: string; description: string }> = [
-    { value: "standard", label: "标准版", description: "默认可选场景" },
-    { value: "professional", label: "专业版", description: "画质更高，价格 10 倍" },
-];
-
-export const VIDEO_ENHANCE_SCENE_OPTIONS: Array<{ value: VideoEnhanceScene; label: string }> = [
-    { value: "aigc", label: "AIGC" },
-    { value: "short_series", label: "短剧" },
-    { value: "ugc", label: "UGC" },
-    { value: "old_film", label: "老片修复" },
-];
-
-export const VIDEO_ENHANCE_STYLE_OPTIONS: Array<{ value: VideoEnhanceStyle; label: string }> = [
-    { value: "natural", label: "自然" },
-    { value: "hd", label: "高清" },
-];
-
-export const defaultVideoEnhanceParams: VideoEnhanceParams = {
-    resolution: "1080p",
-    fps: "keep",
-    toolVersion: "standard",
-};
-
-const RESOLUTION_MULTIPLIER: Record<VideoEnhanceResolution, number> = {
-    "720p": 1,
-    "1080p": 2,
-    "2k": 4,
-    "4k": 8,
-    "8k": 32,
-};
-
-const FPS_MULTIPLIER: Record<VideoEnhanceFps, number> = {
-    keep: 1,
-    "60": 2,
-    "120": 4,
-};
-
-const VERSION_MULTIPLIER: Record<VideoEnhanceVersion, number> = {
-    standard: 1,
-    professional: 10,
-};
-
-const BASE_YUAN_PER_SECOND = 0.0237;
-const CREDITS_PER_YUAN = 10;
-
-export function isVideoEnhanceModel(config: AiConfig, model: string) {
-    const key = modelOptionName(model).trim().toLowerCase();
-    const name = modelDisplayName(config, model).trim().toLowerCase();
-    return key === VIDEO_ENHANCE_MODEL_KEY || name.includes("超分") || name.includes("video enhance") || name.includes("video-enhance");
+/** 画质增强只使用系统渠道上声明了 processing 配置的视频模型；这些模型已从普通生成下拉中排除。 */
+export function listVideoEnhanceModels(config: AiConfig): string[] {
+    return modelOptionsFromChannels(config.channels).filter((model) => {
+        const decoded = decodeChannelModel(model);
+        const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId) : undefined;
+        if (!channel || channel.scope !== "system") return false;
+        const cost = channel.modelCosts?.find((item) => item.model === modelOptionName(model));
+        return cost?.capability === "video" && Boolean(cost.capabilityConfig?.video?.processing);
+    });
 }
 
-export function findVideoEnhanceModel(config: AiConfig) {
-    return modelOptionsFromChannels(config.channels).find((model) => isVideoEnhanceModel(config, model));
+export function videoEnhanceProfile(config: AiConfig, model: string) {
+    const video = modelCapabilityConfigFor(config, model).video;
+    const processing: VideoProcessingConfig = video?.processing || { fpsPolicy: "keep_source" };
+    return {
+        resolutions: video?.resolutions?.length ? video.resolutions : ["720p", "1080p", "2k", "4k"],
+        defaultResolution: video?.defaultResolution || "1080p",
+        processing,
+        maxSourceSeconds: processing.maxSourceSeconds || DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS,
+    };
 }
 
-export function videoEnhanceDurationSeconds(durationMs?: number) {
-    if (!durationMs || durationMs <= 0) return 1;
-    return Math.max(1, Math.ceil(durationMs / 1000));
+/** 目标分辨率档对应的短边像素，用于置灰低于源视频的档位。 */
+export function videoEnhanceResolutionShortEdge(resolution: string) {
+    const value = resolution.trim().toLowerCase();
+    if (value === "2k") return 1440;
+    if (value === "4k") return 2160;
+    const numeric = Number.parseInt(value, 10);
+    return Number.isFinite(numeric) ? numeric : 0;
 }
 
-export function videoEnhanceDurationError(durationMs?: number) {
-    if (!durationMs || durationMs <= 0) return "";
-    if (videoEnhanceDurationSeconds(durationMs) > VIDEO_ENHANCE_MAX_SECONDS) return "源视频超过 10 分钟，上游暂不支持超分";
+/** 火山画质增强（大模型版）输入规格：短边 [360,1080]、长边 [360,1920]、时长不超过后台上限。 */
+export function videoEnhanceSourceError(node: CanvasNodeData, maxSourceSeconds: number) {
+    const metadata = node.metadata;
+    if (!metadata?.storageKey && !metadata?.content) return "视频节点为空，无法画质增强";
+    const durationMs = metadata.durationMs || 0;
+    if (durationMs > maxSourceSeconds * 1000) return `源视频时长超过 ${maxSourceSeconds} 秒上限，请先截取片段后再增强`;
+    const width = metadata.naturalWidth || 0;
+    const height = metadata.naturalHeight || 0;
+    if (width > 0 && height > 0) {
+        const short = Math.min(width, height);
+        const long = Math.max(width, height);
+        if (short < 360 || short > 1080 || long > 1920) return `源视频分辨率 ${width}×${height} 不受支持：短边需在 360–1080、长边不超过 1920`;
+    }
     return "";
 }
 
-export function estimateVideoEnhanceCredits(params: VideoEnhanceParams, seconds: number) {
-    const duration = Math.max(1, Math.floor(Number(seconds) || 1));
-    return BASE_YUAN_PER_SECOND * CREDITS_PER_YUAN * RESOLUTION_MULTIPLIER[params.resolution] * FPS_MULTIPLIER[params.fps] * VERSION_MULTIPLIER[params.toolVersion] * duration;
+export function videoEnhanceFpsBand(fps?: number) {
+    if (!fps || fps <= 30) return "le30";
+    return fps <= 60 ? "le60" : "le120";
 }
 
-export function formatVideoEnhanceCredits(value: number) {
-    return `${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} 积分`;
-}
-
-export function videoEnhanceProviderOptions(params: VideoEnhanceParams) {
-    const options: Record<string, unknown> = {
-        fps: params.fps,
-        tool_version: params.toolVersion,
+export function videoEnhanceSourceReference(node: CanvasNodeData): ReferenceVideo {
+    const metadata = node.metadata || {};
+    return {
+        id: node.id,
+        name: `${node.title || "video"}.mp4`,
+        type: metadata.mimeType || "video/mp4",
+        url: metadata.content || "",
+        storageKey: metadata.storageKey,
+        role: "reference",
+        ...(metadata.bytes ? { bytes: metadata.bytes } : {}),
+        ...(metadata.naturalWidth ? { width: metadata.naturalWidth } : {}),
+        ...(metadata.naturalHeight ? { height: metadata.naturalHeight } : {}),
+        ...(metadata.durationMs ? { durationMs: metadata.durationMs } : {}),
     };
-    if (params.toolVersion === "standard" && params.scene) options.scene = params.scene;
-    if (params.enhanceStyle) options.enhance_style = params.enhanceStyle;
-    return options;
 }
 
+/** 生成任务配置：只覆盖模型与分辨率；时长和帧率档由后端按源资源重算。 */
+export function videoEnhanceGenerationConfig(config: AiConfig, params: VideoEnhanceParams, sourceDurationMs?: number): AiConfig {
+    const seconds = Math.max(1, Math.ceil((sourceDurationMs || 1000) / 1000));
+    return { ...config, model: params.model, videoModel: params.model, vquality: params.resolution, videoSeconds: String(seconds), taskWorkflowProvider: "model" };
+}
+
+export function videoEnhanceProviderOptions(config: AiConfig, params: VideoEnhanceParams) {
+    const protocol = resolveModelRequestConfig(config, params.model).interfaceType;
+    const options: Record<string, unknown> = {};
+    if (params.fps) options.fps = params.fps;
+    if (params.bitrate) options.bitrate = params.bitrate;
+    else if (params.bitrateLevel) options.bitrate_level = params.bitrateLevel;
+    return protocol ? { [protocol]: options } : {};
+}
+
+/** 新节点与重试共用的任务输入；prompt 由后端按处理模型重建，这里仅作展示。 */
+export function videoEnhanceTaskInput(options: { config: AiConfig; params: VideoEnhanceParams; source: ReferenceVideo; sourceNodeId: string; projectId: string; nodeId: string; signal?: AbortSignal }) {
+    const { config, params, source, sourceNodeId, projectId, nodeId, signal } = options;
+    return {
+        projectId,
+        nodeId,
+        mode: "video" as const,
+        prompt: `画质增强（${params.resolution}）`,
+        config: videoEnhanceGenerationConfig(config, params, source.durationMs),
+        referenceVideos: [source],
+        signal,
+        metadata: { sourceNodeId, videoEditOperation: VIDEO_ENHANCE_OPERATION, providerOptions: videoEnhanceProviderOptions(config, params) },
+    };
+}
+
+/** 报价按源时长预扣口径；实际结算以输出时长为准。 */
+export function videoEnhanceQuoteRequest(config: AiConfig, params: VideoEnhanceParams, sourceDurationMs?: number): ModelQuoteRequest | undefined {
+    const channel = resolveModelChannel(config, params.model);
+    if (channel.scope !== "system" || !params.model) return undefined;
+    const seconds = Math.max(1, Math.ceil((sourceDurationMs || 1000) / 1000));
+    return {
+        channelId: channel.id,
+        modelKey: modelOptionName(params.model),
+        intent: {
+            capability: "video",
+            operation: VIDEO_ENHANCE_OPERATION,
+            inputs: { video: 1 },
+            options: { vquality: params.resolution, videoSeconds: seconds, fpsBand: videoEnhanceFpsBand(params.fps) },
+        },
+    };
+}

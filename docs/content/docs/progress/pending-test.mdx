@@ -53,6 +53,20 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 图片响应格式按模型配置 `auto` / `b64_json` / `url`；OpenAI Responses 非 Agent 图文输入正常。
 - [ ] 归档或删除画布失败不影响其他画布保存；旧缓存合并后仍保留云端新增节点。
 - [ ] 用户验收：部署后旧库升级到 schema v60，`canvas_edit_leases` 表存在，回退需恢复匹配备份。
+## 视频画质增强（火山 AI MediaKit 大模型版）
+
+- 本地同时保留问鼎 LK888 视频超分入口（`video-enhance` / `fps` / `tool_version`）；MediaKit 的 processing 能力走独立模块与缓存参数，两套入口互不覆盖。
+
+- 已实现：官方插件 `volcengine-mediakit`（provider `volcengine-mediakit-enhance-video`，`kind: processing`，能力仍为 `video`），调用 `POST /api/v1/tools/enhance-video-generative` 与 `GET /api/v1/tasks/{task_id}`，`client_token` 取宿主幂等键。manifest provider 新增 `kind` 字段（`generation` / `processing`），目录接口返回给前端。
+- 后台：渠道模型视频能力新增 `processing`（`fpsPolicy` = `keep_source` / `user_select`、`fpsOptions`、`maxSourceSeconds` ≤ 180）；价格档新增 `fpsBand`（`le30` / `le60` / `le120`）与生成方式「画质增强」（`enhance`），可按次或按秒计费。
+- 准入：processing 任务不要求 prompt；源时长、尺寸由服务端按资源记录重算（短边 360–1080、长边 ≤1920、时长 ≤ 上限），`videoSeconds` = 源时长向上取整，帧率按后台策略收敛。轮询上限保持 1 小时。
+- 计费：按秒订单按源时长预扣，完成后按实际输出时长结算（优先 ffprobe 探测的资源时长，其次上游 `result.duration`），多退少补；都拿不到时进入待核对。保持原帧率按 ≤30fps 档预扣。
+- 画布：视频节点悬浮工具条「画质增强」，弹窗选模型、目标分辨率（低于源短边置灰）、帧率（仅 user_select）、码率档/精确码率，显示报价；提交后在右侧生成 loading 视频节点并连线；失败重试按节点 `videoEnhance` 参数重建请求。processing 模型不出现在普通视频生成下拉。
+- 已验证：`go test ./...`、`tsc --noEmit`、`eslint`、`bun test`（帧率档、分辨率换算、源视频校验、价格档表单）。
+- [ ] 后台安装插件、配置 MediaKit API Key 与渠道模型（分别验证 keep_source / user_select），配置 vquality × fpsBand 价格档。
+- [ ] 真实视频跑通增强：结果节点回填、按输出时长结算的流水备注与差额退回/补扣。
+- [ ] 超时与失败：上游失败退款、超 1 小时轮询失败的表现，源视频超限/规格不符时的前后端提示。
+
 ## 局域网 HTTP 访问报错 crypto.randomUUID is not a function
 
 - 已修复：`crypto.randomUUID` 只在安全上下文（HTTPS / localhost）可用，局域网 IP 走 HTTP 时页面启动即抛错。新增 `createClientUUID()`（`web/src/lib/client-id.ts`），优先用原生 `randomUUID`，否则用 `getRandomValues` 生成同格式 v4 UUID；前端所有直接调用已替换。

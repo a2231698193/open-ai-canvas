@@ -9,7 +9,7 @@ import {
     videoEnhanceDurationError,
     videoEnhanceDurationSeconds,
     videoEnhanceProviderOptions,
-} from "../src/lib/canvas/canvas-video-enhance";
+} from "../src/lib/canvas/canvas-video-super-resolution";
 import { defaultConfig, selectableModelsByCapability, type AiConfig } from "../src/stores/use-config-store";
 
 function configWithVideoModels(models: Array<{ model: string; displayName: string; protocol?: string }>): AiConfig {

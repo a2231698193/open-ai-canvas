@@ -6,7 +6,7 @@ import { CanvasNodeVideoEnhanceDialog } from "@/components/canvas/canvas-node-vi
 import { CanvasNodeImageEditDialog, type CanvasImageEditPayload } from "@/components/canvas/canvas-node-image-edit-dialog";
 import { CanvasNodeLayerDecompositionDialog, type CanvasImageLayerDecompositionPayload } from "@/components/canvas/canvas-node-layer-decomposition-dialog";
 import { CanvasNodeTextEditDialog, type CanvasImageTextEditPayload } from "@/components/canvas/canvas-node-text-edit-dialog";
-import type { VideoEnhanceParams } from "@/lib/canvas/canvas-video-enhance";
+import type { VideoEnhanceParams } from "@/lib/canvas/canvas-video-super-resolution";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { AiConfig } from "@/stores/use-config-store";
 

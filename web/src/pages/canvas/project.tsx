@@ -52,6 +52,8 @@ import { CanvasNodeToolbar, CanvasNodeInfoModal } from "@/components/canvas/canv
 import { CanvasSubtitleDialog } from "@/components/canvas/canvas-subtitle-dialog";
 import { CanvasVideoFrameDialog } from "@/components/canvas/canvas-video-frame-dialog";
 import { CanvasVideoSegmentDialog } from "@/components/canvas/canvas-video-segment-dialog";
+import { CanvasVideoEnhanceDialog } from "@/components/canvas/canvas-video-enhance-dialog";
+import { listVideoEnhanceModels } from "@/lib/canvas/canvas-video-enhance";
 import { CanvasTimelineDialog } from "@/components/canvas/canvas-timeline-dialog";
 import { syncNodeSubtitlesToTimeline } from "@/lib/timeline/timeline-build";
 import { CanvasNodeAnglePanel } from "@/components/canvas/canvas-node-angle-dialog";
@@ -857,7 +859,6 @@ function CanvasViewportPage() {
         cropNodeId,
         closeFrameDialog,
         closeSegmentDialog,
-        enhanceVideoNode,
         extractAudioFromVideo,
         extractVideoFrames,
         extractingVideoFramesNodeId,
@@ -914,6 +915,11 @@ function CanvasViewportPage() {
         openVideoSegmentExtractor,
         upscaleImageNode,
         upscaleNodeId,
+        enhanceDialogNodeId,
+        setEnhanceDialogNodeId,
+        openVideoEnhance,
+        enhanceVideoNode,
+        enhanceVideoSuperResolution,
     } = useCanvasMediaTools({
         projectId,
         domainProjectId: linkedProjectId,
@@ -952,6 +958,7 @@ function CanvasViewportPage() {
             setSubtitleNodeId(clearDeletedId);
             setFrameDialogNodeId(clearDeletedId);
             setSegmentDialogNodeId(clearDeletedId);
+            setEnhanceDialogNodeId(clearDeletedId);
             setCropNodeId(clearDeletedId);
             setMaskEditNodeId(clearDeletedId);
             setAnnotationNodeId(clearDeletedId);
@@ -987,6 +994,7 @@ function CanvasViewportPage() {
             setLightingNodeId,
             setMaskEditNodeId,
             setSegmentDialogNodeId,
+            setEnhanceDialogNodeId,
             setUpscaleNodeId,
             setRunningNodeId,
         ],
@@ -1510,6 +1518,8 @@ function CanvasViewportPage() {
     const timelineNode = timelineNodeId ? nodeById.get(timelineNodeId) || null : null;
     const frameNode = frameDialogNodeId ? nodeById.get(frameDialogNodeId) || null : null;
     const segmentNode = segmentDialogNodeId ? nodeById.get(segmentDialogNodeId) || null : null;
+    const enhanceNode = enhanceDialogNodeId ? nodeById.get(enhanceDialogNodeId) || null : null;
+    const hasVideoEnhanceModels = useMemo(() => listVideoEnhanceModels(effectiveConfig).length > 0, [effectiveConfig]);
     const textEditorNode = textEditorNodeId ? nodeById.get(textEditorNodeId) || null : null;
     const characterReferenceNode = characterReferenceNodeId ? nodeById.get(characterReferenceNodeId) || null : null;
     const drawingNode = drawingNodeId ? nodeById.get(drawingNodeId) || null : null;
@@ -2562,8 +2572,10 @@ function CanvasViewportPage() {
         ) : emptyStateKind === "guided" ? (
             <CanvasShortDramaEmptyState
                 onCreatePipeline={createShortDramaPipeline}
-                onOpenAgent={() => {
+                onSubmitPrompt={(text) => {
                     setCinematicAgentEntry(true);
+                    // 有输入时直接作为首条消息提交；空输入只打开面板。
+                    if (text) setAgentPrefillRequest((current) => ({ id: (current?.id ?? 0) + 1, text, autoSubmit: true }));
                     openAgent();
                 }}
                 onStartFreeform={() => updateProject(projectId, { starterMode: "freeform" })}
@@ -3102,6 +3114,7 @@ function CanvasViewportPage() {
                                 onExtractVideoFrames={openVideoFrameExtractor}
                                 onExtractAudioFromVideo={(node) => void extractAudioFromVideo(node)}
                                 onTrimVideoSegments={openVideoSegmentExtractor}
+                                onEnhanceVideo={hasVideoEnhanceModels ? openVideoEnhance : undefined}
                                 onSubtitles={(node) => setSubtitleNodeId(node.id)}
                                 onTimeline={(node) => setTimelineNodeId(node.id)}
                                 extractingVideoFrames={toolbarNode?.id === extractingVideoFramesNodeId}
@@ -3226,6 +3239,16 @@ function CanvasViewportPage() {
                                     timeline={currentProject?.timeline || null}
                                     onClose={closeSegmentDialog}
                                     onConfirm={(params) => void handleSegmentConfirm(segmentNode, params)}
+                                />
+                            ) : null}
+
+                            {enhanceNode ? (
+                                <CanvasVideoEnhanceDialog
+                                    node={enhanceNode}
+                                    open={Boolean(enhanceNode)}
+                                    config={effectiveConfig}
+                                    onClose={() => setEnhanceDialogNodeId(null)}
+                                    onConfirm={(params) => void enhanceVideoNode(enhanceNode, params)}
                                 />
                             ) : null}
 
@@ -3484,7 +3507,7 @@ function CanvasViewportPage() {
                                 onUpscale={(node, params) => void upscaleImageNode(node, params)}
                                 onVideoEnhance={(node, params) => {
                                     setSuperResolveNodeId(null);
-                                    void enhanceVideoNode(node, params);
+                                    void enhanceVideoSuperResolution(node, params);
                                 }}
                                 config={effectiveConfig}
                             />
