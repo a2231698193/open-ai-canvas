@@ -3943,6 +3943,16 @@ SQLite 与 HTTP recorder 已验证；PostgreSQL 16／17、前端构建及浏览�
 
 ## 模型配置与图片参数通用修复
 
-- 切换能力和协议后保存、重开，确认旧协议字段清除，价格数值保持。
-- 验证 21:9 声明比例、自由像素尺寸和默认分辨率在准入、计价和执行中一致。
-- 真实渠道生成与费用仍需维护者使用自己的渠道验证。
+- [ ] 重新进入画布、连续多步骤写入和历史会话逐步撤销，在真实浏览器复验按钮状态、并发编辑冲突和刷新恢复；自动化React与CAS测试不替代浏览器验收。
+
+## 云端 Agent Registry 与记忆重构
+
+- 已实现：删除旧工具注册副本及旧启发式CanvasIntelligence注入链；29个schema/执行handler/Policy由统一Registry绑定，8类读取schema由类型参数结构体生成，schema/name golden及授权组合测试守护。Pi两层参数校验、工具所有权、CAS、媒体审批和收费幂等保持。
+- 已实现：焦点超过8个保留前8个并注明省略数；焦点摘要使用Unicode字符截断；当前运行时策略单一版本v17。Pi步数与预算一致，read_only权限不暴露写工具。
+- 已实现：最多5条/6KiB相关记忆作为动态消息，不进system；Injected仅在模型任务实际入队事务递增。候选记忆在检查点中保存步骤与来源事件，仅run成功后成为待审。记忆压缩改为版本化提案，批准/拒绝、CAS恢复及用户证据展示已接入。
+- 已实现：逐步撤销按钮使用服务端run/canvas/step/hash回执，拒绝后续画布变更，收费任务不可撤销，历史run通过runId正确归属。
+- 已实现：CI架构 AST 守卫检查 Agent 依赖边界及存量复杂度；Agent 域 golangci-lint 使用固定版本。
+- [ ] 真实模型与 app replay 评测未接入；本次不报告智能度/pass^k 收益。
+- 已验证：`go test ./... -count=1 -timeout=20m`、`go vet ./...`、`go build ./...`、前端 2716 项测试、`bun run lint`、`bun run build` 通过；数据库与API迁移测试包含SQLite。四篇修改后的MDX逐篇编译及OpenAPI引用解析通过。
+- 环境阻塞：文档站 `bun run types:check` 在 MDX 扫描前失败，当前忽略的 `docs/node_modules/fdir/dist/index.mjs` 调用了 `Dirent.isPrevisy()`（Node Dirent 无此方法）；为避免改依赖，本轮未继续修补 node_modules。
+- [ ] 真实模型/收费生成与多次运行pass^k、provider缓存命中率、PostgreSQL 58迁移、浏览器记忆提案与历史撤销尚未人工验收。

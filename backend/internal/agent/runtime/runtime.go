@@ -42,8 +42,6 @@ type ProcessRequest struct {
 	SystemPrompt  string           `json:"systemPrompt"`
 	EnabledSkills []map[string]any `json:"enabledSkills,omitempty"`
 	Profile       map[string]any   `json:"profile,omitempty"`
-	Memory        map[string]any   `json:"memory,omitempty"`
-	Canvas        map[string]any   `json:"canvas,omitempty"`
 	Features      map[string]any   `json:"features,omitempty"`
 	Tools         []map[string]any `json:"tools"`
 	Compaction    map[string]any   `json:"compaction,omitempty"`
