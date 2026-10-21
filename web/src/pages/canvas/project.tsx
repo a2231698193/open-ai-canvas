@@ -39,7 +39,6 @@ import { AppModal } from "@/components/ui/product/app-modal";
 import { getNodeSpec } from "@/constant/canvas";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
-import { CanvasCloudAgentPanel } from "@/components/canvas/canvas-cloud-agent-panel";
 import { CanvasActiveTaskPanel } from "@/components/canvas/canvas-active-task-panel";
 import { CanvasProjectSidebar } from "@/components/canvas/canvas-project-sidebar";
 import { CanvasProjectAssetModal } from "@/components/canvas/canvas-project-asset-modal";
@@ -142,6 +141,7 @@ import { removeCanvasDrawing } from "@/lib/canvas/canvas-drawing-storage";
 import { useCanvasConnectionController } from "./use-canvas-connection-controller";
 import { useCanvasOperationHistory } from "./use-canvas-operation-history";
 import { useCanvasAssistantVisibility } from "./use-canvas-assistant-visibility";
+import { useGlobalAgentStore } from "@/stores/use-global-agent-store";
 import { useCanvasActiveTasks } from "./use-canvas-active-tasks";
 import { useCanvasStyleWorkflow } from "./use-canvas-style-workflow";
 import { useCanvasPrevis } from "./use-canvas-previs";
@@ -301,7 +301,7 @@ function CanvasViewportPage() {
     const [titleDraft, setTitleDraft] = useState("");
     const [shortcutRequestNonce, setShortcutRequestNonce] = useState(0);
     const [cinematicAgentEntry, setCinematicAgentEntry] = useState(false);
-    const { assistantOpen, closeAgent, openAgent: openAssistant } = useCanvasAssistantVisibility();
+    const { closeAgent, openAgent: openAssistant } = useCanvasAssistantVisibility();
     const agentMentionReferences = useMemo(() => buildCanvasAgentMentionReferences(nodes), [nodes]);
 
     const { tasks: activeTasks } = useCanvasActiveTasks(projectId, projectLoaded);
@@ -2572,6 +2572,47 @@ function CanvasViewportPage() {
                 onAddScript={() => createNode(CanvasNodeType.Script)}
             />
         ) : null;
+    // Agent 面板体量很大且已 memo：传入稳定引用，避免画布每次提交视口/拖拽都带着它整棵重渲染。
+    const agentSelectedNodeIds = useMemo(() => Array.from(selectedNodeIds), [selectedNodeIds]);
+    const agentFocusNodeRef = useRef<(nodeId: string) => void>(() => {});
+    agentFocusNodeRef.current = (nodeId: string) => {
+        const currentNodes = nodesRef.current;
+        const target = currentNodes.find((node) => node.id === nodeId);
+        if (!target) {
+            message.info("该节点已删除或尚未同步到画布");
+            return;
+        }
+        const parent = target.parentId ? currentNodes.find((node) => node.id === target.parentId) : null;
+        if (parent?.metadata?.frame?.collapsed) toggleFrameCollapsed(parent.id);
+        const batchRootId = target.metadata?.batchRootId;
+        const batchRoot = batchRootId ? currentNodes.find((node) => node.id === batchRootId) : null;
+        if (batchRoot && isHiddenBatchChild(target, currentNodes) && !batchRoot.metadata?.imageBatchExpanded) toggleBatchExpanded(batchRoot.id);
+        focusCanvasNode(nodeId);
+    };
+    const handleAgentFocusNode = useCallback((nodeId: string) => agentFocusNodeRef.current(nodeId), []);
+    // 平台唯一的 Agent 面板挂在布局上；画布只发布自己的上下文。画布加载完成前不发布，避免以未保存画布绑定运行。
+    const publishAgentCanvas = useGlobalAgentStore((state) => state.setCanvas);
+    useEffect(() => {
+        if (!projectLoaded || !projectId) return;
+        publishAgentCanvas({
+            canvasId: projectId,
+            domainProjectId: currentProject?.projectId,
+            canvasNodes: nodes,
+            runningNodeId,
+            nodeCount: nodes.length,
+            selectedNodeIds: agentSelectedNodeIds,
+            references: agentMentionReferences,
+            prefillRequest: agentPrefillRequest,
+            onFocusNode: handleAgentFocusNode,
+        });
+    }, [projectLoaded, projectId, currentProject?.projectId, nodes, runningNodeId, agentSelectedNodeIds, agentMentionReferences, agentPrefillRequest, handleAgentFocusNode, publishAgentCanvas]);
+    // 离开画布（卸载或切换到另一个画布）时撤回上下文：之后的对话轮次不再绑定这个画布。
+    useEffect(() => {
+        return () => {
+            const current = useGlobalAgentStore.getState().canvas;
+            if (current?.canvasId === projectId) useGlobalAgentStore.getState().setCanvas(null);
+        };
+    }, [projectId]);
     if (!projectLoaded && loadError)
         return (
             <main className="flex h-full flex-col items-center justify-center gap-4">
@@ -2881,39 +2922,6 @@ function CanvasViewportPage() {
                                             onOpenProjectCharacters={() => openCharacterLibrary()}
                                         />
                                     ) : null}
-                                </div>
-
-                                <div className="contents">
-                                    <CanvasCloudAgentPanel
-                                        canvasId={projectId}
-                                        domainProjectId={currentProject?.projectId}
-                                        canvasNodes={nodes}
-                                        runningNodeId={runningNodeId}
-                                        nodeCount={nodes.length}
-                                        selectedNodeIds={Array.from(selectedNodeIds)}
-                                        references={agentMentionReferences}
-                                        prefillRequest={agentPrefillRequest}
-                                        open={assistantOpen}
-                                        onOpen={openAgent}
-                                        onCollapse={closeAgent}
-                                        onFocusNode={(nodeId) => {
-                                            const currentNodes = nodesRef.current;
-                                            const target = currentNodes.find((node) => node.id === nodeId);
-                                            if (!target) {
-                                                message.info("该节点已删除或尚未同步到画布");
-                                                return;
-                                            }
-
-                                            const parent = target.parentId ? currentNodes.find((node) => node.id === target.parentId) : null;
-                                            if (parent?.metadata?.frame?.collapsed) toggleFrameCollapsed(parent.id);
-
-                                            const batchRootId = target.metadata?.batchRootId;
-                                            const batchRoot = batchRootId ? currentNodes.find((node) => node.id === batchRootId) : null;
-                                            if (batchRoot && isHiddenBatchChild(target, currentNodes) && !batchRoot.metadata?.imageBatchExpanded) toggleBatchExpanded(batchRoot.id);
-
-                                            focusCanvasNode(nodeId);
-                                        }}
-                                    />
                                 </div>
                             </div>
 

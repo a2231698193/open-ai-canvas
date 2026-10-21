@@ -18,6 +18,18 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 后台支付订单列表与 CSV 导出显示订单类型、会员方案和变更。
 - [ ] 验证命令：`cd backend && go test ./internal/app ./internal/repository ./internal/database ./internal/model`；`cd web && bun run typecheck && bun run build`。
 
+## 平台级 Agent（单一面板，画布可选绑定）
+
+- 已实现：`CanvasCloudAgentPanel` 挂在 `UserLayout`，所有登录页面共用一个实例（跨路由不卸载）。画布编辑器只通过 `web/src/stores/use-global-agent-store.ts` 发布当前画布上下文（画布 ID、节点、选区、引用、预填），离开画布时撤回。发送时有画布就带 `canvasId` 和画布上下文，没有就不带。
+- 后端：`POST /api/agent/runs` 与 `/messages` 的 `canvasId` 改为可选。无画布运行不查画布、不占画布锁（多段平台对话可并行）、不暴露画布/生成/预演工具、不构建画布上下文；`contextScope`、`focusNodeIds` 必须为空。续轮允许换绑画布（首页 → 画布 → 离开），换绑时不继承旧画布的创作锚点，并注入 `scope_change` 说明，告诉模型旧节点 ID 与快照哈希已失效。
+- 前端：对话历史与待确认提交改为按账号全局存储（不再按画布分）。写回同步、审批前保存跟随运行自身的 `run.canvasId`：离开画布后，进行中那一轮仍写回原画布。
+- 已验证：`go test ./...`（新增 `cloud_agent_unbound_test.go`：无画布运行、拒绝无画布时带画布上下文、续轮换绑）、`bun run build`、`bun test`（Agent 相关 144 项）、`bun run lint`。
+- [ ] 首页无画布直接对话：能收到回复，不出现画布工具调用；面板标题不显示节点数。
+- [ ] 首页对话后进入画布继续发消息：同一段对话延续，Agent 能读取当前画布；离开画布再发：不再读写该画布。
+- [ ] 画布内 Agent 运行或等待审批时离开画布：运行继续，审批后结果写回原画布。
+- [ ] 各页面只有一个悬浮入口，位置、开合状态跨页面保持；切换账号后对话历史隔离。
+- [ ] 明暗主题、窄屏（<640px）下面板布局与滚动正常。
+
 ## 积分运营：冻结积分自动退回开关
 
 - 已实现：`/admin/credit-operations` 右上角新增「自动退回」开关，默认关闭；开启前二次确认。配置存于 `system_settings` 键 `billing_auto_refund`（`{"enabled": bool}`），不新增表结构；接口 `GET/PATCH /api/admin/settings/billing-auto-refund`，仅管理员可读写，修改写入管理员审计 `billing_auto_refund.update`。
