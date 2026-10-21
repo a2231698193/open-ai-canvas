@@ -122,7 +122,7 @@ func StartBridge(listenAddr, advertiseHost string, bridge Bridge) (*BridgeServer
 	}
 	advertiseHost = strings.TrimSpace(advertiseHost)
 	if advertiseHost == "" || strings.ContainsAny(advertiseHost, `:/\\ `) {
-		return nil, errors.New("Agent bridge host must be a hostname or IP without a scheme or port")
+		return nil, errors.New("agent bridge host must be a hostname or IP without a scheme or port")
 	}
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -136,7 +136,7 @@ func StartBridge(listenAddr, advertiseHost string, bridge Bridge) (*BridgeServer
 	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok || tcpAddr.Port == 0 {
 		_ = listener.Close()
-		return nil, errors.New("Agent bridge did not receive a TCP port")
+		return nil, errors.New("agent bridge did not receive a TCP port")
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /model", func(w http.ResponseWriter, r *http.Request) { BridgeCall(w, r, token, bridge.Model) })
@@ -217,7 +217,7 @@ func RuntimeDir() (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", errors.New("Agent runtime files are missing; set CANVAS_PI_RUNTIME_DIR")
+	return "", errors.New("agent runtime files are missing; set CANVAS_PI_RUNTIME_DIR")
 }
 
 const (
