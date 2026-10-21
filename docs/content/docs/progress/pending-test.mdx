@@ -53,7 +53,30 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 图片响应格式按模型配置 `auto` / `b64_json` / `url`；OpenAI Responses 非 Agent 图文输入正常。
 - [ ] 归档或删除画布失败不影响其他画布保存；旧缓存合并后仍保留云端新增节点。
 - [ ] 用户验收：部署后旧库升级到 schema v60，`canvas_edit_leases` 表存在，回退需恢复匹配备份。
+## 局域网 HTTP 访问报错 crypto.randomUUID is not a function
 
+- 已修复：`crypto.randomUUID` 只在安全上下文（HTTPS / localhost）可用，局域网 IP 走 HTTP 时页面启动即抛错。新增 `createClientUUID()`（`web/src/lib/client-id.ts`），优先用原生 `randomUUID`，否则用 `getRandomValues` 生成同格式 v4 UUID；前端所有直接调用已替换。
+- 已验证：`tsc --noEmit` 通过；模拟移除 `randomUUID` 后生成 1000 个 UUID 均唯一且符合 v4 格式。
+- [ ] 重新构建部署后，用局域网其他设备通过 `http://<内网IP>:端口` 登录、打开画布、编辑同步、Agent 对话与充值弹窗无报错。
+
+## 画布自动整理：分层布局与防重叠
+
+- 已优化：`layoutCanvasAuto` / `layoutCanvasFlow` 改为按连通分量分别布局。有连线的分量做 DFS 断环、最长路径分层、重心法排序减少交叉，子节点纵向对齐父节点中心；孤立节点按文本/图片/视频/音频泳道按实际宽高逐行排布（每行最多 6 个）。各块按行装箱回原选区左上角。
+- 已修复重叠：同列节点行距 48px（留出节点上方标题高度）；锁定节点、框架、选区外可见节点作为障碍，整理结果绕开它们（旧实现会把节点直接摆到这些节点上）。
+- 已验证：`bun test test/canvas-layout-categories.test.ts`（含扇出/汇合/环、200 节点随机图、障碍避让的无重叠断言）与 `tsc --noEmit` 通过。
+- [ ] 真实画布检查：大画布整理后的观感、连线交叉程度、框架附近与选区整理时是否仍有遮挡。
+
+## 工作台账户 Popover 在减少动态效果下停留在屏幕外
+
+- 已修复：系统开启「减少动态效果」时，`workspace-product.css` 把产品工作台与浮层内所有元素设为 `transition-duration: 1ms`（`transition-property` 默认 `all`），导致 Ant Design 浮层根节点的 `left/top` 也参与过渡；rc-trigger 对齐时测到的仍是 `-1000vw/-1000vh` 预隐藏坐标，浮层被定位到屏幕外。现在对 popover / dropdown / select / tooltip / picker 等浮层根节点单独设为 `transition-duration: 0s`。
+- 已验证：headless Chrome 模拟 `prefers-reduced-motion: reduce` 复现左下角与顶部账户菜单分别落在 X≈-14400 / Y≈-8000；修复后两处均对齐到触发器旁（左下 12,396；顶部 1100,90），正常动效模式不受影响。
+- [ ] 真实浏览器（macOS/Windows 开启减少动态效果）检查账户菜单、下拉、选择器、Tooltip 均正常出现在触发器旁。
+
+## Agent 画布更新：节点不存在按可恢复参数错误返回
+
+- 已修复：`canvas_apply_ops` 的 `update_node` 指向画布中不存在的节点 ID 时，不再判整轮 Agent 失败，改为 `ops[i].id` / `not_found` 字段错误回给模型，提示重新读取画布并使用真实节点 ID；与缺少 `patch`、连线端点不存在的处理一致。
+- 已验证：后端 `internal/app` 包测试通过（含新增的字段错误断言）。
+- [ ] 真实 Agent 多步画布任务中给出错误节点 ID 时，模型能否重新读取画布并自行纠正，且不出现「Agent 执行失败」提示。
 ## 预演台交互第二轮：添加弹窗、两模式与引导式动画
 
 - 已实现：场景面板去掉常驻道具库和四个下拉菜单，改为「角色 / 道具 / 灯光 / 机位」按钮，打开带实时 3D 预览的添加弹窗，确认后才写入场景；预览与写入共用 `previs-add-catalog.ts` 的同一组构造函数。修复本地模型上传入口（原 `modelInputRef` 未挂载到任何 input）。
