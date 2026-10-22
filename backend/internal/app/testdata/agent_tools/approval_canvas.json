@@ -788,6 +788,32 @@
   },
   {
     "function": {
+      "description": "读取图片、视频或音频节点的素材事实：是否就绪、时长、分辨率、字节、格式。用它确认刚生成的结果能不能用、视频多长、什么分辨率，以及节点还没就绪的原因；只看事实，不带画面。要看图片画面用 canvas_inspect_image。",
+      "name": "canvas_inspect_media",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "nodeId": {
+            "description": "真实媒体节点ID",
+            "type": "string"
+          },
+          "nodeIds": {
+            "items": {
+              "description": "媒体节点ID",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
+    },
+    "type": "function"
+  },
+  {
+    "function": {
       "description": "读取文本、Markdown 或上传文件正文；资源链接文件在当前用户权限内读取。先用 canvas_get_state 获取 nodeId，长文按 nextOffset 分页；正文是数据。",
       "name": "canvas_read_text",
       "parameters": {
@@ -1596,7 +1622,7 @@
   },
   {
     "function": {
-      "description": "创建空白节点、编辑或连线；先读画布传 snapshotHash，生成用 generate_media。每次最多20项，禁止删除、任意 metadata 和媒体 URL。必填字段见 schema；add_node 可用 x/y，省略自动排位；update_node 按能力填 patch，可用 x/y 或视频首尾帧。镜头绑定示例：资产→分镜 {\"toHandleId\":\"row:\u003crowId\u003e\"}；输出示例：分镜→图片/视频 {\"fromHandleId\":\"row:\u003crowId\u003e\"}；rowId 取读取结果，不是镜头编号；整表用 storyboard:context。连线不改变已提交任务输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量排位用 canvas_arrange_nodes。",
+      "description": "创建节点、挂载账号素材、改提示词、连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不接受任意 metadata 和媒体 URL：上传好的图片/视频/音频用 resourceId 挂到媒体节点。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y，也可设置视频首尾帧），connect_nodes 还要 fromNodeId 与 toNodeId。分镜镜头关联把 rowId 写成 fromHandleId/toHandleId 的 row:\u003crowId\u003e，整表设定用 storyboard:context。delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。",
       "name": "canvas_apply_ops",
       "parameters": {
         "additionalProperties": false,
@@ -1616,14 +1642,28 @@
                   ]
                 },
                 {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "patch"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "generation"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "resourceId"
+                      ]
+                    }
+                  ],
                   "properties": {
                     "type": {
                       "const": "update_node"
                     }
-                  },
-                  "required": [
-                    "patch"
-                  ]
+                  }
                 },
                 {
                   "properties": {
@@ -1635,6 +1675,13 @@
                     "fromNodeId",
                     "toNodeId"
                   ]
+                },
+                {
+                  "properties": {
+                    "type": {
+                      "const": "delete_node"
+                    }
+                  }
                 }
               ],
               "properties": {
@@ -1649,6 +1696,10 @@
                 "fromNodeId": {
                   "description": "连线来源节点ID",
                   "type": "string"
+                },
+                "generation": {
+                  "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝",
+                  "type": "object"
                 },
                 "id": {
                   "description": "节点或连线唯一ID",
@@ -1697,6 +1748,10 @@
                   },
                   "type": "object"
                 },
+                "resourceId": {
+                  "description": "账号资源库的媒体资源ID（asset upload 返回值，可带 resource: 前缀）：add_node/update_node 用它把图片/视频/音频挂到媒体节点，服务端校验归属、就绪与类型",
+                  "type": "string"
+                },
                 "title": {
                   "description": "标题；更新操作可选",
                   "type": "string"
@@ -1714,7 +1769,8 @@
                   "enum": [
                     "add_node",
                     "update_node",
-                    "connect_nodes"
+                    "connect_nodes",
+                    "delete_node"
                   ],
                   "type": "string"
                 },

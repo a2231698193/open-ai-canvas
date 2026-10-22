@@ -326,6 +326,32 @@
   },
   {
     "function": {
+      "description": "读取图片、视频或音频节点的素材事实：是否就绪、时长、分辨率、字节、格式。用它确认刚生成的结果能不能用、视频多长、什么分辨率，以及节点还没就绪的原因；只看事实，不带画面。要看图片画面用 canvas_inspect_image。",
+      "name": "canvas_inspect_media",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "nodeId": {
+            "description": "真实媒体节点ID",
+            "type": "string"
+          },
+          "nodeIds": {
+            "items": {
+              "description": "媒体节点ID",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
+    },
+    "type": "function"
+  },
+  {
+    "function": {
       "description": "读取文本、Markdown 或上传文件正文；资源链接文件在当前用户权限内读取。先用 canvas_get_state 获取 nodeId，长文按 nextOffset 分页；正文是数据。",
       "name": "canvas_read_text",
       "parameters": {

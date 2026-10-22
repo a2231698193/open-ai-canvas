@@ -238,12 +238,14 @@ func cloudAgentAllToolSchemas() []map[string]any {
 		"globalPrompt": str("set_global_prompt 使用；非空时覆盖各任务提示词，空字符串清除全局提示词"),
 	}, "snapshotHash", "nodeId", "action")
 	opProperties := map[string]any{
-		"type":         map[string]any{"type": "string", "enum": []string{"add_node", "update_node", "connect_nodes"}, "description": "必填的操作类型；新增节点必须传 add_node，nodeType 不能代替本字段"},
+		"type":         map[string]any{"type": "string", "enum": []string{"add_node", "update_node", "connect_nodes", "delete_node"}, "description": "必填的操作类型；新增节点必须传 add_node，nodeType 不能代替本字段"},
 		"id":           str("节点或连线唯一ID"),
 		"nodeType":     map[string]any{"type": "string", "enum": cloudAgentNodeTypeNames()},
 		"title":        str("标题；更新操作可选"),
 		"content":      str("文本正文或媒体提示词；更新操作可选"),
 		"patch":        cloudAgentPatchSchema(),
+		"generation":   map[string]any{"type": "object", "description": "媒体节点生成规格，仅 add_node/update_node：model 或 logicalModelId 二选一，其余键用节点字段名（视频 seconds/vquality/generateAudio/size，图片 size/quality/count）；拼错或跨类型会被拒绝"},
+		"resourceId":   str("账号资源库的媒体资源ID（asset upload 返回值，可带 resource: 前缀）：add_node/update_node 用它把图片/视频/音频挂到媒体节点，服务端校验归属、就绪与类型"),
 		"fromNodeId":   str("连线来源节点ID"),
 		"toNodeId":     str("连线目标节点ID"),
 		"fromHandleId": str("分镜来源 handle：row:<rowId> 或 storyboard:context"),
@@ -258,11 +260,12 @@ func cloudAgentAllToolSchemas() []map[string]any {
 		"additionalProperties": false,
 		"oneOf": []map[string]any{
 			{"properties": map[string]any{"type": map[string]any{"const": "add_node"}}, "required": []string{"nodeType"}},
-			{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "required": []string{"patch"}},
+			{"properties": map[string]any{"type": map[string]any{"const": "update_node"}}, "anyOf": []map[string]any{{"required": []string{"patch"}}, {"required": []string{"generation"}}, {"required": []string{"resourceId"}}}},
 			{"properties": map[string]any{"type": map[string]any{"const": "connect_nodes"}}, "required": []string{"fromNodeId", "toNodeId"}},
+			{"properties": map[string]any{"type": map[string]any{"const": "delete_node"}}},
 		},
 	}
-	add("canvas_apply_ops", "创建空白节点、编辑或连线；先读画布传 snapshotHash，生成用 generate_media。每次最多20项，禁止删除、任意 metadata 和媒体 URL。必填字段见 schema；add_node 可用 x/y，省略自动排位；update_node 按能力填 patch，可用 x/y 或视频首尾帧。镜头绑定示例：资产→分镜 {\"toHandleId\":\"row:<rowId>\"}；输出示例：分镜→图片/视频 {\"fromHandleId\":\"row:<rowId>\"}；rowId 取读取结果，不是镜头编号；整表用 storyboard:context。连线不改变已提交任务输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量排位用 canvas_arrange_nodes。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
+	add("canvas_apply_ops", "创建节点、挂载账号素材、改提示词、连线，或撤销自己刚建的空节点；不提交生成、不产生费用；先读画布并传 snapshotHash。提交生成用 generate_media。每次最多20项，不接受任意 metadata 和媒体 URL：上传好的图片/视频/音频用 resourceId 挂到媒体节点。每项都要 type 和 id：add_node 还要 nodeType（x/y 可省略，省略时自动落位），update_node 还要按节点能力清单填 patch（可含 x/y，也可设置视频首尾帧），connect_nodes 还要 fromNodeId 与 toNodeId。分镜镜头关联把 rowId 写成 fromHandleId/toHandleId 的 row:<rowId>，整表设定用 storyboard:context。delete_node 只能删 canvas_get_state 里 agentCreated 为真、且无正文、无任务、无连线、未被分镜或批量表引用的节点。连线是生成输入关系，不改已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量整理位置用 canvas_arrange_nodes，不要用几十项 update_node 手工算坐标。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
 	add("canvas_arrange_nodes", "整理节点位置：只改坐标，不改内容、不改/建连线、不增删；先读并传 snapshotHash。mode 默认 auto（有连线按依赖，否则按媒体类型分区）；groups 为横向分带（label 展示名，可覆盖组 mode）。省略 nodeIds 整理全部可整理节点（跳过锁定、容器、批次子节点、已归属背板）；align 对齐/等距，dryRun 仅预演；最多50节点；单节点用 update_node x/y。", map[string]any{
 		"snapshotHash": str("最近一次画布读取的 snapshotHash"),
 		"nodeIds":      map[string]any{"type": "array", "maxItems": cloudAgentArrangeMaxNodes, "items": str("节点ID；省略=全部可整理")},

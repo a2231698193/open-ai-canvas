@@ -8,6 +8,7 @@
   "previs_apply_patch",
   "canvas_list_node_types",
   "canvas_get_state",
+  "canvas_inspect_media",
   "canvas_read_text",
   "canvas_read_batch_table",
   "canvas_read_storyboard",
