@@ -56,6 +56,8 @@ type Policy struct {
 	RequiresWriteMode bool
 	// OutsideTransaction performs storage IO before the checkpoint transaction.
 	OutsideTransaction bool
+	// AutoPermission 表示该工具只在自动权限下暴露；需要界面审批的能力不能用它绕过审批。
+	AutoPermission bool
 }
 
 // Scope contains server-derived capabilities for this run, never model claims.
@@ -65,6 +67,7 @@ type Scope struct {
 	Vision         bool
 	ReadOnly       bool
 	IncludeProfile bool
+	AutoPermission bool
 }
 
 func (p Policy) Allowed(scope Scope) bool {
@@ -72,6 +75,7 @@ func (p Policy) Allowed(scope Scope) bool {
 		(!p.RequiresCanvas || scope.Canvas) &&
 		(!p.RequiresSkills || scope.Skills) &&
 		(!p.Vision || scope.Vision) &&
+		(!p.AutoPermission || scope.AutoPermission) &&
 		(!p.Write() && !p.RequiresWriteMode || !scope.ReadOnly) &&
 		(p.Name != AgentProfileRead || scope.IncludeProfile)
 }
@@ -150,7 +154,7 @@ func policies() []Policy {
 		{Name: PlanUpdate, Kind: KindControl},
 		{Name: AskUser, Kind: KindControl},
 		{Name: PrevisSceneRead, Kind: KindRead, Cacheable: true, CacheScope: CacheCanvasRevision, RequiresCanvas: true},
-		{Name: PrevisPreview, Kind: KindPrepare, RequiresCanvas: true, RequiresWriteMode: true},
+		{Name: PrevisPreview, Kind: KindPrepare, RequiresCanvas: true, RequiresWriteMode: true, AutoPermission: true},
 		{Name: PrevisSceneCreate, Kind: KindWrite, RequiresCanvas: true},
 		{Name: PrevisApplyPatch, Kind: KindWrite, RequiresCanvas: true},
 		{Name: CanvasListNodeTypes, Kind: KindRead, RequiresCanvas: true},

@@ -76,5 +76,6 @@ func cloudAgentToolScope(req CloudAgentRequest, profile bool) agenttool.Scope {
 	return agenttool.Scope{
 		Canvas: len(req.ContextScope) > 0, Skills: len(req.SkillIDs) > 0,
 		Vision: req.VisionEnabled, ReadOnly: req.PermissionMode == "read_only", IncludeProfile: profile,
+		AutoPermission: req.PermissionMode == "auto",
 	}
 }
