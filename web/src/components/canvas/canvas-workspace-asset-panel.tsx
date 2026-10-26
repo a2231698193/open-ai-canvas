@@ -76,7 +76,7 @@ export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets 
                     />
                     <Button type="text" aria-label="刷新资产" loading={query.isFetching} icon={<RefreshCw className="size-4" />} onClick={() => void query.refetch()} />
                 </div>
-                <input className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm" aria-label="搜索资产名称或标签" placeholder="搜索名称/标签" value={input} onChange={(event) => setInput(event.target.value)} />
+                <input className="w-full rounded-md border border-border bg-transparent px-2 py-2 text-sm" aria-label="搜索资产名称或标签" placeholder="搜索名称/标签" value={input} onChange={(event) => setInput(event.target.value)} />
             </div>
             <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
                 {!userId ? (

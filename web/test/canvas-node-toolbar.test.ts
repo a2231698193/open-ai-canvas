@@ -99,8 +99,8 @@ describe("canvas node toolbar model", () => {
         const groups = new Map(tools.map((tool) => [tool.id, resolveNodeToolbarPlacement(tool, ctx).group]));
 
         expect([...groups].filter(([, group]) => group === "primary").map(([id]) => id)).toEqual(["trimRegenerate", "subtitles"]);
-        expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio"]);
-        expect(groups.get("videoEnhance")).toBe("enhance");
+        expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio", "videoEnhance"]);
+        expect(groups.get("videoEnhance")).toBe("process");
         expect(groups.get("download")).toBe("utility");
         expect(groups.get("timeline")).toBe("workspace");
         expect(groups.get("uploadVideo")).toBe("more");
@@ -127,15 +127,18 @@ describe("canvas node toolbar model", () => {
         const node: CanvasNodeData = { id: "image", type: CanvasNodeType.Image, title: "图片", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "image.png" } };
         const tools = buildImageToolbarTools(node, {} as never);
 
-        expect(tools.find((tool) => tool.id === "angle")?.group).toBe("viewpoint");
-        expect(tools.find((tool) => tool.id === "maskEdit")?.group).toBe("primary");
+        expect(tools.find((tool) => tool.id === "angle")?.group).toBe("camera");
+        expect(tools.find((tool) => tool.id === "regionEdit")?.group).toBe("primary");
         expect(tools.some((tool) => tool.id === "superResolve")).toBe(false);
-        expect(tools.find((tool) => tool.id === "emotion")?.group).toBe("portrait");
+        expect(tools.find((tool) => tool.id === "emotion")?.group).toBe("adjust");
+        expect(tools.find((tool) => tool.id === "cinematic_light_correction")?.group).toBe("adjust");
+        expect(tools.find((tool) => tool.id === "image_projection_after_3s")?.group).toBe("camera");
+        expect(tools.find((tool) => tool.id === "character_three_view_generation")?.section).toBe("设定图");
         expect(tools.find((tool) => tool.id === "upscale")?.description).toContain("不是 AI 超分");
         expect(tools.find((tool) => tool.id === "crop")?.section).toBe("构图与尺寸");
         expect(tools.find((tool) => tool.id === "resize")?.active).toBe(true);
         expect(tools.find((tool) => tool.id === "copyPrompt")?.group).toBe("more");
-        expect(tools.find((tool) => tool.id === "previs")?.group).toBe("primary");
+        expect(tools.find((tool) => tool.id === "previs")?.group).toBe("camera");
         expect(tools.find((tool) => tool.id === "previs")?.description).toContain("Agent");
     });
 });

@@ -390,7 +390,7 @@ export function AgentHistory({
                 <Button type="text" shape="circle" icon={<ArrowLeft className="size-4" />} onClick={onBack} aria-label="返回对话" />
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold">历史对话</div>
-                    <div className="mt-0.5 text-[11px] opacity-40">当前画布云端对话与本机历史</div>
+                    <div className="mt-0.5 text-[var(--fs-label)] opacity-40">当前画布云端对话与本机历史</div>
                 </div>
                 {onRefresh ? <Button type="text" shape="circle" loading={loading} icon={<RotateCcw className="size-4" />} onClick={onRefresh} aria-label="刷新云端对话" /> : null}
                 <Button type="text" shape="circle" icon={<MessageSquarePlus className="size-4" />} onClick={onNew} aria-label="新建对话" title="新建对话" />
@@ -417,13 +417,13 @@ export function AgentHistory({
                                             {openingId === conversation.id ? <LoaderCircle className="size-3.5 motion-safe:animate-spin" /> : <Clock3 className="size-3.5" />}
                                         </span>
                                         <span className="canvas-agent-history-text min-w-0 flex-1">
-                                            <span className="canvas-agent-history-title block truncate text-[13px] font-medium">{conversation.title}</span>
-                                            <span className="canvas-agent-history-preview mt-0.5 block text-[11px] opacity-40" title={preview}>
+                                            <span className="canvas-agent-history-title block truncate text-[var(--fs-ui)] font-medium">{conversation.title}</span>
+                                            <span className="canvas-agent-history-preview mt-0.5 block text-[var(--fs-label)] opacity-40" title={preview}>
                                                 {cloudAgentConversationServerId(conversation) ? "云端 · " : "本机 · "}
                                                 {preview}
                                             </span>
                                         </span>
-                                        <span className="canvas-agent-history-time shrink-0 text-[10px] opacity-35">{formatConversationTime(conversation.updatedAt)}</span>
+                                        <span className="canvas-agent-history-time shrink-0 text-[var(--fs-label)] opacity-35">{formatConversationTime(conversation.updatedAt)}</span>
                                     </button>
                                     {!cloudAgentConversationServerId(conversation) ? (
                                         <Button
@@ -472,6 +472,8 @@ export function AgentConversation({
     onApprovalReasonChange,
     onApprove,
     onReject,
+    onWithdrawInterjection,
+    withdrawingInterjectionId,
 }: {
     theme: CanvasTheme;
     messages: CloudAgentChatMessage[];
@@ -489,6 +491,8 @@ export function AgentConversation({
     onApprovalReasonChange: (reason: string) => void;
     onApprove: (settings?: AgentMediaSettings) => void;
     onReject: () => void;
+    onWithdrawInterjection?: (messageId: string) => void;
+    withdrawingInterjectionId?: string | null;
 }) {
     const appearance = useAppearanceStore((state) => state.appearance.canvas) || DEFAULT_CANVAS_APPEARANCE;
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -546,6 +550,8 @@ export function AgentConversation({
                             onFocusNode={onFocusNode}
                             onUndo={onUndo}
                             undoStates={undoStates}
+                            onWithdrawInterjection={onWithdrawInterjection}
+                            withdrawing={withdrawingInterjectionId === segment.item.id}
                             isStreaming={busy && !approval && segment.item.streaming === true && segment.item === lastMessage}
                         />
                     ),
@@ -601,7 +607,7 @@ export function ComposerControls({
                 onChange={onModelChange}
                 variant="creation"
                 fullWidth
-                className="agent-composer-model-trigger !h-8 !min-w-0 !w-full !max-w-full !border-0 !bg-transparent !px-1.5 !shadow-none"
+                className="agent-composer-model-trigger !h-8 !min-w-0 !w-full !max-w-full !border-0 !bg-transparent !px-2 !shadow-none"
                 popoverClassName="agent-model-picker-popover"
                 showSelectedPrice={false}
                 showOptionPrices
@@ -620,7 +626,7 @@ export function ComposerControls({
             </Dropdown>
             <button
                 type="button"
-                className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"
+                className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[var(--fs-label)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"
                 style={{ color: selectedSkillCount ? theme.accent.primary : theme.node.muted, background: skillsOpen ? theme.node.fill : "transparent" }}
                 aria-label={`打开 Skills 技能库${selectedSkillCount ? `，已启用 ${selectedSkillCount} 个` : ""}`}
                 aria-expanded={skillsOpen}

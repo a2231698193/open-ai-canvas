@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Clapperboard, CloudDownload, CopyPlus, Focus, FolderKanban, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
-import { Button, Dropdown, Tooltip } from "antd";
+import { Button, Dropdown } from "antd";
+import { AntTooltip as Tooltip } from "@/components/ui/base/tooltip/ant-tooltip";
 
 import { WorkspaceCreditGiftMark } from "@/components/layout/workspace-credit-gift-mark";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
@@ -157,7 +158,7 @@ export function CanvasTopBar({
                             </div>
                         )}
                         {projectContext && !isTitleEditing ? (
-                            <div className="canvas-topbar-project-context mt-0.5 flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-[var(--fs-tiny)]" style={{ color: theme.node.muted }}>
+                            <div className="canvas-topbar-project-context mt-0.5 flex w-full min-w-0 items-center gap-2 overflow-hidden text-[var(--fs-tiny)]" style={{ color: theme.node.muted }}>
                                 <Link to={`/projects/${projectContext.projectId}/overview`} className="inline-flex min-w-0 items-center gap-1 hover:underline" title={`返回项目：${projectContext.projectName}`}>
                                     <FolderKanban className="size-3 shrink-0" />
                                     <span className="max-w-[120px] truncate">{projectContext.projectName}</span>
@@ -174,7 +175,7 @@ export function CanvasTopBar({
                     {syncIcon}
                 </div>
 
-                <div className="canvas-topbar-cluster canvas-topbar-tools-cluster pointer-events-auto flex items-center gap-1.5" style={dockStyle}>
+                <div className="canvas-topbar-cluster canvas-topbar-tools-cluster pointer-events-auto flex items-center gap-2" style={dockStyle}>
                     <CanvasTopBarTooltip label="搜索画布节点">
                         <Button
                             type="text"
@@ -196,7 +197,7 @@ export function CanvasTopBar({
                                 ],
                             }}
                         >
-                            <Button type="text" className="canvas-topbar-action canvas-topbar-import-button !h-10 !rounded-xl !px-2.5 !font-medium" style={{ color: theme.node.text }} icon={<CloudDownload className="size-4" />} aria-label="导入第三方画布">
+                            <Button type="text" className="canvas-topbar-action canvas-topbar-import-button !h-10 !rounded-xl !px-2 !font-medium" style={{ color: theme.node.text }} icon={<CloudDownload className="size-4" />} aria-label="导入第三方画布">
                                 <span className="hidden lg:inline">导入第三方画布</span>
                             </Button>
                         </Dropdown>
@@ -205,7 +206,7 @@ export function CanvasTopBar({
                         <CanvasTopBarTooltip label="打开积分中心">
                             <button
                                 type="button"
-                                className="canvas-topbar-action inline-flex h-9 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium tabular-nums"
+                                className="canvas-topbar-action inline-flex h-9 min-w-[5.5rem] items-center justify-center gap-2 rounded-lg px-2 text-xs font-medium tabular-nums"
                                 style={{ color: theme.node.text }}
                                 aria-label="打开积分中心"
                                 onClick={() => openWorkspaceWallet()}
@@ -222,7 +223,7 @@ export function CanvasTopBar({
                         <CanvasTopBarTooltip label={shortDramaGuide.collapsed ? "展开短剧流程" : "收起短剧流程"}>
                             <Button
                                 type="text"
-                                className="canvas-topbar-action !h-10 !rounded-xl !px-2.5 !font-medium"
+                                className="canvas-topbar-action !h-10 !rounded-xl !px-2 !font-medium"
                                 style={{ color: theme.node.text, background: shortDramaGuide.collapsed ? undefined : theme.toolbar.activeBg }}
                                 icon={<Clapperboard className="size-4" />}
                                 onClick={handleShortDramaGuideToggle}

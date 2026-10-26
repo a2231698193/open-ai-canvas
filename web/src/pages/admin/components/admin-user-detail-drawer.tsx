@@ -7,6 +7,7 @@ import { formatCredits } from "@/constant/credits";
 import { IconButton } from "@/pages/admin/ui/controls";
 import { cancelAdminMembership, grantAdminMembership, listAdminMembershipPlans, upgradeAdminMembership, type MembershipPlan } from "@/services/api/membership";
 import { AdminDataTable, AdminEmpty, AdminStatusBadge, AdminTableEmpty, PaginationBar, type AdminStatusTone } from "./admin-ui";
+import { AdminUserStoragePanel } from "./admin-user-storage-panel";
 import { getAdminUserDetail, listAdminUserAuditEvents, listAdminUserLedger, listAdminUserTasks, type AdminAuditEvent, type AdminUserDetail, type AdminUserTask } from "@/services/api/auth";
 import type { CreditLedgerEntry } from "@/services/api/wallet";
 
@@ -156,6 +157,11 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
                                     </div>
                                 </div>
                             ),
+                        },
+                        {
+                            key: "storage",
+                            label: "存储空间",
+                            children: <AdminUserStoragePanel userId={detail.user.id} />,
                         },
                         {
                             key: "ledger",
@@ -380,7 +386,13 @@ function quotaUsageItems(detail: AdminUserDetail) {
     const storageLimit = detail.quota.storedFileGB;
     const dailyLimit = detail.quota.dailyUploadMB;
     return [
-        { label: "资源与附件", value: detail.storedFileBytes, limit: storageLimit * 1024 ** 3, display: unlimited(storageLimit) ? `${bytes(detail.storedFileBytes)} / 不限` : `${bytes(detail.storedFileBytes)} / ${storageLimit} GB` },
+        // 有效容量包含已购扩容；旧响应缺少 storageCapacity 时退回全局基础容量。
+        {
+            label: detail.storageCapacity?.readOnly ? "资源与附件（只读）" : detail.storageCapacity?.overLimit ? "资源与附件（超额宽限期）" : "资源与附件",
+            value: detail.storedFileBytes,
+            limit: detail.storageCapacity?.totalBytes ?? detail.quota.storedFileGB * 1024 ** 3,
+            display: `${bytes(detail.storedFileBytes)} / ${bytes(detail.storageCapacity?.totalBytes ?? detail.quota.storedFileGB * 1024 ** 3)}`,
+        },
         { label: "今日上传（UTC）", value: detail.dailyUploadBytes, limit: dailyLimit * 1024 ** 2, display: unlimited(dailyLimit) ? `${bytes(detail.dailyUploadBytes)} / 不限` : `${bytes(detail.dailyUploadBytes)} / ${dailyLimit} MB` },
         { label: "画布、素材与会话数据", value: structuredBytes, limit: detail.quota.structuredDataMB * 1024 ** 2, display: `${bytes(structuredBytes)} / ${detail.quota.structuredDataMB} MB` },
         { label: "任务与请求日志数据", value: detail.storageUsage.taskBytes, limit: detail.quota.taskDataGB * 1024 ** 3, display: `${bytes(detail.storageUsage.taskBytes)} / ${detail.quota.taskDataGB} GB` },

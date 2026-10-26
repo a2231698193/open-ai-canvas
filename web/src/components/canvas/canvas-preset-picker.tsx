@@ -87,7 +87,7 @@ export function CanvasPresetPicker({
                                 <WandSparkles className="size-3.5" />
                             </span>
                             <span className="min-w-0 flex-1">
-                                <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: theme.node.text }}>
+                                <span className="flex items-center gap-2 text-xs font-semibold" style={{ color: theme.node.text }}>
                                     <span className="truncate">{preset.name}</span>
                                     <span className="shrink-0 text-[var(--fs-micro)] font-medium" style={{ color: theme.accent.primary }}>
                                         {preset.source === "skill" ? "技能" : "预设"}
@@ -121,7 +121,7 @@ export function CanvasPresetPicker({
         >
             <button
                 type="button"
-                className={`canvas-preset-picker-trigger ${appearance === "quiet" ? "canvas-node-composer-header-action" : ""} inline-flex shrink-0 items-center justify-center gap-1 rounded-lg transition focus-visible:outline-none ${compact ? "size-6" : dense ? "h-6 px-1.5" : "h-7 px-2"}`}
+                className={`canvas-preset-picker-trigger ${appearance === "quiet" ? "canvas-node-composer-header-action" : ""} inline-flex shrink-0 items-center justify-center gap-1 rounded-lg transition focus-visible:outline-none ${compact ? "size-6" : dense ? "h-6 px-2" : "h-7 px-2"}`}
                 style={appearance === "quiet" ? undefined : { background: theme.accent.primarySoft, color: theme.accent.primary }}
                 title={appearance === "quiet" ? "提示词模板" : "打开提示词预设"}
                 aria-label={appearance === "quiet" ? "提示词模板" : "打开提示词预设"}

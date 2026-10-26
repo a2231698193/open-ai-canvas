@@ -12,6 +12,7 @@ import { createCanvasNode } from "@/lib/canvas/canvas-project-domain";
 import { isAudioFile } from "@/lib/canvas/canvas-project-generation";
 import { fitImageNodeSize, fitNodeSize, VIDEO_NODE_MAX_SIZE } from "@/lib/canvas/canvas-node-size";
 import { CANVAS_UPLOAD_ACCEPT, createFileUploadPlaceholder, uploadNodeType, uploadPercent } from "@/lib/canvas/canvas-file-upload";
+import { recordReplacedMediaVersion } from "@/lib/canvas/canvas-media-versions";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
 import { uploadMediaFile } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -189,7 +190,7 @@ export function useCanvasUpload({
                 progress.done("上传完成，画布占位已移除");
                 return null;
             }
-            const node: CanvasNodeData = {
+            const uploadedNode: CanvasNodeData = {
                 ...currentNode, type: placeholder.type,
                 metadata: {
                     ...currentNode.metadata, ...metadata,
@@ -208,6 +209,8 @@ export function useCanvasUpload({
                     } : {}),
                 },
             };
+            // 替换文件保留旧媒体为历史版本，可在版本面板切回。
+            const node = replaceId ? recordReplacedMediaVersion(original, uploadedNode, "upload") : uploadedNode;
             setNodes((current) => current.map((item) => item.id === id ? { ...item, type: node.type, metadata: node.metadata } : item));
             if (domainProjectId) progress.update("写入项目资产", 4);
             const persisted = await persistMediaNode(node);

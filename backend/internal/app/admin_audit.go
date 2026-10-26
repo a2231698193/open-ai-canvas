@@ -19,6 +19,8 @@ type AdminUserDetail struct {
 	StoredFileBytes  int64                       `json:"storedFileBytes"`
 	DailyUploadBytes int64                       `json:"dailyUploadBytes"`
 	Quota            RuntimeResourcePolicy       `json:"quota"`
+	// StorageCapacity 是包含已购扩容的有效账号文件容量与超额状态。
+	StorageCapacity AccountFileStorageUsage `json:"storageCapacity"`
 }
 
 type AdminTaskPage struct {
@@ -98,9 +100,14 @@ func (s *Service) AdminUserDetail(actor *model.User, userID string) (*AdminUserD
 	if err != nil {
 		return nil, err
 	}
+	capacity, err := s.computeAccountStorageStatus(user.ID, time.Now(), false)
+	if err != nil {
+		return nil, err
+	}
 	detail := &AdminUserDetail{
 		User: *user, Account: *account, Counts: counts, StorageUsage: usage,
 		StoredFileBytes: storedFileBytes, DailyUploadBytes: dailyUploadBytes, Quota: quota,
+		StorageCapacity: *capacity,
 	}
 	if membership, err := s.repo.ActiveUserMembership(user.ID); err == nil && membership != nil {
 		detail.Membership = membership

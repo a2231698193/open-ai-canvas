@@ -53,7 +53,7 @@ export function CanvasImagePreview({ src = "", storageKey, alt = "图片", onClo
             open
             flush
             title={
-                <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex min-w-0 items-center gap-2">
                     <span
                         className="grid size-7 shrink-0 place-items-center rounded-[var(--r-sm)] border"
                         style={{

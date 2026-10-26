@@ -2,6 +2,7 @@ import { Crown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 
+import { TopbarFeedbackButton } from "@/components/feedback/topbar-feedback-button";
 import { SystemAnnouncementCenter } from "@/components/layout/system-announcement-center";
 import { WorkspaceAccountMenu } from "@/components/layout/workspace-account-menu";
 import { WorkspaceCreditGiftMark } from "@/components/layout/workspace-credit-gift-mark";
@@ -62,6 +63,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
             </nav>
             <WorkspaceTopBarExtensionSlot />
             <div className="app-workspace-topbar-actions">
+                {user ? <TopbarFeedbackButton /> : null}
                 {creditsEnabled ? (
                     <>
                         <button

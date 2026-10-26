@@ -111,12 +111,13 @@ RUN set -eu; \
 FROM ${NODE_IMAGE}
 
 ARG ALPINE_MIRROR=
+# ffmpeg/ffprobe：短剧抽取剧情段视频最后一帧、时间线合成成片与视频播放转码。
 RUN --mount=type=cache,target=/var/cache/apk \
     set -eu; \
     if [ -n "$ALPINE_MIRROR" ]; then \
       sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories; \
     fi; \
-    apk add --cache-dir /var/cache/apk ca-certificates tzdata wget \
+    apk add --cache-dir /var/cache/apk ca-certificates tzdata wget ffmpeg \
     && addgroup -S app \
     && adduser -S app -G app
 

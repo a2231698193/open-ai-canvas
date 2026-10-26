@@ -10,6 +10,14 @@ type PaymentReconciliationStatus string
 type PaymentReconciliationResult string
 type TopupSaleStrategy string
 
+// TopupProductKind 决定支付成功后发放的权益：积分入账或账号文件容量扩容。
+type TopupProductKind string
+
+const (
+	TopupProductKindCredits TopupProductKind = "credits"
+	TopupProductKindStorage TopupProductKind = "storage"
+)
+
 const (
 	PaymentOrderKindTopup      PaymentOrderKind = "topup"
 	PaymentOrderKindMembership PaymentOrderKind = "membership"
@@ -56,11 +64,15 @@ const (
 // TopupProduct is the server-owned price and credit snapshot source. Clients
 // select a product ID and can never submit their own payable amount or credits.
 type TopupProduct struct {
-	ID                  string            `json:"id" gorm:"primaryKey;size:36"`
-	Name                string            `json:"name" gorm:"size:120"`
-	Description         string            `json:"description,omitempty" gorm:"size:500"`
-	AmountFen           int64             `json:"amountFen" gorm:"index"`
-	CreditsMicrocredits int64             `json:"creditsMicrocredits"`
+	ID                  string           `json:"id" gorm:"primaryKey;size:36"`
+	Name                string           `json:"name" gorm:"size:120"`
+	Description         string           `json:"description,omitempty" gorm:"size:500"`
+	Kind                TopupProductKind `json:"kind" gorm:"size:24;not null;default:credits;index"`
+	AmountFen           int64            `json:"amountFen" gorm:"index"`
+	CreditsMicrocredits int64            `json:"creditsMicrocredits"`
+	// StorageBytes / StorageDurationDays 只对 storage 商品有效；天数为 0 表示永久扩容。
+	StorageBytes        int64             `json:"storageBytes" gorm:"not null;default:0"`
+	StorageDurationDays int               `json:"storageDurationDays" gorm:"not null;default:0"`
 	Enabled             bool              `json:"enabled" gorm:"index"`
 	SortOrder           int               `json:"sortOrder" gorm:"index"`
 	SaleStrategy        TopupSaleStrategy `json:"saleStrategy" gorm:"size:24;index"`
@@ -102,6 +114,9 @@ type PaymentOrder struct {
 	Kind                               PaymentOrderKind     `json:"kind" gorm:"size:16;not null;default:topup;index"`
 	ProductID                          string               `json:"productId" gorm:"size:36;index"`
 	ProductName                        string               `json:"productName" gorm:"size:120"`
+	ProductKind                        TopupProductKind     `json:"productKind" gorm:"size:24;not null;default:credits"`
+	StorageBytes                       int64                `json:"storageBytes" gorm:"not null;default:0"`
+	StorageDurationDays                int                  `json:"storageDurationDays" gorm:"not null;default:0"`
 	MembershipPlanID                   string               `json:"membershipPlanId,omitempty" gorm:"size:36;index"`
 	MembershipPlanName                 string               `json:"membershipPlanName,omitempty" gorm:"size:80"`
 	MembershipLevel                    int                  `json:"membershipLevel,omitempty"`

@@ -31,6 +31,7 @@ type CanvasProjectContextMenuProps = {
     onDeleteConnection: (connectionId: string) => void;
     onSaveAsset: (node: CanvasNodeData) => void;
     onViewMedia: (node: CanvasNodeData) => void;
+    onOpenVersions: (node: CanvasNodeData) => void;
     onEditText: (node: CanvasNodeData) => void;
     onOpenDrawing: (node: CanvasNodeData) => void;
     onGenerateImage: (node: CanvasNodeData) => void;
@@ -91,6 +92,9 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
             }}
             onViewMedia={() => {
                 if (node) props.onViewMedia(node);
+            }}
+            onOpenVersions={() => {
+                if (node) props.onOpenVersions(node);
             }}
             onEditText={() => {
                 if (node) props.onEditText(node);

@@ -91,7 +91,7 @@ export function ModelIconPicker({ value, onChange }: { value?: string; onChange?
         <>
             <button
                 type="button"
-                className="flex min-h-9 w-full items-center gap-2 rounded-md border border-border/60 bg-background px-2.5 text-left text-sm transition-colors hover:border-border hover:bg-muted/20 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1"
+                className="flex min-h-9 w-full items-center gap-2 rounded-md border border-border/60 bg-background px-2 text-left text-sm transition-colors hover:border-border hover:bg-muted/20 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1"
                 aria-label="选择模型 Logo"
                 onClick={() => setOpen(true)}
             >
@@ -167,7 +167,7 @@ export function ModelIconPicker({ value, onChange }: { value?: string; onChange?
                                         aria-selected={selected}
                                         title={item.title}
                                         className={cn(
-                                            "group relative flex size-12 flex-col items-center justify-center rounded-lg border border-border/50 bg-surface text-foreground/75 transition-all hover:scale-105 hover:border-primary/60 hover:bg-surface-active hover:text-foreground",
+                                            "group relative flex size-12 flex-col items-center justify-center rounded-lg border border-border/50 bg-surface text-foreground/75 transition-colors duration-150 hover:border-primary/60 hover:bg-surface-active hover:text-foreground",
                                             selected && "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary"
                                         )}
                                         onClick={() => {

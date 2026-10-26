@@ -17,7 +17,7 @@ func newMembershipAdminDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.Task{}, &model.ApiCallLog{}, &model.UserDailyUploadUsage{}, &model.Resource{}, &model.Asset{}, &model.CanvasProject{}, &model.TaskLog{}, &model.Result{}, &model.TaskTextDelta{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.Task{}, &model.ApiCallLog{}, &model.UserDailyUploadUsage{}, &model.Resource{}, &model.Asset{}, &model.CanvasProject{}, &model.TaskLog{}, &model.Result{}, &model.TaskTextDelta{}, &model.UserStorageGrant{}, &model.UserStorageState{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memberships_active_user ON user_memberships(user_id) WHERE status = 'active'").Error; err != nil {

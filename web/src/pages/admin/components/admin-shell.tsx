@@ -1,4 +1,4 @@
-import { App, ConfigProvider, Dropdown } from "antd";
+import { ConfigProvider, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
     Activity,
@@ -46,6 +46,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { AppChangelogButton } from "@/components/layout/app-changelog-modal";
 import { BrandLogoFrame } from "@/components/brand/brand-logo";
 import { publishWorkspaceSidebarCollapsed, readWorkspaceSidebarCollapsed, subscribeWorkspaceSidebarCollapsed } from "@/components/layout/workspace-sidebar-state";
+import { AppFeedbackProvider } from "@/components/layout/app-feedback";
 import { cn } from "@/lib/utils";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -162,7 +163,7 @@ function AdminShellLayout() {
 
     return (
         <ConfigProvider theme={getIsolatedAdminAntTheme(dark, appearance.activeSkin)} getPopupContainer={(node) => adminPopupContainer(node)}>
-            <App>
+            <AppFeedbackProvider>
                 <main id="admin-root" data-admin-root data-admin-density={density} className="admin-shell flex h-full min-h-0 overflow-hidden">
                     <aside className={cn("admin-sidebar hidden shrink-0 flex-col overflow-hidden lg:flex", collapsed && "is-collapsed")}>
                         <div className="admin-sidebar-identity shrink-0">
@@ -213,7 +214,7 @@ function AdminShellLayout() {
                         </Suspense>
                     </section>
                 </main>
-            </App>
+            </AppFeedbackProvider>
         </ConfigProvider>
     );
 }
@@ -229,7 +230,7 @@ export function AdminPageFrame({ title, description, actions, back, scroll = fal
         <div className={cn("admin-page-root", scroll && "admin-page-root-scrollable")}>
             <div className={cn("admin-page-frame", scroll && "admin-page-frame-scrollable")}>
                 <header className="admin-page-header flex shrink-0 flex-col sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
                         {back ? (
                             <AdminTooltip title={back.label}>
                                 <button type="button" className="admin-icon-button shrink-0" aria-label={back.label} onClick={back.onClick}>

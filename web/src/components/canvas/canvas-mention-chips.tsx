@@ -2,7 +2,7 @@
 //
 // 胶囊是 contentEditable 内的 DOM 节点，序列化时还原成 @[kind:id] 令牌；这里只负责渲染。
 
-import { Brush, Camera, Clapperboard, Clock, Contrast, FastForward, Globe2, Grid2x2, Grid3x3, Package, Palette, PersonStanding, Rewind, ScanFace, SlidersHorizontal, Sparkles, Sun } from "lucide-react";
+import { Brush, Camera, Clapperboard, Clock, Contrast, FastForward, Globe2, Grid2x2, Grid3x3, Image as ImageIcon, Music2, Package, Palette, PenLine, PersonStanding, Play, Rewind, ScanFace, SlidersHorizontal, Sparkles, Sun, Wrench, X } from "lucide-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { createPortal } from "react-dom";
@@ -29,8 +29,11 @@ export const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: str
 };
 
 export function toolIconSvg(iconName: string): string {
-    const Icon = TOOL_ICON_MAP[iconName];
-    if (!Icon) return "🔧";
+    const Icon = TOOL_ICON_MAP[iconName] ?? Wrench;
+    return renderToStaticMarkup(<Icon className="size-3" />);
+}
+
+function inlineIconSvg(Icon: React.ComponentType<{ className?: string }>): string {
     return renderToStaticMarkup(<Icon className="size-3" />);
 }
 
@@ -48,7 +51,7 @@ export function createInlineMentionChip(reference: CanvasResourceReference, toke
     const prefix = document.createElement("span");
     prefix.className = isDecorated ? "canvas-resource-inline-skill-icon" : "canvas-resource-inline-at";
     if (reference.kind === "skill") {
-        prefix.textContent = "✦";
+        prefix.innerHTML = inlineIconSvg(Sparkles);
     } else if (reference.kind === "tool") {
         prefix.innerHTML = toolIconSvg(reference.toolIcon ?? "Grid3x3");
     } else {
@@ -88,7 +91,7 @@ export function InlineReferencePreview({ reference, onClose }: { reference: Canv
             <div className="relative max-h-[92vh] max-w-[92vw]" onClick={(event) => event.stopPropagation()}>
                 <img src={url} alt={reference.label} className="max-h-[88vh] max-w-[88vw] rounded-xl object-contain shadow-2xl" />
                 <button type="button" className="absolute -right-3 -top-3 rounded-full bg-black/75 p-2 text-white shadow-lg" onClick={onClose} aria-label="关闭图片预览">
-                    ×
+                    <X className="size-4" />
                 </button>
             </div>
         </div>,
@@ -117,7 +120,8 @@ export function createInlinePreview(reference: CanvasResourceReference) {
     }
     const fallback = document.createElement("span");
     fallback.className = "canvas-resource-inline-preview is-fallback";
-    fallback.textContent = reference.sourceType === CanvasNodeType.Drawing ? "✎" : reference.kind === "audio" ? "♪" : reference.kind === "video" ? "▶" : reference.kind === "image" ? "□" : reference.kind === "skill" ? "✦" : "";
+    const FallbackIcon = reference.sourceType === CanvasNodeType.Drawing ? PenLine : reference.kind === "audio" ? Music2 : reference.kind === "video" ? Play : reference.kind === "image" ? ImageIcon : reference.kind === "skill" ? Sparkles : null;
+    if (FallbackIcon) fallback.innerHTML = inlineIconSvg(FallbackIcon);
     return fallback;
 }
 

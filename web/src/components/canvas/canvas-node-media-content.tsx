@@ -324,7 +324,7 @@ export function VideoPreviewPlayButton({ title, onPlay }: { title: string; onPla
     return (
         <button
             type="button"
-            className="absolute left-1/2 top-1/2 z-[var(--node-z-overlay)] grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/62 text-white shadow-lg backdrop-blur transition-[transform,background-color,opacity] hover:scale-105 hover:bg-black/78 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            className="absolute left-1/2 top-1/2 z-[var(--node-z-overlay)] grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/62 text-white shadow-lg backdrop-blur transition-[background-color,opacity] duration-150 hover:bg-black/78 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             aria-label={`播放 ${title}`}
             title="播放视频"
             onPointerDown={(event) => event.stopPropagation()}
@@ -799,7 +799,7 @@ export function BatchFrame({
                     {Array.from({ length: Math.min(batchCount - 1, 5) }).map((_, index) => (
                         <div
                             key={index}
-                            className="absolute rounded-[var(--r-lg)] transition-all duration-300 group-hover/batch:translate-x-2"
+                            className="absolute rounded-[var(--r-lg)] transition-[transform,opacity] duration-200"
                             style={{
                                 inset: 0,
                                 background: theme.node.panel,

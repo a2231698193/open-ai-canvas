@@ -82,7 +82,7 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
         const summary = referenceSummaryLabel(referenceSummary);
         return (
             <div
-                className="flex min-h-8 min-w-0 items-center gap-2 rounded-md px-2 py-1.5"
+                className="flex min-h-8 min-w-0 items-center gap-2 rounded-md px-2 py-2"
                 data-canvas-no-zoom
                 style={{ background: theme.toolbar.itemHover, color: theme.node.text }}
                 title="已连接的图片、视频和音频会按工作流字段映射传入"
@@ -267,7 +267,7 @@ function CompactMenuButton({
                                       type="button"
                                       role="menuitemradio"
                                       aria-checked={selected}
-                                      className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg px-2 text-left transition"
+                                      className="flex h-7 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left transition"
                                       style={{ ...CONTROL_TEXT_STYLE, background: selected ? theme.toolbar.itemHover : "transparent", color: selected ? theme.toolbar.activeText : theme.node.text }}
                                       onMouseEnter={(event) => {
                                           event.currentTarget.style.background = theme.toolbar.itemHover;
@@ -297,7 +297,7 @@ function CompactMenuButton({
             <button
                 ref={triggerRef}
                 type="button"
-                className="inline-flex h-7 w-full min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] border-0 bg-transparent px-1.5 shadow-none transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1"
+                className="inline-flex h-6 w-full min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] border-0 bg-transparent px-2 shadow-none transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1"
                 style={buttonStyle}
                 title={title}
                 aria-label={`${title}：${label}`}

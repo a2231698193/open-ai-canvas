@@ -27,6 +27,20 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
         <div>
             <header className="flex min-h-7 items-center border-b pb-2" style={{ borderColor: theme.toolbar.border }}>
                 <h2 className="font-semibold leading-none" style={{ fontSize: "var(--fs-caption)" }}>添加节点</h2>
+                {projectCommands.map((command) => (
+                    <button
+                        key={command.id}
+                        type="button"
+                        className="inline-flex h-6 min-w-0 items-center gap-1 rounded-[var(--dock-item-radius)] px-2 font-medium outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 dark:hover:bg-white/8 [&_svg]:size-3"
+                        style={{ color: theme.node.muted, fontSize: "var(--fs-tiny)", "--tw-ring-color": theme.node.muted } as CSSProperties}
+                        title={command.label}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={command.onClick}
+                    >
+                        {command.icon}
+                        <span className="whitespace-nowrap">{command.label}</span>
+                    </button>
+                ))}
             </header>
 
             {projectCommands.length ? (
@@ -71,7 +85,7 @@ function CanvasCreateCommandGrid({ commands, variant }: { commands: CanvasCreate
                             ? "flex h-[var(--canvas-create-node-height)] flex-col items-start justify-between rounded-[var(--dock-item-radius)] px-2 py-2 text-left"
                             : variant === "workflow" || variant === "project"
                                 ? "flex h-[var(--canvas-create-resource-height)] items-center justify-start gap-2 rounded-[var(--dock-item-radius)] px-2 text-left"
-                                : "flex h-[var(--canvas-create-resource-height)] items-center justify-center gap-1.5 rounded-[var(--dock-item-radius)] px-2 text-center",
+                                : "flex h-[var(--canvas-create-resource-height)] items-center justify-center gap-2 rounded-[var(--dock-item-radius)] px-2 text-center",
                     )}
                     style={{ color: theme.node.text, "--tw-ring-color": theme.node.muted } as CSSProperties}
                     title={command.label}

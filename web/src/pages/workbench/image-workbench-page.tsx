@@ -1,5 +1,6 @@
 import { createClientUUID } from "@/lib/client-id";
-import { App, Button, Input, InputNumber, Modal, Progress, Segmented, Select, Spin, Switch, Tooltip } from "antd";
+import { App, Button, Input, InputNumber, Modal, Progress, Segmented, Select, Spin, Switch } from "antd";
+import { AntTooltip as Tooltip } from "@/components/ui/base/tooltip/ant-tooltip";
 import { Check, Camera, ChevronDown, ChevronUp, Clapperboard, Expand, FileImage, History, ImagePlus, Images, LoaderCircle, Mic, Palette, Plus, RotateCcw, Search, ShoppingBag, Sparkles, Upload, UserRound, Video, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";

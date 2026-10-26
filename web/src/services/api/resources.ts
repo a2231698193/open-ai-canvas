@@ -61,9 +61,17 @@ export type UserOSSSettingInput = Pick<UserOSSSetting, "enabled" | "provider" | 
     allowPrivateProxy?: boolean;
 };
 
+/** totalBytes = baseBytes（后台全局容量）+ purchasedBytes（当前生效的扩容）。 */
 export type AccountFileStorageUsage = {
     usedBytes: number;
     totalBytes: number;
+    baseBytes: number;
+    purchasedBytes: number;
+    nextExpiresAt?: string;
+    overLimit: boolean;
+    overLimitSince?: string;
+    readOnlyAt?: string;
+    readOnly: boolean;
 };
 
 export type ArkPrivateAssetSync = {
