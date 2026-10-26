@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 62
+const CurrentSchemaVersion int64 = 64
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -203,6 +203,18 @@ var schemaMigrations = []migration{
 	{version: 62, name: "agent_memory_proposals", checksum: "sha256:agent-memory-proposals-v62", apply: func(tx *gorm.DB) error {
 		return tx.AutoMigrate(&model.AgentLesson{}, &model.AgentMemorySetting{}, &model.AgentMemoryProposal{}, &model.AgentMemoryRevision{})
 	}},
+	// 官方 v59/v60 在本仓库顺延为 v63/v64；本地 v59/v60 已用于性能索引与多端画布同步。
+	{version: 63, name: "channel_model_protocol_length", checksum: "sha256:channel-model-protocol-length-v63", apply: migrateChannelModelProtocolLength},
+	{version: 64, name: "user_feedbacks", checksum: "sha256:user-feedbacks-v64-20261020", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.UserFeedback{})
+	}},
+}
+
+func migrateChannelModelProtocolLength(tx *gorm.DB) error {
+	if tx.Dialector.Name() == "postgres" {
+		return tx.Exec("ALTER TABLE channel_models ALTER COLUMN protocol TYPE varchar(64)").Error
+	}
+	return tx.Migrator().AlterColumn(&model.ChannelModel{}, "Protocol")
 }
 
 func migrateMembershipPoolBackfill(tx *gorm.DB) error {

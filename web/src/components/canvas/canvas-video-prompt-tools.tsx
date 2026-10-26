@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Images, Image as ImageIcon } from "lucide-react";
+import { observeMovablePopupAnchor } from "@/lib/movable-popup-anchor";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { VIDEO_GENERATION_MODE_OPTIONS, clampVideoGenerationMode, normalizeVideoGenerationMode, supportedVideoGenerationModes, videoFrameSelectionPatch, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode, type VideoModeCapabilityLike } from "@/lib/video-generation-mode";
@@ -214,11 +215,13 @@ function CompactMenuButton({
             if (event.key === "Escape") setOpen(false);
         };
         const reposition = () => updatePosition();
+        const stopMovingAnchor = triggerRef.current ? observeMovablePopupAnchor(triggerRef.current, reposition) : undefined;
         document.addEventListener("pointerdown", close, true);
         document.addEventListener("keydown", closeOnEscape, true);
         window.addEventListener("resize", reposition);
         window.addEventListener("scroll", reposition, true);
         return () => {
+            stopMovingAnchor?.();
             document.removeEventListener("pointerdown", close, true);
             document.removeEventListener("keydown", closeOnEscape, true);
             window.removeEventListener("resize", reposition);

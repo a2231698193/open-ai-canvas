@@ -306,8 +306,17 @@ func TestCloudAgentStoryboardEditPreservesRowsAndRenumbers(t *testing.T) {
 
 	apply := func(call cloudAgentCall) []map[string]any {
 		t.Helper()
-		if _, err := applyCloudAgentStoryboardMutation(s.repo, "user", canvas.ID, call, policy); err != nil {
+		recorder, recordedPreview := cloudAgentCaptureMutationPreview()
+		result, err := applyCloudAgentStoryboardMutation(s.repo, "user", canvas.ID, call, policy, recorder)
+		if err != nil {
 			t.Fatal(err)
+		}
+		resultMap := result.(map[string]any)
+		preview := resultMap["preview"].(cloudAgentApprovalPreview)
+		assertCloudAgentAppliedPreview(t, preview, preview.Items[0].Summary)
+		captured, ok := recordedPreview()
+		if !ok || captured.Description != preview.Description || captured.Status != preview.Status {
+			t.Fatalf("storyboard mutation event preview diverged from tool result: result=%+v recorded=%+v", preview, captured)
 		}
 		stored, err := s.repo.CanvasProjectForUser("user", canvas.ID)
 		if err != nil {
@@ -509,6 +518,8 @@ func TestCloudAgentStoryboardCreateUsesRuntimeApprovalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	state.ActiveTaskID = ""
+
+	state.PiResumePrompt = "previously delivered approval result"
 	state.Calls = []cloudAgentCall{call}
 	state.CallIndex = 0
 	if err := s.repo.MutateCloudAgent("user", run.ID, run.Revision, func(current *model.CloudAgentExecution, _ *repository.Repository) error {
@@ -527,6 +538,18 @@ func TestCloudAgentStoryboardCreateUsesRuntimeApprovalPath(t *testing.T) {
 	}
 	if waiting.Status != "waiting_approval" || waiting.Approval == nil || waiting.Approval.Preview.Items[0].Operation != "create_storyboard" {
 		t.Fatalf("storyboard write bypassed or lost approval preview: %+v", waiting)
+	}
+
+	persistedRun, err := s.repo.CloudAgent("user", root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedState, err := cloudAgentDecode(persistedRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistedState.PiResumePrompt != "" {
+		t.Fatalf("new approval retained a stale resume prompt: %q", persistedState.PiResumePrompt)
 	}
 	stored, _ := s.repo.CanvasProjectForUser("user", canvas.ID)
 	if strings.Contains(stored.PayloadJSON, "approved-storyboard") {

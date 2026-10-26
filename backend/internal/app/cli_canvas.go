@@ -115,6 +115,22 @@ func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloud
 	if err != nil {
 		return nil, err
 	}
+	var args struct {
+		NodeID  string   `json:"nodeId"`
+		NodeIDs []string `json:"nodeIds"`
+		Purpose string   `json:"purpose"`
+		Refresh bool     `json:"refresh"`
+	}
+	if err := decodeCloudAgentJSONObject(call.Function.Arguments, &args); err != nil {
+		return nil, BadAuthRequest("看图工具参数无效：只允许 nodeIds 与 purpose")
+	}
+	purpose := strings.TrimSpace(args.Purpose)
+	if purpose == "" {
+		purpose = "查看图片画面内容"
+	}
+	if len([]rune(purpose)) > 500 {
+		return nil, BadAuthRequest("看图 purpose 不能超过 500 字")
+	}
 	doc, revision, projectID, err := cloudAgentInspectionDocumentRevision(s.repo, userID, canvasID)
 	if err != nil {
 		return nil, err
@@ -125,7 +141,7 @@ func (s *Service) CLICanvasImageInspection(userID, canvasID string, state *cloud
 		if node == nil {
 			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
 		}
-		inspection, err := s.cloudAgentInspectImageNode(userID, projectID, state, node, TextReferenceConfig{}, refresh, revision)
+		inspection, err := s.cloudAgentInspectImageNode(userID, projectID, state, node, TextReferenceConfig{}, refresh, revision, purpose)
 		if err != nil {
 			return nil, err
 		}

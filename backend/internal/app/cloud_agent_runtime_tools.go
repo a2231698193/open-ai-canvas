@@ -121,17 +121,18 @@ func cloudAgentToolResult(runID string, state *cloudAgentRuntime, call cloudAgen
 	} else {
 		payload["text"] = "工具执行成功"
 	}
-	if inspection, ok := result.(cloudAgentImageInspection); ok && err == nil {
-		receipt, _ := json.Marshal(inspection.Receipt)
-		payload["result"] = inspection.Receipt
+	if receipt, inspections, ok := cloudAgentImageInspectionResult(result); ok && err == nil {
+		rawReceipt, _ := json.Marshal(receipt)
+		payload["result"] = receipt
 		state.event(runID, kind, payload)
 		// tool 角色只接受字符串内容（四种上游图式都是纯文本），因此工具回执照常入历史，
 		// 图片另起一条 user 消息携带，并显式标注为数据而非指令。
 		state.Canonical.Messages = append(state.Canonical.Messages,
-			map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(receipt)})
-		// 重复查看时只回执文字（ImageURL 为空），不再附图。
-		if strings.TrimSpace(inspection.ImageURL) != "" {
-			cloudAgentStageImageInspection(state, inspection)
+			map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(rawReceipt)})
+		for _, inspection := range inspections {
+			if strings.TrimSpace(inspection.ImageURL) != "" {
+				cloudAgentStageImageInspection(state, inspection)
+			}
 		}
 		// 一批里可能有多个调用（模型一次发起 parallel tool calls），上游要求
 		// assistant(tool_calls) 之后紧跟每一个 tool_call_id 的 tool 消息，所以图片
@@ -555,6 +556,9 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 					return err
 				}
 			}
+			// 走到这里说明模型已在回应上一条恢复提示词；新卡片要清掉它，批准后才会写入本次调用的结果，
+			// 否则同一轮第二次及以后的审批都会把上一次的结果再发给模型。
+			state.PiResumePrompt = ""
 			current.Status = "waiting_approval"
 			state.event(run.ID, "approval_requested", map[string]any{"approvalId": state.Approval.ID, "toolName": call.Function.Name, "modelName": modelName, "arguments": json.RawMessage(call.Function.Arguments), "preview": preview, "prepared": preparedMedia.publicView(), "text": preview.Description})
 			return cloudAgentSave(current, state)
@@ -565,6 +569,7 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 			return s.repo.MutateCloudAgent(run.UserID, run.ID, run.Revision, func(current *model.CloudAgentExecution, _ *repository.Repository) error {
 				approvalID := fmt.Sprintf("%s-%d-%d", run.ID, state.Step, state.CallIndex)
 				state.Approval = &cloudAgentApproval{ID: approvalID, Call: call, CallHash: cloudAgentApprovalCallHash(call), Preview: preview}
+				state.PiResumePrompt = ""
 				current.Status = "waiting_approval"
 				state.event(run.ID, "approval_requested", map[string]any{"approvalId": approvalID, "toolName": call.Function.Name, "arguments": json.RawMessage(call.Function.Arguments), "preview": preview, "text": preview.Description})
 				return cloudAgentSave(current, state)
@@ -627,16 +632,15 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		case binding.Handler.Pipeline == cloudAgentToolVision:
 			result, toolErr = inspectionResult, inspectionErr
 			if toolErr == nil && inspectionResult != nil {
-				if inspection, ok := inspectionResult.(cloudAgentImageInspection); ok {
-					state.markCanvasImageInspection(stringValue(inspection.Receipt["nodeId"]), strings.TrimSpace(inspection.ImageURL) != "")
-					if inspection.CacheKey != "" {
-						if state.ImageInspectionReads == nil {
-							state.ImageInspectionReads = map[string]int{}
+				if _, inspections, ok := cloudAgentImageInspectionResult(inspectionResult); ok {
+					for _, inspection := range inspections {
+						state.markCanvasImageInspection(stringValue(inspection.Receipt["nodeId"]), strings.TrimSpace(inspection.ImageURL) != "")
+						if inspection.CacheKey != "" {
+							if state.ImageInspectionReads == nil {
+								state.ImageInspectionReads = map[string]int{}
+							}
+							state.ImageInspectionReads[inspection.CacheKey]++
 						}
-						state.ImageInspectionReads[inspection.CacheKey]++
-					}
-					if inspection.Receipt["repeat"] == true {
-						cloudAgentMarkReadLoopNudge(state, call, state.ImageInspectionReads[inspection.CacheKey])
 					}
 				}
 			}

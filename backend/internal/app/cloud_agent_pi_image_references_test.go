@@ -14,7 +14,7 @@ func TestCloudAgentPiStepImageReferencesSatisfyPlaceholderPreflight(t *testing.T
 	}
 	history := []map[string]any{
 		{"role": "user", "content": "参考左侧素材"},
-		{"role": "user", "content": cloudAgentImageContentParts(result.(cloudAgentImageInspections)...)},
+		{"role": "user", "content": cloudAgentImageContentParts(cloudAgentVisionSingleInspection(t, result))},
 	}
 
 	// 不带清单时预检拒绝，复现修复前的失败。

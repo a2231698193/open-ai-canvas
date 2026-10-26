@@ -9,6 +9,7 @@ import { ArrowLeft, ChevronRight, FileText, Folder, Image as ImageIcon, Music2, 
 import { CanvasNodeType } from "@/types/canvas";
 import { primeVideoPreviewFrame } from "./canvas-mention-chips";
 import { pointForOffset } from "./canvas-mention-editable";
+import { observeMovablePopupAnchor } from "@/lib/movable-popup-anchor";
 
 export function MentionMenu({
     anchor,
@@ -49,11 +50,13 @@ export function MentionMenu({
         updatePosition();
         const observer = new ResizeObserver(updatePosition);
         observer.observe(anchor);
+        const stopMovingAnchor = observeMovablePopupAnchor(anchor, updatePosition);
         window.addEventListener("resize", updatePosition);
         window.addEventListener("scroll", updatePosition, true);
         return () => {
             cancelAnimationFrame(frame);
             observer.disconnect();
+            stopMovingAnchor();
             window.removeEventListener("resize", updatePosition);
             window.removeEventListener("scroll", updatePosition, true);
         };
@@ -88,7 +91,7 @@ export function MentionMenu({
         <div
             ref={menuRef}
             data-canvas-resource-mention-menu="true"
-            className="canvas-resource-mention-menu fixed z-[var(--z-tooltip)]"
+            className="canvas-resource-mention-menu pointer-events-auto fixed z-[var(--z-tooltip)]"
             data-placement={position.showAbove ? "top" : "bottom"}
             style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight, transform: position.showAbove ? "translateY(-100%)" : undefined }}
             onPointerDown={stopCanvasInteraction}
@@ -169,7 +172,8 @@ export function MentionMenu({
                 )}
             </div>
         </div>,
-        document.body,
+        // Keep the popup inside the dialog's focus and pointer-event boundary.
+        anchor.closest(".ant-modal") || document.body,
     );
 }
 
