@@ -31,15 +31,17 @@ describe("workspace route loading", () => {
         expect(navigation).toContain("onFocus={() => preloadWorkspaceRoute(linkTo)}");
     });
 
-    test("keeps the creation page at root for signed-in users and preserves the create compatibility route", () => {
+    test("serves the public brand home at root and exposes the workspace route", () => {
         const router = source("../src/router.tsx");
         const home = source("../src/pages/home/index.tsx");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
 
         expect(router).toContain('{ path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> }');
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
+        expect(router).toContain('{ path: "/workspace", element: deferred(<CreatePage />) }');
         expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
-        expect(home).toContain("return <WelcomePage />");
+        expect(home).toContain("inspiration-home");
+        expect(home).not.toContain("return <WelcomePage />");
         expect(navigation).toContain('{ ...toolItem("create", "/create"), id: "home", title: "创作" }');
         expect(navigation).not.toContain('to: "/home"');
     });

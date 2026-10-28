@@ -137,6 +137,8 @@ export const router = createBrowserRouter([
         errorElement: <RouteErrorPage />,
         children: [
             { path: "/create", element: deferred(<CreatePage />) },
+            // 创作台工作台上线前先复用现有创作页，保证首页主 CTA 不落到空路由。
+            { path: "/workspace", element: deferred(<CreatePage />) },
             {
                 path: "/toolbox/image",
                 element: (
