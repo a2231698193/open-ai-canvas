@@ -20,6 +20,7 @@ import { listGenerationTasks, type GenerationTask } from "@/services/api/task-ce
 import { listRemoteCanvasProjectsPage } from "@/services/api/user-data";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
+import "@/pages/create/creation-product.css";
 import "./workspace.css";
 
 const HISTORY_LIMIT = 5;
