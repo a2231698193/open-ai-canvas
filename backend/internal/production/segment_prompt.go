@@ -41,6 +41,17 @@ type SegmentPromptInput struct {
 	References  []SegmentReference
 	// FirstFrame 表示请求会附带上一段视频的最后一帧作为本段首帧。
 	FirstFrame bool
+	// PauseMs 是台词后的气口，已计入镜头时长；为 0 时按默认值。
+	PauseMs int64
+}
+
+// pauseText 是写进提示词的气口时长，例如“0.5”。
+func (in SegmentPromptInput) pauseText() string {
+	pause := in.PauseMs
+	if pause <= 0 {
+		pause = DialoguePadMs
+	}
+	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", float64(pause)/1000), "0"), ".")
 }
 
 var shotLens = map[string]string{"特写": "85mm", "近景": "50mm", "中景": "35mm", "全景": "24mm", "远景": "16mm"}
@@ -231,7 +242,7 @@ func SegmentVideoPrompt(in SegmentPromptInput) string {
 			}
 			fmt.Fprintf(&b, "%s：“%s”\n", speaker, dialogue)
 			if shot.DurationMs >= 2000 {
-				b.WriteString("台词说完留0.5秒气口。\n")
+				fmt.Fprintf(&b, "台词说完留%s秒气口。\n", in.pauseText())
 			}
 		} else {
 			b.WriteString("无台词。\n")

@@ -106,9 +106,9 @@ const PACING: Array<{ value: DramaStoryboardSettings["pacing"]; label: string; d
     { value: "slow", label: "舒缓", detail: "4–8 秒长镜，营造情绪" },
 ];
 const DIALOGUE: Array<{ value: DramaStoryboardSettings["dialogue"]; label: string; detail: string }> = [
-    { value: "dense", label: "密集", detail: "约每 3 秒一句台词或旁白，适合爽剧、对手戏" },
-    { value: "standard", label: "标准", detail: "约每 4.5 秒一句" },
-    { value: "sparse", label: "克制", detail: "约每 7 秒一句，留给动作与氛围" },
+    { value: "dense", label: "密集", detail: "约每 3 秒一句台词或旁白，单句不超过 12 字，适合爽剧、对手戏" },
+    { value: "standard", label: "标准", detail: "约每 4.5 秒一句，单句不超过 16 字" },
+    { value: "sparse", label: "克制", detail: "约每 7 秒一句，单句不超过 20 字，留给动作与氛围" },
 ];
 const TRANSITIONS: Array<{ value: DramaStoryboardSettings["transition"]; label: string; detail: string }> = [
     { value: "auto", label: "智能", detail: "默认硬切，场景跳转用黑场，回忆用闪白" },

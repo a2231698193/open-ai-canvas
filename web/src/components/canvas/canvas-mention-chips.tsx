@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { createPortal } from "react-dom";
 import { CanvasNodeType } from "@/types/canvas";
+import { reportResourcePreviewFailure } from "./use-resolved-canvas-resource-references";
 
 export const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
     Brush,
@@ -99,12 +100,32 @@ export function InlineReferencePreview({ reference, onClose }: { reference: Canv
     );
 }
 
+// 加载失败过的缩略图地址。重绘时直接显示图标，等解析出新地址再换回图片，避免反复请求坏地址。
+const failedPreviewUrls = new Set<string>();
+
+function usableInlineImageUrl(reference: CanvasResourceReference) {
+    if (!["image", "video", "character"].includes(reference.kind) || !reference.previewUrl) return "";
+    return failedPreviewUrls.has(reference.previewUrl) ? "" : reference.previewUrl;
+}
+
 export function createInlinePreview(reference: CanvasResourceReference) {
-    if ((reference.kind === "image" || reference.kind === "video" || reference.kind === "character") && reference.previewUrl) {
+    const imageUrl = usableInlineImageUrl(reference);
+    if (imageUrl) {
         const media = document.createElement("img");
         media.className = `canvas-resource-inline-preview is-${reference.kind}`;
-        media.setAttribute("src", reference.previewUrl);
+        media.setAttribute("src", imageUrl);
         media.setAttribute("alt", "");
+        // 签名地址过期或对象不可读时退回图标，并通知解析层换一个新地址。
+        media.addEventListener(
+            "error",
+            () => {
+                if (failedPreviewUrls.size >= 256) failedPreviewUrls.clear();
+                failedPreviewUrls.add(imageUrl);
+                if (media.isConnected) media.replaceWith(createInlinePreview(reference));
+                reportResourcePreviewFailure(imageUrl);
+            },
+            { once: true },
+        );
         return media;
     }
     if (reference.kind === "video" && reference.mediaUrl) {
@@ -120,7 +141,18 @@ export function createInlinePreview(reference: CanvasResourceReference) {
     }
     const fallback = document.createElement("span");
     fallback.className = "canvas-resource-inline-preview is-fallback";
-    const FallbackIcon = reference.sourceType === CanvasNodeType.Drawing ? PenLine : reference.kind === "audio" ? Music2 : reference.kind === "video" ? Play : reference.kind === "image" ? ImageIcon : reference.kind === "skill" ? Sparkles : null;
+    const FallbackIcon =
+        reference.sourceType === CanvasNodeType.Drawing
+            ? PenLine
+            : reference.kind === "audio"
+              ? Music2
+              : reference.kind === "video"
+                ? Play
+                : reference.kind === "image" || reference.kind === "character"
+                  ? ImageIcon
+                  : reference.kind === "skill"
+                    ? Sparkles
+                    : null;
     if (FallbackIcon) fallback.innerHTML = inlineIconSvg(FallbackIcon);
     return fallback;
 }
@@ -132,7 +164,7 @@ export function syncInlineMentionPreviews(editor: HTMLElement, references: Canva
         const reference = byId.get(chip.dataset.mentionReferenceId || "");
         if (!reference) return;
         const preview = chip.querySelector(".canvas-resource-inline-preview");
-        const hasImage = ["image", "video", "character"].includes(reference.kind) && Boolean(reference.previewUrl);
+        const hasImage = Boolean(usableInlineImageUrl(reference));
         const hasVideo = !hasImage && reference.kind === "video" && Boolean(reference.mediaUrl);
         const tag = hasImage ? "IMG" : hasVideo ? "VIDEO" : "SPAN";
         const className = `canvas-resource-inline-preview is-${hasImage || hasVideo ? reference.kind : "fallback"}`;

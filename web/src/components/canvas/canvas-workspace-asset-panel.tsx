@@ -50,7 +50,7 @@ export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets 
         <>
             <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
                 <Images className="size-4" />
-                <strong className="text-sm">资产</strong>
+                <strong className="text-sm">素材库</strong>
                 <span className="text-muted-foreground">{query.data?.pages[0]?.total ?? 0}</span>
             </header>
             <div className="sidebar-subtabs border-b border-border p-2">

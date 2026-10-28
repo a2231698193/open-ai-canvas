@@ -24,6 +24,8 @@ type UpdateUserRequest struct {
 	Password    string           `json:"password"`
 	Role        model.UserRole   `json:"role"`
 	Status      model.UserStatus `json:"status"`
+	// IsPromoter 为空表示不修改推广人标记。
+	IsPromoter *bool `json:"isPromoter"`
 }
 
 type BulkDisableUsersRequest struct {

@@ -13,7 +13,7 @@ import { getSkillFile, listAddedSkills, listSkillFiles } from "@/services/api/sk
 // 角色/场景参考图方案：开工前选定，设置页可改。保存的是全文提示词，预览就是实际发送的内容。
 
 const PROMPT_LIMIT = 4000;
-const CUSTOM_RATIOS = ["3:4", "9:16", "1:1", "16:9"];
+const CUSTOM_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 
 export function useAssetSchemes() {
     return useQuery({ queryKey: ["drama-asset-schemes"], queryFn: getDramaAssetSchemes, staleTime: 10 * 60_000 });

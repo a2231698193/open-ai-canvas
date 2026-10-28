@@ -15,6 +15,7 @@ type User struct {
 	AvatarVersion   string     `json:"-" gorm:"size:36"`
 	Role            UserRole   `json:"role" gorm:"index;size:24"`
 	Status          UserStatus `json:"status" gorm:"index;size:24"`
+	IsPromoter      bool       `json:"isPromoter" gorm:"not null;default:false;index"`
 	PasswordHash    string     `json:"-"`
 	LastLoginAt     *time.Time `json:"lastLoginAt"`
 	CreatedAt       time.Time  `json:"createdAt"`

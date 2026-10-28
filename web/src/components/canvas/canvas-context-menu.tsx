@@ -1,6 +1,6 @@
 import { AnimatePresence } from "motion/react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, FolderOpen, FolderPlus, History, Image as ImageIcon, Layers3, LayoutTemplate, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, Download, FolderOpen, FolderPlus, History, Image as ImageIcon, Layers3, LayoutTemplate, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
 
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@/components/canvas/canvas-create-menu";
 import { ASSET_CATEGORY_OPTIONS } from "@/lib/asset-category";
@@ -59,6 +59,9 @@ type CanvasNodeContextMenuProps = {
     onCopySelection?: () => void;
     onDeleteSelection?: () => void;
     onSendToAgent?: () => void;
+    /** 选区中可下载的图片、视频、音频节点数。 */
+    downloadableSelectionCount?: number;
+    onDownloadSelection?: () => void;
 };
 
 export function CanvasNodeContextMenu({
@@ -100,6 +103,8 @@ export function CanvasNodeContextMenu({
     onCopySelection,
     onDeleteSelection,
     onSendToAgent,
+    downloadableSelectionCount = 0,
+    onDownloadSelection,
 }: CanvasNodeContextMenuProps) {
     const theme = canvasThemes[useActiveTheme()];
     const [addOpen, setAddOpen] = useState(false);
@@ -160,6 +165,16 @@ export function CanvasNodeContextMenu({
         <MenuButton icon={<History />} label="版本历史" badge={versionCount > 1 ? String(versionCount) : undefined} detail={versionDetail} disabled={!canOpenVersions} onClick={() => runAction(onOpenVersions)} />
     ) : null;
     const position = getContextMenuPosition(menu, hasMultiSelection);
+    const skippedDownloadCount = Math.max(0, selectedCount - downloadableSelectionCount);
+    const downloadSelectionButton = hasMultiSelection ? (
+        <MenuButton
+            icon={<Download />}
+            label={downloadableSelectionCount ? `下载 ${downloadableSelectionCount} 个资源` : "下载资源"}
+            detail={!downloadableSelectionCount ? "选区内没有图片、视频或音频" : skippedDownloadCount ? `逐个下载，跳过 ${skippedDownloadCount} 个非媒体节点` : "逐个下载为独立文件"}
+            disabled={!onDownloadSelection || !downloadableSelectionCount}
+            onClick={() => onDownloadSelection && runAction(onDownloadSelection)}
+        />
+    ) : null;
 
     return (
         <>
@@ -196,6 +211,7 @@ export function CanvasNodeContextMenu({
                             {hasMultiSelection ? (
                                 <>
                                     <MenuButton icon={<LayoutTemplate className="size-4" />} label="自适应整理画布" detail="保持相对布局并加大边距" disabled={!onSpreadSelection} onClick={() => onSpreadSelection && runAction(onSpreadSelection)} />
+                                    {downloadSelectionButton}
                                     <MenuDivider />
                                 </>
                             ) : null}
@@ -215,6 +231,7 @@ export function CanvasNodeContextMenu({
                             <MenuButton icon={<LayoutTemplate />} label="自适应整理画布" detail="保持相对布局并加大边距" disabled={!onSpreadSelection} onClick={() => onSpreadSelection && runAction(onSpreadSelection)} />
                             <MenuDivider />
                             <MenuButton icon={<Copy />} label={`复制 ${selectedCount} 个节点`} shortcut="⌘C" disabled={!onCopySelection} onClick={() => onCopySelection && runAction(onCopySelection)} />
+                            {downloadSelectionButton}
                             <MenuButton icon={<AtSign />} label="发送到 Agent" disabled={!onSendToAgent} onClick={() => onSendToAgent && runAction(onSendToAgent)} />
                             <MenuButton icon={<Trash2 />} label={`删除 ${selectedCount} 个节点`} danger disabled={!onDeleteSelection} onClick={() => onDeleteSelection && runAction(onDeleteSelection)} />
                         </>
@@ -394,7 +411,7 @@ function MenuDivider() {
 function getContextMenuPosition(menu: ContextMenuState, hasMultiSelection = false) {
     if (typeof window === "undefined") return { left: menu.x, top: menu.y };
     const width = 224;
-    const estimatedHeight = menu.type === "node" ? Math.min(hasMultiSelection ? 240 : 360, window.innerHeight - 72) : menu.type === "canvas" ? (hasMultiSelection ? 300 : 250) : 84;
+    const estimatedHeight = menu.type === "node" ? Math.min(hasMultiSelection ? 290 : 360, window.innerHeight - 72) : menu.type === "canvas" ? (hasMultiSelection ? 350 : 250) : 84;
     return {
         left: clamp(menu.x, 12, Math.max(12, window.innerWidth - width - 12)),
         top: clamp(menu.y, 68, Math.max(68, window.innerHeight - estimatedHeight - 12)),

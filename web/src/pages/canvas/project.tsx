@@ -123,7 +123,10 @@ import { deriveStoryboardPipelineProgress } from "@/lib/canvas/canvas-storyboard
 import { CanvasOperationChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
 import { getGenerationCount } from "@/lib/canvas/canvas-project-generation";
 import { cancelGenerationTask } from "@/services/api/task-center";
-import { CanvasTopBar } from "./canvas-project-top-bar";
+import { CanvasTopBar, type CanvasProjectView } from "./canvas-project-top-bar";
+import { CanvasAssetView } from "@/components/canvas/canvas-asset-view";
+import type { CanvasAssetVersion } from "@/lib/canvas/canvas-asset-catalog";
+import { canDownloadCanvasNodeMedia } from "@/lib/canvas/canvas-media-download";
 import { CanvasSyncStatus } from "./canvas-sync-status";
 import { LibTVImportDialog } from "./components/libtv-import-dialog";
 import { TapNowImportDialog } from "./components/tapnow-import-dialog";
@@ -313,6 +316,8 @@ function CanvasViewportPage() {
     const { tasks: activeTasks } = useCanvasActiveTasks(projectId, projectLoaded);
     const { focusMode, enterFocusMode, exitFocusMode, toggleFocusMode } = useFocusMode();
     const [focusDockRevealed, setFocusDockRevealed] = useState(false);
+    // 画布 / 资产视图写在 URL 上，刷新和分享链接都能回到同一视图；专注模式只服务画布编辑。
+    const canvasView: CanvasProjectView = searchParams.get("view") === "assets" && !focusMode ? "assets" : "canvas";
 
     useEffect(() => {
         persistCanvasHideNodeConnections(hideNodeConnections);
@@ -1024,6 +1029,7 @@ function CanvasViewportPage() {
         releaseCopiedNodesPastePriority,
         shouldPreferCopiedNodes,
         toggleNodeLocked,
+        setPrimaryVersion,
         adoptNodeMediaVersion,
         deleteNodeMediaVersion,
         extractNodeMediaVersion,
@@ -1274,6 +1280,7 @@ function CanvasViewportPage() {
     const {
         collapsingBatchIds,
         downloadNodeImage,
+        downloadNodesMedia,
         handleConfigNodeChange,
         handleFolderStyleChange,
         handleFolderThemeChange,
@@ -1728,7 +1735,8 @@ function CanvasViewportPage() {
     }, [clearCanvasFiles, deselectCanvas, message, nodesRef, projectId, setEmotionNodeId]);
 
     useCanvasKeyboard({
-        enabled: projectLoaded,
+        // 资产视图覆盖画布时，删除、粘贴、撤销等画布快捷键不能作用到看不见的节点上。
+        enabled: projectLoaded && canvasView === "canvas",
         nodesRef,
         selectedNodeIdsRef,
         selectedConnectionId,
@@ -2626,6 +2634,46 @@ function CanvasViewportPage() {
         focusCanvasNode(nodeId);
     };
     const handleAgentFocusNode = useCallback((nodeId: string) => agentFocusNodeRef.current(nodeId), []);
+    const changeCanvasView = useCallback((view: CanvasProjectView) => {
+        setSearchParams((current) => {
+            const next = new URLSearchParams(current);
+            if (view === "assets") next.set("view", "assets");
+            else next.delete("view");
+            return next;
+        }, { replace: true });
+        if (view !== "assets") return;
+        // 资产视图覆盖画布，节点浮层和菜单不能悬在它上面。
+        setContextMenu(null);
+        setDialogNodeId(null);
+        setToolbarNodeId(null);
+        setHoveredNodeId(null);
+    }, [setDialogNodeId, setSearchParams]);
+    const locateAssetNode = useCallback((nodeId: string) => {
+        changeCanvasView("canvas");
+        const selection = new Set([nodeId]);
+        selectedNodeIdsRef.current = selection;
+        setSelectedNodeIds(selection);
+        setSelectedConnectionId(null);
+        agentFocusNodeRef.current(nodeId);
+    }, [changeCanvasView]);
+    const renameAssetNodes = useCallback((updates: Array<{ nodeId: string; title: string }>) => {
+        updates.forEach(({ nodeId, title }) => handleNodeTitleChange(nodeId, title));
+    }, [handleNodeTitleChange]);
+    const promoteAssetVersion = useCallback((version: CanvasAssetVersion) => {
+        const node = nodesRef.current.find((item) => item.id === version.nodeId);
+        if (!node) {
+            message.info("该节点已删除或尚未同步到画布");
+            return;
+        }
+        if (version.source === "batch") {
+            setBatchPrimary(node);
+            message.success(`已将${version.label}设为主图`);
+            return;
+        }
+        if (version.mediaVersionId && !adoptNodeMediaVersion(node.id, version.mediaVersionId)) return;
+        // 跨节点版本组里，节点内历史版本成为主版本时，承载节点也要成为组内主版本。
+        if (node.metadata?.versionOfNodeId && !node.metadata.versionPrimary) setPrimaryVersion(node.id);
+    }, [adoptNodeMediaVersion, message, nodesRef, setBatchPrimary, setPrimaryVersion]);
     // 平台唯一的 Agent 面板挂在布局上；画布只发布自己的上下文。画布加载完成前不发布，避免以未保存画布绑定运行。
     const publishAgentCanvas = useGlobalAgentStore((state) => state.setCanvas);
     useEffect(() => {
@@ -2687,6 +2735,7 @@ function CanvasViewportPage() {
                         onProjectAssets={currentProject?.projectId ? () => openProjectAssets() : undefined}
                         onCancelTask={cancelCanvasTask}
                         onFocus={(nodeId) => {
+                            if (canvasView === "assets") changeCanvasView("canvas");
                             const target = nodeById.get(nodeId);
                             const parent = target?.parentId ? nodeById.get(target.parentId) : null;
                             if (parent?.metadata?.frame?.collapsed) toggleFrameCollapsed(parent.id);
@@ -2708,6 +2757,8 @@ function CanvasViewportPage() {
                         <section data-canvas-editor className="relative min-w-0 flex-1 flex flex-col min-h-0 overflow-clip">
                             {!focusMode ? (
                                 <CanvasTopBar
+                                    view={canvasView}
+                                    onViewChange={changeCanvasView}
                                     title={currentProject?.title || "未命名画布"}
                                     titleDraft={titleDraft}
                                     isTitleEditing={titleEditing}
@@ -3212,6 +3263,8 @@ function CanvasViewportPage() {
                                 onCopySelection={copySelectedNodes}
                                 onDeleteSelection={() => deleteNodes(selectedNodeIds)}
                                 onSendToAgent={() => sendSelectionToAgent(contextMenu?.type === "node" && selectedNodeIds.size <= 1 ? contextMenu.nodeId : undefined)}
+                                downloadableSelectionCount={contextMenu && selectedNodeIds.size > 1 ? nodes.filter((node) => selectedNodeIds.has(node.id) && canDownloadCanvasNodeMedia(node)).length : 0}
+                                onDownloadSelection={() => void downloadNodesMedia(nodesRef.current.filter((node) => selectedNodeIds.has(node.id)))}
                             />
 
                             <CanvasUploadModal open={uploadModalOpen} onClose={closeUploadModal} onUpload={handleUploadFiles} />
@@ -3573,6 +3626,12 @@ function CanvasViewportPage() {
                                 onInsert={handleTimelineProjectAssetsInsert}
                                 onInsertFolder={projectAssetScope === "canvas" ? handleProjectFolderInsert : undefined}
                             />
+
+                            {canvasView === "assets" ? (
+                                <div className="canvas-asset-view-layer absolute bottom-0 left-0 right-0 top-[var(--canvas-topbar-h)] z-[var(--z-panel-floating)] flex min-h-0">
+                                    <CanvasAssetView nodes={nodes} onLocate={locateAssetNode} onRename={renameAssetNodes} onPromoteVersion={promoteAssetVersion} onDownloadMedia={downloadNodeImage} onUpload={() => handleUploadRequest()} />
+                                </div>
+                            ) : null}
                         </section>
                     </div>
                 </CanvasOverlayLayerProvider>

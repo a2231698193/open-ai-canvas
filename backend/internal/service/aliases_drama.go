@@ -14,4 +14,9 @@ type (
 	DramaListRequest             = app.DramaListRequest
 	RegenerateDramaCastsRequest  = app.RegenerateDramaCastsRequest
 	ReleaseDramaMediaRequest     = app.ReleaseDramaMediaRequest
+	AddDramaEpisodeRequest       = app.AddDramaEpisodeRequest
+	UpdateDramaChapterRequest    = app.UpdateDramaChapterRequest
+	UpdateDramaEpisodeRequest    = app.UpdateDramaEpisodeRequest
+	InsertDramaShotRequest       = app.InsertDramaShotRequest
+	SetDramaCastImageRequest     = app.SetDramaCastImageRequest
 )

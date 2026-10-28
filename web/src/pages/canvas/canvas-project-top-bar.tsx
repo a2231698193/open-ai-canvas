@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Clapperboard, CloudDownload, CopyPlus, Focus, FolderKanban, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
+import { Clapperboard, CloudDownload, CopyPlus, Focus, FolderKanban, FolderTree, Home, LayoutGrid, Workflow, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown } from "antd";
 import { AntTooltip as Tooltip } from "@/components/ui/base/tooltip/ant-tooltip";
 
@@ -15,7 +15,11 @@ import { useCanvasThemeStore } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { CanvasShortcutsModal } from "./canvas-shortcuts-modal";
 
+export type CanvasProjectView = "canvas" | "assets";
+
 type CanvasTopBarProps = {
+    view: CanvasProjectView;
+    onViewChange: (view: CanvasProjectView) => void;
     title: string;
     titleDraft: string;
     isTitleEditing: boolean;
@@ -43,6 +47,8 @@ type CanvasTopBarProps = {
 };
 
 export function CanvasTopBar({
+    view,
+    onViewChange,
     title,
     titleDraft,
     isTitleEditing,
@@ -102,6 +108,13 @@ export function CanvasTopBar({
                             trigger={["click"]}
                             menu={{
                                 items: [
+                                    {
+                                        key: "view",
+                                        icon: view === "canvas" ? <FolderTree className="size-4" /> : <Workflow className="size-4" />,
+                                        label: view === "canvas" ? "切换到资产视图" : "切换到画布视图",
+                                        onClick: () => onViewChange(view === "canvas" ? "assets" : "canvas"),
+                                    },
+                                    { type: "divider" },
                                     { key: "home", icon: <Home className="size-4" />, label: <Link to="/create">主页</Link> },
                                     { key: "projects", icon: <LayoutGrid className="size-4" />, label: <Link to="/canvas">画布</Link> },
                                     { type: "divider" },
@@ -175,6 +188,8 @@ export function CanvasTopBar({
                     {syncIcon}
                 </div>
 
+                <CanvasViewSwitch view={view} onChange={onViewChange} dockStyle={dockStyle} activeBg={theme.toolbar.activeBg} color={theme.node.text} />
+
                 <div className="canvas-topbar-cluster canvas-topbar-tools-cluster pointer-events-auto flex items-center gap-2" style={dockStyle}>
                     <CanvasTopBarTooltip label="搜索画布节点">
                         <Button
@@ -241,6 +256,31 @@ export function CanvasTopBar({
             </div>
             <CanvasShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
         </>
+    );
+}
+
+// 居中的视图切换：两项都是持久状态，用 aria-pressed 表达；窄屏两侧命令组占满时隐藏，入口保留在画布菜单里。
+function CanvasViewSwitch({ view, onChange, dockStyle, activeBg, color }: { view: CanvasProjectView; onChange: (view: CanvasProjectView) => void; dockStyle: CSSProperties; activeBg: string; color: string }) {
+    const items: Array<{ value: CanvasProjectView; label: string; icon: ReactNode }> = [
+        { value: "canvas", label: "画布", icon: <Workflow className="size-4" /> },
+        { value: "assets", label: "资产", icon: <FolderTree className="size-4" /> },
+    ];
+    return (
+        <div role="group" aria-label="画布视图" className="canvas-topbar-cluster canvas-topbar-view-switch pointer-events-auto absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-1 xl:flex" style={dockStyle}>
+            {items.map((item) => (
+                <button
+                    key={item.value}
+                    type="button"
+                    className="canvas-topbar-action inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium"
+                    style={{ color, background: view === item.value ? activeBg : undefined }}
+                    aria-pressed={view === item.value}
+                    onClick={() => onChange(item.value)}
+                >
+                    {item.icon}
+                    {item.label}
+                </button>
+            ))}
+        </div>
     );
 }
 

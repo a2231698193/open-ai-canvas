@@ -98,7 +98,7 @@ func TestStoryboardRules(t *testing.T) {
 		t.Fatalf("range is ordered and capped by the model max: %+v", got)
 	}
 	rules := fast.PromptRules(300, fast.SegmentLimits(15))
-	for _, want := range []string{"每 10 秒一个剧情段", "3–6 个镜头", "每 3 秒至少一句", "全集至少 100 句"} {
+	for _, want := range []string{"每 10 秒一个剧情段", "3–6 个镜头", "每 3 秒有一句", "参考全集 100 句", "逐字取自原文"} {
 		if !strings.Contains(rules, want) {
 			t.Fatalf("prompt rules missing %q:\n%s", want, rules)
 		}

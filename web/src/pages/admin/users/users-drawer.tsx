@@ -1,10 +1,10 @@
 import { App, Button, Drawer, Form, Input } from "antd";
-import { Select } from "@/pages/admin/ui/controls";
+import { Select, Switch } from "@/pages/admin/ui/controls";
 import { useEffect, useState } from "react";
 
 import { createAdminUser, updateAdminUser, type AdminUser, type LocalUser } from "@/services/api/auth";
 
-type UserFormValues = Pick<LocalUser, "displayName" | "email" | "role" | "status"> & { password?: string };
+type UserFormValues = Pick<LocalUser, "displayName" | "email" | "role" | "status"> & { password?: string; isPromoter: boolean };
 
 export function AdminUserEditDrawer({ user, actorId, onClose, onSaved }: { user: AdminUser | null; actorId?: string; onClose: () => void; onSaved: (user: LocalUser) => void }) {
     const { message, modal } = App.useApp();
@@ -20,6 +20,7 @@ export function AdminUserEditDrawer({ user, actorId, onClose, onSaved }: { user:
             email: user.email || "",
             role: user.role,
             status: user.status,
+            isPromoter: Boolean(user.isPromoter),
         });
     }, [form, user]);
 
@@ -49,6 +50,7 @@ export function AdminUserEditDrawer({ user, actorId, onClose, onSaved }: { user:
                 email: values.email?.trim() || "",
                 role: values.role,
                 status: values.status,
+                isPromoter: values.isPromoter,
                 ...(values.password?.trim() ? { password: values.password } : {}),
             });
             onSaved(result.user);
@@ -106,6 +108,9 @@ export function AdminUserEditDrawer({ user, actorId, onClose, onSaved }: { user:
                             { label: "已停用", value: "disabled" },
                         ]}
                     />
+                </Form.Item>
+                <Form.Item name="isPromoter" label="推广人" valuePropName="checked" extra="推广中心设为「指定推广人」时，只有推广人能看到推广中心并获得返佣；全民推广时此标记不影响资格。">
+                    <Switch />
                 </Form.Item>
             </Form>
         </Drawer>

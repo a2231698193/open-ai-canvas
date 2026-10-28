@@ -15,7 +15,7 @@ import { Live2DAvatar } from "./live2d-avatar";
 import { agentAvatarBundleFileURL, live2DModelURL } from "@/services/api/appearance";
 import { AgentAvatarVideo } from "@/components/canvas/agent-avatar-video";
 import { FluidOrb } from "@/components/ui/fluid-orb";
-import { ArrowLeft, Check, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, CircleDot, Clock3, Download, History, LoaderCircle, Maximize2, MessageSquarePlus, Minus, RotateCcw, Settings2, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { Button, Input, Popover } from "antd";
 import { CanvasAnchoredDropdown as Dropdown } from "./canvas-anchored-dropdown";
 import type { AgentContextPhase, AgentContextUsageView } from "@/lib/canvas/agent-context-usage";
@@ -97,63 +97,111 @@ export function AgentLauncher({
         window.addEventListener("resize", resize);
         return () => window.removeEventListener("resize", resize);
     }, []);
+    const [collapsed, setCollapsed] = useState(readAgentLauncherCollapsed);
+    const toggleCollapsed = () => {
+        const next = !collapsed;
+        setCollapsed(next);
+        try {
+            if (next) localStorage.setItem(AGENT_LAUNCHER_COLLAPSED_KEY, "1");
+            else localStorage.removeItem(AGENT_LAUNCHER_COLLAPSED_KEY);
+        } catch (error) {
+            console.warn("Agent 形象收起状态无法保存", error);
+        }
+    };
     const media = Boolean(mediaURL && !mediaError);
     const aspectRatio = live ? 0.75 : bundleManifest ? bundleManifest.width / bundleManifest.height : appearance.avatarType === "bundle" ? 480 / 432 : 1;
-    const keepsAvatarSize = live || media || bundleManifestLoading;
-    const height = keepsAvatarSize ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / aspectRatio)) : 76;
-    const width = keepsAvatarSize ? Math.round(height * aspectRatio) : 76;
+    const largeAvatar = live || media || bundleManifestLoading;
+    // 收起后只留小圆球入口：不加载 Live2D / 动画，也不挡画布。位置以右下角为锚点，收起展开不跳位。
+    const keepsAvatarSize = largeAvatar && !collapsed;
+    const height = collapsed ? AGENT_LAUNCHER_COLLAPSED_SIZE : keepsAvatarSize ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / aspectRatio)) : 76;
+    const width = collapsed ? AGENT_LAUNCHER_COLLAPSED_SIZE : keepsAvatarSize ? Math.round(height * aspectRatio) : 76;
     const { position, dragging, handlers } = useAgentLauncherPosition(onOpen, width, height);
+    const showToggle = !hidden && (largeAvatar || collapsed);
     return (
-        <motion.button
-            type="button"
-            aria-label={`打开${appearance.agentName}`}
-            title={live && live2DError ? live2DError : `${approvalPending ? "Agent 等待你的审批" : "打开 Agent 助手"} · 拖动可调整位置，聚焦后可用方向键移动`}
-            className={cn(
-                "canvas-agent-launcher fixed z-[calc(var(--z-toast)+1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35",
-                dragging && "is-dragging",
-                live && "canvas-agent-launcher-live2d",
-                mediaURL && !mediaError && "canvas-agent-launcher-media",
-            )}
-            style={{ ...position, width, height, color: theme.node.text, "--canvas-agent-launcher-shadow": theme.spatial.shadow, ...(hidden ? { display: "none" } : null) } as CSSProperties}
-            aria-hidden={hidden || undefined}
-            tabIndex={hidden ? -1 : undefined}
-            data-canvas-no-zoom
-            onDragStart={(event) => event.preventDefault()}
-            {...handlers}
-            whileHover={reducedMotion || dragging ? undefined : { scale: 1.035 }}
-            whileTap={reducedMotion || dragging ? undefined : { scale: 0.96 }}
-            transition={{ duration: reducedMotion ? 0 : 0.18 }}
-        >
-            {live ? (
-                <Live2DAvatar
-                    url={live2DModelURL(appearance.live2dResourceId, appearance.live2dEntry)}
-                    width={width}
-                    height={height}
-                    reducedMotion={reducedMotion}
-                    fallback={<FluidOrb size={60} color="#7164f6" />}
-                    onReady={() => setLive2DError("")}
-                    onError={setLive2DError}
-                />
-            ) : mediaURL && !mediaError ? (
-                <AgentAvatarVideo src={mediaURL} loop={!["completed", "failed", "cancelled", "rejected"].includes(avatarState)} onError={() => setMediaError(true)} />
-            ) : bundleManifestLoading || !appearanceResolved ? (
-                <span role="status" aria-busy="true">
-                    <LoaderCircle className={reducedMotion ? "size-6" : "size-6 motion-safe:animate-spin"} aria-hidden="true" />
-                    <span className="sr-only">正在加载助手形象</span>
-                </span>
-            ) : (
-                <FluidOrb size={60} color="#7164f6" />
-            )}
-            {appearance.launcherLabel ? <span className="canvas-agent-launcher-label">{appearance.launcherLabel}</span> : null}
-            {live && live2DError ? (
-                <span className="sr-only" role="status">
-                    {live2DError}
-                </span>
+        <>
+            <motion.button
+                type="button"
+                aria-label={`打开${appearance.agentName}`}
+                title={live && live2DError ? live2DError : `${approvalPending ? "Agent 等待你的审批" : "打开 Agent 助手"} · 拖动可调整位置，聚焦后可用方向键移动`}
+                className={cn(
+                    "canvas-agent-launcher fixed z-[calc(var(--z-toast)+1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35",
+                    dragging && "is-dragging",
+                    collapsed && "is-collapsed",
+                    keepsAvatarSize && live && "canvas-agent-launcher-live2d",
+                    keepsAvatarSize && media && "canvas-agent-launcher-media",
+                )}
+                style={{ ...position, width, height, color: theme.node.text, "--canvas-agent-launcher-shadow": theme.spatial.shadow, ...(hidden ? { display: "none" } : null) } as CSSProperties}
+                aria-hidden={hidden || undefined}
+                tabIndex={hidden ? -1 : undefined}
+                data-canvas-no-zoom
+                onDragStart={(event) => event.preventDefault()}
+                {...handlers}
+                whileHover={reducedMotion || dragging ? undefined : { scale: 1.035 }}
+                whileTap={reducedMotion || dragging ? undefined : { scale: 0.96 }}
+                transition={{ duration: reducedMotion ? 0 : 0.18 }}
+            >
+                {collapsed ? (
+                    <FluidOrb size={30} color="#7164f6" />
+                ) : live ? (
+                    <Live2DAvatar
+                        url={live2DModelURL(appearance.live2dResourceId, appearance.live2dEntry)}
+                        width={width}
+                        height={height}
+                        reducedMotion={reducedMotion}
+                        fallback={<FluidOrb size={60} color="#7164f6" />}
+                        onReady={() => setLive2DError("")}
+                        onError={setLive2DError}
+                    />
+                ) : mediaURL && !mediaError ? (
+                    <AgentAvatarVideo src={mediaURL} loop={!["completed", "failed", "cancelled", "rejected"].includes(avatarState)} onError={() => setMediaError(true)} />
+                ) : bundleManifestLoading || !appearanceResolved ? (
+                    <span role="status" aria-busy="true">
+                        <LoaderCircle className={reducedMotion ? "size-6" : "size-6 motion-safe:animate-spin"} aria-hidden="true" />
+                        <span className="sr-only">正在加载助手形象</span>
+                    </span>
+                ) : (
+                    <FluidOrb size={60} color="#7164f6" />
+                )}
+                {appearance.launcherLabel && !collapsed ? <span className="canvas-agent-launcher-label">{appearance.launcherLabel}</span> : null}
+                {live && live2DError ? (
+                    <span className="sr-only" role="status">
+                        {live2DError}
+                    </span>
+                ) : null}
+                <span className={cn("canvas-agent-launcher-status", approvalPending && "is-pending")} style={{ "--canvas-agent-status-color": statusColor } as CSSProperties} />
+                {approvalPending ? <span className="canvas-agent-launcher-badge">待审批</span> : null}
+            </motion.button>
+            {showToggle ? (
+                <button
+                    type="button"
+                    className="canvas-agent-launcher-toggle fixed z-[calc(var(--z-toast)+2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35"
+                    style={{ right: position.right + width - 14, bottom: position.bottom + height - 14, color: theme.node.text } as CSSProperties}
+                    aria-label={collapsed ? `展开${appearance.agentName}形象` : `收起${appearance.agentName}形象`}
+                    aria-pressed={collapsed}
+                    title={collapsed ? "展开形象" : "收起形象，只保留小入口"}
+                    data-canvas-no-zoom
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        toggleCollapsed();
+                    }}
+                >
+                    {collapsed ? <Maximize2 className="size-3" aria-hidden="true" /> : <Minus className="size-3" aria-hidden="true" />}
+                </button>
             ) : null}
-            <span className={cn("canvas-agent-launcher-status", approvalPending && "is-pending")} style={{ "--canvas-agent-status-color": statusColor } as CSSProperties} />
-            {approvalPending ? <span className="canvas-agent-launcher-badge">待审批</span> : null}
-        </motion.button>
+        </>
     );
+}
+
+const AGENT_LAUNCHER_COLLAPSED_KEY = "canvas:agent-launcher-collapsed:v1";
+const AGENT_LAUNCHER_COLLAPSED_SIZE = 48;
+
+function readAgentLauncherCollapsed() {
+    try {
+        return localStorage.getItem(AGENT_LAUNCHER_COLLAPSED_KEY) === "1";
+    } catch {
+        return false;
+    }
 }
 
 export function AgentHeader({

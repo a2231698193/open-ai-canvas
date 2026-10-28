@@ -20,9 +20,23 @@ export function modelToDramaChoice(config: AiConfig, model: string): DramaModelC
     return { channelId: channel.id, modelKey: modelOptionName(model), label };
 }
 
+/**
+ * 通用目录中一个模型可能对应的全部后端选择键：产品模型 l:，以及它所在平台渠道的 c:。
+ * 前后端对同一模型可能用不同口径登记（例如产品模型开关不同步），两种键都参与匹配。
+ */
+export function dramaChoiceKeys(config: AiConfig, model: string) {
+    if (!model) return [];
+    const keys: string[] = [];
+    const logicalModelId = logicalModelIDForConfig({ ...config, model });
+    if (logicalModelId) keys.push(`l:${logicalModelId}`);
+    const channel = resolveModelChannel(config, model);
+    if (channel.scope === "system" && channel.id) keys.push(`c:${channel.id}:${modelOptionName(model)}`);
+    return keys;
+}
+
 /** 后端选择在通用目录中的模型值；目录尚未加载或模型已下架时返回空串。 */
 export function dramaChoiceToModel(config: AiConfig, capability: ModelCapability, choice?: DramaModelChoice) {
     const key = dramaChoiceKey(choice);
     if (!key) return "";
-    return selectableModelsByCapability(config, capability).find((model) => dramaChoiceKey(modelToDramaChoice(config, model)) === key) || "";
+    return selectableModelsByCapability(config, capability).find((model) => dramaChoiceKeys(config, model).includes(key)) || "";
 }

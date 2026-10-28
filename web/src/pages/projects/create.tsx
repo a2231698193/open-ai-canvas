@@ -7,13 +7,25 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { WorkspacePage } from "@/components/layout/workspace-page";
 import { DEFAULT_DRAMA_STYLE_ID, findDramaStyle } from "@/lib/drama/drama-styles";
 import { decodeNovelText } from "@/lib/canvas/canvas-document";
-import { analyzeNovel, titleFromFileName, type NovelAnalysis } from "@/lib/drama/novel-parse";
+import { analyzeNovel, EPISODE_SOURCE_CHARS, sourceChars, titleFromFileName } from "@/lib/drama/novel-parse";
 import { ApiError } from "@/services/api/request";
 import { dramaChoiceKey } from "@/lib/drama/model-choice";
 import { DEFAULT_STORYBOARD } from "@/lib/drama/storyboard";
-import { createDrama, estimateDrama, type DramaAssetSettings, type DramaCapability, type DramaMediaMode, type DramaModels, type DramaReviewMode, type DramaSkillRef, type DramaStoryboardSettings } from "@/services/api/drama";
+import {
+    createDrama,
+    estimateDrama,
+    type DramaAssetSettings,
+    type DramaCapability,
+    type DramaEpisodeMode,
+    type DramaMediaMode,
+    type DramaModels,
+    type DramaReviewMode,
+    type DramaSkillRef,
+    type DramaSourceFormat,
+    type DramaStoryboardSettings,
+} from "@/services/api/drama";
 
-import { formatCount, formatCredits, MEDIA_MODE_LABEL } from "./drama-shared";
+import { formatCount, formatCredits, MEDIA_MODE_LABEL, SOURCE_FORMAT_LABEL, SourceFormatPicker } from "./drama-shared";
 import { AssetSchemePicker, defaultAssetSettings, useAssetSchemes } from "./asset-scheme";
 import { DramaModelPicker, useDramaModelCatalog } from "./drama-model-picker";
 import { PromptSkillField } from "./prompt-skill";
@@ -34,6 +46,10 @@ const REVIEW_MODES: Array<{ value: DramaReviewMode; title: string; detail: strin
     { value: "auto", title: "全自动", detail: "不打断，直接从小说跑到成片，可随时在制作台修改重做。" },
 ];
 const CAPABILITY_LABEL: Record<DramaCapability, string> = { text: "改编与分镜", image: "角色与场景参考图", video: "剧情段视频" };
+const EPISODE_MODES: Array<{ value: DramaEpisodeMode; title: string; detail: string }> = [
+    { value: "chapter", title: "每章一集，逐集制作", detail: "每个“第 N 章 / 第 N 集”就是一集；可以只放第 1 集，做完再在制作台追加下一集。单集不超过 1.2 万字。" },
+    { value: "auto", title: "整本导入，自动分集", detail: "由模型把章节规划成集，适合一次导入整本小说；章节多时耗时更长。" },
+];
 
 export default function DramaCreatePage() {
     const navigate = useNavigate();
@@ -44,7 +60,13 @@ export default function DramaCreatePage() {
     const [searchParams] = useSearchParams();
     const [pasteMode, setPasteMode] = useState(searchParams.get("paste") === "1");
     const [pasteText, setPasteText] = useState("");
-    const [analysis, setAnalysis] = useState<NovelAnalysis | null>(null);
+    const [sourceText, setSourceText] = useState("");
+    const [sourceFormat, setSourceFormat] = useState<DramaSourceFormat>("novel");
+    // 默认逐集：一次只让流水线处理一集，长篇整本导入容易让改编任务超时。
+    const [chapterMode, setChapterMode] = useState<DramaEpisodeMode>("chapter");
+    const episodeMode: DramaEpisodeMode = sourceFormat === "novel" ? chapterMode : "chapter";
+    const perEpisode = episodeMode === "chapter";
+    const analysis = useMemo(() => (sourceText ? analyzeNovel(sourceText, { perEpisode }) : null), [perEpisode, sourceText]);
     const [name, setName] = useState("");
     const [aspectRatio, setAspectRatio] = useState("9:16");
     const [episodeSeconds, setEpisodeSeconds] = useState(90);
@@ -86,8 +108,8 @@ export default function DramaCreatePage() {
         ...(assets ? { assets } : {}),
     };
     const estimateQuery = useQuery({
-        queryKey: ["drama-estimate", analysis?.chapters.length, analysis?.words, episodeSeconds, JSON.stringify(storyboard), dramaChoiceKey(resolvedModels?.text), dramaChoiceKey(resolvedModels?.image), dramaChoiceKey(resolvedModels?.video)],
-        queryFn: ({ signal }) => estimateDrama({ chapterCount: analysis!.chapters.length, wordCount: analysis!.words, settings }, signal),
+        queryKey: ["drama-estimate", analysis?.chapters.length, analysis?.words, episodeMode, episodeSeconds, JSON.stringify(storyboard), dramaChoiceKey(resolvedModels?.text), dramaChoiceKey(resolvedModels?.image), dramaChoiceKey(resolvedModels?.video)],
+        queryFn: ({ signal }) => estimateDrama({ chapterCount: analysis!.chapters.length, wordCount: analysis!.words, settings, episodeMode }, signal),
         enabled: Boolean(analysis && resolvedModels),
         staleTime: 30_000,
     });
@@ -97,12 +119,12 @@ export default function DramaCreatePage() {
     }, [estimate, budgetCredits]);
 
     const loadText = (text: string, fileName?: string) => {
-        const result = analyzeNovel(text);
+        const result = analyzeNovel(text, { perEpisode });
         if (!result.chapters.length) {
             message.error("没有读取到正文，请检查文件内容");
             return;
         }
-        setAnalysis(result);
+        setSourceText(text);
         setBudgetCredits(null);
         if (fileName && !name) setName(titleFromFileName(fileName));
         if (!fileName && !name) setName(result.chapters[0]?.title.slice(0, 20) || "未命名短剧");
@@ -142,15 +164,19 @@ export default function DramaCreatePage() {
                 settings: { ...settings, models: resolvedModels },
                 budgetMicrocredits: Math.max(0, Math.round((budgetCredits || 0) * 1_000_000)),
                 start: true,
+                sourceFormat,
+                episodeMode,
             }),
         onSuccess: (summary) => navigate(`/projects/${summary.project.id}`, { replace: true }),
         onError: (error) => message.error(error instanceof ApiError || error instanceof Error ? error.message : "创建失败"),
     });
-    const canStart = Boolean(analysis && name.trim() && resolvedModels && missingCapabilities.length === 0 && !create.isPending);
+    const tooLong = Boolean(analysis?.issues.some((issue) => issue.kind === "too_long"));
+    const canStart = Boolean(analysis && name.trim() && resolvedModels && missingCapabilities.length === 0 && !tooLong && !create.isPending);
+    const unitLabel = perEpisode ? "集" : "章";
 
     const previewChapter = analysis?.chapters[previewIndex];
     const reset = () => {
-        setAnalysis(null);
+        setSourceText("");
         setPasteText("");
         setName("");
         setPreviewIndex(0);
@@ -166,6 +192,9 @@ export default function DramaCreatePage() {
                         </Link>
                         <h1>新建短剧</h1>
                     </header>
+                    <div className="drama-compose-formats">
+                        <SourceFormatPicker value={sourceFormat} onChange={setSourceFormat} row />
+                    </div>
                     <div
                         className={`drama-drop ${dragOver ? "is-over" : ""}`}
                         onDragOver={(event) => {
@@ -181,7 +210,7 @@ export default function DramaCreatePage() {
                                     autoFocus
                                     value={pasteText}
                                     onChange={(event) => setPasteText(event.target.value)}
-                                    placeholder="粘贴小说正文。包含“第一章 / 第1章 / Chapter 1”这类标题时会自动拆章。"
+                                    placeholder={`${SOURCE_FORMAT_LABEL[sourceFormat].placeholder}\n\n包含“第一章 / 第1集 / Chapter 1”这类标题时会自动拆分；${sourceFormat === "novel" ? "" : "每个标题就是一集，"}也可以只放第 1 集，之后在制作台逐集追加。`}
                                     autoSize={{ minRows: 14, maxRows: 24 }}
                                 />
                                 <div className="flex justify-end gap-2">
@@ -196,17 +225,20 @@ export default function DramaCreatePage() {
                                 <span className="drama-drop-icon">
                                     <BookOpenText className="size-7" />
                                 </span>
-                                <h2>拖入小说文件，剩下的交给流水线</h2>
-                                <p>TXT 或 Markdown，自动识别 GBK / UTF-8 编码与章节标题。确认几个选项后，系统自动改编、拆集、建角色、出分镜并合成成片。</p>
+                                <h2>拖入{SOURCE_FORMAT_LABEL[sourceFormat].title}文件，剩下的交给流水线</h2>
+                                <p>
+                                    TXT 或 Markdown，自动识别 GBK / UTF-8 编码与“第 N 章 / 第 N 集”标题。可以只放第 1 集，做完再在制作台追加下一集；
+                                    {sourceFormat === "novel" ? "引号里的对白会逐字保留为台词。" : "台词逐字保留，不会被改写。"}
+                                </p>
                                 <Button type="primary" size="large" icon={<FileUp className="size-4" />} onClick={() => fileInputRef.current?.click()}>
-                                    选择小说文件
+                                    选择{SOURCE_FORMAT_LABEL[sourceFormat].title}文件
                                 </Button>
                                 <button type="button" className="drama-link inline-flex items-center gap-1" onClick={() => setPasteMode(true)}>
                                     <ClipboardPaste className="size-3.5" />
-                                    没有文件？直接粘贴正文
+                                    没有文件？直接粘贴
                                 </button>
                                 <div className="drama-drop-steps">
-                                    {["解析章节", "建立角色、道具与场景", "分集改编与段提示词", "按剧情段生成视频", "合成成片"].map((step, index) => (
+                                    {[sourceFormat === "storyboard" ? "导入分镜" : "解析分集", "建立角色、道具与场景", sourceFormat === "novel" ? "改编剧本与段提示词" : "拆镜与段提示词", "按剧情段生成视频", "合成成片"].map((step, index) => (
                                         <span key={step}>
                                             <b>{index + 1}</b>
                                             {step}
@@ -243,13 +275,13 @@ export default function DramaCreatePage() {
                         </Link>
                         <h1>新建短剧</h1>
                         <Button size="small" type="text" className="!ml-auto" onClick={reset}>
-                            换一本
+                            换素材
                         </Button>
                     </header>
                     <div className="drama-stats">
                         <div className="drama-stat">
                             <div className="drama-stat-value">{formatCount(analysis.chapters.length)}</div>
-                            <div className="drama-stat-label">章节</div>
+                            <div className="drama-stat-label">{perEpisode ? "段原文" : "章节"}</div>
                         </div>
                         <div className="drama-stat">
                             <div className="drama-stat-value">{formatCount(analysis.words)}</div>
@@ -272,18 +304,54 @@ export default function DramaCreatePage() {
                     ) : null}
                     <div className="drama-chapter-list thin-scrollbar" role="listbox" aria-label="章节">
                         {analysis.chapters.slice(0, 600).map((chapter, index) => (
-                            <button key={`${index}-${chapter.title}`} type="button" role="option" aria-selected={index === previewIndex} className={`drama-chapter-row ${chapter.words < 200 ? "is-warn" : ""}`} onClick={() => setPreviewIndex(index)}>
+                            <button
+                                key={`${index}-${chapter.title}`}
+                                type="button"
+                                role="option"
+                                aria-selected={index === previewIndex}
+                                className={`drama-chapter-row ${(perEpisode ? sourceChars(chapter.text) > EPISODE_SOURCE_CHARS : chapter.words < 200) ? "is-warn" : ""}`}
+                                onClick={() => setPreviewIndex(index)}
+                            >
                                 <span className="is-num">{String(index + 1).padStart(3, "0")}</span>
                                 <span className="truncate text-left">{chapter.title}</span>
                                 <span className="is-count">{formatCount(chapter.words)}</span>
                             </button>
                         ))}
-                        {analysis.chapters.length > 600 ? <div className="px-4 py-3 text-center text-[var(--fs-tiny)] text-foreground/40">另有 {analysis.chapters.length - 600} 章</div> : null}
+                        {analysis.chapters.length > 600 ? (
+                            <div className="px-4 py-3 text-center text-[var(--fs-tiny)] text-foreground/40">
+                                另有 {analysis.chapters.length - 600} {unitLabel}
+                            </div>
+                        ) : null}
                     </div>
                 </aside>
 
                 {/* 中：风格与审阅，下方原文预览 */}
                 <main className="drama-compose-main thin-scrollbar">
+                    <section>
+                        <div className="drama-section-title">
+                            <h2>素材与分集</h2>
+                            <span>{sourceFormat === "novel" ? "引号里的对白逐字保留为台词，不会被改写" : "剧本与分镜每个标题就是一集，台词逐字保留"}</span>
+                        </div>
+                        <div className="grid gap-3">
+                            <SourceFormatPicker value={sourceFormat} onChange={setSourceFormat} row />
+                            {sourceFormat === "novel" ? (
+                                <div className="drama-media-modes is-row is-two" role="radiogroup" aria-label="分集方式">
+                                    {EPISODE_MODES.map((mode) => (
+                                        <button key={mode.value} type="button" role="radio" aria-checked={chapterMode === mode.value} className="drama-media-mode" onClick={() => setChapterMode(mode.value)}>
+                                            <span className="drama-radio" />
+                                            <span>
+                                                <strong>
+                                                    {mode.title}
+                                                    {mode.value === "chapter" ? <em>推荐</em> : null}
+                                                </strong>
+                                                <span>{mode.detail}</span>
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                    </section>
                     <DramaStylePicker value={styleId} onChange={setStyleId} />
                     <section>
                         <div className="drama-section-title">

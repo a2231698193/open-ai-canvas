@@ -15,7 +15,7 @@ test("canvas removes the standalone asset tray while retaining sidebar assets an
 
 test("workspace keeps a permanent rail and independent task/history entries", () => {
     const source = component("canvas-workspace-panel.tsx");
-    for (const label of ["主页", "节点", "资产", "任务", "历史"]) expect(source).toContain(label);
+    for (const label of ["主页", "节点", "素材库", "任务", "历史"]) expect(source).toContain(label);
     expect(source).not.toContain('id: "tools"');
     expect(source).not.toContain("CanvasWorkspaceToolPanel");
     expect(source).not.toContain("onInsertTool");

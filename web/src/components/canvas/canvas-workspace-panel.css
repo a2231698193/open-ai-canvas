@@ -76,6 +76,9 @@
     .canvas-main-with-workspace:has(> .canvas-project-sidebar) .canvas-workspace-zoom-controls {
         left: var(--canvas-inset-x);
     }
+    .canvas-main-with-workspace:has(> .canvas-project-sidebar) .canvas-asset-view-layer {
+        left: 0;
+    }
 }
 .canvas-main-with-workspace .canvas-editor-shell {
     z-index: 0;
@@ -88,6 +91,10 @@
 }
 .canvas-main-with-workspace .canvas-workspace-zoom-controls {
     left: calc(var(--canvas-workspace-inset) + var(--canvas-inset-x));
+}
+/* 资产视图与顶栏同样让出左侧工作区轨道，轨道里的节点、素材库和任务仍可使用。 */
+.canvas-main-with-workspace .canvas-asset-view-layer {
+    left: var(--canvas-workspace-inset);
 }
 .canvas-workspace-shell {
     position: absolute;

@@ -62,8 +62,8 @@ func SegmentWriterPrompt(in SegmentPromptInput, draft string, previousEnding str
 焦段 + 景别，机位位置与朝向描述。
 起—止：按 2–3 秒切成时间片，逐片写清动作、表情、镜头运动。
 角色名 + 语气：“台词”
-有台词时写“留0.5秒气口”；每个镜头写动作音/环境音，必要时写光影。
-`, in.Index+1, secondsText(total), firstNonEmpty(in.AspectRatio, "9:16"), firstNonEmpty(in.Style, "写实电影感"), firstNonEmpty(in.Language, "中文"), len(in.Shots), firstFrameRule(in))
+有台词时写“留%s秒气口”，台词紧接动作开口，不要再额外留白；每个镜头写动作音/环境音，必要时写光影。
+`, in.Index+1, secondsText(total), firstNonEmpty(in.AspectRatio, "9:16"), firstNonEmpty(in.Style, "写实电影感"), firstNonEmpty(in.Language, "中文"), len(in.Shots), firstFrameRule(in), in.pauseText())
 	if in.Index < in.Count-1 {
 		fmt.Fprintf(&b, "最后一个镜头以“末1.0秒全场绝对硬定格！……作为第%d段的无缝接续基准”收尾，写清定格时每个元素的状态。\n", in.Index+2)
 	}

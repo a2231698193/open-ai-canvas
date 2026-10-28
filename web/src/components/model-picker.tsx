@@ -34,6 +34,8 @@ type ModelPickerProps = {
     requirements?: ModelRequirements;
     showConfiguredModelName?: boolean;
     modelFilter?: (model: string) => boolean;
+    /** 调用方额外的不可选原因（例如短剧只能用平台模型）；返回非空串时选项置灰并显示原因。 */
+    modelDisabledReason?: (model: string) => string;
 };
 
 export function ModelPicker({
@@ -52,6 +54,7 @@ export function ModelPicker({
     requirements,
     showConfiguredModelName = false,
     modelFilter,
+    modelDisabledReason,
 }: ModelPickerProps) {
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const pickerId = useId();
@@ -204,9 +207,10 @@ export function ModelPicker({
                 <div className="canvas-model-picker-options grid min-w-0 gap-1" aria-label="模型列表">
                     {optionGroups.map((modelGroup) => {
                         const selected = modelGroup.models.includes(current);
-                        const model = compatibleModelInGroup(config, modelGroup.models, selectionRequirements, selected ? current : undefined);
+                        const usable = modelDisabledReason ? modelGroup.models.filter((item) => !modelDisabledReason(item)) : modelGroup.models;
+                        const model = usable.length ? compatibleModelInGroup(config, usable, selectionRequirements, selected ? current : undefined) : undefined;
                         const displayModel = model || (selected ? current : modelGroup.models[0]);
-                        const disabledReason = model ? "" : modelCompatibilityError(config, modelGroup.models[0], selectionRequirements) || "当前输入不符合该模型能力";
+                        const disabledReason = model ? "" : usable.length ? modelCompatibilityError(config, usable[0], selectionRequirements) || "当前输入不符合该模型能力" : modelDisabledReason?.(modelGroup.models[0]) || "该模型不可用";
                         const sourceLabel = duplicatedLabels.has(modelGroup.label) ? modelChannelLabel(config, displayModel) : "";
                         return (
                             <button

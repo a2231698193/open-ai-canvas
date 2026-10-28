@@ -191,7 +191,12 @@ func RegisterAuthRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		ok(c, gin.H{"user": publicUser, "runtimeLimits": limits, "drawingEngine": drawingEngine, "features": features})
+		referralAvailable, err := svc.ReferralAvailable(user)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"user": publicUser, "runtimeLimits": limits, "drawingEngine": drawingEngine, "features": features, "referralAvailable": referralAvailable})
 	})
 	r.GET("/channels/system", func(c *gin.Context) {
 		actor, err := currentUser(c, svc)

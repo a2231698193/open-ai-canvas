@@ -120,17 +120,31 @@ func registerDramaRoutes(r *gin.RouterGroup, svc *service.Service) {
 		chapter, err := svc.DramaChapter(userID, c.Param("id"), c.Param("chapterId"))
 		return gin.H{"chapter": chapter}, err
 	}))
+	r.PATCH("/dramas/:id/chapters/:chapterId", dramaRoute(svc, 1<<20, func(c *gin.Context, userID string) (any, error) {
+		var req service.UpdateDramaChapterRequest
+		if err := bindDramaJSON(c, &req); err != nil {
+			return nil, err
+		}
+		chapter, err := svc.UpdateDramaChapter(userID, c.Param("id"), c.Param("chapterId"), req)
+		return gin.H{"chapter": chapter}, err
+	}))
+	// 逐集追加：单集原文上限 1.2 万字，UTF-8 加 JSON 转义留足余量。
+	r.POST("/dramas/:id/episodes", dramaRoute(svc, 1<<20, func(c *gin.Context, userID string) (any, error) {
+		var req service.AddDramaEpisodeRequest
+		if err := bindDramaJSON(c, &req); err != nil {
+			return nil, err
+		}
+		return svc.AddDramaEpisode(userID, c.Param("id"), req)
+	}))
 	r.GET("/dramas/:id/episodes/:episodeId", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
 		return svc.DramaEpisodeDetail(userID, c.Param("id"), c.Param("episodeId"))
 	}))
 	r.PATCH("/dramas/:id/episodes/:episodeId", dramaRoute(svc, 16<<10, func(c *gin.Context, userID string) (any, error) {
-		var req struct {
-			Title string `json:"title"`
-		}
+		var req service.UpdateDramaEpisodeRequest
 		if err := bindDramaJSON(c, &req); err != nil {
 			return nil, err
 		}
-		episode, err := svc.UpdateDramaEpisodeTitle(userID, c.Param("id"), c.Param("episodeId"), req.Title)
+		episode, err := svc.UpdateDramaEpisode(userID, c.Param("id"), c.Param("episodeId"), req)
 		return gin.H{"episode": episode}, err
 	}))
 	r.POST("/dramas/:id/episodes/:episodeId/approve", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
@@ -153,6 +167,13 @@ func registerDramaRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		return svc.RequestDramaSegmentPrompts(userID, c.Param("id"), c.Param("episodeId"), req)
 	}))
+	r.POST("/dramas/:id/episodes/:episodeId/segments/:index/reprocess", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
+		index, err := strconv.Atoi(c.Param("index"))
+		if err != nil || index < 0 {
+			return nil, service.BadAuthRequest("剧情段序号无效")
+		}
+		return svc.ReprocessDramaSegmentVideo(userID, c.Param("id"), c.Param("episodeId"), index)
+	}))
 	r.PATCH("/dramas/:id/episodes/:episodeId/segments/:index", dramaRoute(svc, 64<<10, func(c *gin.Context, userID string) (any, error) {
 		index, err := strconv.Atoi(c.Param("index"))
 		if err != nil || index < 0 {
@@ -172,6 +193,17 @@ func registerDramaRoutes(r *gin.RouterGroup, svc *service.Service) {
 		shot, err := svc.UpdateDramaShot(userID, c.Param("id"), c.Param("shotId"), req)
 		return gin.H{"shot": shot}, err
 	}))
+	r.POST("/dramas/:id/shots/:shotId/insert", dramaRoute(svc, 4<<10, func(c *gin.Context, userID string) (any, error) {
+		var req service.InsertDramaShotRequest
+		if err := bindDramaJSON(c, &req); err != nil {
+			return nil, err
+		}
+		shot, err := svc.InsertDramaShot(userID, c.Param("id"), c.Param("shotId"), req)
+		return gin.H{"shot": shot}, err
+	}))
+	r.DELETE("/dramas/:id/shots/:shotId", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
+		return gin.H{"deleted": true}, svc.DeleteDramaShot(userID, c.Param("id"), c.Param("shotId"))
+	}))
 	r.GET("/dramas/:id/cast", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
 		casts, err := svc.DramaCasts(userID, c.Param("id"))
 		return gin.H{"cast": casts}, err
@@ -183,6 +215,13 @@ func registerDramaRoutes(r *gin.RouterGroup, svc *service.Service) {
 		}
 		cast, err := svc.UpdateDramaCast(userID, c.Param("id"), c.Param("castId"), req)
 		return gin.H{"cast": cast}, err
+	}))
+	r.PUT("/dramas/:id/cast/:castId/image", dramaRoute(svc, 4<<10, func(c *gin.Context, userID string) (any, error) {
+		var req service.SetDramaCastImageRequest
+		if err := bindDramaJSON(c, &req); err != nil {
+			return nil, err
+		}
+		return svc.SetDramaCastImage(userID, c.Param("id"), c.Param("castId"), req)
 	}))
 	r.GET("/dramas/:id/cast/:castId/impact", dramaRoute(svc, 0, func(c *gin.Context, userID string) (any, error) {
 		return svc.DramaCastImpact(userID, c.Param("id"), c.Param("castId"))

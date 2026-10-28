@@ -132,7 +132,7 @@ func renderFfmpegBinary() (string, error) {
 	}
 	path, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return "", fmt.Errorf("渲染依赖未安装（需要 ffmpeg，可通过 %s 指定）", renderFfmpegEnv)
+		return "", fmt.Errorf("后端未安装 ffmpeg（安装后重试，或通过 %s 指定路径）", renderFfmpegEnv)
 	}
 	return path, nil
 }

@@ -31,6 +31,7 @@ export type LocalUser = {
     identityUsername?: string;
     role: "admin" | "user";
     status: "active" | "disabled";
+    isPromoter?: boolean;
     lastLoginAt?: string;
     createdAt: string;
     updatedAt: string;
@@ -46,6 +47,8 @@ export type AuthSessionPayload = {
     runtimeLimits?: RuntimeLimits;
     drawingEngine?: CanvasDrawingEngineSetting;
     features?: FeatureAvailability;
+    /** 当前账号能否进入推广中心；由后台推广设置和推广人标记共同决定。 */
+    referralAvailable?: boolean;
 };
 
 export type RuntimeLimits = {
@@ -472,7 +475,7 @@ export function resetPassword(input: { email: string; emailCode: string; passwor
     return http.post<{ reset: boolean }>("/auth/password-reset", input);
 }
 
-export async function register(input: { username: string; email?: string; emailCode?: string; phone?: string; smsCode?: string; ticket?: string; displayName?: string; password: string; acceptedTerms: boolean }) {
+export async function register(input: { username: string; email?: string; emailCode?: string; phone?: string; smsCode?: string; ticket?: string; displayName?: string; password: string; acceptedTerms: boolean; referralCode?: string }) {
     const result = await http.post<{ user: LocalUser }>("/auth/register", input);
     invalidateAuthSessionCache();
     return result;
@@ -514,7 +517,7 @@ export function listAdminUserAuditEvents(id: string, params: { page?: number; pa
     return http.get<{ events: AdminAuditEvent[]; total: number; page: number; pageSize: number }>(`/admin/users/${encodeURIComponent(id)}/audit-events`, { params });
 }
 
-export function updateAdminUser(id: string, input: Partial<Pick<LocalUser, "displayName" | "email" | "role" | "status">> & { password?: string }) {
+export function updateAdminUser(id: string, input: Partial<Pick<LocalUser, "displayName" | "email" | "role" | "status" | "isPromoter">> & { password?: string }) {
     return http.patch<{ user: LocalUser }>(`/admin/users/${encodeURIComponent(id)}`, input);
 }
 

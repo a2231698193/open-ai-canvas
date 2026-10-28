@@ -106,7 +106,7 @@ export function CanvasWorkspacePanel({
     );
     const entries = [
         { id: "nodes", label: "节点", icon: Layers3 },
-        { id: "assets", label: "资产", icon: Images },
+        { id: "assets", label: "素材库", icon: Images },
         { id: "tasks", label: "任务", icon: ListChecks },
         { id: "history", label: "历史", icon: History },
     ];

@@ -66,10 +66,12 @@ type UserStore = {
     runtimeLimits: RuntimeLimits;
     drawingEngine: CanvasDrawingEngineSetting;
     features: FeatureAvailability;
+    referralAvailable: boolean;
     setUser: (user: LocalUser | null) => void;
     setRuntimeLimits: (limits?: RuntimeLimits) => void;
     setDrawingEngine: (setting?: CanvasDrawingEngineSetting) => void;
     setFeatures: (features?: FeatureAvailability) => void;
+    setReferralAvailable: (available?: boolean) => void;
     setHydrated: (hydrated: boolean) => void;
     clearSession: () => void;
 };
@@ -80,10 +82,12 @@ export const useUserStore = create<UserStore>()((set) => ({
     runtimeLimits: { activeTaskLimit: 5, resourceUploadMB: 50, recycleBinRetentionDays: 30 },
     drawingEngine: { defaultEngine: DEFAULT_DRAWING_ENGINE },
     features: defaultFeatureAvailability,
+    referralAvailable: false,
     setUser: (user) => set({ user }),
     setRuntimeLimits: (runtimeLimits) => set({ runtimeLimits: runtimeLimits || { activeTaskLimit: 5, resourceUploadMB: 50, recycleBinRetentionDays: 30 } }),
     setDrawingEngine: (drawingEngine) => set({ drawingEngine: drawingEngine || { defaultEngine: DEFAULT_DRAWING_ENGINE } }),
     setFeatures: (features) => set({ features: features ? { ...defaultFeatureAvailability, ...features } : defaultFeatureAvailability }),
+    setReferralAvailable: (available) => set({ referralAvailable: Boolean(available) }),
     setHydrated: (hydrated) => set({ hydrated }),
-    clearSession: () => set({ user: null, runtimeLimits: { activeTaskLimit: 5, resourceUploadMB: 50, recycleBinRetentionDays: 30 }, drawingEngine: { defaultEngine: DEFAULT_DRAWING_ENGINE }, features: defaultFeatureAvailability }),
+    clearSession: () => set({ user: null, runtimeLimits: { activeTaskLimit: 5, resourceUploadMB: 50, recycleBinRetentionDays: 30 }, drawingEngine: { defaultEngine: DEFAULT_DRAWING_ENGINE }, features: defaultFeatureAvailability, referralAvailable: false }),
 }));

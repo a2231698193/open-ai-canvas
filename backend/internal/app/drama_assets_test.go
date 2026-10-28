@@ -66,7 +66,7 @@ func TestDramaAssetSchemesRenderWithoutPlaceholders(t *testing.T) {
 	if problem := production.ValidateAssetPrompts(custom); !strings.Contains(problem, "{{未知变量}}") {
 		t.Fatalf("unknown placeholder must be rejected: %q", problem)
 	}
-	if custom.CharacterRatio != "3:4" {
+	if custom.CharacterRatio != production.AssetImageRatio {
 		t.Fatalf("custom scheme keeps a valid ratio: %q", custom.CharacterRatio)
 	}
 }

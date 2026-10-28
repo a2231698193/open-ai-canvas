@@ -5,7 +5,7 @@ import { splitTextIntoChapters } from "@/lib/canvas/canvas-document";
 
 export type ParsedChapter = { title: string; text: string; words: number };
 
-export type NovelIssue = { kind: "no_heading" | "split_long" | "empty" | "duplicate" | "noise" | "short"; message: string };
+export type NovelIssue = { kind: "no_heading" | "split_long" | "empty" | "duplicate" | "noise" | "short" | "too_long"; message: string };
 
 export type NovelAnalysis = {
     chapters: ParsedChapter[];
@@ -67,7 +67,19 @@ function chunkByParagraph(text: string, target: number) {
     return chunks.filter((chunk) => chunk.trim());
 }
 
-export function analyzeNovel(raw: string): NovelAnalysis {
+/** 逐集制作时单集原文上限（与服务端剧本提示词每章读取上限一致），超出部分的台词会丢失，所以直接拦下。 */
+export const EPISODE_SOURCE_CHARS = 12_000;
+
+/** 与服务端一致的字符数：去掉首尾空白后的全部字符，包括换行与空格。 */
+export function sourceChars(text: string) {
+    return Array.from(text.trim()).length;
+}
+
+/**
+ * perEpisode：每个标题段落就是一集（剧本、分镜或逐集制作的小说）。
+ * 此时不按段落自动切块、不合并短章，超过单集上限的段落标出来让用户拆分。
+ */
+export function analyzeNovel(raw: string, options: { perEpisode?: boolean } = {}): NovelAnalysis {
     const normalized = raw
         .replace(/\r\n?/g, "\n")
         .replace(/\u3000/g, "  ")
@@ -78,7 +90,7 @@ export function analyzeNovel(raw: string): NovelAnalysis {
 
     let sections = splitTextIntoChapters(cleaned.text).map((section) => ({ title: section.title, text: section.plainText }));
     const detectedHeading = sections.length > 1 || (sections[0] && sections[0].title !== "第 1 章");
-    if (!detectedHeading && wordCount(cleaned.text) > FALLBACK_CHUNK_WORDS * 1.5) {
+    if (!options.perEpisode && !detectedHeading && wordCount(cleaned.text) > FALLBACK_CHUNK_WORDS * 1.5) {
         sections = chunkByParagraph(cleaned.text, FALLBACK_CHUNK_WORDS).map((text, index) => ({ title: `第 ${index + 1} 段`, text }));
         issues.push({ kind: "no_heading", message: `没有识别到章节标题，已按段落切成 ${sections.length} 段，改编时会自动合并成集` });
     }
@@ -105,6 +117,12 @@ export function analyzeNovel(raw: string): NovelAnalysis {
     for (const chapter of nonEmpty) seen.set(chapter.title, (seen.get(chapter.title) || 0) + 1);
     const duplicated = [...seen.values()].filter((count) => count > 1).length;
     if (duplicated) issues.push({ kind: "duplicate", message: `${duplicated} 个章节标题重复，可能是重复粘贴，请确认` });
+
+    if (options.perEpisode) {
+        const tooLong = nonEmpty.filter((chapter) => sourceChars(chapter.text) > EPISODE_SOURCE_CHARS).length;
+        if (tooLong) issues.push({ kind: "too_long", message: `${tooLong} 集原文超过 ${EPISODE_SOURCE_CHARS / 10_000} 万字，请用“第 N 集”标题拆成多集，或只先放第 1 集` });
+        return { chapters: nonEmpty, issues, words: nonEmpty.reduce((sum, chapter) => sum + chapter.words, 0), removedNoiseLines: cleaned.removed };
+    }
 
     const merged = mergeShortChapters(nonEmpty);
     if (merged.count) issues.push({ kind: "short", message: `${merged.count} 个不足 ${SHORT_CHAPTER_WORDS} 字的短章（如序章、楔子）已并入相邻章节` });

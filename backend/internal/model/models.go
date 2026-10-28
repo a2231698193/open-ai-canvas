@@ -124,6 +124,7 @@ const (
 	CreditLedgerSignupBonus  CreditLedgerType = "signup_bonus"
 	CreditLedgerCheckinBonus CreditLedgerType = "checkin_bonus"
 	CreditLedgerPaymentTopup CreditLedgerType = "payment_topup"
+	CreditLedgerReferral     CreditLedgerType = "referral_commission"
 
 	CreditLedgerMembershipGrant       CreditLedgerType = "membership_grant"
 	CreditLedgerMembershipUpgradeDiff CreditLedgerType = "membership_upgrade_diff"

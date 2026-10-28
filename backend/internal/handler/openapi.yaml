@@ -29,6 +29,8 @@ tags:
   - name: workbench
   - name: feedback
     description: 用户反馈与管理员收件箱
+  - name: referral
+    description: 推广中心：推广码、邀请记录与返佣
 paths:
   /projects/{id}/assets/{assetId}/image:
     put:
@@ -1960,10 +1962,85 @@ paths:
           $ref: "#/components/responses/Error"
         "429":
           $ref: "#/components/responses/Error"
+  /referral:
+    get:
+      tags: [referral]
+      summary: 推广中心概览（推广码、返佣比例与累计收益）
+      description: 推广中心关闭、账号停用或指定推广人模式下非推广人返回 403。首次访问时生成推广码。
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          $ref: "#/components/responses/Error"
+  /referral/invitees:
+    get:
+      tags: [referral]
+      summary: 我邀请的用户（名称脱敏）
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          $ref: "#/components/responses/Error"
+  /referral/commissions:
+    get:
+      tags: [referral]
+      summary: 我的返佣记录
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          $ref: "#/components/responses/Error"
+  /admin/settings/referral:
+    get:
+      tags: [admin]
+      summary: 读取推广中心设置
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          $ref: "#/components/responses/Error"
+    patch:
+      tags: [admin]
+      summary: 更新推广中心设置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, mode, commissionRateBasisPoints]
+              properties:
+                enabled: { type: boolean }
+                mode: { type: string, enum: [all, assigned] }
+                commissionRateBasisPoints: { type: integer, minimum: 0, maximum: 5000, description: 万分比，1000 表示 10% }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "400":
+          $ref: "#/components/responses/Error"
+  /admin/referral/commissions:
+    get:
+      tags: [admin]
+      summary: 全站推广返佣记录
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          $ref: "#/components/responses/Envelope"
+        "403":
+          $ref: "#/components/responses/Error"
   /auth/session:
     get:
       tags: [auth]
       summary: 当前登录会话
+      description: 登录时 data 包含 user、runtimeLimits、drawingEngine、features 和 referralAvailable（是否显示推广中心入口）。
       responses:
         "200":
           $ref: "#/components/responses/Envelope"

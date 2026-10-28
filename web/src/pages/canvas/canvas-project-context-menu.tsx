@@ -44,6 +44,8 @@ type CanvasProjectContextMenuProps = {
     onCopySelection: () => void;
     onDeleteSelection: () => void;
     onSendToAgent: () => void;
+    downloadableSelectionCount: number;
+    onDownloadSelection: () => void;
 };
 
 export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props }: CanvasProjectContextMenuProps) {
@@ -120,6 +122,8 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
             onCopySelection={props.onCopySelection}
             onDeleteSelection={props.onDeleteSelection}
             onSendToAgent={props.onSendToAgent}
+            downloadableSelectionCount={props.downloadableSelectionCount}
+            onDownloadSelection={props.onDownloadSelection}
         />
     );
 }

@@ -245,11 +245,14 @@ func (s *Service) UpdateUser(actor *model.User, userID string, req UpdateUserReq
 	}
 	user.Role = nextRole
 	user.Status = nextStatus
+	if req.IsPromoter != nil {
+		user.IsPromoter = *req.IsPromoter
+	}
 	user.UpdatedAt = time.Now()
 	if err := s.repo.Save(user); err != nil {
 		return nil, err
 	}
-	if err := s.appendAdminAudit(actor, "user.update", "user", user.ID, "更新用户账号状态或资料", map[string]any{"role": user.Role, "status": user.Status}); err != nil {
+	if err := s.appendAdminAudit(actor, "user.update", "user", user.ID, "更新用户账号状态或资料", map[string]any{"role": user.Role, "status": user.Status, "isPromoter": user.IsPromoter}); err != nil {
 		return nil, err
 	}
 	return user, nil

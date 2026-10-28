@@ -11,82 +11,126 @@ import (
 
 var dramaCapabilities = []string{"text", "image", "video"}
 
+// dramaModelIntent 是短剧流水线对各能力的实际调用：参考图走文生图，段视频第 2 段起用上一段尾帧做首帧。
 func dramaModelIntent(capability string) *ModelRequestIntent {
 	switch capability {
 	case "image":
-		return &ModelRequestIntent{Capability: "image", Operation: "image_to_image", Inputs: map[string]int{"image": 2}}
+		return &ModelRequestIntent{Capability: "image", Operation: "text_to_image"}
 	case "video":
 		return &ModelRequestIntent{Capability: "video", Operation: "image_to_video", Inputs: map[string]int{"image": 1}}
 	}
 	return &ModelRequestIntent{Capability: "text"}
 }
 
-// dramaModelOptions 列出某能力下可由服务端独立执行的模型，与创作端目录同源。
-func (s *Service) dramaModelOptions(capability string) ([]DramaModelOption, error) {
+// dramaModelOptions 列出某能力下的平台模型：可由服务端无人值守执行的进入 options，
+// 其余带原因进入 unavailable。候选与创作端目录同源（不带意图过滤），避免“别处能选、这里看不到”。
+func (s *Service) dramaModelOptions(capability string) ([]DramaModelOption, []DramaModelUnavailable, error) {
 	options := []DramaModelOption{}
+	unavailable := []DramaModelUnavailable{}
 	seen := map[string]bool{}
-	appendOptions := func(intent *ModelRequestIntent) error {
-		frontendEnabled, err := s.FeatureEnabled(FeatureFrontendModels)
-		if err != nil {
-			return err
+	add := func(choice DramaModelChoice, key, label, priceLabel string, available bool) {
+		if seen[key] {
+			return
 		}
-		if frontendEnabled {
-			models, err := s.PublicLogicalModels(intent)
-			if err != nil {
-				return err
-			}
-			for _, item := range models {
-				if !item.Available || normalizeCapability(item.Capability) != capability || seen["l:"+item.ID] {
-					continue
-				}
-				seen["l:"+item.ID] = true
-				choice := DramaModelChoice{LogicalModelID: item.ID, Label: item.Name, PriceLabel: item.PriceLabel}
-				if capability == "video" {
-					if _, err := s.dramaVideoProfile(choice); err != nil {
-						continue
-					}
-				}
-				options = append(options, s.dramaModelOption(choice, capability, item.Name, item.PriceLabel))
-			}
+		seen[key] = true
+		reason := ""
+		if !available {
+			reason = "模型暂不可用或未配置有效价格"
+		} else {
+			reason = s.dramaChoiceIssue(choice, capability)
 		}
-		catalog, err := s.ModelCatalog(intent)
-		if err != nil {
-			return err
+		if reason != "" {
+			unavailable = append(unavailable, DramaModelUnavailable{Choice: choice, Reason: reason})
+			return
 		}
-		for _, channel := range catalog.Channels {
-			for _, item := range channel.Models {
-				key := "c:" + channel.ID + ":" + item.ModelKey
-				if !item.Available || normalizeCapability(item.Capability) != capability || seen[key] {
-					continue
-				}
-				seen[key] = true
-				label := firstNonEmpty(item.DisplayName, item.ModelKey)
-				choice := DramaModelChoice{ChannelID: channel.ID, ModelKey: item.ModelKey, Label: label, PriceLabel: item.PriceLabel}
-				if capability == "video" {
-					if _, err := s.dramaVideoProfile(choice); err != nil {
-						continue
-					}
-				}
-				options = append(options, s.dramaModelOption(choice, capability, label, item.PriceLabel))
-			}
-		}
-		return nil
+		options = append(options, s.dramaModelOption(choice, capability, label, priceLabel))
 	}
-	if err := appendOptions(dramaModelIntent(capability)); err != nil {
-		return nil, err
+	frontendEnabled, err := s.FeatureEnabled(FeatureFrontendModels)
+	if err != nil {
+		return nil, nil, err
 	}
+	if frontendEnabled {
+		models, err := s.PublicLogicalModels(nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, item := range models {
+			if normalizeCapability(item.Capability) != capability {
+				continue
+			}
+			add(DramaModelChoice{LogicalModelID: item.ID, Label: item.Name, PriceLabel: item.PriceLabel}, "l:"+item.ID, item.Name, item.PriceLabel, item.Available)
+		}
+	}
+	catalog, err := s.ModelCatalog(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, channel := range catalog.Channels {
+		for _, item := range channel.Models {
+			if normalizeCapability(item.Capability) != capability {
+				continue
+			}
+			label := firstNonEmpty(item.DisplayName, item.ModelKey)
+			add(DramaModelChoice{ChannelID: channel.ID, ModelKey: item.ModelKey, Label: label, PriceLabel: item.PriceLabel}, "c:"+channel.ID+":"+item.ModelKey, label, item.PriceLabel, item.Available)
+		}
+	}
+	return options, unavailable, nil
+}
 
-	return options, nil
+// dramaChoiceIssue 返回模型不能用于短剧的原因；空串表示可用。
+func (s *Service) dramaChoiceIssue(choice DramaModelChoice, capability string) string {
+	intent := dramaModelIntent(capability)
+	if choice.LogicalModelID != "" {
+		if _, err := s.ResolveLogicalModel(choice.LogicalModelID, *intent); err != nil {
+			return dramaIntentIssue(capability, err.Error())
+		}
+	} else {
+		row, err := s.repo.ChannelModelByKey(choice.ChannelID, choice.ModelKey)
+		if err != nil {
+			return "模型不存在或已下架"
+		}
+		if normalizeCapability(row.Capability) != "audio" {
+			config, err := normalizedChannelModelCapability(row, s.protocolRegistry())
+			if err != nil {
+				return "模型能力配置无效：" + err.Error()
+			}
+			spec, err := CapabilitySpecFromModelCapabilityConfig(config, row.Capability)
+			if err != nil {
+				return "模型能力配置无效：" + err.Error()
+			}
+			if match := MatchCapability(spec, *intent); !match.Matched {
+				return dramaIntentIssue(capability, strings.Join(match.Reasons, "；"))
+			}
+		}
+	}
+	if capability == "video" {
+		if _, err := s.dramaVideoProfile(choice); err != nil {
+			return err.Error()
+		}
+	}
+	return ""
+}
+
+func dramaIntentIssue(capability, reason string) string {
+	switch capability {
+	case "image":
+		return "短剧参考图需要文生图：" + reason
+	case "video":
+		return "短剧第 2 段起用上一段尾帧做首帧，需要图生视频：" + reason
+	}
+	return reason
 }
 
 func (s *Service) DramaModelCatalog() (DramaModelCatalog, error) {
 	result := DramaModelCatalog{Options: map[string][]DramaModelOption{}}
+	result.Unavailable = map[string][]DramaModelUnavailable{}
 	for _, capability := range dramaCapabilities {
-		options, err := s.dramaModelOptions(capability)
+		options, unavailable, err := s.dramaModelOptions(capability)
 		if err != nil {
 			return result, err
 		}
 		result.Options[capability] = options
+		result.Unavailable[capability] = unavailable
 		if len(options) > 0 {
 			setDramaModelChoice(&result.Defaults, capability, options[0].Choice)
 		}
@@ -111,7 +155,7 @@ func (s *Service) resolveDramaModels(models DramaModels) (DramaModels, error) {
 		if !models.choice(capability).Empty() {
 			continue
 		}
-		options, err := s.dramaModelOptions(capability)
+		options, _, err := s.dramaModelOptions(capability)
 		if err != nil {
 			return models, err
 		}
@@ -141,8 +185,11 @@ type dramaVideoProfile struct {
 	GenerateAudio bool
 }
 
+// supports 与 MatchCapability 一致：未声明生成方式的模型视为不限制。
 func (p dramaVideoProfile) supports(operation string) bool {
-
+	if len(p.Operations) == 0 {
+		return true
+	}
 	for _, item := range p.Operations {
 		if item == operation {
 			return true
@@ -189,13 +236,13 @@ func (s *Service) dramaVideoProfile(choice DramaModelChoice) (dramaVideoProfile,
 	options := production.DurationOptions{Values: video.Duration.Values, Min: video.Duration.Min, Max: video.Duration.Max, Step: video.Duration.Step}
 	profile := dramaVideoProfile{Durations: options, Operations: video.Operations, MaxImages: video.References.MaxImages, GenerateAudio: video.GenerateAudio.Supported}
 	if profile.maxSeconds() <= 0 {
-		return profile, errors.New("视频模型未声明生成时长")
+		return profile, errors.New("未声明可生成时长，无法按剧情段切分")
 	}
 	if !profile.GenerateAudio {
-		return profile, errors.New("短剧需要支持原声对白的视频模型")
+		return profile, errors.New("未声明原声对白（generateAudio）：短剧台词由视频模型直接出声")
 	}
 	if !profile.supports("image_to_video") || (!profile.supports("reference_to_video") && !profile.supports("text_to_video")) {
-		return profile, errors.New("视频模型须支持开场生成及尾帧续接")
+		return profile, errors.New("短剧需要同时支持图生视频（尾帧续接）和参考图生视频或文生视频（开场段）")
 	}
 	return profile, nil
 }
@@ -228,6 +275,9 @@ func (s *Service) EstimateDrama(req DramaEstimateRequest) (DramaEstimate, error)
 	words := max(req.WordCount, chapters*1000)
 	// 竖屏短剧每集约 90 秒，对应原文 2000-3000 字；章节过短时按字数折算。
 	episodes := int(math.Round(float64(words) / 2500 * 90 / float64(settings.EpisodeSeconds)))
+	if req.EpisodeMode == DramaEpisodeModeChapter {
+		episodes = chapters
+	}
 	episodes = max(episodes, 1)
 	shotsPerEpisode := settings.Storyboard.ShotTarget(settings.EpisodeSeconds)
 	profile, err := s.dramaVideoProfile(models.Video)

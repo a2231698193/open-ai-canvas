@@ -14,14 +14,23 @@ export function secondsLabel(ms: number) {
 
 export type SegmentTone = "idle" | "busy" | "ready" | "stale" | "failed" | "blocked";
 
-/** 剧情段当前处于哪一步，以及用户下一步该做什么。 */
-export function segmentState(segment: DramaSegment): { tone: SegmentTone; label: string } {
+/** 等待原因的短标签：取冒号或括号前的部分，完整原因放在提示里。 */
+export function videoWaitLabel(wait: string) {
+    return wait.split(/[：（]/)[0] || wait;
+}
+
+/** 剧情段当前处于哪一步，以及用户下一步该做什么。detail 是需要悬停查看的完整原因。 */
+export function segmentState(segment: DramaSegment): { tone: SegmentTone; label: string; detail?: string } {
     const writing = segment.promptStatus === "queued" || segment.promptStatus === "running";
     if (segment.promptStatus === "failed") return { tone: "failed", label: "提示词撰写失败" };
-    if (segment.videoStatus === "failed") return { tone: "failed", label: "视频生成失败" };
+    // 视频已入库但尾帧等后处理失败：视频本身可看，重试只重新处理已有视频。
+    if (segment.videoStatus === "failed") return segment.videoReprocessable ? { tone: "failed", label: "视频后处理失败" } : { tone: "failed", label: "视频生成失败" };
     if (writing) return { tone: "busy", label: "撰写提示词中" };
     if (segment.promptStatus === "none") return { tone: "idle", label: "待撰写提示词" };
     if (segment.promptStatus === "stale" && !segment.custom) return { tone: "stale", label: "提示词已过期" };
+    // 已请求但调度还没提交：显示真实的等待原因，不冒充“生成中”。
+    if (segment.videoStatus === "queued" && segment.videoWait) return { tone: "blocked", label: videoWaitLabel(segment.videoWait), detail: segment.videoWait };
+    if (segment.videoStatus === "queued" && segment.videoJob?.status !== "running") return { tone: "busy", label: "排队提交中" };
     if (mediaBusy(segment.videoStatus)) return segment.request.firstFramePending ? { tone: "blocked", label: "等待上一段" } : { tone: "busy", label: "生成视频中" };
     if (segment.videoStatus === "ready") return { tone: "ready", label: "视频已生成" };
     if (segment.videoStatus === "stale") return { tone: "stale", label: "视频需重新生成" };
@@ -35,7 +44,7 @@ export function promptReady(segment: DramaSegment) {
 export function SegmentStatus({ segment }: { segment: DramaSegment }) {
     const state = segmentState(segment);
     return (
-        <span className={`drama-sg-status is-${state.tone}`}>
+        <span className={`drama-sg-status is-${state.tone}`} title={state.detail}>
             {state.tone === "busy" ? (
                 <Loader2 className="size-3 animate-spin" aria-hidden />
             ) : state.tone === "failed" ? (
@@ -51,7 +60,8 @@ export function SegmentStatus({ segment }: { segment: DramaSegment }) {
 }
 
 export function SegmentVideo({ segment, aspectRatio, className = "" }: { segment: DramaSegment; aspectRatio: string; className?: string }) {
-    const url = useResourceMediaUrl(segment.videoStatus === "ready" || segment.videoStatus === "stale" ? segment.videoResourceId : undefined, "playback");
+    const viewable = segment.videoStatus === "ready" || segment.videoStatus === "stale" || segment.videoStatus === "failed";
+    const url = useResourceMediaUrl(viewable ? segment.videoResourceId : undefined, "playback");
     const state = segmentState(segment);
     return (
         <div className={`drama-sg-video ${className}`} style={{ aspectRatio: aspectRatioValue(aspectRatio) }}>
@@ -72,7 +82,16 @@ export function SegmentVideo({ segment, aspectRatio, className = "" }: { segment
  * 生成依据：首帧（第 2 段起是上一段视频的最后一帧）和随请求发送的参考图。
  * 参考图编号与提示词里的“参考图N”一致；未附图的设定说明原因。
  */
-export function SegmentInputs({ segment, castById, compact = false, onOpenCast }: { segment: DramaSegment; castById: Map<string, DramaCast>; compact?: boolean; onOpenCast?: (id: string) => void }) {
+/** 参考图未随请求发送的原因；与后端 prepareDramaSegment 的判断一致。 */
+export function referenceMissingReason(segment: DramaSegment, cast: DramaCast | undefined) {
+    if (cast?.imageStatus === "failed") return "参考图生成失败";
+    if (mediaBusy(cast?.imageStatus || "")) return "参考图生成中";
+    if (!cast?.imageResourceId || cast.imageStatus !== "ready") return "参考图未生成";
+    if (segment.request.operation === "text_to_video") return "模型按文生视频生成，不收参考图";
+    return segment.request.referenceLimited ? "超出每段参考图上限" : "超出模型参考图上限";
+}
+
+export function SegmentInputs({ segment, castById, compact = false, frameOnly = false, onOpenCast }: { segment: DramaSegment; castById: Map<string, DramaCast>; compact?: boolean; frameOnly?: boolean; onOpenCast?: (id: string) => void }) {
     const { request } = segment;
     const first = segment.index === 0 && !request.firstFrameResourceId && !request.firstFramePending;
     return (
@@ -91,12 +110,12 @@ export function SegmentInputs({ segment, castById, compact = false, onOpenCast }
                     )}
                 </div>
             </Tooltip>
-            {request.references.map((ref) => {
+            {(frameOnly ? [] : request.references).map((ref) => {
                 const cast = castById.get(ref.castId);
-                const reason = ref.sent ? "" : cast?.imageStatus === "failed" ? "参考图生成失败" : mediaBusy(cast?.imageStatus || "") ? "参考图生成中" : !cast?.imageResourceId ? "参考图未生成" : "超出模型参考图上限";
+                const reason = ref.sent ? "" : referenceMissingReason(segment, cast);
                 const body = (
                     <>
-                        <span className={`drama-sg-thumb ${ref.kind !== "character" ? "is-wide" : ""} ${ref.sent ? "" : "is-missing"}`}>
+                        <span className={`drama-sg-thumb is-wide ${ref.sent ? "" : "is-missing"}`}>
                             {cast?.imageResourceId ? <MediaThumb resourceId={cast.imageResourceId} alt={ref.name} /> : <span className="drama-sg-thumb-empty">{CAST_KIND_LABEL[ref.kind]}</span>}
                             <em>{ref.label.replace("参考图", "图")}</em>
                         </span>

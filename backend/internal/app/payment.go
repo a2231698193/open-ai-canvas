@@ -550,6 +550,10 @@ func (s *Service) applyPaymentResult(providerID string, result payment.Result) (
 		if err == nil && granted {
 			s.afterStorageOrderGranted(completed)
 		}
+		if err == nil {
+			// 不只看 granted：已入账订单的重复通知也会补发此前失败的返佣，唯一约束保证不重复。
+			s.grantReferralCommission(completed)
+		}
 		return completed, err
 	}
 	if result.Closed {
