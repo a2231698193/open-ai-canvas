@@ -5,11 +5,11 @@ import { ArrowUpRight, Clock3, LoaderCircle, PanelsTopLeft, Plus } from "lucide-
 import { Link, useNavigate } from "react-router";
 
 import { ProjectPreview } from "@/components/canvas/canvas-project-card";
+import { createBlankCanvasProject } from "@/lib/canvas/create-canvas-project";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { loadCanvasProjectPage } from "@/lib/workspace-route-modules";
 import { listRemoteCanvasProjectsPage, type CanvasLibrarySummary } from "@/services/api/user-data";
-import { createCanvasProjectWithRemoteSync } from "@/services/user-data-sync";
-import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { RelativeTime } from "@/components/ui/product/relative-time";
 import { cn } from "@/lib/utils";
@@ -54,9 +54,7 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
         creatingRef.current = true;
         setCreating(true);
         try {
-            const { id, syncError } = await createCanvasProjectWithRemoteSync("未命名画布");
-            await flushCanvasStorePersistence();
-            if (getActiveUserScope() !== scope || useUserStore.getState().user?.id !== userId) return;
+            const { id, syncError } = await createBlankCanvasProject();
             if (syncError) message.warning("画布已保存在本机，云端同步尚未完成，将自动重试。");
             navigate(`/canvas/${id}`);
         } catch (error) {

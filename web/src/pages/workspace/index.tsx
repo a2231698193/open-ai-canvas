@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { App, Button, Skeleton } from "antd";
 import { ArrowRight, ArrowUpRight, BookOpen, Clapperboard, HardDrive, Image as ImageIcon, PanelsTopLeft, PlayCircle, Sparkles, Video, WandSparkles } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { WorkspacePage } from "@/components/layout/workspace-page";
@@ -9,6 +9,7 @@ import { RelativeTime } from "@/components/ui/product/relative-time";
 import { formatCredits } from "@/constant/credits";
 import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
 import { accountStorageMeter } from "@/lib/account-storage-usage";
+import { createBlankCanvasProject } from "@/lib/canvas/create-canvas-project";
 import { formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "@/lib/generation-task-display";
 import { curatedInspirations, type CreationInspiration } from "@/lib/inspirations/catalog";
 import { fillablePrompt } from "@/lib/inspirations/resolve";
@@ -18,6 +19,8 @@ import { CreationRecentCanvases } from "@/pages/create/creation-recent-canvases"
 import { formatModelName, isTaskFailed, taskAttentionReason } from "@/pages/tasks/task-shared";
 import { listGenerationTasks, type GenerationTask } from "@/services/api/task-center";
 import { listRemoteCanvasProjectsPage } from "@/services/api/user-data";
+import { getActiveUserScope } from "@/lib/user-scope";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import "@/pages/create/creation-product.css";
@@ -36,6 +39,9 @@ export default function WorkspacePageIndex() {
     const user = useUserStore((state) => state.user);
     const hydrated = useUserStore((state) => state.hydrated);
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
+    const canvasHydrated = useCanvasStore((state) => state.hydrated);
+    const [creatingCanvas, setCreatingCanvas] = useState(false);
+    const creatingCanvasRef = useRef(false);
     const effectiveConfig = useEffectiveConfig();
     const storageQuery = useAccountFileStorageUsage(Boolean(user));
     const storageMeter = accountStorageMeter(storageQuery.data);
@@ -67,6 +73,23 @@ export default function WorkspacePageIndex() {
         navigate("/create", { state: { inspiration: { mode: item.mode, prompt: fillablePrompt(item) } } });
     };
 
+    const createCanvas = async () => {
+        if (!user || !canvasHydrated || creatingCanvasRef.current) return;
+        creatingCanvasRef.current = true;
+        setCreatingCanvas(true);
+        try {
+            const { id, syncError, scope } = await createBlankCanvasProject();
+            if (getActiveUserScope() !== scope || useUserStore.getState().user?.id !== user.id) return;
+            if (syncError) message.warning("画布已保存在本机，云端同步尚未完成，将自动重试。");
+            navigate(`/canvas/${id}`);
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "创建画布失败，请重试");
+        } finally {
+            creatingCanvasRef.current = false;
+            setCreatingCanvas(false);
+        }
+    };
+
     return (
         <WorkspacePage className="workspace-home">
             <section className="workspace-hero" aria-labelledby="workspace-greeting">
@@ -77,7 +100,7 @@ export default function WorkspacePageIndex() {
                     </h1>
                     <p>把脑海里的第一个画面交给画布，或者继续上一次没有讲完的故事。</p>
                     <div className="workspace-hero-actions">
-                        <Button type="primary" size="large" icon={<WandSparkles />} onClick={() => navigate("/create")}>
+                        <Button type="primary" size="large" icon={<WandSparkles />} loading={creatingCanvas} disabled={!user || !canvasHydrated} onClick={() => void createCanvas()}>
                             开始创作
                         </Button>
                         <Button size="large" icon={<PanelsTopLeft />} onClick={() => navigate("/canvas")}>
@@ -179,7 +202,7 @@ export default function WorkspacePageIndex() {
                     ) : (
                         <div className="workspace-inline-state">
                             <span>还没有创作记录，从第一个想法开始吧。</span>
-                            <Button size="small" type="primary" onClick={() => navigate("/create")}>
+                            <Button size="small" type="primary" loading={creatingCanvas} disabled={!user || !canvasHydrated} onClick={() => void createCanvas()}>
                                 去创作
                             </Button>
                         </div>
