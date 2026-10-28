@@ -47,6 +47,6 @@ export function getWelcomeLook(search = window.location.search) {
 
 export const showcases = [
     { name: "自由画布", image: "/welcome/workbench-canvas.webp", description: "把灵感连成作品。", detail: "整理参考、连接节点、比较结果，沿着自己的思路继续创作。", href: "/canvas" },
-    { name: "即时创作", image: "/welcome/workbench-create.webp", description: "从一句话开始。", detail: "选择模型与参考素材，在对话中逐步完成图片和视频。", href: "/create" },
+    { name: "即时创作", image: "/welcome/workbench-create.webp", description: "从一句话开始。", detail: "选择模型与参考素材，在对话中逐步完成图片和视频。", href: "/workspace" },
     { name: "项目工作台", image: "/welcome/workbench-project.webp", description: "让长故事有条理。", detail: "围绕章节、人物与分镜组织制作，随时回到正在推进的故事。", href: "/projects" },
 ] as const;

@@ -45,7 +45,6 @@ function buildNav(features: FeatureAvailability): { groups: WorkspaceNavGroup[];
         {
             items: [
                 { id: "workspace", title: "工作台", icon: LayoutDashboard, to: "/workspace" },
-                { ...toolItem("create", "/create"), id: "home", title: "创作" },
                 { ...toolItem("inspirations", "/inspirations"), title: "灵感" },
                 ...(features.shortDramaEnabled ? [{ ...toolItem("projects", "/projects"), title: "短剧 Agent" }] : []),
                 { ...toolItem("canvas", "/canvas"), title: "自由画布" },
@@ -194,7 +193,7 @@ function NavItem({
     const rowStyle = collapsed ? undefined : ({ paddingLeft: `${level * 12 + 10}px` } as CSSProperties);
 
     const collapsedTitle =
-        item.id === "home" ? "创作" : item.id === "projects" ? "短剧" : item.id === "canvas" ? "画布" : item.id === "assets" ? "资产" : item.id === "skills" ? "技能" : item.id === "plugins" ? "插件" : item.id === "tasks" ? "历史" : item.title.slice(0, 2);
+        item.id === "projects" ? "短剧" : item.id === "canvas" ? "画布" : item.id === "assets" ? "资产" : item.id === "skills" ? "技能" : item.id === "plugins" ? "插件" : item.id === "tasks" ? "历史" : item.title.slice(0, 2);
     const rowContent = (
         <>
             <span className="app-workspace-nav-main flex min-w-0 items-center gap-2">

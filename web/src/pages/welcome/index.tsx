@@ -106,7 +106,7 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
                 <nav className={menu ? "welcome-nav is-open" : "welcome-nav"} aria-label="首页导航">
                     <a href="#workbench" onClick={() => setMenu(false)}>工作台</a>
                 </nav>
-                <Button className="welcome-header-cta" type="primary" href="/create" icon={<ArrowUpRight size={16} />} iconPlacement="end">开始创作</Button>
+                <Button className="welcome-header-cta" type="primary" href="/workspace" icon={<ArrowUpRight size={16} />} iconPlacement="end">开始创作</Button>
                 <IconButton className="welcome-icon mobile-menu" variant="ghost" size="lg" icon={menu ? X : Menu} aria-label={menu ? "关闭菜单" : "打开菜单"} aria-expanded={menu} onClick={() => setMenu(!menu)} />
             </header>
             <aside className="welcome-look-picker" aria-label="首页素材版本">
@@ -140,7 +140,7 @@ function WelcomeExperience({ look, brandName, onLookChange }: { look: WelcomeLoo
                     <div className="welcome-workbench-caption"><p>{active.detail}</p></div>
                 </section>
 
-                <section className="welcome-ending"><h2>你的故事，<br />现在开始。</h2><Button className="welcome-primary" type="primary" size="large" href="/create" icon={<ArrowRight size={20} />} iconPlacement="end">开始创作</Button></section>
+                <section className="welcome-ending"><h2>你的故事，<br />现在开始。</h2><Button className="welcome-primary" type="primary" size="large" href="/workspace" icon={<ArrowRight size={20} />} iconPlacement="end">开始创作</Button></section>
             </main>
             <footer className="welcome-footer"><a href="/">{brandName}</a><span>AI 影视创作工作台</span></footer>
             {playing && look.video && <FilmDialog look={look} onClose={() => setPlaying(false)} videoRef={videoRef} />}

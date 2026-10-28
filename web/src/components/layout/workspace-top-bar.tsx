@@ -64,7 +64,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
                 {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
             </button>
             <nav className="app-workspace-topbar-breadcrumb" aria-label="当前位置">
-                <Link to="/create" className="font-medium text-foreground/65 transition-colors hover:text-foreground">
+                <Link to="/workspace" className="font-medium text-foreground/65 transition-colors hover:text-foreground">
                     {brandName}
                 </Link>
                 <span aria-hidden="true">/</span>

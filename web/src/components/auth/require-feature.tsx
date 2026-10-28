@@ -43,12 +43,12 @@ export function RequireFeature({ feature, children }: { feature: FeatureKey; chi
     }, [feature, user?.id]);
 
     if (checking) return <WorkspacePage><WorkspaceLoadingState label="正在确认功能状态" detail={featureNames[feature]} rows={3} /></WorkspacePage>;
-    if (error) return <WorkspacePage><WorkspaceErrorState title="无法确认功能状态" description={error} actionLabel="返回创作台" onRetry={() => navigate("/create", { replace: true })} /></WorkspacePage>;
+    if (error) return <WorkspacePage><WorkspaceErrorState title="无法确认功能状态" description={error} actionLabel="返回工作台" onRetry={() => navigate("/workspace", { replace: true })} /></WorkspacePage>;
     if (!adminBypass && !features[feature]) {
         // 管理员页面返回到管理后台首页，用户页面返回到创作台
         const isAdminFeature = feature === "frontendModelsEnabled" || (feature === "pluginCenterEnabled" && user?.role === "admin");
-        const backPath = isAdminFeature ? "/admin" : "/create";
-        const backLabel = isAdminFeature ? "返回管理后台" : "返回创作台";
+        const backPath = isAdminFeature ? "/admin" : "/workspace";
+        const backLabel = isAdminFeature ? "返回管理后台" : "返回工作台";
 
         return (
             <WorkspacePage>

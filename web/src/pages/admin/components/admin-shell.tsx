@@ -186,10 +186,10 @@ function AdminShellLayout() {
                         <AdminNavigation collapsed={collapsed} />
                         <div className={cn("admin-sidebar-footer shrink-0", collapsed && "is-collapsed")}>
                             <div className="admin-sidebar-footer-row">
-                                <AdminTooltip title={collapsed ? "返回创作台" : undefined} placement="right">
-                                    <NavLink to="/create" aria-label={collapsed ? "返回创作台" : undefined} className={cn("admin-nav-link", collapsed && "is-collapsed")}>
+                                <AdminTooltip title={collapsed ? "返回工作台" : undefined} placement="right">
+                                    <NavLink to="/workspace" aria-label={collapsed ? "返回工作台" : undefined} className={cn("admin-nav-link", collapsed && "is-collapsed")}>
                                         <Home className="size-4" strokeWidth={1.6} />
-                                        {collapsed ? <span className="admin-nav-short-label">返回</span> : <span>返回创作台</span>}
+                                        {collapsed ? <span className="admin-nav-short-label">返回</span> : <span>返回工作台</span>}
                                     </NavLink>
                                 </AdminTooltip>
                                 {!collapsed ? (
@@ -327,8 +327,8 @@ function MobileAdminNavigation() {
                 </button>
             </Dropdown>
             <div className="flex shrink-0 items-center gap-1">
-                <AdminTooltip title="返回创作台">
-                    <Link to="/create" className="admin-mobile-navigation-action" aria-label="返回创作台">
+                <AdminTooltip title="返回工作台">
+                    <Link to="/workspace" className="admin-mobile-navigation-action" aria-label="返回工作台">
                         <Home className="size-4" aria-hidden="true" />
                     </Link>
                 </AdminTooltip>

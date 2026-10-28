@@ -35,6 +35,7 @@ describe("workspace route loading", () => {
         const router = source("../src/router.tsx");
         const home = source("../src/pages/home/index.tsx");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
+        const palette = source("../src/components/layout/workspace-command-palette.tsx");
 
         expect(router).toContain('{ path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> }');
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
@@ -43,8 +44,10 @@ describe("workspace route loading", () => {
         expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
         expect(home).toContain("inspiration-home");
         expect(home).not.toContain("return <WelcomePage />");
-        expect(navigation).toContain('{ ...toolItem("create", "/create"), id: "home", title: "创作" }');
+        expect(navigation).toContain('{ id: "workspace", title: "工作台", icon: LayoutDashboard, to: "/workspace" }');
+        expect(navigation).not.toContain('{ ...toolItem("create", "/create"), id: "home", title: "创作" }');
         expect(navigation).not.toContain('to: "/home"');
+        expect(palette).toContain('{ id: "workspace", title: "工作台", icon: Home, to: "/workspace" }');
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {

@@ -115,7 +115,7 @@ export function CanvasTopBar({
                                         onClick: () => onViewChange(view === "canvas" ? "assets" : "canvas"),
                                     },
                                     { type: "divider" },
-                                    { key: "home", icon: <Home className="size-4" />, label: <Link to="/create">主页</Link> },
+                                    { key: "home", icon: <Home className="size-4" />, label: <Link to="/workspace">工作台</Link> },
                                     { key: "projects", icon: <LayoutGrid className="size-4" />, label: <Link to="/canvas">画布</Link> },
                                     { type: "divider" },
                                     { key: "new", icon: <Plus className="size-4" />, label: "新建画布", onClick: onCreateProject },

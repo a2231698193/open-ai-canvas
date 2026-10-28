@@ -30,7 +30,7 @@ export function WorkspaceCommandPalette({ open, onClose }: { open: boolean; onCl
             return { id: slug, title: tool?.label ?? slug, icon: tool?.icon ?? Home, to };
         };
         return [
-            { id: "home", title: "首页", icon: Home, to: "/create" },
+            { id: "workspace", title: "工作台", icon: Home, to: "/workspace" },
             ...(features.shortDramaEnabled ? [toolEntry("projects", "/projects")] : []),
             toolEntry("canvas", "/canvas"),
             ...(features.taskCenterEnabled ? [toolEntry("tasks", "/tasks")] : []),

@@ -114,7 +114,7 @@ export function CanvasWorkspacePanel({
         <>
             <div className={`canvas-workspace-shell ${open && screens.lg ? "is-expanded" : ""}`} style={{ ...canvasDockStyle(theme), "--canvas-workspace-base": theme.node.panel, background: undefined } as CSSProperties}>
                 <nav className="canvas-workspace-rail" aria-label="画布左侧菜单" data-canvas-no-zoom onWheel={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                    <Link to="/create" className="canvas-workspace-rail-button" aria-label="工作台" title="返回工作台">
+                    <Link to="/workspace" className="canvas-workspace-rail-button" aria-label="工作台" title="返回工作台">
                         <Home />
                         <span>主页</span>
                     </Link>
