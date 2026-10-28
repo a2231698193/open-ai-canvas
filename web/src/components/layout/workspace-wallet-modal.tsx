@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { openWorkspaceWallet, WORKSPACE_WALLET_OPEN_EVENT, type WorkspaceWalletOpenDetail } from "@/lib/workspace-wallet";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useUserStore } from "@/stores/use-user-store";
+import "./workspace-wallet-modal.css";
 
 type WalletModalTab = "topup" | "redeem" | "history";
 
