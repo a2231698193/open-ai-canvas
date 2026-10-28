@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { canGenerateMediaInPlace } from "@/lib/canvas/canvas-generation-layout";
-import { isGenericCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
+import { isGenericCanvasNodeTitle, nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { nextCanvasVersionLabel } from "@/lib/canvas/canvas-layout";
 import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
@@ -26,6 +26,7 @@ export async function executeVideoGeneration({
     generationContext,
     controller,
     projectId,
+    canvasNodes,
     canvasConnections,
     setNodes,
     setConnections,
@@ -50,7 +51,7 @@ export async function executeVideoGeneration({
     const videoNode: CanvasNodeData = {
         id: videoId,
         type: CanvasNodeType.Video,
-        title: reuseSourceNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : (effectivePrompt.slice(0, 32) || "Generated Video"),
+        title: reuseSourceNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : nextDefaultCanvasNodeTitle(canvasNodes, "video"),
         position: reuseSourceNode ? sourceNode!.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
         width: reuseSourceNode ? sourceNode!.width : spec.width,
         height: reuseSourceNode ? sourceNode!.height : spec.height,

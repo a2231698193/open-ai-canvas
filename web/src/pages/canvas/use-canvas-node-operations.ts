@@ -8,6 +8,7 @@ import { FOLDER_COLLAPSED_HEIGHT, FOLDER_COLLAPSED_WIDTH, FRAME_HEADER_HEIGHT, g
 import { alignCanvasNodes, layoutCanvasAuto, layoutCanvasFlow, layoutCanvasNodes, nextCanvasVersionLabel, spreadCanvasNodes, type CanvasAlignmentMode } from "@/lib/canvas/canvas-layout";
 import { applyCanvasConnectionPromptSync } from "@/lib/canvas/canvas-resource-references";
 import { createCanvasNode, isHiddenBatchChild, removeCanvasNodes } from "@/lib/canvas/canvas-project-domain";
+import { nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { isolateCopiedNodeMetadata, nextCopiedNodeTitle } from "@/lib/canvas/canvas-node-copy";
 import { createCanvasImageEditCopy } from "@/lib/canvas/canvas-image-edit-copy";
 import { copyImageLayerSources } from "@/lib/canvas/canvas-image-layers";
@@ -151,6 +152,9 @@ export function useCanvasNodeOperations({
                 ? { generationMode: "image", workflowProvider: selectedWorkflowProvider || "model" }
                 : undefined;
         const node = createCanvasNode(type, position || getCanvasCenter(), metadata);
+        if (type === CanvasNodeType.Image || type === CanvasNodeType.Video) {
+            node.title = nextDefaultCanvasNodeTitle(nodesRef.current, type === CanvasNodeType.Image ? "image" : "video");
+        }
         if (workflowTitle) node.title = workflowTitle;
         commitNodes([...nodesRef.current, node]);
         selectNodes(new Set([node.id]));
@@ -390,6 +394,7 @@ export function useCanvasNodeOperations({
         const versionRootId = duplicateMode === "variant" && !isFrameNode(source) ? source.metadata?.versionOfNodeId || source.id : undefined;
         const versionLabel = versionRootId ? nextCanvasVersionLabel(versionRootId, nodesRef.current) : undefined;
         const copyTitle = duplicateMode !== "variant" ? nextCopiedNodeTitle(source.title, nodesRef.current.map((node) => node.title)) : undefined;
+        const copyOffsetY = source.height + 32;
         const copiedNodes = sources.map((node) => {
             const metadata = isolateCopiedNodeMetadata(node, idMap);
             if (node.type === CanvasNodeType.Drawing) {
@@ -408,7 +413,7 @@ export function useCanvasNodeOperations({
                 ...node,
                 id: idMap.get(node.id)!,
                 title: node.id === source.id ? copyTitle || `${node.title.replace(/ · [A-Z]$/, "")} · ${versionLabel || "副本"}` : node.title,
-                position: { x: node.position.x + 36, y: node.position.y + 36 },
+                position: { x: node.position.x, y: node.position.y + copyOffsetY },
                 parentId: node.parentId ? idMap.get(node.parentId) || node.parentId : undefined,
                 metadata,
             };

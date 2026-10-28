@@ -1,6 +1,6 @@
 import { AnimatePresence } from "motion/react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, Download, FolderOpen, FolderPlus, History, Image as ImageIcon, Layers3, LayoutTemplate, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, Copy, Download, FolderOpen, FolderPlus, History, Image as ImageIcon, Layers3, LayoutTemplate, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
 
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@/components/canvas/canvas-create-menu";
 import { ASSET_CATEGORY_OPTIONS } from "@/lib/asset-category";
@@ -45,14 +45,11 @@ type CanvasNodeContextMenuProps = {
     onDuplicate: () => void;
     onDelete: () => void;
     onSaveAsset: () => void;
-    onViewMedia: () => void;
     onOpenVersions?: () => void;
     onEditText: () => void;
     onOpenDrawing: () => void;
     onGenerateImage: () => void;
     onCopyContent: () => void;
-    onCopyMediaUrl: () => void;
-    onUploadToArkPrivateAsset: () => void;
     onSetAssetCategory: (category: CanvasAssetCategory) => void;
     onToggleFrame: () => void;
     onSpreadSelection?: () => void;
@@ -89,14 +86,11 @@ export function CanvasNodeContextMenu({
     onDuplicate,
     onDelete,
     onSaveAsset,
-    onViewMedia,
     onOpenVersions,
     onEditText,
     onOpenDrawing,
     onGenerateImage,
     onCopyContent,
-    onCopyMediaUrl,
-    onUploadToArkPrivateAsset,
     onSetAssetCategory,
     onToggleFrame,
     onSpreadSelection,
@@ -150,9 +144,7 @@ export function CanvasNodeContextMenu({
     const isFolder = isCanvasFolderNode(node);
     const hasNodeContent = isText ? Boolean(nodeContent.trim()) : Boolean(nodeContent);
     const canSaveAsset = Boolean(node && !isCharacterReference && (isText ? hasNodeContent : hasNodeContent && (isImage || isVideo || isAudio)));
-    const canOpenPreview = Boolean(isMedia && hasNodeContent);
     const canGenerateFromText = Boolean(isText && !isCharacterReference && hasNodeContent);
-    const canCopyMediaUrl = Boolean(isMedia && hasNodeContent);
     const assetCategory = node ? canvasNodeAssetCategory(node) : "other";
     const hasMultiSelection = selectedCount >= 2;
     const versionCount = listMediaVersions(node).length;
@@ -253,18 +245,14 @@ export function CanvasNodeContextMenu({
                                 <>
                                     <MenuHeader title={isImage ? "图片" : "视频"} description={node?.title || nodeTypeLabel(node)} />
                                     <MenuSection label="查看与归档" />
-                                    <MenuButton icon={<Maximize2 />} label="进入全景预览" disabled={!canOpenPreview} onClick={() => runAction(onViewMedia)} />
                                     {versionMenuButton}
                                     <MenuButton icon={<Tags />} label="设置资产分类" chevron onClick={() => setCategoryOpen(true)} />
-                                    {isImage ? <MenuButton icon={<CloudUpload />} label="上传到方舟素材库" onClick={() => runAction(onUploadToArkPrivateAsset)} /> : null}
                                     <MenuDivider />
                                     <MenuSection label="节点" />
                                     <MenuButton icon={<AtSign />} label="发送到 Agent" disabled={!onSendToAgent} onClick={() => onSendToAgent && runAction(onSendToAgent)} />
                                     <MenuButton icon={<Copy />} label="复制节点" shortcut="⌘C" onClick={() => runAction(onCopyNode)} />
                                     {isImage ? <MenuButton icon={<Clipboard />} label="复制图片" disabled={!hasNodeContent} onClick={() => runAction(onCopyContent)} /> : null}
-                                    <MenuButton icon={<Link2 />} label={isImage ? "复制图片地址" : "复制视频地址"} disabled={!canCopyMediaUrl} onClick={() => runAction(onCopyMediaUrl)} />
-                                    <MenuButton icon={<Copy />} label="创建生成副本" onClick={() => runAction(onCreateGenerationCopy)} />
-                                    <MenuButton icon={<Layers3 />} label="创建参数变体" shortcut="⌘D" onClick={() => runAction(onDuplicate)} />
+                                    <MenuButton icon={<Copy />} label="创建副本" shortcut="⌘D" onClick={() => runAction(onCreateGenerationCopy)} />
                                     <MenuButton icon={<Trash2 />} label="删除节点" danger onClick={() => runAction(onDelete)} />
                                 </>
                             ) : (

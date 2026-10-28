@@ -30,14 +30,11 @@ type CanvasProjectContextMenuProps = {
     onDeleteNode: (nodeId: string) => void;
     onDeleteConnection: (connectionId: string) => void;
     onSaveAsset: (node: CanvasNodeData) => void;
-    onViewMedia: (node: CanvasNodeData) => void;
     onOpenVersions: (node: CanvasNodeData) => void;
     onEditText: (node: CanvasNodeData) => void;
     onOpenDrawing: (node: CanvasNodeData) => void;
     onGenerateImage: (node: CanvasNodeData) => void;
     onCopyContent: (node: CanvasNodeData | null) => void;
-    onCopyMediaUrl: (node: CanvasNodeData | null) => void;
-    onUploadToArkPrivateAsset: (node: CanvasNodeData) => void;
     onSetAssetCategory: (nodeId: string, category: CanvasAssetCategory) => void;
     onToggleFrame: (node: CanvasNodeData) => void;
     onSpreadSelection: () => void;
@@ -92,9 +89,6 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
             onSaveAsset={() => {
                 if (node) props.onSaveAsset(node);
             }}
-            onViewMedia={() => {
-                if (node) props.onViewMedia(node);
-            }}
             onOpenVersions={() => {
                 if (node) props.onOpenVersions(node);
             }}
@@ -108,10 +102,6 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
                 if (node) props.onGenerateImage(node);
             }}
             onCopyContent={() => props.onCopyContent(node)}
-            onCopyMediaUrl={() => props.onCopyMediaUrl(node)}
-            onUploadToArkPrivateAsset={() => {
-                if (node?.type === CanvasNodeType.Image) props.onUploadToArkPrivateAsset(node);
-            }}
             onSetAssetCategory={(category) => {
                 if (menu.type === "node") props.onSetAssetCategory(menu.nodeId, category);
             }}

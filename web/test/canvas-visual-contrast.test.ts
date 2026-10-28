@@ -39,10 +39,10 @@ describe("canvas visual contrast", () => {
         expect(source).toContain('opacity: mode === "dots" ? 0.62 : 0.4');
     });
 
-    test("keeps the original transparent edge for standard canvas nodes", async () => {
+    test("draws a thin themed edge around standard canvas nodes", async () => {
         const source = await Bun.file(new URL("../src/components/canvas/canvas-node.tsx", import.meta.url)).text();
 
-        expect(source).toContain('border: isComposerNode ? "0" : "1px solid transparent"');
-        expect(source).not.toContain('border: isComposerNode ? "0" : `1px solid ${theme.node.edge}`');
+        expect(source).toContain('border: isComposerNode ? "0" : `1px solid ${theme.node.edge}`');
+        expect(source).not.toContain('border: isComposerNode ? "0" : "1px solid transparent"');
     });
 });

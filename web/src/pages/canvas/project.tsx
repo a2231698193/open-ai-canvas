@@ -3245,7 +3245,6 @@ function CanvasViewportPage() {
                                 onSaveAsset={(node) => {
                                     void saveNodeAsset(node);
                                 }}
-                                onViewMedia={(node) => setPreviewNodeId(node.id)}
                                 onOpenVersions={(node) => setMediaVersionNodeId(node.id)}
                                 onEditText={openTextNodeEditor}
                                 onOpenDrawing={openDrawingNode}
@@ -3253,10 +3252,6 @@ function CanvasViewportPage() {
                                 onCopyContent={(node) => {
                                     void copyNodeContentToClipboard(node);
                                 }}
-                                onCopyMediaUrl={(node) => {
-                                    void copyNodeMediaUrlToClipboard(node);
-                                }}
-                                onUploadToArkPrivateAsset={confirmUploadNodeImageToArkPrivateAsset}
                                 onSetAssetCategory={(nodeId, assetCategory) => handleConfigNodeChange(nodeId, { assetCategory })}
                                 onToggleFrame={(node) => handleFrameToggle(node.id)}
                                 onSpreadSelection={spreadSelectedNodes}

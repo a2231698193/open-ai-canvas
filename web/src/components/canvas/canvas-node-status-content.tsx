@@ -47,10 +47,12 @@ export function LoadingContent({ node, theme, onOpenTaskDetails }: Pick<CanvasNo
                             <div className="h-full rounded-full transition-transform duration-200 ease-out motion-reduce:transition-none" style={progressFillStyle(progress, { background: theme.node.activeStroke })} />
                         </div>
                     ) : null}
-                    <div className="max-w-full truncate text-[var(--fs-tiny)] tabular-nums" style={{ color: theme.node.muted }}>
-                        <Clock3 className="mr-1 inline size-3" />
-                        {workflow ? shortTaskId(taskId) : `${elapsed} · ${shortTaskId(taskId)}`}
-                    </div>
+                    {workflow ? null : (
+                        <div className="max-w-full truncate text-[var(--fs-tiny)] tabular-nums" style={{ color: theme.node.muted }}>
+                            <Clock3 className="mr-1 inline size-3" />
+                            {elapsed}
+                        </div>
+                    )}
                     {onOpenTaskDetails ? (
                         <div className="mt-0.5 flex items-center gap-2">
                             <button
@@ -83,11 +85,6 @@ export function useTaskElapsed(createdAt?: string, completedAt?: string) {
 
 function taskTerminalStatus(status?: string) {
     return status === "succeeded" || status === "failed" || status === "cancelled";
-}
-
-export function shortTaskId(id: string) {
-    if (id.length <= 20) return id;
-    return `${id.slice(0, 14)}...${id.slice(-4)}`;
 }
 
 export function ErrorContent({ node, theme, onRetry, onReloadResource }: Pick<CanvasNodeContentProps, "node" | "theme" | "onRetry" | "onReloadResource">) {

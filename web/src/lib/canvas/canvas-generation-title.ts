@@ -1,8 +1,28 @@
-import type { CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 const COPY_SUFFIX = /(_copy\d+|\s+Copy)$/i;
 const VERSION_SUFFIX = /\s*·\s*([A-Z])\s*$/;
 const OUTPUT_INDEX_SUFFIX = /\s*·\s*\d+\s*$/;
+
+/** 新节点的默认名称：图片节点N / 视频节点N，按画布内同类型现有名称递增。 */
+export function nextDefaultCanvasNodeTitle(nodes: CanvasNodeData[], type: "image" | "video") {
+    const nodeType = type === "image" ? CanvasNodeType.Image : CanvasNodeType.Video;
+    const prefix = type === "image" ? "图片节点" : "视频节点";
+    let highest = 0;
+    for (const node of nodes) {
+        if (node.type !== nodeType) continue;
+        const match = node.title.trim().match(new RegExp(`^${prefix}(\\d+)$`));
+        if (match) highest = Math.max(highest, Number(match[1]));
+    }
+    return `${prefix}${highest + 1}`;
+}
+
+export function nextDefaultCanvasNodeTitles(nodes: CanvasNodeData[], type: "image" | "video", count: number) {
+    const first = nextDefaultCanvasNodeTitle(nodes, type);
+    const prefix = type === "image" ? "图片节点" : "视频节点";
+    const start = Number(first.slice(prefix.length));
+    return Array.from({ length: Math.max(0, count) }, (_, index) => `${prefix}${start + index}`);
+}
 
 const GENERIC_NODE_TITLES = new Set([
     "图片",

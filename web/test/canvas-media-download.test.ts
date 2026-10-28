@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildImageGenerationNodeTitle, mergeLiveCanvasNodeTitles } from "@/lib/canvas/canvas-generation-title";
+import { buildImageGenerationNodeTitle, mergeLiveCanvasNodeTitles, nextDefaultCanvasNodeTitle, nextDefaultCanvasNodeTitles } from "@/lib/canvas/canvas-generation-title";
 import { buildCanvasMediaDownloadFileName, canvasMediaFileExtension } from "@/lib/canvas/canvas-media-download";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -43,6 +43,17 @@ describe("canvas media download", () => {
 });
 
 describe("generated image title", () => {
+    test("新节点默认按类型编号，不再取提示词", () => {
+        const nodes = [
+            mediaNode({ id: "image-1", title: "图片节点1" }),
+            mediaNode({ id: "image-3", title: "图片节点3" }),
+            mediaNode({ id: "video-1", type: CanvasNodeType.Video, title: "视频节点2" }),
+        ];
+        expect(nextDefaultCanvasNodeTitle(nodes, "image")).toBe("图片节点4");
+        expect(nextDefaultCanvasNodeTitle(nodes, "video")).toBe("视频节点3");
+        expect(nextDefaultCanvasNodeTitles(nodes, "image", 2)).toEqual(["图片节点4", "图片节点5"]);
+    });
+
     test("普通节点继续使用提示词摘要", () => {
         expect(buildImageGenerationNodeTitle("一座云层中的未来城市", mediaNode({ title: "原图" }))).toBe("一座云层中的未来城市");
     });
