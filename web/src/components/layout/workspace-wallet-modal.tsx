@@ -6,13 +6,15 @@ import { useLocation, useNavigate } from "react-router";
 
 import { formatMembershipPrice, useMembershipPlans, type MembershipPlansData } from "@/components/membership/membership-plan-cards";
 import { WalletTopupPanel, type TopupCategory } from "@/components/layout/workspace-wallet-topup";
+import { CreditStorePanel } from "@/components/payment/credit-store-panel";
 import { usePaymentOrderFlow } from "@/components/payment/use-payment-order-flow";
 import { AppModal } from "@/components/ui/product/app-modal";
 import { formatCredits } from "@/constant/credits";
 import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
 import { accountFileStorageUsageQueryKey, accountStorageMeter } from "@/lib/account-storage-usage";
+import { normalizeCreditStoreAmount } from "@/lib/credit-store";
 import { generationErrorMessage } from "@/lib/generation-error";
-import { listPaymentProviders, listTopupProducts, type PaymentOrder, type PaymentProvider, type TopupProduct, type TopupProductKind } from "@/services/api/payments";
+import { listPaymentProviders, listTopupProducts, type CreditStorePolicy, type PaymentOrder, type PaymentProvider, type TopupProduct, type TopupProductKind } from "@/services/api/payments";
 import { listMyStorageGrants } from "@/services/api/storage-grants";
 import { getWallet, redeemCredits, type CreditLedgerEntry, type WalletSummary } from "@/services/api/wallet";
 import { cn } from "@/lib/utils";
@@ -102,6 +104,8 @@ export function WorkspaceWalletModal({
     const [walletError, setWalletError] = useState("");
     const [page, setPage] = useState(1);
     const [products, setProducts] = useState<TopupProduct[]>([]);
+    const [creditStore, setCreditStore] = useState<CreditStorePolicy | null>(null);
+    const [creditAmount, setCreditAmount] = useState(500);
     const [providers, setProviders] = useState<PaymentProvider[]>([]);
     const [paymentsLoading, setPaymentsLoading] = useState(false);
     const [selectedProductId, setSelectedProductId] = useState("");
@@ -119,7 +123,8 @@ export function WorkspaceWalletModal({
         return prices.length ? Math.min(...prices) : 0;
     }, [membershipPlanList]);
 
-    const selectedProduct = useMemo(() => products.find((item) => item.id === selectedProductId), [products, selectedProductId]);
+    const storageProducts = useMemo(() => products.filter((item) => item.kind === "storage"), [products]);
+    const selectedProduct = useMemo(() => storageProducts.find((item) => item.id === selectedProductId), [storageProducts, selectedProductId]);
     const selectedProvider = useMemo(() => providers.find((item) => item.id === selectedProviderId), [providers, selectedProviderId]);
     const activeTab: WalletModalTab = creditsEnabled ? tab : "topup";
 
@@ -147,9 +152,12 @@ export function WorkspaceWalletModal({
         setPaymentsLoading(true);
         Promise.all([listTopupProducts(), listPaymentProviders()])
             .then(([productResult, providerResult]) => {
-                const enabledProducts = productResult.products.filter((item) => item.enabled);
+                // 积分改由积分超市按数量购买，固定积分商品不再展示；存储套餐保持原样。
+                const enabledProducts = productResult.products.filter((item) => item.enabled && item.kind === "storage");
                 const usableProviders = providerResult.providers.filter((item) => item.enabled && item.pluginEnabled && item.configured);
                 setProducts(enabledProducts);
+                setCreditStore(productResult.creditStore);
+                setCreditAmount((current) => normalizeCreditStoreAmount(productResult.creditStore, current));
                 setProviders(usableProviders);
                 // 从容量入口进入时优先选中存储空间套餐。
                 const preferred = enabledProducts.filter((item) => !initialCategory || initialCategory === "all" || item.kind === initialCategory);
@@ -185,7 +193,7 @@ export function WorkspaceWalletModal({
 
     useEffect(() => {
         payment.resetIdempotency();
-    }, [selectedProductId, selectedProviderId]);
+    }, [creditAmount, selectedProductId, selectedProviderId]);
 
     useEffect(() => {
         if (!open || !pendingPaymentOrderId) return;
@@ -223,8 +231,16 @@ export function WorkspaceWalletModal({
         await payment.start(selectedProduct.id, selectedProvider.id);
     };
 
-    // 定位到某类套餐：滚动到分组，并在当前选中项不属于该类时改选该类第一个可买套餐。
-    const focusProducts = (kind: TopupProductKind) => {
+    const startCreditPayment = async () => {
+        if (!creditStore || !selectedProvider) {
+            message.error("请选择支付方式");
+            return;
+        }
+        await payment.startCredit(normalizeCreditStoreAmount(creditStore, creditAmount), selectedProvider.id);
+    };
+
+    // 定位到存储套餐：滚动到分组，并在当前选中项不属于该类时改选第一个可买套餐。
+    const focusProducts = (kind: "storage") => {
         setTab("topup");
         setFocusKind(kind);
         setFocusToken((value) => value + 1);
@@ -285,7 +301,20 @@ export function WorkspaceWalletModal({
                         </div>
                     </header>
 
-                    {creditsEnabled && wallet ? <WalletMembershipCard wallet={wallet} membershipPlans={membershipPlans} minMembershipPriceFen={minMembershipPriceFen} totalAvailable={available} purchasedAvailable={purchasedAvailable} membershipAvailable={membershipAvailable} onOpenMembership={() => { onClose(); navigate("/membership"); }} /> : null}
+                    {creditsEnabled && wallet ? (
+                        <WalletMembershipCard
+                            wallet={wallet}
+                            membershipPlans={membershipPlans}
+                            minMembershipPriceFen={minMembershipPriceFen}
+                            totalAvailable={available}
+                            purchasedAvailable={purchasedAvailable}
+                            membershipAvailable={membershipAvailable}
+                            onOpenMembership={() => {
+                                onClose();
+                                navigate("/membership");
+                            }}
+                        />
+                    ) : null}
 
                     {creditsEnabled ? (
                         <div className="workspace-wallet-tabs" role="tablist" aria-label="积分中心">
@@ -305,9 +334,16 @@ export function WorkspaceWalletModal({
                     ) : null}
 
                     {activeTab === "topup" ? (
-                        <>
+                        <div className="workspace-wallet-topup-tab">
                             {creditsEnabled && minMembershipPriceFen > 0 ? (
-                                <button type="button" className="workspace-wallet-membership-promo" onClick={() => { onClose(); navigate("/membership"); }}>
+                                <button
+                                    type="button"
+                                    className="workspace-wallet-membership-promo"
+                                    onClick={() => {
+                                        onClose();
+                                        navigate("/membership");
+                                    }}
+                                >
                                     <Crown />
                                     <div>
                                         <strong>会员套餐 {formatMembershipPrice(minMembershipPriceFen)}/月起</strong>
@@ -316,26 +352,42 @@ export function WorkspaceWalletModal({
                                     <ArrowRight />
                                 </button>
                             ) : null}
+                            {creditsEnabled ? (
+                                <div className="workspace-wallet-credit-store">
+                                    <CreditStorePanel
+                                        loading={paymentsLoading}
+                                        policy={creditStore}
+                                        credits={creditAmount}
+                                        onCreditsChange={setCreditAmount}
+                                        providers={providers}
+                                        selectedProviderId={selectedProviderId}
+                                        onSelectProvider={setSelectedProviderId}
+                                        creating={payment.creating}
+                                        onPay={() => void startCreditPayment()}
+                                    />
+                                </div>
+                            ) : null}
                             <WalletTopupPanel
-                            loading={paymentsLoading}
-                            products={products}
-                            providers={providers}
-                            focusKind={focusKind}
-                            focusToken={focusToken}
-                            selectedProduct={selectedProduct}
-                            onSelectProduct={setSelectedProductId}
-                            selectedProviderId={selectedProviderId}
-                            onSelectProvider={setSelectedProviderId}
-                            creating={payment.creating}
-                            onPay={() => void startPayment()}
-                            storageUsage={storageQuery.data}
-                            storageGrants={grantsQuery.data?.grants || []}
-                            onCleanAssets={() => {
-                                onClose();
-                                navigate("/assets");
-                            }}
-                        />
-                        </>
+                                loading={paymentsLoading}
+                                products={storageProducts}
+                                providers={providers}
+                                focusKind={focusKind}
+                                focusToken={focusToken}
+                                selectedProduct={selectedProduct}
+                                onSelectProduct={setSelectedProductId}
+                                selectedProviderId={selectedProviderId}
+                                onSelectProvider={setSelectedProviderId}
+                                creating={payment.creating}
+                                onPay={() => void startPayment()}
+                                storageUsage={storageQuery.data}
+                                storageGrants={grantsQuery.data?.grants || []}
+                                onCleanAssets={() => {
+                                    onClose();
+                                    navigate("/assets");
+                                }}
+                                emptyState={null}
+                            />
+                        </div>
                     ) : activeTab === "redeem" ? (
                         <div className="workspace-wallet-content is-redeem">
                             <section className="workspace-wallet-section is-redeem">

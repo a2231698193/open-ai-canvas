@@ -18,6 +18,7 @@ import {
     exportAdminPaymentReconciliations,
     exportAdminPaymentReconciliationItems,
     createAdminTopupProduct,
+    getAdminCreditStoreSetting,
     listAdminPaymentOrders,
     listAdminPaymentProviders,
     listAdminPaymentReconciliationItems,
@@ -25,8 +26,10 @@ import {
     listAdminTopupProducts,
     queryAdminPaymentOrder,
     runAdminPaymentReconciliation,
+    updateAdminCreditStoreSetting,
     updateAdminPaymentProvider,
     updateAdminTopupProduct,
+    type AdminCreditStoreSetting,
     type AdminPaymentProvider,
     type AdminPaymentOrder,
     type PaymentOrder,
@@ -101,9 +104,13 @@ export default function AdminPaymentsPage() {
     const [productDrawer, setProductDrawer] = useState<TopupProduct | null | undefined>();
     const [productSaving, setProductSaving] = useState(false);
     const [productForm] = Form.useForm<ProductFormValues>();
+    const [creditStoreSetting, setCreditStoreSetting] = useState<AdminCreditStoreSetting | null>(null);
+    const [creditStoreSaving, setCreditStoreSaving] = useState(false);
+    const [creditStoreForm] = Form.useForm<{ unitPriceYuan: number }>();
     const selectedProductStrategy = Form.useWatch("saleStrategy", productForm) || "unlimited";
     const selectedProductKind = Form.useWatch("kind", productForm) || "credits";
     const selectedStorageDurationMode = Form.useWatch("storageDurationMode", productForm) || "permanent";
+    const creditStoreUnitPriceYuan = Form.useWatch("unitPriceYuan", creditStoreForm);
 
     const [orders, setOrders] = useState<AdminPaymentOrder[]>([]);
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -166,9 +173,11 @@ export default function AdminPaymentsPage() {
     const loadBase = async () => {
         setLoading(true);
         try {
-            const [providerResult, productResult] = await Promise.all([listAdminPaymentProviders(), listAdminTopupProducts()]);
+            const [providerResult, productResult, creditStoreResult] = await Promise.all([listAdminPaymentProviders(), listAdminTopupProducts(), getAdminCreditStoreSetting()]);
             setProviders(providerResult.providers);
             setProducts(productResult.products);
+            setCreditStoreSetting(creditStoreResult.creditStore);
+            creditStoreForm.setFieldsValue({ unitPriceYuan: creditStoreResult.creditStore.unitPriceFen / 100 });
             setBillProviderId((current) => current || providerResult.providers.find((item) => item.configured)?.id || providerResult.providers[0]?.id || "");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取支付配置失败");
@@ -288,7 +297,7 @@ export default function AdminPaymentsPage() {
                       saleStartAt: product.saleStartAt ? dayjs(product.saleStartAt) : undefined,
                       saleEndAt: product.saleEndAt ? dayjs(product.saleEndAt) : undefined,
                   }
-                : { kind: "credits", enabled: true, sortOrder: products.length * 10, amountYuan: 10, credits: 10, storageGB: 10, storageDurationMode: "days", storageDurationDays: 30, saleStrategy: "unlimited" },
+                : { kind: "storage", enabled: true, sortOrder: products.length * 10, amountYuan: 10, credits: 10, storageGB: 10, storageDurationMode: "days", storageDurationDays: 30, saleStrategy: "unlimited" },
         );
         setProductDrawer(product || null);
     };
@@ -325,6 +334,21 @@ export default function AdminPaymentsPage() {
             message.error(error instanceof Error ? error.message : "保存充值商品失败");
         } finally {
             setProductSaving(false);
+        }
+    };
+
+    const saveCreditStore = async () => {
+        const values = await creditStoreForm.validateFields();
+        setCreditStoreSaving(true);
+        try {
+            const result = await updateAdminCreditStoreSetting({ unitPriceFen: Math.round(values.unitPriceYuan * 100) });
+            setCreditStoreSetting(result.creditStore);
+            creditStoreForm.setFieldsValue({ unitPriceYuan: result.creditStore.unitPriceFen / 100 });
+            message.success("积分超市单价已保存");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存积分超市单价失败");
+        } finally {
+            setCreditStoreSaving(false);
         }
     };
 
@@ -688,16 +712,45 @@ export default function AdminPaymentsPage() {
                         key: "products",
                         label: "充值商品",
                         children: (
-                            <AdminDataTable
-                                toolbar={<span />}
-                                trailing={
-                                    <Button type="primary" className="admin-toolbar-primary-action" icon={<Plus className="size-4" />} onClick={() => openProduct()}>
-                                        新增商品
-                                    </Button>
-                                }
-                                table={{ rowKey: "id", loading, columns: productColumns, dataSource: products, pagination: false, scroll: { x: 820 } }}
-                                empty={<AdminTableEmpty title="还没有充值商品" />}
-                            />
+                            <div className="space-y-4">
+                                <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border/70 bg-card p-3">
+                                    <div className="min-w-0 flex-1">
+                                        <strong className="block text-sm">积分超市单价</strong>
+                                        <span className="text-xs text-foreground/55">
+                                            用于 100–10,000 积分的按需购买；满 1,000 九折、满 5,000 八折，订单金额由后端计算。当前 {creditStoreSetting ? `¥${(creditStoreSetting.unitPriceFen / 100).toFixed(2)}/积分` : "读取中"}。
+                                        </span>
+                                    </div>
+                                    <Form form={creditStoreForm} layout="inline" onFinish={() => void saveCreditStore()}>
+                                        <Form.Item
+                                            name="unitPriceYuan"
+                                            rules={[
+                                                { required: true, message: "请填写积分单价" },
+                                                {
+                                                    validator: (_, value) => (Number(value) >= 0.01 && Number(value) <= 1000 ? Promise.resolve() : Promise.reject(new Error("单价需在 0.01–1000 元/积分之间"))),
+                                                },
+                                            ]}
+                                        >
+                                            <InputNumber min={0.01} max={1000} step={0.1} precision={2} addonAfter="元/积分" placeholder="0.10" />
+                                        </Form.Item>
+                                        <Form.Item>
+                                            <Button type="primary" htmlType="submit" loading={creditStoreSaving}>
+                                                保存单价
+                                            </Button>
+                                        </Form.Item>
+                                    </Form>
+                                    <span className="text-xs text-foreground/45">100 积分 ≈ ¥{((Number(creditStoreUnitPriceYuan) || 0.1) * 100).toFixed(2)}</span>
+                                </div>
+                                <AdminDataTable
+                                    toolbar={<span />}
+                                    trailing={
+                                        <Button type="primary" className="admin-toolbar-primary-action" icon={<Plus className="size-4" />} onClick={() => openProduct()}>
+                                            新增商品
+                                        </Button>
+                                    }
+                                    table={{ rowKey: "id", loading, columns: productColumns, dataSource: products, pagination: false, scroll: { x: 820 } }}
+                                    empty={<AdminTableEmpty title="还没有充值商品" />}
+                                />
+                            </div>
                         ),
                     },
                     {
@@ -983,7 +1036,12 @@ export default function AdminPaymentsPage() {
                     <Form.Item name="description" label="商品说明" rules={[{ max: 500 }]}>
                         <Input.TextArea rows={3} />
                     </Form.Item>
-                    <Form.Item name="kind" label="商品类型" rules={[{ required: true }]} extra={productDrawer ? "类型创建后不能修改；如需改类型请新建商品。" : "存储空间商品在关闭积分功能后仍可购买。"}>
+                    <Form.Item
+                        name="kind"
+                        label="商品类型"
+                        rules={[{ required: true }]}
+                        extra={productDrawer ? "类型创建后不能修改；如需改类型请新建商品。" : "积分已改为积分超市按数量购买，固定积分商品不会在前台展示；存储空间商品在关闭积分功能后仍可购买。"}
+                    >
                         <Select
                             disabled={Boolean(productDrawer)}
                             options={[

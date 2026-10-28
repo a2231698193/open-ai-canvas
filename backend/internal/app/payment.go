@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,6 +73,7 @@ type TopupProductRequest struct {
 
 type CreatePaymentOrderRequest struct {
 	ProductID      string `json:"productId"`
+	Credits        int64  `json:"credits,omitempty"`
 	ProviderID     string `json:"providerId"`
 	IdempotencyKey string `json:"idempotencyKey"`
 }
@@ -152,9 +154,34 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 		return nil, BadAuthRequest("支付幂等标识过长")
 	}
 	productID := strings.TrimSpace(request.ProductID)
+	credits := request.Credits
+	if productID != "" && credits > 0 {
+		return nil, BadAuthRequest("不能同时指定充值商品和积分数量")
+	}
+	if productID == "" && credits <= 0 {
+		return nil, BadAuthRequest("请选择积分数量或充值商品")
+	}
+	var quote creditStoreQuote
+	if productID == "" {
+		policy, err := s.CreditStorePolicy()
+		if err != nil {
+			return nil, err
+		}
+		quote, err = quoteCreditStore(policy, credits)
+		if err != nil {
+			return nil, err
+		}
+	}
 	providerID := strings.TrimSpace(request.ProviderID)
 	if existing, err := s.repo.PaymentOrderByIdempotency(actor.ID, idempotencyKey); err == nil {
-		if existing.ProductID != productID || existing.ProviderID != providerID {
+		if existing.ProviderID != providerID {
+			return nil, NewAppError(http.StatusConflict, "支付幂等标识已用于不同的商品或支付渠道")
+		}
+		if productID != "" {
+			if existing.ProductID != productID {
+				return nil, NewAppError(http.StatusConflict, "支付幂等标识已用于不同的商品或支付渠道")
+			}
+		} else if existing.ProductID != "" || existing.CreditsMicrocredits != credits*CreditScale {
 			return nil, NewAppError(http.StatusConflict, "支付幂等标识已用于不同的商品或支付渠道")
 		}
 		result := paymentOrderView(*existing)
@@ -162,15 +189,21 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	product, err := s.repo.TopupProduct(productID)
-	if err != nil || !product.Enabled {
-		return nil, BadAuthRequest("充值商品不存在或已停用")
-	}
-	// 积分功能关闭时积分商品不可购买；存储空间商品不依赖积分功能。
-	if topupProductKind(product.Kind) == model.TopupProductKindCredits {
-		if err := s.RequireFeature(FeatureCredits); err != nil {
-			return nil, err
+	var product *model.TopupProduct
+	if productID != "" {
+		loaded, err := s.repo.TopupProduct(productID)
+		if err != nil || !loaded.Enabled {
+			return nil, BadAuthRequest("充值商品不存在或已停用")
 		}
+		product = loaded
+		// 积分功能关闭时积分商品不可购买；存储空间商品不依赖积分功能。
+		if topupProductKind(product.Kind) == model.TopupProductKindCredits {
+			if err := s.RequireFeature(FeatureCredits); err != nil {
+				return nil, err
+			}
+		}
+	} else if err := s.RequireFeature(FeatureCredits); err != nil {
+		return nil, err
 	}
 	provider, ok := s.paymentRegistry.Get(providerID)
 	if !ok {
@@ -193,15 +226,33 @@ func (s *Service) CreatePaymentOrder(ctx context.Context, actor *model.User, req
 	now := time.Now()
 	order := &model.PaymentOrder{
 		ID: newID(), UserID: actor.ID, IdempotencyKey: idempotencyKey, MerchantOrderNo: newID(),
-		Kind:      model.PaymentOrderKindTopup,
-		ProductID: product.ID, ProductName: product.Name, ProductKind: topupProductKind(product.Kind),
-		StorageBytes: product.StorageBytes, StorageDurationDays: product.StorageDurationDays, ProviderID: provider.Descriptor().ID,
-		PluginID: provider.Descriptor().PluginID, PluginVersion: provider.Descriptor().PluginVersion, ProviderConfigID: config.ID, ProviderConfigVersion: config.Version,
-		AmountFen: product.AmountFen, Currency: "CNY", CreditsMicrocredits: product.CreditsMicrocredits,
-		Status: model.PaymentOrderCreated, CheckoutMode: provider.Descriptor().CheckoutMode,
+		Kind:       model.PaymentOrderKindTopup,
+		ProviderID: provider.Descriptor().ID,
+		PluginID:   provider.Descriptor().PluginID, PluginVersion: provider.Descriptor().PluginVersion, ProviderConfigID: config.ID, ProviderConfigVersion: config.Version,
+		Currency: "CNY",
+		Status:   model.PaymentOrderCreated, CheckoutMode: provider.Descriptor().CheckoutMode,
 		ExpiresAt: now.Add(time.Duration(config.CloseAfterMinutes) * time.Minute),
 	}
-	order, created, err := s.repo.CreatePaymentOrderWithProductReservation(order)
+	if product != nil {
+		order.ProductID = product.ID
+		order.ProductName = product.Name
+		order.ProductKind = topupProductKind(product.Kind)
+		order.StorageBytes = product.StorageBytes
+		order.StorageDurationDays = product.StorageDurationDays
+		order.AmountFen = product.AmountFen
+		order.CreditsMicrocredits = product.CreditsMicrocredits
+	} else {
+		order.ProductName = fmt.Sprintf("积分超市 · %d 积分", credits)
+		order.ProductKind = model.TopupProductKindCredits
+		order.AmountFen = quote.AmountFen
+		order.CreditsMicrocredits = credits * CreditScale
+	}
+	var created bool
+	if product != nil {
+		order, created, err = s.repo.CreatePaymentOrderWithProductReservation(order)
+	} else {
+		order, created, err = s.repo.CreateStandalonePaymentOrder(order)
+	}
 	if errors.Is(err, repository.ErrTopupUnavailable) {
 		return nil, NewAppError(http.StatusConflict, "充值商品当前不可购买")
 	}

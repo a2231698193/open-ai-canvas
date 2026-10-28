@@ -42,7 +42,12 @@ func RegisterPaymentRoutes(r *gin.RouterGroup, svc *service.Service) {
 			failService(c, err)
 			return
 		}
-		ok(c, gin.H{"products": products})
+		creditStore, err := svc.CreditStorePolicy()
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"products": products, "creditStore": creditStore})
 	})
 	r.POST("/payments/orders", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
@@ -184,6 +189,37 @@ func RegisterPaymentRoutes(r *gin.RouterGroup, svc *service.Service) {
 
 	admin := r.Group("/admin/payments")
 	registerPaymentExportRoutes(admin, svc)
+	admin.GET("/credit-store", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		setting, err := svc.AdminCreditStoreSetting(user)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"creditStore": setting})
+	})
+	admin.PUT("/credit-store", func(c *gin.Context) {
+		user, err := currentUser(c, svc)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		var request service.CreditStoreSetting
+		if err := c.ShouldBindJSON(&request); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		setting, err := svc.UpdateCreditStoreSetting(user, request)
+		if err != nil {
+			failService(c, err)
+			return
+		}
+		ok(c, gin.H{"creditStore": setting})
+	})
 	admin.GET("/providers", func(c *gin.Context) {
 		user, err := currentUser(c, svc)
 		if err != nil {

@@ -159,6 +159,8 @@ handle 放错端点、格式错误或行 ID 不存在时，工具错误回执提
 
 存储空间商品与积分商品共用 `/api/payments/*` 和 `/api/admin/payments/products`。商品和订单增加 `kind`/`productKind`（`credits`|`storage`）、`storageBytes`、`storageDurationDays`。`/payments/providers` 与下单不再要求积分功能；积分功能关闭时，`/payments/products` 只返回存储空间商品，积分商品下单返回功能未开启。商品类型创建后不能修改。
 
+积分超市由 `/api/payments/products` 返回的 `creditStore` 报价策略驱动：`{ minCredits: 100, maxCredits: 10000, step: 100, unitPriceFen, discounts: [{ minCredits: 5000, basisPoints: 2000 }, { minCredits: 1000, basisPoints: 1000 }] }`。`POST /api/payments/orders` 的 `productId` 与 `credits` 二选一：`credits` 必须是 100 的整数倍且不超过 10,000，金额由后端按单价、折扣并四舍五入到分计算，客户端不提交金额；自定义积分订单不占用固定商品库存，幂等键按用户与积分数量复用。`GET/PUT /api/admin/payments/credit-store` 读取和保存积分单价 `{ unitPriceFen }`（1–100000 分/积分，默认 10），写管理员审计。固定积分商品仍保留在管理端，但前台钱包与会员中心只展示积分超市和存储空间套餐。
+
 ## AutoDL 视频画面规格配置
 
 渠道模型的 `capabilityConfig.video.resolutions` 与 `defaultResolution` 直接表示所选完整分辨率与默认值，始终生效；不再使用或返回 `customSizeEnabled`、`customScreenSpec`。AutoDL v2.3.0 未声明独立比例参数，因此 `ratios` 为空、`defaultRatio` 为空字符串，横竖与方形由完整分辨率标签表达。

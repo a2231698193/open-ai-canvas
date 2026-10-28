@@ -1,0 +1,344 @@
+/* 积分超市：数量选择、折扣报价与支付方式。 */
+
+.workspace-wallet-credit-store {
+    margin: 12px 24px 0;
+}
+
+.credit-store-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 16px);
+    padding: var(--space-5, 20px);
+    border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+    border-radius: var(--r-2xl, 16px);
+    background: radial-gradient(110% 80% at 0% 0%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 62%), color-mix(in srgb, var(--user-surface, #fff) 96%, var(--primary) 4%);
+}
+
+.credit-store-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    flex-wrap: wrap;
+}
+
+.credit-store-emblem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    border-radius: 13px;
+    color: #b45309;
+    background: linear-gradient(150deg, #fde68a, #f59e0b);
+    box-shadow: 0 8px 18px -12px rgba(245, 158, 11, 0.9);
+}
+
+.credit-store-emblem svg {
+    width: 20px;
+    height: 20px;
+}
+
+.credit-store-head-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.credit-store-head-text h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.credit-store-head-text p {
+    margin: 2px 0 0;
+    font-size: 12px;
+    opacity: 0.62;
+}
+
+.credit-store-tiers {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.credit-store-tier {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 13%, transparent);
+}
+
+[data-theme="dark"] .credit-store-tier {
+    color: #fbbf24;
+}
+
+.credit-store-tier svg {
+    width: 12px;
+    height: 12px;
+}
+
+.credit-store-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+    gap: var(--space-4, 16px);
+    align-items: stretch;
+}
+
+.credit-store-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.credit-store-label {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.62;
+}
+
+.credit-store-amount {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.credit-store-amount > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 44px;
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--user-ink) 14%, transparent);
+    border-radius: 11px;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease;
+}
+
+.credit-store-amount > button:hover:not(:disabled) {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.credit-store-amount > button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.credit-store-amount > button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.credit-store-amount-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, var(--user-ink) 18%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--user-surface, #fff) 88%, transparent);
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.credit-store-amount-field:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.credit-store-amount-field input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.credit-store-amount-field span {
+    flex-shrink: 0;
+    font-size: 13px;
+    opacity: 0.55;
+}
+
+.credit-store-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.credit-store-quick button {
+    padding: 5px 12px;
+    border: 1px solid color-mix(in srgb, var(--user-ink) 12%, transparent);
+    border-radius: 999px;
+    color: inherit;
+    background: transparent;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        color 0.15s ease;
+}
+
+.credit-store-quick button:hover {
+    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.credit-store-quick button.is-selected {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 9%, transparent);
+    font-weight: 600;
+}
+
+.credit-store-unit {
+    margin: 0;
+    font-size: 11px;
+    opacity: 0.5;
+}
+
+.credit-store-quote {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--space-4, 16px);
+    border: 1px dashed color-mix(in srgb, var(--primary) 28%, transparent);
+    border-radius: var(--r-xl, 12px);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
+}
+
+.credit-store-quote > span {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+.credit-store-quote > strong {
+    font-size: 30px;
+    font-weight: 750;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.credit-store-quote-discount {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.credit-store-quote-discount s {
+    opacity: 0.45;
+}
+
+.credit-store-quote-discount em {
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-style: normal;
+    font-weight: 600;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 16%, transparent);
+}
+
+[data-theme="dark"] .credit-store-quote-discount em {
+    color: #fbbf24;
+}
+
+.credit-store-quote > small {
+    font-size: 11px;
+    opacity: 0.5;
+}
+
+.credit-store-checkout {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3, 12px);
+    flex-wrap: wrap;
+    padding-top: var(--space-3, 12px);
+    border-top: 1px solid color-mix(in srgb, var(--user-ink) 8%, transparent);
+}
+
+.credit-store-checkout .workspace-wallet-providers {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+}
+
+.credit-store-checkout-hint {
+    flex: 1;
+    font-size: 12px;
+    opacity: 0.55;
+}
+
+@media (max-width: 640px) {
+    .workspace-wallet-credit-store {
+        margin: 16px 16px 0;
+    }
+
+    .credit-store-panel {
+        padding: var(--space-4, 16px);
+    }
+
+    .credit-store-tiers {
+        width: 100%;
+    }
+
+    .credit-store-body {
+        grid-template-columns: 1fr;
+    }
+
+    .credit-store-quote {
+        flex-direction: row;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+    }
+
+    .credit-store-quote > strong {
+        font-size: 24px;
+    }
+
+    .credit-store-quote-discount,
+    .credit-store-quote > small {
+        width: 100%;
+    }
+
+    .credit-store-checkout {
+        justify-content: stretch;
+    }
+
+    .credit-store-checkout > .ant-btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .credit-store-amount > button,
+    .credit-store-amount-field,
+    .credit-store-quick button {
+        transition: none;
+    }
+}

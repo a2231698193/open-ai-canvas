@@ -15,6 +15,34 @@
     overflow: hidden;
 }
 
+/* 积分超市与存储套餐同屏时由外层统一滚动，避免固定高度把存储区挤扁。 */
+.workspace-wallet-topup-tab {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 24px 20px;
+    padding-right: 2px;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.workspace-wallet-topup-tab .workspace-wallet-credit-store {
+    margin: 0;
+}
+
+.workspace-wallet-topup-tab .workspace-wallet-content.wallet-topup {
+    flex: 0 0 auto;
+    margin: 0;
+    overflow: visible;
+}
+
+.workspace-wallet-topup-tab .wallet-topup-groups {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
 .wallet-topup .is-credits {
     --wallet-topup-kind-ink: var(--wallet-topup-credits-ink);
 }
@@ -448,6 +476,10 @@
 }
 
 @media (max-width: 720px) {
+    .workspace-wallet-topup-tab {
+        margin: 16px;
+    }
+
     .workspace-wallet-stats {
         width: 100%;
     }

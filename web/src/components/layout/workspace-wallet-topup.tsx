@@ -152,6 +152,7 @@ export function WalletTopupPanel({
     storageUsage,
     storageGrants,
     onCleanAssets,
+    emptyState,
 }: {
     loading: boolean;
     products: TopupProduct[];
@@ -168,6 +169,8 @@ export function WalletTopupPanel({
     storageUsage?: AccountFileStorageUsage;
     storageGrants: UserStorageGrant[];
     onCleanAssets: () => void;
+    /** 传 null 可隐藏“在线充值暂不可用”，用于页面同时提供其他购买方式时。 */
+    emptyState?: ReactNode;
 }) {
     const groupsRef = useRef<HTMLDivElement>(null);
 
@@ -246,7 +249,7 @@ export function WalletTopupPanel({
                         立即支付
                     </Button>
                 </footer>
-            ) : (
+            ) : emptyState === undefined ? (
                 <div className="workspace-wallet-inline-state">
                     <CircleAlert />
                     <div>
@@ -254,6 +257,8 @@ export function WalletTopupPanel({
                         <span>当前没有已上架的套餐，请使用兑换码或联系管理员。</span>
                     </div>
                 </div>
+            ) : (
+                emptyState
             )}
         </div>
     );

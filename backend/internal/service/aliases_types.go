@@ -144,6 +144,7 @@ type (
 	CreateAssetFolderRequest               = app.CreateAssetFolderRequest
 	CreateAssetVersionRequest              = app.CreateAssetVersionRequest
 	CreatePaymentOrderRequest              = app.CreatePaymentOrderRequest
+	CreditStoreSetting                     = app.CreditStoreSetting
 	CreateCharacterRequest                 = app.CreateCharacterRequest
 	CreateProjectAssetFolderRequest        = app.CreateProjectAssetFolderRequest
 	CreateProjectCharacterRequest          = app.CreateProjectCharacterRequest

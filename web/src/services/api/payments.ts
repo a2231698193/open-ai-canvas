@@ -43,6 +43,23 @@ export type TopupProduct = {
     updatedAt: string;
 };
 
+export type CreditStoreDiscount = {
+    minCredits: number;
+    basisPoints: number;
+};
+
+export type CreditStorePolicy = {
+    minCredits: number;
+    maxCredits: number;
+    step: number;
+    unitPriceFen: number;
+    discounts: CreditStoreDiscount[];
+};
+
+export type AdminCreditStoreSetting = {
+    unitPriceFen: number;
+};
+
 export type PaymentOrderStatus = "created" | "pending" | "closing" | "closed" | "credited" | "create_failed";
 export type PaymentOrderKind = "topup" | "membership";
 export type MembershipChangeType = "new" | "renew" | "upgrade";
@@ -113,10 +130,10 @@ export function listPaymentProviders() {
 }
 
 export function listTopupProducts() {
-    return http.get<{ products: TopupProduct[] }>("/payments/products");
+    return http.get<{ products: TopupProduct[]; creditStore: CreditStorePolicy }>("/payments/products");
 }
 
-export function createPaymentOrder(input: { productId: string; providerId: string; idempotencyKey: string }) {
+export function createPaymentOrder(input: { productId?: string; credits?: number; providerId: string; idempotencyKey: string }) {
     return http.post<{ order: PaymentOrder }>("/payments/orders", input);
 }
 
@@ -146,6 +163,14 @@ export function updateAdminPaymentProvider(id: string, input: { enabled: boolean
 
 export function listAdminTopupProducts() {
     return http.get<{ products: TopupProduct[] }>("/admin/payments/products");
+}
+
+export function getAdminCreditStoreSetting() {
+    return http.get<{ creditStore: AdminCreditStoreSetting }>("/admin/payments/credit-store");
+}
+
+export function updateAdminCreditStoreSetting(input: AdminCreditStoreSetting) {
+    return http.put<{ creditStore: AdminCreditStoreSetting }>("/admin/payments/credit-store", input);
 }
 
 export type TopupProductInput = Pick<TopupProduct, "name" | "kind" | "amountFen" | "creditsMicrocredits" | "storageBytes" | "storageDurationDays" | "enabled" | "sortOrder" | "saleStrategy"> & {

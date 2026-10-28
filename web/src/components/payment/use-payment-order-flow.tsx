@@ -59,11 +59,11 @@ export function usePaymentOrderFlow({ onGranted }: { onGranted: (order: PaymentO
         idempotencyKey.current = "";
     };
 
-    const start = async (productId: string, providerId: string) => {
+    const submit = async (input: { productId?: string; credits?: number }, providerId: string) => {
         setCreating(true);
         try {
             if (!idempotencyKey.current) idempotencyKey.current = createClientUUID();
-            const result = await createPaymentOrder({ productId, providerId, idempotencyKey: idempotencyKey.current });
+            const result = await createPaymentOrder({ ...input, providerId, idempotencyKey: idempotencyKey.current });
             idempotencyKey.current = "";
             setOrder(result.order);
             await settle(result.order);
@@ -78,6 +78,11 @@ export function usePaymentOrderFlow({ onGranted }: { onGranted: (order: PaymentO
             setCreating(false);
         }
     };
+
+    const start = (productId: string, providerId: string) => submit({ productId }, providerId);
+
+    /** 积分超市按数量下单，金额由后端报价，前端不传金额。 */
+    const startCredit = (credits: number, providerId: string) => submit({ credits }, providerId);
 
     /** 支付跳转返回后展示指定订单的结果。 */
     const showOrder = async (orderId: string) => {
@@ -170,7 +175,7 @@ export function usePaymentOrderFlow({ onGranted }: { onGranted: (order: PaymentO
         </AppModal>
     );
 
-    return { creating, start, showOrder, resetIdempotency, dialog };
+    return { creating, start, startCredit, showOrder, resetIdempotency, dialog };
 }
 
 function PaymentStatus({ order, now }: { order: PaymentOrder; now: number }) {

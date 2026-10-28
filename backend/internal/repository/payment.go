@@ -179,8 +179,8 @@ func (r *Repository) CreatePaymentOrderWithProductReservation(order *model.Payme
 	return order, true, nil
 }
 
-// CreateMembershipPaymentOrder 只依赖支付订单自身的幂等键，不锁定充值商品库存。
-func (r *Repository) CreateMembershipPaymentOrder(order *model.PaymentOrder) (*model.PaymentOrder, bool, error) {
+// CreateStandalonePaymentOrder 只依赖支付订单自身的幂等键，不锁定充值商品库存。
+func (r *Repository) CreateStandalonePaymentOrder(order *model.PaymentOrder) (*model.PaymentOrder, bool, error) {
 	created := r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "idempotency_key"}},
 		DoNothing: true,
@@ -196,6 +196,11 @@ func (r *Repository) CreateMembershipPaymentOrder(order *model.PaymentOrder) (*m
 		return nil, false, err
 	}
 	return &existing, false, nil
+}
+
+// CreateMembershipPaymentOrder 只依赖支付订单自身的幂等键，不锁定充值商品库存。
+func (r *Repository) CreateMembershipPaymentOrder(order *model.PaymentOrder) (*model.PaymentOrder, bool, error) {
+	return r.CreateStandalonePaymentOrder(order)
 }
 
 func (r *Repository) SetPaymentOrderCheckout(id string, checkoutMode, checkoutValue string, checkoutExpiresAt time.Time) error {
