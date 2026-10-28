@@ -291,7 +291,7 @@ export function WorkspaceWalletModal({
                         <div className="workspace-wallet-tabs" role="tablist" aria-label="积分中心">
                             <button type="button" role="tab" aria-selected={activeTab === "topup"} onClick={() => setTab("topup")}>
                                 <WalletCards />
-                                充值
+                                积分超市
                             </button>
                             <button type="button" role="tab" aria-selected={activeTab === "redeem"} onClick={() => setTab("redeem")}>
                                 <TicketCheck />

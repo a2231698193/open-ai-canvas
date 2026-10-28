@@ -78,8 +78,21 @@ export function ModelPicker({
                 options.filter((model) => resolveModelChannel(config, model).id === channel.id),
             ),
         );
-        // 渠道顺序作为稳定次序，因此同名模型会保持在同一段内相邻展示。
-        return groups.sort((left, right) => left.label.localeCompare(right.label, "zh-Hans-CN", { numeric: true, sensitivity: "base" }));
+        // 以后台渠道模型的 sortOrder 为准；未配置的按当前稳定顺序排在后面。
+        const groupOrder = new Map<string, number>();
+        groups.forEach((group) => {
+            const order = Math.min(
+                ...group.models.map((model) => {
+                    const channel = resolveModelChannel(config, model);
+                    return channel.modelCosts?.find((item) => item.model === modelOptionName(model))?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+                }),
+            );
+            groupOrder.set(group.key, order);
+        });
+        return groups.sort((left, right) => {
+            const orderDiff = (groupOrder.get(left.key) ?? Number.MAX_SAFE_INTEGER) - (groupOrder.get(right.key) ?? Number.MAX_SAFE_INTEGER);
+            return orderDiff || left.label.localeCompare(right.label, "zh-Hans-CN", { numeric: true, sensitivity: "base" });
+        });
     }, [config, options]);
     const duplicatedLabels = useMemo(() => {
         const counts = new Map<string, number>();
@@ -372,7 +385,7 @@ export function ModelLabel({
             <span className="min-w-0 flex-1 overflow-hidden">
                 <span className="canvas-model-picker-option-heading">
                     <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                        <span className="canvas-model-picker-option-name text-[var(--fs-label)] font-medium leading-none truncate !flex-initial max-w-full" title={pickerModelDisplayName(config, model, showConfiguredModelName)}>{pickerModelDisplayName(config, model, showConfiguredModelName)}</span>
+                        <span className="canvas-model-picker-option-name text-[var(--fs-body)] font-medium leading-none truncate !flex-initial max-w-full" title={pickerModelDisplayName(config, model, showConfiguredModelName)}>{pickerModelDisplayName(config, model, showConfiguredModelName)}</span>
                         {channel.scope !== "system" ? (
                             <span className="shrink-0 rounded px-2 py-0.5 text-[var(--fs-label)] font-medium leading-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">
                                 个人

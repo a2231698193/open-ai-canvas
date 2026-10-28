@@ -95,6 +95,7 @@ export type ModelChannel = {
         model: string;
         displayName?: string;
         channelLabel?: string;
+        sortOrder?: number;
         tags?: ModelTag[];
         description?: string;
         icon?: string;

@@ -13,9 +13,9 @@ import "./workspace-wallet-topup.css";
 
 export type TopupCategory = "all" | TopupProductKind;
 
-const KIND_META: Record<TopupProductKind, { label: string; description: string; icon: typeof Coins }> = {
-    credits: { label: "积分", description: "用于模型生成、Agent 与工具调用，按实际用量扣减。", icon: Coins },
-    storage: { label: "存储空间", description: "扩充素材文件与 Agent 会话附件的总容量，支付后立即生效。", icon: HardDrive },
+const KIND_META: Record<TopupProductKind, { label: string; heading: string; description: string; icon: typeof Coins }> = {
+    credits: { label: "积分", heading: "积分超市", description: "用于模型生成、Agent 与工具调用，按实际用量扣减。", icon: Coins },
+    storage: { label: "存储空间", heading: "存储空间套餐", description: "扩充素材文件与 Agent 会话附件的总容量，支付后立即生效。", icon: HardDrive },
 };
 
 function productAvailability(product: TopupProduct) {
@@ -77,7 +77,7 @@ function TopupGroup({ kind, products, selectedProductId, onSelectProduct, aside,
                     <Icon />
                 </span>
                 <div>
-                    <h3 id={`wallet-topup-group-${kind}`}>{meta.label}套餐</h3>
+                    <h3 id={`wallet-topup-group-${kind}`}>{meta.heading}</h3>
                     <p title={meta.description}>{meta.description}</p>
                 </div>
                 {aside}
@@ -90,7 +90,7 @@ function TopupGroup({ kind, products, selectedProductId, onSelectProduct, aside,
                     ))}
                 </div>
             ) : (
-                <div className="wallet-topup-group-empty">暂未上架{meta.label}套餐</div>
+                <div className="wallet-topup-group-empty">暂未上架{kind === "credits" ? "积分商品" : meta.heading}</div>
             )}
         </section>
     );
