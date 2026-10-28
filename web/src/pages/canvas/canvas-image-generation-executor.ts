@@ -139,6 +139,7 @@ export async function executeImageGeneration(
             status: NODE_STATUS_LOADING,
             size: generationConfig.size,
             isBatchRoot: count > 1,
+            batchGrid: undefined,
             batchChildIds: count > 1 ? childIds : undefined,
             batchFailedCount: count > 1 ? 0 : undefined,
             batchUsesReferenceImages: referenceImages.length > 0,
@@ -299,7 +300,7 @@ export async function executeImageGeneration(
                         return updated;
                     });
                 }
-                if (gridSplit && splitGeneratedGrid) await splitGeneratedGrid(targetId, gridSplit).catch(() => {});
+                if (gridSplit && splitGeneratedGrid && targetId === rootId) await splitGeneratedGrid(targetId, gridSplit).catch(() => {});
                 hasSuccess = true;
                 if (isConfigNode) setNodes((current) => current.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
                 return true;

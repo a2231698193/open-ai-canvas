@@ -3,7 +3,7 @@
 // 视频只有在进入视口且被激活时才加载真实播放地址（useNearViewport / useVideoPlaybackUrl），
 // 避免大画布上同时拉取大量视频。
 
-import { Image as ImageIcon, LoaderCircle, Music2, Play, Video } from "lucide-react";
+import { CopyPlus, Download, Image as ImageIcon, LoaderCircle, Music2, Play, Star, TriangleAlert, Video } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useCanvasNodeActions } from "./canvas-node-action-context";
 import { canvasNodeVideoPreviewReference } from "@/lib/canvas/canvas-media-preview";
@@ -18,6 +18,7 @@ import { bindCanvasVideoHoverPreview } from "@/lib/canvas/canvas-video-hover-pre
 import { resolveVideoMediaUrl } from "@/services/file-storage";
 import { hydrateCanvasVideoPreview } from "@/services/canvas-video-preview";
 import { type CanvasTheme } from "@/lib/canvas-theme";
+import { imageBatchGridColumns } from "@/lib/canvas/canvas-image-batch-grid";
 import { fitImageMaterialNodeSize, fitImageNodeSize } from "@/lib/canvas/canvas-node-size";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { prepareCanvasImage } from "@/services/canvas-image-loader";
@@ -27,6 +28,9 @@ import type { CanvasNodeContentProps } from "./canvas-node-content";
 import { ErrorContent, LoadingContent } from "./canvas-node-status-content";
 
 export function ImageNodeContent(props: CanvasNodeContentProps) {
+    if (props.isBatchRoot && props.batchGrid && props.batchPreviewNodes?.length) {
+        return <BatchImageGrid node={props.node} children={props.batchPreviewNodes} theme={props.theme} readOnly={Boolean(props.contentReadOnly)} onViewImage={props.onViewImage} />;
+    }
     const hasImage = Boolean(props.node.metadata?.content || props.node.metadata?.storageKey);
     if (!hasImage && props.isBatchRoot) {
         const content =
@@ -65,6 +69,112 @@ export function ImageNodeContent(props: CanvasNodeContentProps) {
             batchRecovering={props.batchRecovering}
             onToggleBatch={props.onToggleBatch}
         />
+    );
+}
+
+function BatchImageGrid({
+    node,
+    children,
+    theme,
+    readOnly,
+    onViewImage,
+}: {
+    node: CanvasNodeData;
+    children: CanvasNodeData[];
+    theme: CanvasTheme;
+    readOnly: boolean;
+    onViewImage?: (node: CanvasNodeData) => void;
+}) {
+    const columns = imageBatchGridColumns(children.length);
+    return (
+        <div
+            className="grid h-full w-full overflow-hidden rounded-[var(--node-radius)]"
+            style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 2, background: theme.node.edge }}
+            role="group"
+            aria-label={`${node.title || "图片组"}，共 ${children.length} 张`}
+        >
+            {children.map((child, index) => (
+                <BatchGridCell key={child.id} child={child} index={index} primary={child.id === node.metadata?.primaryImageId} theme={theme} readOnly={readOnly} onViewImage={onViewImage} />
+            ))}
+        </div>
+    );
+}
+
+function BatchGridCell({
+    child,
+    index,
+    primary,
+    theme,
+    readOnly,
+    onViewImage,
+}: {
+    child: CanvasNodeData;
+    index: number;
+    primary: boolean;
+    theme: CanvasTheme;
+    readOnly: boolean;
+    onViewImage?: (node: CanvasNodeData) => void;
+}) {
+    const actions = useCanvasNodeActions();
+    const ref = useRef<HTMLDivElement>(null);
+    const nearViewport = useNearViewport(ref);
+    const { url, loading } = useNodeResourceUrl(child, nearViewport);
+    const failed = child.metadata?.status === "error";
+    const pending = child.metadata?.status === "loading" || loading;
+    const hasImage = Boolean(child.metadata?.content || child.metadata?.storageKey);
+    return (
+        <div
+            ref={ref}
+            className="group/batch-cell relative min-h-0 min-w-0 overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset"
+            style={{ background: theme.node.fill, outlineColor: theme.accent.primary }}
+            tabIndex={hasImage ? 0 : -1}
+            title={child.title}
+            onDoubleClick={(event) => {
+                event.stopPropagation();
+                if (hasImage) onViewImage?.(child);
+            }}
+        >
+            {url ? <img src={url} alt={child.title} draggable={false} className="absolute inset-0 h-full w-full select-none object-contain" /> : null}
+            {!url ? (
+                <div className="absolute inset-0 grid place-items-center" style={{ color: theme.node.muted }}>
+                    {pending ? <LoaderCircle className="size-5 animate-spin" /> : failed ? <TriangleAlert className="size-5 text-red-400" /> : <ImageIcon className="size-5 opacity-40" />}
+                </div>
+            ) : null}
+            <span className="pointer-events-none absolute right-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white/85">{index + 1}</span>
+            {primary ? (
+                <span className="pointer-events-none absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                    <Star className="size-2.5 fill-current" aria-hidden="true" />
+                    主图
+                </span>
+            ) : null}
+            {hasImage && !readOnly ? (
+                <div className="absolute inset-x-0 bottom-1 flex justify-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/batch-cell:opacity-100 group-focus-within/batch-cell:opacity-100">
+                    <GridAction label={`下载第 ${index + 1} 张`} icon={<Download />} onClick={() => actions.download?.(child)} />
+                    <GridAction label={primary ? "当前主图" : `将第 ${index + 1} 张设为主图`} icon={<Star className={primary ? "fill-current" : ""} />} disabled={primary} onClick={() => actions.setBatchPrimary?.(child)} />
+                    <GridAction label={`单独使用第 ${index + 1} 张（提取为独立节点）`} icon={<CopyPlus />} onClick={() => actions.extractBatchImage?.(child)} />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function GridAction({ label, icon, disabled, onClick }: { label: string; icon: ReactNode; disabled?: boolean; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            className="grid size-6 place-items-center rounded-[var(--r-sm)] bg-black/55 text-white/90 backdrop-blur transition-colors hover:bg-black/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white disabled:cursor-default disabled:opacity-70"
+            aria-label={label}
+            title={label}
+            disabled={disabled}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+                event.stopPropagation();
+                onClick();
+            }}
+        >
+            <span className="grid size-3.5 place-items-center [&>svg]:size-3.5">{icon}</span>
+        </button>
     );
 }
 

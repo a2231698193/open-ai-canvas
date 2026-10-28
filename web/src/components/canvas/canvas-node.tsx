@@ -47,6 +47,7 @@ type CanvasNodeProps = {
     drawingProjectId?: string;
     batchCount?: number;
     batchPreviewNodes?: CanvasNodeData[];
+    batchGrid?: boolean;
     batchExpanded?: boolean;
     batchClosing?: boolean;
     batchOpening?: boolean;
@@ -95,6 +96,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     drawingProjectId,
     batchCount = 0,
     batchPreviewNodes,
+    batchGrid = false,
     batchExpanded = false,
     batchClosing = false,
     batchOpening = false,
@@ -253,7 +255,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 } as React.CSSProperties}
                 onMouseDown={(event) => onMouseDown(event, data.id)}
                 onDoubleClick={(event) => {
-                    if (isBatchRoot) {
+                    if (isBatchRoot && !batchGrid) {
                         event.stopPropagation();
                         onToggleBatch?.(data.id);
                         return;
@@ -315,6 +317,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         isBatchRoot={isBatchRoot}
                         batchCount={batchCount}
                         batchPreviewNodes={batchPreviewNodes}
+                        batchGrid={batchGrid}
                         batchExpanded={batchExpanded}
                         batchOpening={batchOpening}
                         batchRecovering={batchRecovering}
@@ -325,6 +328,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onStopEditing={() => setIsEditingContent(false)}
                         onRetry={onRetry}
                         onReloadResource={onReloadResource}
+                        onViewImage={onViewImage}
                         onToggleBatch={() => onToggleBatch?.(data.id)}
                         disableMediaEffects={disableMediaEffects}
                         mediaActive={mediaActive}
@@ -355,7 +359,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     <div className="absolute right-3 top-3 z-[var(--node-z-overlay)] flex min-w-0 items-center justify-end gap-1 max-w-[calc(100%-24px)]">
                         {resourceLabel && data.type !== CanvasNodeType.Image ? <ResourceLabelBadge reference={resourceLabel} theme={theme} /> : null}
                         {hasMediaContent && !readOnly ? <ResourceStorageBadge storageKey={data.metadata?.storageKey} active={isActive} theme={theme} /> : null}
-                        {isBatchRoot ? <BatchToggleBadge count={batchCount} expanded={batchExpanded} theme={theme} onToggle={() => onToggleBatch?.(data.id)} /> : null}
+                        {isBatchRoot && !batchGrid ? <BatchToggleBadge count={batchCount} expanded={batchExpanded} theme={theme} onToggle={() => onToggleBatch?.(data.id)} /> : null}
                         {data.metadata?.imageLayerGroup && !readOnly ? <CanvasImageLayerControls node={data} /> : null}
                         {isBatchChild && !data.metadata?.imageLayer && !data.metadata?.layerExtraction && !readOnly ? <BatchPrimaryBadge visible={batchPrimary || hovered || isSelected} selected={batchPrimary} theme={theme} onSelect={() => onSetBatchPrimary?.(data)} /> : null}
                         {showVersionBadge ? <MediaVersionBadge node={data} theme={theme} onOpen={() => openMediaVersions?.(data)} /> : null}
@@ -382,7 +386,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     </div>
                 ) : null}
                 {/* 批次主图位（折叠根节点封面）常驻下载按钮 */}
-                {showChrome && isBatchRoot && hasImageContent && !readOnly && (!data.metadata?.imageLayerGroup?.compositeStatus || data.metadata.imageLayerGroup.compositeStatus === "ready") ? (
+                {showChrome && isBatchRoot && !batchGrid && hasImageContent && !readOnly && (!data.metadata?.imageLayerGroup?.compositeStatus || data.metadata.imageLayerGroup.compositeStatus === "ready") ? (
                     <div className="absolute bottom-2 right-2 z-[var(--node-z-overlay)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                         <BatchChildActionButton theme={theme} label={data.metadata?.imageLayerGroup ? "下载合成图" : "下载主图"} icon={<Download className="size-3.5" />} onClick={() => downloadNode?.(data)} />
                     </div>
@@ -438,6 +442,7 @@ function areCanvasNodePropsEqual(previous: CanvasNodeProps, next: CanvasNodeProp
         previous.drawingProjectId === next.drawingProjectId &&
         previous.batchCount === next.batchCount &&
         previous.batchPreviewNodes === next.batchPreviewNodes &&
+        previous.batchGrid === next.batchGrid &&
         previous.batchExpanded === next.batchExpanded &&
         previous.batchClosing === next.batchClosing &&
         previous.batchOpening === next.batchOpening &&

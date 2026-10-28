@@ -10,6 +10,7 @@ import { useCanvasVisualNode } from "@/components/canvas/canvas-node-resize-moti
 import type { CanvasConnectionApproach } from "@/lib/canvas/canvas-connection-tilt";
 import type { CanvasBatchConnectionPreview } from "@/lib/canvas/canvas-batch-connection";
 import { batchCellAnchor, BATCH_COLUMN_HEADER_HEIGHT, BATCH_TABLE_HEADER_HEIGHT, parseBatchCellHandle, type BatchScroll } from "@/lib/canvas/canvas-batch-references";
+import { orderedImageBatchChildren } from "@/lib/canvas/canvas-image-batch-grid";
 import { sortCanvasNodesByStackOrder, type CanvasNodeStackOrder } from "@/lib/canvas/canvas-node-stack-order";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { isFrameNode } from "@/lib/canvas/canvas-frame";
@@ -50,6 +51,7 @@ type CanvasProjectWorldLayersProps = {
     activeNodeId: string | null;
     selectionBox: SelectionBox | null;
     batchChildCountById: Map<string, number>;
+    gridBatchRootIds: ReadonlySet<string>;
     collapsingBatchIds: Set<string>;
     openingBatchIds: Set<string>;
     batchMotionById: Map<string, { x: number; y: number; index: number }>;
@@ -117,17 +119,15 @@ export const CanvasProjectWorldLayers = memo(function CanvasProjectWorldLayers(p
     const batchPreviews = useMemo(() => {
         const previous = batchPreviewsRef.current;
         const next = new Map(visibleNodes.filter((node) => node.metadata?.isBatchRoot).map((node): [string, CanvasNodeData[]] => {
-            const children = (node.metadata?.batchChildIds || []).filter((id) => id !== node.metadata?.primaryImageId)
-                .map((id) => props.nodeById.get(id))
-                .filter((child): child is CanvasNodeData => Boolean(child && child.metadata?.batchRootId === node.id))
-                .slice(0, 5);
+            const orderedChildren = orderedImageBatchChildren(node, props.nodeById);
+            const children = (props.gridBatchRootIds.has(node.id) ? orderedChildren : orderedChildren.filter((child) => child.id !== node.metadata?.primaryImageId)).slice(0, props.gridBatchRootIds.has(node.id) ? 9 : 5);
             // 子图对象未变时沿用旧数组，避免挂载/视口变化让所有批次封面重渲染。
             const current = previous.get(node.id);
             return [node.id, current && current.length === children.length && children.every((child, index) => child === current[index]) ? current : children];
         }));
         batchPreviewsRef.current = next;
         return next;
-    }, [visibleNodes, props.nodeById]);
+    }, [visibleNodes, props.nodeById, props.gridBatchRootIds]);
     const framePreviewNodes = (node: CanvasNodeData) => {
         const assetFolderId = node.metadata?.folder?.assetFolderId;
         if (assetFolderId) return props.linkedFolderPreviewNodesById.get(assetFolderId) || EMPTY_CANVAS_NODES;
@@ -198,6 +198,7 @@ export const CanvasProjectWorldLayers = memo(function CanvasProjectWorldLayers(p
                         connectionApproach={props.connectionApproach?.nodeId === node.id ? props.connectionApproach.point : undefined}
                         forceInputMounted={Boolean(props.batchConnectionPreview)}
                         batchCount={props.batchChildCountById.get(node.id) || 0}
+                        batchGrid={props.gridBatchRootIds.has(node.id)}
                         batchExpanded={Boolean(node.metadata?.imageBatchExpanded)}
                         batchPreviewNodes={batchPreviews.get(node.id)}
                         batchClosing={Boolean(node.metadata?.batchRootId && props.collapsingBatchIds.has(node.metadata.batchRootId))}

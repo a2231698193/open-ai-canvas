@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { cancelIncompleteImageBatch, failedImageBatchChildren, markImageBatchRetrying, reconcileImageBatchRoot, restoreUnsubmittedImageBatchChild, retireImageBatchChildren } from "../src/lib/canvas/canvas-image-batch-retry";
-import { applyBatchPrimaryImage, removeCanvasNodes } from "../src/lib/canvas/canvas-project-domain";
+import { applyBatchPrimaryImage, isHiddenBatchChild, removeCanvasNodes } from "../src/lib/canvas/canvas-project-domain";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeStatus } from "../src/types/canvas";
 
 function imageNode(id: string, status: CanvasNodeStatus, metadata: Partial<NonNullable<CanvasNodeData["metadata"]>> = {}): CanvasNodeData {
@@ -40,9 +40,12 @@ describe("canvas image batch retry", () => {
     });
 
     test("刷新后五张图两成三败，根节点保留成功资源及准确失败数", () => {
-        const children = Array.from({ length: 5 }, (_, i) => imageNode(`child-${i}`, i < 2 ? "success" : "error", {
-            batchRootId: "root", ...(i < 2 ? { storageKey: `resource:${i}`, assetId: `asset-${i}` } : { errorDetails: "上游失败" }),
-        }));
+        const children = Array.from({ length: 5 }, (_, i) =>
+            imageNode(`child-${i}`, i < 2 ? "success" : "error", {
+                batchRootId: "root",
+                ...(i < 2 ? { storageKey: `resource:${i}`, assetId: `asset-${i}` } : { errorDetails: "上游失败" }),
+            }),
+        );
         const root = imageNode("root", "error", { isBatchRoot: true, batchChildIds: children.map((node) => node.id), taskId: "old-task", taskStatus: "failed" });
         const next = reconcileImageBatchRoot(root, [root, ...children]);
         expect(next.metadata).toMatchObject({ status: "success", storageKey: "resource:0", batchFailedCount: 3 });
@@ -123,7 +126,14 @@ describe("canvas image batch retry", () => {
         const root = imageNode("root", "loading", { isBatchRoot: true, batchChildIds: ["done", "pending"], imageBatchExpanded: false });
         const done = imageNode("done", "success", { batchRootId: root.id, content: "image:done" });
         const pending = imageNode("pending", "loading", { batchRootId: root.id });
-        const retired = retireImageBatchChildren(root, [root, done, pending], [{ id: "c1", fromNodeId: root.id, toNodeId: done.id }, { id: "c2", fromNodeId: root.id, toNodeId: pending.id }]);
+        const retired = retireImageBatchChildren(
+            root,
+            [root, done, pending],
+            [
+                { id: "c1", fromNodeId: root.id, toNodeId: done.id },
+                { id: "c2", fromNodeId: root.id, toNodeId: pending.id },
+            ],
+        );
         expect(retired.removedIds).toEqual(["pending"]);
         expect(retired.nodes.map((node) => node.id)).toEqual(["root", "done"]);
         expect(retired.nodes.find((node) => node.id === "done")?.metadata?.batchRootId).toBeUndefined();
@@ -160,5 +170,31 @@ describe("canvas image batch retry", () => {
         expect(nextRoot?.metadata?.batchFailedCount).toBeUndefined();
         expect(nextRoot?.metadata?.errorDetails).toBeUndefined();
         expect(nextRoot?.metadata?.generationErrorCode).toBeUndefined();
+    });
+});
+
+describe("grid batch primary image", () => {
+    test("切换网格主图不改根节点的 2×2 排版尺寸", () => {
+        const root = { ...imageNode("root", "success", { isBatchRoot: true, batchGrid: true, batchChildIds: ["a", "b"], primaryImageId: "a" }), width: 512, height: 512 };
+        const child = { ...imageNode("b", "success", { batchRootId: "root", batchOutputIndex: 1, content: "/b.png", storageKey: "resource:b", naturalWidth: 256, naturalHeight: 256 }), width: 256, height: 256 };
+        const next = applyBatchPrimaryImage(root, child);
+        expect(next.width).toBe(512);
+        expect(next.height).toBe(512);
+        expect(next.metadata?.primaryImageId).toBe("b");
+        expect(next.metadata?.content).toBe("/b.png");
+    });
+});
+
+describe("grid batch hidden children", () => {
+    test("固定批量与 lk888 网格子图始终不在画布上单独显示", () => {
+        const fixedRoot = imageNode("root", "success", { isBatchRoot: true, batchChildIds: ["a"], imageBatchExpanded: true });
+        const fixedChild = imageNode("a", "success", { batchRootId: "root", batchOutputIndex: 0 });
+        expect(isHiddenBatchChild(fixedChild, [fixedRoot, fixedChild])).toBe(true);
+        const splitRoot = imageNode("split-root", "success", { isBatchRoot: true, batchGrid: true, batchChildIds: ["b"], imageBatchExpanded: true });
+        const splitChild = imageNode("b", "success", { batchRootId: "split-root" });
+        expect(isHiddenBatchChild(splitChild, [splitRoot, splitChild])).toBe(true);
+        const ordinaryRoot = imageNode("ordinary", "success", { isBatchRoot: true, batchChildIds: ["c"], imageBatchExpanded: true });
+        const ordinaryChild = imageNode("c", "success", { batchRootId: "ordinary" });
+        expect(isHiddenBatchChild(ordinaryChild, [ordinaryRoot, ordinaryChild])).toBe(false);
     });
 });

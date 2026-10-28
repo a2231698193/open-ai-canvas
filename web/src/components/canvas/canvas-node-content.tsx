@@ -45,6 +45,7 @@ export type CanvasNodeContentProps = {
     isBatchRoot: boolean;
     batchCount: number;
     batchPreviewNodes?: CanvasNodeData[];
+    batchGrid?: boolean;
     batchExpanded: boolean;
     batchOpening: boolean;
     batchRecovering: boolean;
@@ -55,6 +56,7 @@ export type CanvasNodeContentProps = {
     mentionReferences: CanvasResourceReference[];
     onRetry?: (node: CanvasNodeData) => void;
     onReloadResource?: (node: CanvasNodeData) => void;
+    onViewImage?: (node: CanvasNodeData) => void;
     onOpenTaskDetails?: (node: CanvasNodeData) => void;
     onToggleBatch?: () => void;
     disableMediaEffects?: boolean;
@@ -79,6 +81,9 @@ export function CanvasNodeContent(props: CanvasNodeContentProps) {
     if (props.node.metadata?.fileUpload) return <CanvasFileUploadContent node={props.node} theme={props.theme} reduceMotion={props.disableMediaEffects} />;
     // Preserve the decoded image across LOD changes; only its surrounding
     // controls and batch previews become lighter in overview mode.
+    if (props.isBatchRoot && props.batchGrid && props.renderLOD !== "shell" && props.batchPreviewNodes?.length) {
+        return <ImageNodeContent {...props} />;
+    }
     if (props.node.type === CanvasNodeType.Image && props.renderLOD !== "full" && (props.node.metadata?.content || props.node.metadata?.storageKey)) {
         return <ImageNodeContent {...props} />;
     }

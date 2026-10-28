@@ -10,6 +10,10 @@ export type CanvasNodeActionContextValue = {
     download?: (node: CanvasNodeData) => void;
     duplicate?: (node: CanvasNodeData) => void;
     deleteNode?: (node: CanvasNodeData) => void;
+    /** 四图网格中把某张子图设为主图。 */
+    setBatchPrimary?: (child: CanvasNodeData) => void;
+    /** 四图网格中把某张子图提取为独立普通节点。 */
+    extractBatchImage?: (child: CanvasNodeData) => void;
     /** 合并式更新节点 metadata；扩展节点（如调色）在自己的面板里改参数时用。 */
     updateMetadata?: (nodeId: string, patch: CanvasNodeMetadata) => void;
     /** 更新单个节点；媒体尺寸回写使用它，避免触发全量节点时间戳归并。 */

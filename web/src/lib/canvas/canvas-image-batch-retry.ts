@@ -79,6 +79,7 @@ export function cancelIncompleteImageBatch(rootId: string, childIds: string[], n
                 delete metadata.batchFailedCount;
                 delete metadata.primaryImageId;
                 delete metadata.isBatchRoot;
+                delete metadata.batchGrid;
                 delete metadata.imageBatchExpanded;
                 delete metadata.batchChildIds;
             }
@@ -156,6 +157,7 @@ export function reconcileImageBatchRoot(root: CanvasNodeData, nodes: CanvasNodeD
         delete metadata.batchFailedCount;
         delete metadata.primaryImageId;
         delete metadata.isBatchRoot;
+        delete metadata.batchGrid;
         delete metadata.imageBatchExpanded;
         delete metadata.errorDetails;
         delete metadata.generationErrorCode;

@@ -241,9 +241,6 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 	if len([]rune(purpose)) > 500 {
 		return nil, BadAuthRequest("看图 purpose 不能超过 500 字")
 	}
-	if state.cloudAgentImageInspectionCalls()+len(targets) > cloudAgentMaxImageInspectionCallsPerRun {
-		return nil, errCloudAgentImageInspectionBudget
-	}
 	limits, err := s.cloudAgentVisionReferences(state.Request)
 	if err != nil {
 		return nil, err
@@ -252,16 +249,52 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 	if err != nil {
 		return nil, err
 	}
-	inspections := make([]cloudAgentImageInspection, 0, len(targets))
-	attached := 0
+	// 四图节点的根节点只代理主图；看图时按 batchChildIds 展开所有子图，
+	// 否则 Agent 只能看到第一张，无法比较同一批结果。
+	type inspectionTarget struct {
+		node        map[string]any
+		batchRootID string
+		batchIndex  int
+		batchCount  int
+	}
+	inspectionTargets := make([]inspectionTarget, 0, len(targets))
+	seen := make(map[string]bool)
 	for _, nodeID := range targets {
 		node := cloudAgentCanvasNode(doc, nodeID)
 		if node == nil {
 			return nil, BadAuthRequest("指定节点不在当前画布：" + nodeID)
 		}
-		inspection, err := s.cloudAgentInspectImageNode(userID, projectID, state, node, limits, refresh, revision, purpose)
+		children := cloudAgentBatchGridInspectionNodes(doc, node)
+		if len(children) > 1 {
+			for index, child := range children {
+				childID := stringValue(child["id"])
+				if seen[childID] {
+					continue
+				}
+				seen[childID] = true
+				inspectionTargets = append(inspectionTargets, inspectionTarget{node: child, batchRootID: nodeID, batchIndex: index, batchCount: len(children)})
+			}
+			continue
+		}
+		if !seen[nodeID] {
+			seen[nodeID] = true
+			inspectionTargets = append(inspectionTargets, inspectionTarget{node: node})
+		}
+	}
+	if state.cloudAgentImageInspectionCalls()+len(inspectionTargets) > cloudAgentMaxImageInspectionCallsPerRun {
+		return nil, errCloudAgentImageInspectionBudget
+	}
+	inspections := make([]cloudAgentImageInspection, 0, len(inspectionTargets))
+	attached := 0
+	for _, target := range inspectionTargets {
+		inspection, err := s.cloudAgentInspectImageNode(userID, projectID, state, target.node, limits, refresh, revision, purpose)
 		if err != nil {
 			return nil, err
+		}
+		if target.batchRootID != "" {
+			inspection.Receipt["batchRootId"] = target.batchRootID
+			inspection.Receipt["batchIndex"] = target.batchIndex
+			inspection.Receipt["batchCount"] = target.batchCount
 		}
 		if strings.TrimSpace(inspection.ImageURL) != "" {
 			attached++
@@ -282,6 +315,45 @@ func (s *Service) prepareCloudAgentImageInspection(userID, canvasID string, stat
 		Receipt:     map[string]any{"purpose": purpose, "images": receipts},
 		Inspections: inspections,
 	}, nil
+}
+
+// cloudAgentBatchGridInspectionNodes 只在单次请求返回多图的网格批次上展开子图；
+// 普通多请求批次保持根节点主图语义，避免一次看图意外放大到全部结果。
+func cloudAgentBatchGridInspectionNodes(doc map[string]any, root map[string]any) []map[string]any {
+	meta, _ := root["metadata"].(map[string]any)
+	if meta["isBatchRoot"] != true {
+		return nil
+	}
+	childIDs := toStringSlice(meta["batchChildIds"])
+	if len(childIDs) <= 1 {
+		return nil
+	}
+	rootID := stringValue(root["id"])
+	children := make([]map[string]any, 0, len(childIDs))
+	for _, childID := range childIDs {
+		child := cloudAgentCanvasNode(doc, childID)
+		if child == nil || stringValue(child["type"]) != "image" {
+			continue
+		}
+		childMeta, _ := child["metadata"].(map[string]any)
+		if stringValue(childMeta["batchRootId"]) != rootID {
+			continue
+		}
+		children = append(children, child)
+	}
+	if len(children) <= 1 {
+		return nil
+	}
+	if meta["batchGrid"] == true {
+		return children
+	}
+	for _, child := range children {
+		childMeta, _ := child["metadata"].(map[string]any)
+		if _, ok := childMeta["batchOutputIndex"]; !ok {
+			return nil
+		}
+	}
+	return children
 }
 
 // cloudAgentInspectImageNode 处理一张图：就绪校验、大小校验、重复查看标记。

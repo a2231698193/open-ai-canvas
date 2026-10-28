@@ -482,7 +482,7 @@ export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[]
     if (!rootId) return false;
     const root = nodes.find((item) => item.id === rootId);
     if (root && collapsingBatchIds?.has(rootId)) return false;
-    return Boolean(root && !root.metadata?.imageBatchExpanded);
+    return Boolean(root && (!root.metadata?.imageBatchExpanded || root.metadata?.batchGrid || typeof node.metadata?.batchOutputIndex === "number"));
 }
 
 export function sameStringSet(left: Set<string>, right: Set<string>) {
@@ -497,11 +497,12 @@ export function sameNodeSemanticData(left: CanvasNodeData, right: CanvasNodeData
 
 export function applyBatchPrimaryImage(root: CanvasNodeData, primary: CanvasNodeData): CanvasNodeData {
     if (root.metadata?.imageLayerGroup || root.metadata?.experimentalLayerPlan) return root;
+    // 网格根节点按四格排版，主图只是内容代理；切主图不能把外层节点缩成单格。
+    const gridBatch = Boolean(root.metadata?.batchGrid || typeof primary.metadata?.batchOutputIndex === "number");
     // 主图是根节点对媒体的完整代理；可选字段也必须显式覆盖，避免残留上一张图的存储身份。
     return {
         ...root,
-        width: primary.width,
-        height: primary.height,
+        ...(gridBatch ? {} : { width: primary.width, height: primary.height }),
         metadata: {
             ...root.metadata,
             primaryImageId: primary.id,

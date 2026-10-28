@@ -11,6 +11,7 @@ import { createCanvasNode, isHiddenBatchChild, removeCanvasNodes } from "@/lib/c
 import { nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { isolateCopiedNodeMetadata, nextCopiedNodeTitle } from "@/lib/canvas/canvas-node-copy";
 import { createCanvasImageEditCopy } from "@/lib/canvas/canvas-image-edit-copy";
+import { orderedImageBatchChildren } from "@/lib/canvas/canvas-image-batch-grid";
 import { copyImageLayerSources } from "@/lib/canvas/canvas-image-layers";
 import { adoptMediaVersion, createNodeFromMediaVersion, mediaVersionAdoptBlock, removeMediaVersion } from "@/lib/canvas/canvas-media-versions";
 import { canvasEditLeases } from "@/services/canvas-edit-leases";
@@ -389,7 +390,8 @@ export function useCanvasNodeOperations({
             setDialogNodeId(null);
             return copy.node.id;
         }
-        const sources = isFrameNode(source) ? [source, ...getFrameChildren(source.id, nodesRef.current)] : copyImageLayerSources(source, nodesRef.current);
+        const batchChildren = source.metadata?.isBatchRoot && !source.metadata?.imageLayerGroup ? orderedImageBatchChildren(source, new Map(nodesRef.current.map((node) => [node.id, node]))) : [];
+        const sources = isFrameNode(source) ? [source, ...getFrameChildren(source.id, nodesRef.current)] : [...copyImageLayerSources(source, nodesRef.current), ...batchChildren];
         const idMap = new Map(sources.map((node, index) => [node.id, `${node.type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`]));
         const versionRootId = duplicateMode === "variant" && !isFrameNode(source) ? source.metadata?.versionOfNodeId || source.id : undefined;
         const versionLabel = versionRootId ? nextCanvasVersionLabel(versionRootId, nodesRef.current) : undefined;

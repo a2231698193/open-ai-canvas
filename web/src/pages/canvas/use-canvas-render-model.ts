@@ -10,6 +10,7 @@ import { buildSkillMentionReferences } from "@/lib/canvas/canvas-skill-mentions"
 import { buildCanvasConnectionIndex, type CanvasIndexedConnection } from "@/lib/canvas/canvas-connection-index";
 import { retainCanvasLayoutNodes } from "@/lib/canvas/canvas-layout-snapshot";
 import { buildCanvasSpatialIndex, canvasNodeBounds, type CanvasSpatialIndex } from "@/lib/canvas/canvas-spatial-index";
+import { isGridImageBatchRoot } from "@/lib/canvas/canvas-image-batch-grid";
 import { canvasOverviewMode, resolveCanvasNodeLOD, type CanvasNodeRenderLOD } from "@/lib/canvas/canvas-node-lod";
 import { nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
 import { intersectsCanvasBounds, selectCanvasVisibleNodes } from "@/lib/canvas/canvas-node-visibility";
@@ -92,20 +93,22 @@ export function useCanvasRenderModel({
         const batchMotionById = new Map<string, { x: number; y: number; index: number }>();
         const batchChildIndexByRootId = new Map<string, Map<string, number>>();
         const batchChildCountById = new Map<string, number>();
+        const gridBatchRootIds = new Set<string>();
+        for (const node of nodes) {
+            if (node.metadata?.isBatchRoot && isGridImageBatchRoot(node, nodeById)) gridBatchRootIds.add(node.id);
+        }
 
         for (const node of nodes) {
             const rootId = node.metadata?.batchRootId;
             const root = rootId ? nodeById.get(rootId) : undefined;
-            if (root && !root.metadata?.imageBatchExpanded) {
+            if (root && (!root.metadata?.imageBatchExpanded || gridBatchRootIds.has(root.id))) {
                 collapsedBatchChildIds.add(node.id);
                 if (!collapsingBatchIds.has(root.id)) renderHiddenNodeIds.add(node.id);
             }
 
             if (rootId && collapsingBatchIds.has(rootId)) renderHiddenNodeIds.delete(node.id);
             if (rootId) batchChildNodes.push(node);
-            const childIndex = root?.metadata?.isBatchRoot
-                ? batchChildIndexByRootId.get(root.id) || new Map((root.metadata.batchChildIds || []).map((childId, index) => [childId, index]))
-                : undefined;
+            const childIndex = root?.metadata?.isBatchRoot ? batchChildIndexByRootId.get(root.id) || new Map((root.metadata.batchChildIds || []).map((childId, index) => [childId, index])) : undefined;
             if (root?.metadata?.isBatchRoot && childIndex && !batchChildIndexByRootId.has(root.id)) batchChildIndexByRootId.set(root.id, childIndex);
             if (root && childIndex?.has(node.id)) batchChildCountById.set(root.id, (batchChildCountById.get(root.id) || 0) + 1);
             const parent = node.parentId ? nodeById.get(node.parentId) : undefined;
@@ -135,9 +138,9 @@ export function useCanvasRenderModel({
             batchMotionById.set(node.id, { x: stackX - node.position.x, y: stackY - node.position.y, index: Math.max(index, 0) });
         }
 
-        return { batchChildCountById, batchMotionById, canvasImageNodes, collapsedBatchChildIds, frameChildrenById, renderHiddenNodeIds };
+        return { batchChildCountById, batchMotionById, canvasImageNodes, collapsedBatchChildIds, frameChildrenById, gridBatchRootIds, renderHiddenNodeIds };
     }, [collapsingBatchIds, nodeById, nodes]);
-    const { batchChildCountById, batchMotionById, canvasImageNodes, collapsedBatchChildIds, frameChildrenById, renderHiddenNodeIds } = nodeDerivedData;
+    const { batchChildCountById, batchMotionById, canvasImageNodes, collapsedBatchChildIds, frameChildrenById, gridBatchRootIds, renderHiddenNodeIds } = nodeDerivedData;
     const connectionLayerBounds = useMemo(() => {
         const padding = 144 / Math.max(viewport.k, 0.05);
         const left = -viewport.x / viewport.k - padding;
@@ -174,7 +177,16 @@ export function useCanvasRenderModel({
         return index;
     }, [layoutNodes]);
     const renderedNodeIdsRef = useRef<Set<string>>(new Set());
-    const forcedRenderNodeIds = useMemo(() => new Set([...selectedNodeIds, ...(dragPreview?.nodeIds || [])]), [dragPreview, selectedNodeIds]);
+    const forcedRenderNodeIds = useMemo(
+        () =>
+            new Set(
+                [...selectedNodeIds, ...(dragPreview?.nodeIds || [])].filter((id) => {
+                    const batchRootId = nodeById.get(id)?.metadata?.batchRootId;
+                    return !batchRootId || !gridBatchRootIds.has(batchRootId);
+                }),
+            ),
+        [dragPreview, gridBatchRootIds, nodeById, selectedNodeIds],
+    );
     const candidateNodes = useMemo(() => {
         const frames: CanvasNodeData[] = [];
         const regular: CanvasNodeData[] = [];
@@ -391,6 +403,7 @@ export function useCanvasRenderModel({
         batchChildCountById,
         batchMotionById,
         canvasImageNodes,
+        gridBatchRootIds,
         configInputsById,
         connectionLayerBounds,
         contextMenuNode,

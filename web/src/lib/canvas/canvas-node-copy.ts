@@ -64,8 +64,25 @@ export function isolateCopiedNodeMetadata(node: CanvasNodeData, idMap: ReadonlyM
     delete metadata.batchFailedCount;
     delete metadata.isBatchRoot;
     delete metadata.primaryImageId;
+    delete metadata.batchGrid;
+    delete metadata.batchOutputIndex;
     delete metadata.imageBatchExpanded;
     delete metadata.batchUsesReferenceImages;
+    const copiedBatchRootId = node.metadata?.batchRootId ? idMap.get(node.metadata.batchRootId) : undefined;
+    if (copiedBatchRootId) {
+        metadata.batchRootId = copiedBatchRootId;
+        metadata.batchOutputIndex = node.metadata?.batchOutputIndex;
+    }
+    const batchChildIds = node.metadata?.batchChildIds || [];
+    const copiedBatchChildIds = batchChildIds.flatMap((childId) => (idMap.has(childId) ? [idMap.get(childId)!] : []));
+    if (node.metadata?.isBatchRoot && batchChildIds.length > 1 && copiedBatchChildIds.length === batchChildIds.length) {
+        metadata.isBatchRoot = true;
+        metadata.batchGrid = node.metadata.batchGrid;
+        metadata.batchChildIds = copiedBatchChildIds;
+        metadata.primaryImageId = node.metadata.primaryImageId ? idMap.get(node.metadata.primaryImageId) || copiedBatchChildIds[0] : copiedBatchChildIds[0];
+        metadata.batchFailedCount = node.metadata.batchFailedCount;
+        metadata.batchUsesReferenceImages = node.metadata.batchUsesReferenceImages;
+    }
     delete metadata.layerDecomposition;
     delete metadata.imageLayerWorkflow;
     delete metadata.experimentalLayerPlan;

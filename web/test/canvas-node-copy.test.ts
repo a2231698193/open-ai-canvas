@@ -189,3 +189,87 @@ describe("batch table copy references", () => {
         expect(copied.content).toBe("result.png");
     });
 });
+
+describe("image batch grid copy", () => {
+    const root: CanvasNodeData = {
+        id: "root",
+        type: CanvasNodeType.Image,
+        title: "四图节点",
+        position: { x: 0, y: 0 },
+        width: 512,
+        height: 512,
+        metadata: {
+            content: "root-url",
+            isBatchRoot: true,
+            batchGrid: true,
+            batchChildIds: ["child-a", "child-b"],
+            primaryImageId: "child-b",
+            imageBatchExpanded: true,
+        },
+    };
+    const children = ["child-a", "child-b"].map((id): CanvasNodeData => ({
+        id,
+        type: CanvasNodeType.Image,
+        title: id,
+        position: { x: 0, y: 0 },
+        width: 256,
+        height: 256,
+        metadata: { content: `${id}-url`, batchRootId: "root", batchOutputIndex: id === "child-a" ? 0 : 1, status: "success" },
+    }));
+
+    test("复制根节点时重映射四张子图和主图", () => {
+        const idMap = new Map([
+            ["root", "root-copy"],
+            ["child-a", "child-a-copy"],
+            ["child-b", "child-b-copy"],
+        ]);
+        const metadata = isolateCopiedNodeMetadata(root, idMap);
+        expect(metadata.isBatchRoot).toBe(true);
+        expect(metadata.batchGrid).toBe(true);
+        expect(metadata.batchChildIds).toEqual(["child-a-copy", "child-b-copy"]);
+        expect(metadata.primaryImageId).toBe("child-b-copy");
+        expect(metadata.imageBatchExpanded).toBeUndefined();
+        expect(metadata.content).toBe("root-url");
+    });
+
+    test("只提取一张子图时移除批次身份", () => {
+        const idMap = new Map([["child-a", "standalone"]]);
+        const metadata = isolateCopiedNodeMetadata(children[0], idMap);
+        expect(metadata.batchRootId).toBeUndefined();
+        expect(metadata.batchOutputIndex).toBeUndefined();
+        expect(metadata.isBatchRoot).toBeUndefined();
+    });
+
+    test("子图映射不全时不保留半个批次", () => {
+        const idMap = new Map([
+            ["root", "root-copy"],
+            ["child-a", "child-a-copy"],
+        ]);
+        const metadata = isolateCopiedNodeMetadata(root, idMap);
+        expect(metadata.isBatchRoot).toBeUndefined();
+        expect(metadata.batchChildIds).toBeUndefined();
+        expect(metadata.primaryImageId).toBeUndefined();
+        expect(metadata.batchGrid).toBeUndefined();
+    });
+});
+
+describe("image batch grid child copy", () => {
+    test("随根节点一起复制时保留新根归属和输出序号", () => {
+        const child: CanvasNodeData = {
+            id: "child-a",
+            type: CanvasNodeType.Image,
+            title: "子图",
+            position: { x: 0, y: 0 },
+            width: 256,
+            height: 256,
+            metadata: { content: "child-url", batchRootId: "root", batchOutputIndex: 2, status: "success" },
+        };
+        const idMap = new Map([
+            ["root", "root-copy"],
+            ["child-a", "child-a-copy"],
+        ]);
+        const metadata = isolateCopiedNodeMetadata(child, idMap);
+        expect(metadata.batchRootId).toBe("root-copy");
+        expect(metadata.batchOutputIndex).toBe(2);
+    });
+});

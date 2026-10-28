@@ -1,7 +1,10 @@
+import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
+import { findAvailableGenerationGroupPosition } from "@/lib/canvas/canvas-generation-layout";
+import { isolateCopiedNodeMetadata } from "@/lib/canvas/canvas-node-copy";
 import { FOLDER_COLLAPSED_HEIGHT, FOLDER_COLLAPSED_WIDTH, FRAME_COLLAPSED_HEIGHT, FRAME_COLLAPSED_WIDTH, getFrameChildIds, isCanvasFolderNode, isFrameNode } from "@/lib/canvas/canvas-frame";
 import { buildCanvasMediaDownloadFileName, canDownloadCanvasNodeMedia, isCanvasMediaCompositePending } from "@/lib/canvas/canvas-media-download";
 import { writeCanvasNodePrompt } from "@/lib/canvas/canvas-node-prompt";
@@ -167,6 +170,21 @@ export function useCanvasNodeEditor({
         );
     }, [setNodes]);
 
+    const extractBatchImage = useCallback((child: CanvasNodeData) => {
+        const rootId = child.metadata?.batchRootId;
+        const root = rootId ? nodesRef.current.find((node) => node.id === rootId) : undefined;
+        if (!root || (!child.metadata?.content && !child.metadata?.storageKey)) return;
+        const id = nanoid();
+        const metadata = isolateCopiedNodeMetadata(child, new Map([[child.id, id]]));
+        const placementNodes = nodesRef.current.filter((node) => node.metadata?.batchRootId !== rootId);
+        const position = findAvailableGenerationGroupPosition(placementNodes, { x: root.position.x + root.width + 96, y: root.position.y }, { width: child.width, height: child.height });
+        const copy: CanvasNodeData = { ...child, id, title: `${child.title} · 独立`, position, metadata };
+        setNodes((current) => [...current, copy]);
+        setSelectedNodeIds(new Set([id]));
+        setDialogNodeId(null);
+        message.success("已提取为独立节点");
+    }, [message, nodesRef, setDialogNodeId, setNodes, setSelectedNodeIds]);
+
     const handleNodePromptChange = useCallback((nodeId: string, prompt: string): boolean => {
         const node = nodesRef.current.find((node) => node.id === nodeId);
         if (!node || node.metadata?.locked) return false;
@@ -285,6 +303,7 @@ export function useCanvasNodeEditor({
         collapsingBatchIds,
         downloadNodeImage,
         downloadNodesMedia,
+        extractBatchImage,
         handleConfigNodeChange,
         handleFolderStyleChange,
         handleFolderThemeChange,

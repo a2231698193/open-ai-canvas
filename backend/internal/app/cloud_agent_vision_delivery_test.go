@@ -701,3 +701,87 @@ func TestCloudAgentVisionRejectsMissingFileAndExternalURL(t *testing.T) {
 		}
 	}
 }
+
+func cloudAgentVisionBatchGridFixture(t *testing.T) (*Service, *gorm.DB) {
+	t.Helper()
+	s, db, _ := cloudAgentVisionFixture(t)
+	doc := map[string]any{
+		"nodes": []map[string]any{
+			{
+				"id": "batch", "type": "image", "title": "四图节点", "position": map[string]any{"x": 10, "y": 10}, "width": 512, "height": 512,
+				"metadata": map[string]any{
+					"status": "success", "content": "https://must-not-expose.invalid/root.png", "storageKey": "resource:ref-one",
+					"isBatchRoot": true, "batchGrid": true, "batchChildIds": []string{"hero", "cat"}, "primaryImageId": "cat",
+				},
+			},
+			{"id": "hero", "type": "image", "title": "古风奥特曼", "position": map[string]any{"x": 400, "y": 300}, "width": 300, "metadata": map[string]any{"status": "success", "storageKey": "resource:ref-two", "batchRootId": "batch", "batchOutputIndex": 0}},
+			{"id": "cat", "type": "image", "title": "叮当猫在飞", "position": map[string]any{"x": 10, "y": 300}, "width": 300, "metadata": map[string]any{"status": "success", "storageKey": "resource:ref-one", "batchRootId": "batch", "batchOutputIndex": 1}},
+		},
+		"connections": []any{},
+	}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.CanvasProject{}).Where("id = ?", "agent-canvas").Update("payload_json", string(raw)).Error; err != nil {
+		t.Fatal(err)
+	}
+	return s, db
+}
+
+func TestCloudAgentVisionBatchRootExpandsAllImagesInOrder(t *testing.T) {
+	s, _ := cloudAgentVisionBatchGridFixture(t)
+	state := cloudAgentRuntime{Request: agentTestRequest()}
+	state.Request.VisionEnabled = true
+	call := cloudAgentStoryboardCall(t, "canvas_inspect_image", "inspect-batch-root", map[string]any{"nodeId": "batch", "purpose": "比较四张图的构图"})
+	result, err := s.prepareCloudAgentImageInspection("user", "agent-canvas", &state, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, ok := result.(cloudAgentImageInspectionBatch)
+	if !ok || len(batch.Inspections) != 2 {
+		t.Fatalf("expected two child inspections for the batch root, got %#v", result)
+	}
+	if batch.Inspections[0].Receipt["nodeId"] != "hero" || batch.Inspections[1].Receipt["nodeId"] != "cat" {
+		t.Fatalf("batch children lost order: %#v", batch.Inspections)
+	}
+	for index, inspection := range batch.Inspections {
+		if inspection.Receipt["batchRootId"] != "batch" || inspection.Receipt["batchIndex"] != index || inspection.Receipt["batchCount"] != 2 {
+			t.Fatalf("child receipt lost batch context: %#v", inspection.Receipt)
+		}
+		state.markCanvasImageInspection(stringValue(inspection.Receipt["nodeId"]), true)
+	}
+	if state.ImageInspectCalls != 2 {
+		t.Fatalf("batch root must budget one call per image, got %d", state.ImageInspectCalls)
+	}
+}
+
+func TestCloudAgentVisionOrdinaryBatchKeepsPrimaryImage(t *testing.T) {
+	s, db := cloudAgentVisionBatchGridFixture(t)
+	doc := map[string]any{
+		"nodes": []map[string]any{
+			{"id": "batch", "type": "image", "title": "普通多图", "position": map[string]any{"x": 10, "y": 10}, "width": 512, "height": 512, "metadata": map[string]any{"status": "success", "content": "https://must-not-expose.invalid/root.png", "storageKey": "resource:ref-one", "isBatchRoot": true, "batchChildIds": []string{"hero", "cat"}, "primaryImageId": "cat"}},
+			{"id": "hero", "type": "image", "title": "古风奥特曼", "position": map[string]any{"x": 400, "y": 300}, "width": 300, "metadata": map[string]any{"status": "success", "storageKey": "resource:ref-two", "batchRootId": "batch"}},
+			{"id": "cat", "type": "image", "title": "叮当猫在飞", "position": map[string]any{"x": 10, "y": 300}, "width": 300, "metadata": map[string]any{"status": "success", "storageKey": "resource:ref-one", "batchRootId": "batch"}},
+		},
+		"connections": []any{},
+	}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.CanvasProject{}).Where("id = ?", "agent-canvas").Update("payload_json", string(raw)).Error; err != nil {
+		t.Fatal(err)
+	}
+	state := cloudAgentRuntime{Request: agentTestRequest()}
+	state.Request.VisionEnabled = true
+	call := cloudAgentStoryboardCall(t, "canvas_inspect_image", "inspect-ordinary-batch", map[string]any{"nodeId": "batch"})
+	result, err := s.prepareCloudAgentImageInspection("user", "agent-canvas", &state, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection := cloudAgentVisionSingleInspection(t, result)
+	if inspection.Receipt["nodeId"] != "batch" || inspection.Receipt["batchRootId"] != nil {
+		t.Fatalf("ordinary batch should inspect the root primary only: %#v", inspection.Receipt)
+	}
+}

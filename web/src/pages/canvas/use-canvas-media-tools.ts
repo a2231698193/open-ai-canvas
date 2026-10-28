@@ -21,6 +21,7 @@ import type { CanvasVideoFrameParams } from "@/components/canvas/canvas-video-fr
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
 import { prepareRasterSource } from "@/lib/image-raster";
+import { buildGridSplitBatchNodes } from "@/lib/canvas/canvas-image-batch-grid";
 import { isValidGridSplit, layoutGridSplitCells } from "@/lib/canvas/canvas-grid-split";
 import { audioMetadata, buildSourceImageLayerNodeResult, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-generation-task-sync";
 import { commitProducedModel } from "@/lib/canvas/produced-model";
@@ -704,6 +705,33 @@ export function useCanvasMediaTools({
             releaseSource();
         }
     }, [message, persistMediaNodes, setConnections, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
+
+    /** lk888 自动切图：不新增四个可见节点，而是把当前节点原地转为 2×2 网格批次。 */
+    const convertGridSplitToBatch = useCallback(async (nodeId: string, grid: { rows: number; columns: number }) => {
+        const node = nodesRef.current.find((item) => item.id === nodeId);
+        if (!node?.metadata?.content || !isValidGridSplit(grid)) return;
+        let releaseSource = () => {};
+        try {
+            const source = await resolveProcessableImageSource(node);
+            releaseSource = source.release;
+            const pieces = await splitDataUrl(source.url, grid);
+            const uploaded = await Promise.all(pieces.map(async (piece) => ({ row: piece.row, column: piece.column, image: await uploadImage(piece.dataUrl) })));
+            const batch = buildGridSplitBatchNodes(node, uploaded, nanoid);
+            const nextNodes = nodesRef.current.map((item) => (item.id === nodeId ? batch.root : item)).concat(batch.children);
+            const nextConnections = [...connectionsRef.current, ...batch.children.map((child) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: child.id }))];
+            setNodes(nextNodes);
+            setConnections(nextConnections);
+            const assetIds = await persistMediaNodes(batch.children);
+            const primaryAssetId = batch.children[0] ? assetIds.get(batch.children[0].id) : undefined;
+            if (primaryAssetId) {
+                setNodes((current) => current.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, assetId: primaryAssetId } } : item)));
+            }
+        } catch {
+            message.warning("宫格切图失败，已保留合成图");
+        } finally {
+            releaseSource();
+        }
+    }, [connectionsRef, message, nodesRef, persistMediaNodes, setConnections, setNodes]);
 
     const regionEditImageNode = useCallback(async (node: CanvasNodeData, payload: CanvasImageRegionEditPayload) => {
         if (!node.metadata?.content) return;
@@ -1911,6 +1939,7 @@ export function useCanvasMediaTools({
         editImageNode,
         setUpscaleNodeId,
         splitImageNode,
+        convertGridSplitToBatch,
         openVideoFrameExtractor,
         openVideoSegmentExtractor,
         upscaleImageNode,

@@ -920,6 +920,7 @@ function CanvasViewportPage() {
         editImageNode,
         setUpscaleNodeId,
         splitImageNode,
+        convertGridSplitToBatch,
         openVideoFrameExtractor,
         openVideoSegmentExtractor,
         upscaleImageNode,
@@ -1281,6 +1282,7 @@ function CanvasViewportPage() {
         collapsingBatchIds,
         downloadNodeImage,
         downloadNodesMedia,
+        extractBatchImage,
         handleConfigNodeChange,
         handleFolderStyleChange,
         handleFolderThemeChange,
@@ -1435,6 +1437,7 @@ function CanvasViewportPage() {
         annotationNode,
         batchChildCountById,
         batchMotionById,
+        gridBatchRootIds,
         configInputsById,
         connectionLayerBounds,
         contextMenuNode,
@@ -1621,6 +1624,8 @@ function CanvasViewportPage() {
             download: downloadNodeImage,
             duplicate: duplicateNodeFromContent,
             deleteNode: deleteNodeFromContent,
+            setBatchPrimary,
+            extractBatchImage,
             updateMetadata: updateNodeMetadataFromContent,
             updateNode: updateNodeFromContent,
             updateMediaNode: updateMediaNodeFromContent,
@@ -1629,7 +1634,7 @@ function CanvasViewportPage() {
             extractLayerMaterials,
             openMediaVersions: (node: CanvasNodeData) => setMediaVersionNodeId(node.id),
         }),
-        [addPanoramaCaptureNode, deleteNodeFromContent, downloadNodeImage, duplicateNodeFromContent, extractLayerMaterials, openArtCritique, replaceCanvasNodeMedia, updateMediaNodeFromContent, updateNodeFromContent, updateNodeMetadataFromContent],
+        [addPanoramaCaptureNode, deleteNodeFromContent, downloadNodeImage, duplicateNodeFromContent, extractBatchImage, extractLayerMaterials, openArtCritique, replaceCanvasNodeMedia, setBatchPrimary, updateMediaNodeFromContent, updateNodeFromContent, updateNodeMetadataFromContent],
     );
     const { dismissLastAgentChange, lastAgentChange, undoAgentOps, viewLastAgentChange } = useCanvasOperationHistory({
         projectId,
@@ -1969,10 +1974,9 @@ function CanvasViewportPage() {
         finishGenerationRequest,
         bindGenerationTask,
         applyGenerationTaskResult,
-        // lk888 的 mj_imagine 只回一张 2×2 合成宫格图，生成成功后自动切分成 4 个子节点。
+        // lk888 的 mj_imagine 只回一张 2×2 合成宫格图，生成成功后原地转为单个 2×2 网格节点。
         splitGeneratedGrid: async (targetNodeId, grid) => {
-            const target = nodesRef.current.find((node) => node.id === targetNodeId);
-            if (target) await splitImageNode(target, { rows: grid.rows, columns: grid.columns }, { silent: true });
+            await convertGridSplitToBatch(targetNodeId, grid);
         },
     });
     useEffect(() => {
@@ -2892,6 +2896,7 @@ function CanvasViewportPage() {
                                                     activeNodeId={activeNodeId}
                                                     selectionBox={selectionBox}
                                                     batchChildCountById={batchChildCountById}
+                                                    gridBatchRootIds={gridBatchRootIds}
                                                     collapsingBatchIds={collapsingBatchIds}
                                                     openingBatchIds={openingBatchIds}
                                                     batchMotionById={batchMotionById}

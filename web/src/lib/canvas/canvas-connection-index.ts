@@ -1,3 +1,4 @@
+import { isGridImageBatchRoot } from "@/lib/canvas/canvas-image-batch-grid";
 import { isFrameNode } from "@/lib/canvas/canvas-frame";
 import { buildCanvasSpatialIndex, type CanvasSpatialIndexEntry } from "@/lib/canvas/canvas-spatial-index";
 import type { CanvasConnection, CanvasNodeData } from "@/types/canvas";
@@ -11,7 +12,7 @@ export function buildCanvasConnectionIndex(nodes: CanvasNodeData[], connections:
     const connectionIdsByNodeId = new Map<string, Set<string>>();
     const collapsedBatchChild = (node: CanvasNodeData) => {
         const root = node.metadata?.batchRootId ? nodeById.get(node.metadata.batchRootId) : undefined;
-        return root && !root.metadata?.imageBatchExpanded;
+        return root && (!root.metadata?.imageBatchExpanded || isGridImageBatchRoot(root, nodeById));
     };
     const endpoint = (node: CanvasNodeData) => {
         const parent = node.parentId ? nodeById.get(node.parentId) : undefined;

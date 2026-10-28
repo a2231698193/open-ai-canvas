@@ -377,6 +377,8 @@ export type CanvasNodeMetadata = {
     isBatchRoot?: boolean;
     batchRootId?: string;
     batchChildIds?: string[];
+    /** 单次上游请求返回多图（MJ 固定批量 / lk888 宫格切图）时，根节点以 2×2 网格展示所有子图。 */
+    batchGrid?: boolean;
     /**
      * 固定批量协议（一次调用返回 N 张）下，该子节点承接第几张输出（0 起）。
      * 多个子节点共享同一个 taskId，恢复、重试和重新加载资源都必须按它取图，否则会重复落第 1 张。
