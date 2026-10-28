@@ -21,7 +21,7 @@ describe("workspace route loading", () => {
         const modules = source("../src/lib/workspace-route-modules.ts");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
 
-        for (const route of ["projects", "canvas", "assets", "create"]) {
+        for (const route of ["workspace", "projects", "canvas", "assets", "create"]) {
             expect(modules).toContain(`${route}: () => import`);
         }
         expect(modules).toContain('projectDetail: () => import("@/pages/projects/detail")');
@@ -38,7 +38,8 @@ describe("workspace route loading", () => {
 
         expect(router).toContain('{ path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> }');
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
-        expect(router).toContain('{ path: "/workspace", element: deferred(<CreatePage />) }');
+        expect(router).toContain('{ path: "/workspace", element: deferred(<WorkspacePage />) }');
+        expect(router).toContain("lazy(loadWorkspacePage)");
         expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
         expect(home).toContain("inspiration-home");
         expect(home).not.toContain("return <WelcomePage />");

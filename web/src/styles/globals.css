@@ -16038,6 +16038,21 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     background: #fffaf4;
 }
 
+.app-user-workspace .app-workspace-topbar-credit-pill.is-storage {
+    padding-left: 10px;
+}
+
+.app-user-workspace .app-workspace-topbar-credit-pill.is-storage strong {
+    min-width: 0;
+    font-size: 11px;
+}
+
+@media (max-width: 900px) {
+    .app-user-workspace .app-workspace-topbar-credit-pill.is-storage span {
+        display: none;
+    }
+}
+
 .app-user-workspace .app-workspace-credit-gift {
     display: grid;
     width: 24px;

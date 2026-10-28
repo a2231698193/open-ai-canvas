@@ -1,4 +1,4 @@
-import { Crown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Crown, HardDrive, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -15,9 +15,13 @@ import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { MembershipPlansModal } from "@/components/membership/membership-plans-modal";
 import { formatMembershipPrice, useMembershipPlans } from "@/components/membership/membership-plan-cards";
 import { openWorkspaceWallet } from "@/lib/workspace-wallet";
+import { openStoragePurchase } from "@/lib/workspace-storage";
+import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
+import { accountStorageMeter } from "@/lib/account-storage-usage";
 
 const PAGE_TITLES: Record<string, string> = {
     home: "创作",
+    workspace: "创作台",
     create: "创作",
     inspirations: "灵感",
     projects: "短剧制作",
@@ -38,10 +42,13 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const { availableMicrocredits } = useWalletBalance(user?.id, creditsEnabled);
     const { data: membershipPlans } = useMembershipPlans(creditsEnabled);
+    const storageQuery = useAccountFileStorageUsage(Boolean(user));
+    const storageMeter = accountStorageMeter(storageQuery.data);
     const { pathname } = useLocation();
     const slug = pathname.split("/").filter(Boolean)[0];
     const pageTitle = slug ? PAGE_TITLES[slug] || brandName : PAGE_TITLES.home;
     const balance = availableMicrocredits === null ? "--" : (availableMicrocredits / 1_000_000).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+    const storageLabel = !storageQuery.data ? "--" : storageMeter.state === "read_only" ? "只读" : storageMeter.full ? "已满" : storageMeter.remainingLabel;
     const plans = membershipPlans?.plans;
     const minMonthlyPriceFen = useMemo(() => {
         const prices = (plans || []).map((plan) => plan.monthPriceFen).filter((price) => price > 0);
@@ -57,13 +64,28 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
                 {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
             </button>
             <nav className="app-workspace-topbar-breadcrumb" aria-label="当前位置">
-                <Link to="/create" className="font-medium text-foreground/65 transition-colors hover:text-foreground">{brandName}</Link>
+                <Link to="/create" className="font-medium text-foreground/65 transition-colors hover:text-foreground">
+                    {brandName}
+                </Link>
                 <span aria-hidden="true">/</span>
                 <span className="truncate font-medium text-foreground">{pageTitle}</span>
             </nav>
             <WorkspaceTopBarExtensionSlot />
             <div className="app-workspace-topbar-actions">
                 {user ? <TopbarFeedbackButton /> : null}
+                {user ? (
+                    <button
+                        type="button"
+                        className="app-workspace-topbar-credit-pill is-storage"
+                        title={storageQuery.data ? `已用 ${storageMeter.usedLabel} / ${storageMeter.totalLabel}` : "查看存储空间"}
+                        aria-label={`打开存储空间充值，剩余 ${storageLabel}`}
+                        onClick={() => openStoragePurchase()}
+                    >
+                        <HardDrive className="size-4" />
+                        <span>云空间</span>
+                        <strong>{storageLabel}</strong>
+                    </button>
+                ) : null}
                 {creditsEnabled ? (
                     <>
                         <button

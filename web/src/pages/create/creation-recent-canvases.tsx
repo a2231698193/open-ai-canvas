@@ -12,10 +12,11 @@ import { createCanvasProjectWithRemoteSync } from "@/services/user-data-sync";
 import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { RelativeTime } from "@/components/ui/product/relative-time";
+import { cn } from "@/lib/utils";
 
 const RECENT_COUNT = 4;
 
-export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () => void }) {
+export function CreationRecentCanvases({ onRequireLogin, title = "最近画布", limit = RECENT_COUNT, variant = "strip" }: { onRequireLogin: () => void; title?: string; limit?: number; variant?: "strip" | "grid" }) {
     const { message } = App.useApp();
     const navigate = useNavigate();
     const userId = useUserStore((state) => state.user?.id);
@@ -25,8 +26,8 @@ export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () 
     const [creating, setCreating] = useState(false);
     const creatingRef = useRef(false);
     const recentQuery = useQuery({
-        queryKey: ["canvas-library", userId, "recent"],
-        queryFn: ({ signal }) => listRemoteCanvasProjectsPage({ page: 1, pageSize: RECENT_COUNT, sort: "updated", signal }),
+        queryKey: ["canvas-library", userId, "recent", limit],
+        queryFn: ({ signal }) => listRemoteCanvasProjectsPage({ page: 1, pageSize: limit, sort: "updated", signal }),
         enabled: Boolean(userId) && sessionHydrated,
     });
     const recentProjects = useMemo<CanvasLibrarySummary[]>(
@@ -35,9 +36,9 @@ export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () 
                 ? recentQuery.data?.projects || []
                 : [...localProjects]
                       .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-                      .slice(0, RECENT_COUNT)
+                      .slice(0, limit)
                       .map((project) => ({ ...project, nodeCount: project.nodes.length, previewNodes: project.nodes.slice(0, 4) })),
-        [localProjects, recentQuery.data, userId],
+        [limit, localProjects, recentQuery.data, userId],
     );
     const loading = !sessionHydrated || !canvasHydrated || Boolean(userId && recentQuery.isPending);
     const preload = () => {
@@ -71,14 +72,14 @@ export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () 
             <header className="creation-section-heading">
                 <h2 id="creation-recent-title">
                     <Clock3 aria-hidden="true" />
-                    最近画布
+                    {title}
                 </h2>
                 <Link to="/canvas" className="creation-section-link">
                     查看全部
                     <ArrowUpRight aria-hidden="true" />
                 </Link>
             </header>
-            <div className="creation-canvas-strip creation-scrollbar" role="list" aria-label="最近更新的画布" aria-busy={loading}>
+            <div className={cn("creation-canvas-strip creation-scrollbar", variant === "grid" && "is-grid")} role="list" aria-label={title} aria-busy={loading}>
                 <div className="creation-canvas-strip-item" role="listitem">
                     <button type="button" className="creation-canvas-tile is-create" disabled={!sessionHydrated || !canvasHydrated || creating} onClick={() => void createCanvas()} onPointerEnter={preload} onFocus={preload}>
                         <span className="creation-canvas-thumbnail is-create">{creating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
@@ -89,7 +90,7 @@ export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () 
                     </button>
                 </div>
                 {loading ? (
-                    Array.from({ length: RECENT_COUNT }, (_, index) => (
+                    Array.from({ length: limit }, (_, index) => (
                         <div key={index} className="creation-canvas-strip-item creation-canvas-skeleton" role="listitem" aria-label="正在读取画布">
                             <span />
                             <span />
@@ -97,7 +98,7 @@ export function CreationRecentCanvases({ onRequireLogin }: { onRequireLogin: () 
                     ))
                 ) : userId && recentQuery.isError ? (
                     <div className="creation-canvas-strip-state" role="listitem">
-                        <span role="alert">最近画布暂时无法读取</span>
+                        <span role="alert">{title}暂时无法读取</span>
                         <button type="button" onClick={() => void recentQuery.refetch()} disabled={recentQuery.isFetching}>
                             {recentQuery.isFetching ? "重试中…" : "重试"}
                         </button>

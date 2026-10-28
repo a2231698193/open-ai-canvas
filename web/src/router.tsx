@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from 
 
 import { RequireAuth } from "@/components/auth/require-auth";
 import { FullScreenLoader, WorkspaceRouteLoader } from "@/components/ui/aceternity/full-screen-loader";
-import { loadAssetsPage, loadCanvasPage, loadCanvasProjectPage, loadCreatePage, loadInspirationsPage, loadProjectCreatePage, loadProjectDetailPage, loadProjectsPage, loadSkillWorkbenchPage } from "@/lib/workspace-route-modules";
+import { loadAssetsPage, loadCanvasPage, loadCanvasProjectPage, loadCreatePage, loadInspirationsPage, loadProjectCreatePage, loadProjectDetailPage, loadProjectsPage, loadSkillWorkbenchPage, loadWorkspacePage } from "@/lib/workspace-route-modules";
 import { CanvasRefreshShell } from "@/pages/canvas/canvas-refresh-shell";
 import { AuthScene } from "@/pages/auth/auth-scene";
 import RouteErrorPage from "@/pages/route-error";
@@ -53,6 +53,7 @@ const CanvasPage = lazy(loadCanvasPage);
 const CanvasProjectPage = lazy(loadCanvasProjectPage);
 const SharedCanvasPage = lazy(() => import("@/pages/canvas/shared"));
 const CreatePage = lazy(loadCreatePage);
+const WorkspacePage = lazy(loadWorkspacePage);
 const InspirationsPage = lazy(loadInspirationsPage);
 
 // 本仓库保留独立灵感页：使用灵感后回到创作页并回填提示词。
@@ -137,8 +138,7 @@ export const router = createBrowserRouter([
         errorElement: <RouteErrorPage />,
         children: [
             { path: "/create", element: deferred(<CreatePage />) },
-            // 创作台工作台上线前先复用现有创作页，保证首页主 CTA 不落到空路由。
-            { path: "/workspace", element: deferred(<CreatePage />) },
+            { path: "/workspace", element: deferred(<WorkspacePage />) },
             {
                 path: "/toolbox/image",
                 element: (
