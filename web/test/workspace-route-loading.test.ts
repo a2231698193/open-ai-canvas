@@ -118,7 +118,7 @@ describe("workspace route loading", () => {
 });
 
 describe("workspace wallet entry", () => {
-    test("opens the credits modal instead of a dedicated wallet page", () => {
+    test("opens the membership page from credit entries and keeps the wallet modal for redeem/history", () => {
         const router = source("../src/router.tsx");
         const modules = source("../src/lib/workspace-route-modules.ts");
         const host = source("../src/components/layout/workspace-wallet-modal.tsx");
@@ -134,11 +134,14 @@ describe("workspace wallet entry", () => {
         expect(modules).not.toContain("pages/wallet");
         expect(host).toContain('pathname !== "/wallet"');
         expect(host).toContain("openWorkspaceWallet");
-        expect(palette).toContain("run: () => openWorkspaceWallet()");
+        expect(palette).toContain('toolEntry("wallet", "/membership")');
+        expect(palette).not.toContain("openWorkspaceWallet");
         expect(palette).not.toContain('"/wallet"');
-        expect(canvasTopBar).toContain("openWorkspaceWallet()");
+        expect(canvasTopBar).toContain('navigate("/membership")');
+        expect(canvasTopBar).not.toContain("openWorkspaceWallet");
         expect(canvasTopBar).not.toContain('to="/wallet"');
-        expect(topBar).toContain("openWorkspaceWallet()");
+        expect(topBar).toContain('navigate("/membership")');
+        expect(topBar).not.toContain("openWorkspaceWallet");
         expect(css).not.toContain(".wallet-library-page");
         expect(css).not.toContain(".wallet-market-page");
     });

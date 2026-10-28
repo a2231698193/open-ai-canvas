@@ -1,6 +1,6 @@
 import { Crown, HardDrive, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { TopbarFeedbackButton } from "@/components/feedback/topbar-feedback-button";
 import { SystemAnnouncementCenter } from "@/components/layout/system-announcement-center";
@@ -14,7 +14,6 @@ import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { MembershipPlansModal } from "@/components/membership/membership-plans-modal";
 import { formatMembershipPrice, useMembershipPlans } from "@/components/membership/membership-plan-cards";
-import { openWorkspaceWallet } from "@/lib/workspace-wallet";
 import { openStoragePurchase } from "@/lib/workspace-storage";
 import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
 import { accountStorageMeter } from "@/lib/account-storage-usage";
@@ -22,6 +21,7 @@ import { accountStorageMeter } from "@/lib/account-storage-usage";
 const PAGE_TITLES: Record<string, string> = {
     home: "创作",
     workspace: "创作台",
+    membership: "会员中心",
     create: "创作",
     inspirations: "灵感",
     projects: "短剧制作",
@@ -35,6 +35,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
     const [membershipOpen, setMembershipOpen] = useState(false);
+    const navigate = useNavigate();
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
@@ -98,7 +99,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
                             <span>{membershipLabel}</span>
                             {membershipPriceFen > 0 ? <small className="app-workspace-topbar-credit-price">{formatMembershipPrice(membershipPriceFen)} 起</small> : null}
                         </button>
-                        <button type="button" className="app-workspace-topbar-credit-pill" aria-label={`打开积分中心，可用 ${balance} 积分`} onClick={() => openWorkspaceWallet()}>
+                        <button type="button" className="app-workspace-topbar-credit-pill" aria-label={`打开积分中心，可用 ${balance} 积分`} onClick={() => navigate("/membership")}>
                             <WorkspaceCreditGiftMark />
                             <span>积分</span>
                             <strong>{balance}</strong>
