@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const RECENT_COUNT = 4;
 
-export function CreationRecentCanvases({ onRequireLogin, title = "最近画布", limit = RECENT_COUNT, variant = "strip" }: { onRequireLogin: () => void; title?: string; limit?: number; variant?: "strip" | "grid" }) {
+export function CreationRecentCanvases({ onRequireLogin, title = "最近画布", limit = RECENT_COUNT, variant = "strip" }: { onRequireLogin: () => void; title?: string; limit?: number; variant?: "strip" | "grid" | "cards" }) {
     const { message } = App.useApp();
     const navigate = useNavigate();
     const userId = useUserStore((state) => state.user?.id);
@@ -64,6 +64,69 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
             setCreating(false);
         }
     };
+
+    if (variant === "cards") {
+        return (
+            <section className="creation-recent-canvases workspace-canvas-section" aria-labelledby="creation-recent-title">
+                <header className="workspace-section-heading">
+                    <h2 id="creation-recent-title">{title}</h2>
+                    <Link to="/canvas" className="workspace-section-link">
+                        全部画布
+                        <ArrowUpRight aria-hidden="true" />
+                    </Link>
+                </header>
+                <div className="workspace-canvas-grid" role="list" aria-label={title} aria-busy={loading}>
+                    <button type="button" className="workspace-canvas-create" disabled={!sessionHydrated || !canvasHydrated || creating} onClick={() => void createCanvas()} onPointerEnter={preload} onFocus={preload}>
+                        {creating ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Plus aria-hidden="true" />}
+                        <span>{creating ? "正在创建…" : "新建画布"}</span>
+                    </button>
+                    {loading ? (
+                        Array.from({ length: limit }, (_, index) => (
+                            <div key={index} className="workspace-canvas-card is-skeleton" role="listitem" aria-label="正在读取画布">
+                                <span className="workspace-canvas-thumb" />
+                                <span className="workspace-canvas-body">
+                                    <i />
+                                    <i />
+                                </span>
+                            </div>
+                        ))
+                    ) : userId && recentQuery.isError ? (
+                        <div className="workspace-canvas-state" role="listitem">
+                            <span role="alert">{title}暂时无法读取</span>
+                            <button type="button" onClick={() => void recentQuery.refetch()} disabled={recentQuery.isFetching}>
+                                {recentQuery.isFetching ? "重试中…" : "重试"}
+                            </button>
+                        </div>
+                    ) : recentProjects.length ? (
+                        recentProjects.map((project) => (
+                            <Link key={project.id} to={`/canvas/${project.id}`} className="workspace-canvas-card" role="listitem" onPointerEnter={preload} onFocus={preload} title={project.title}>
+                                <div className="workspace-canvas-thumb" aria-hidden="true">
+                                    <ProjectPreview project={{ id: project.id, nodes: project.previewNodes }} preferLatestImage />
+                                    <span className="workspace-canvas-node-count">{project.nodeCount} 节点</span>
+                                </div>
+                                <div className="workspace-canvas-body">
+                                    <b>{project.title || "未命名画布"}</b>
+                                    <small>
+                                        <RelativeTime value={project.updatedAt} />
+                                    </small>
+                                </div>
+                            </Link>
+                        ))
+                    ) : (
+                        <div className="workspace-canvas-state" role="listitem">
+                            <PanelsTopLeft aria-hidden="true" />
+                            <span>{userId ? "还没有画布，把第一个想法留在这里。" : "登录后，最近的画布会显示在这里。"}</span>
+                            {!userId ? (
+                                <button type="button" onClick={onRequireLogin}>
+                                    登录
+                                </button>
+                            ) : null}
+                        </div>
+                    )}
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="creation-recent-canvases" aria-labelledby="creation-recent-title">
