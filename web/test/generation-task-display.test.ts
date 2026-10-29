@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { canCancelGenerationTask, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, mediaDeliverySummary, statusLabel } from "@/lib/generation-task-display";
+import { canCancelGenerationTask, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, generationTaskTitle, mediaDeliverySummary, statusLabel } from "@/lib/generation-task-display";
 import { resetGenerationTaskMetadata } from "@/lib/canvas/canvas-task-state";
 
 // 后端会写入「等待队列调度 / 后端接管任务 / 正在连接上游 / 调用生成模型 / 上游生成中 / 等待上游任务同步」
@@ -89,5 +89,24 @@ describe("生成任务用户可见阶段", () => {
     test("不向用户暴露参考素材准备和上游连接等技术阶段", () => {
         expect(generationTaskStageLabel({ status: "running", stage: "正在准备参考素材" })).toBe("生成中");
         expect(generationTaskStageLabel({ status: "running", stage: "正在连接上游" })).toBe("生成中");
+    });
+});
+
+
+describe("生成任务标题", () => {
+    test("表单回答 JSON 转为可读方向", () => {
+        const prompt = JSON.stringify({
+            type: "form_answer",
+            questionId: "",
+            answers: { deliverable: "storyboard", tone: "warm_comedy" },
+            displayAnswers: { deliverable: "多镜头分镜脚本（可逐镜出图/出视频）", tone: "温暖喜剧" },
+        });
+        expect(generationTaskTitle({ prompt })).toBe("多镜头分镜脚本（可逐镜出图/出视频） · 温暖喜剧");
+    });
+
+    test("普通提示词保持原样，空表单给兜底文案", () => {
+        expect(generationTaskTitle({ prompt: "一个外卖员意外捡到会说话的猫" })).toBe("一个外卖员意外捡到会说话的猫");
+        expect(generationTaskTitle({ prompt: JSON.stringify({ type: "form_answer", answers: {} }) })).toBe("已确认创作方向");
+        expect(generationTaskTitle({ prompt: "" })).toBe("未命名任务");
     });
 });

@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { MediaPreview } from "@/components/media-preview";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
-import { formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "@/lib/generation-task-display";
+import { formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, generationTaskTitle } from "@/lib/generation-task-display";
 import type { GenerationTask } from "@/services/api/task-center";
 import type { AiConfig } from "@/stores/use-config-store";
 import { formatModelName, getTaskCanvasContext, isTaskFailed, statusDotClassName, taskAttentionReason, TaskBilling, TaskDate } from "./task-shared";
@@ -35,6 +35,7 @@ export function TaskListRow({
     onPreview: () => void;
 }) {
     const context = getTaskCanvasContext(task, canvasById, projectNameById);
+    const title = generationTaskTitle(task);
     const isActive = task.status === "queued" || task.status === "running";
     const isFailed = isTaskFailed(task);
     const retryDisabled = task.errorCode === CONTENT_MODERATION_ERROR_CODE || isContentModerationError(task.error);
@@ -49,8 +50,8 @@ export function TaskListRow({
                         <i className={statusDotClassName(task.status)} />
                         {generationTaskStatusLabel(task)}
                     </span>
-                    <button type="button" className="task-record-title" title={task.prompt} onClick={onOpen}>
-                        {task.prompt || "未命名任务"}
+                    <button type="button" className="task-record-title" title={title} onClick={onOpen}>
+                        {title}
                     </button>
                 </div>
                 <div className="task-record-meta">

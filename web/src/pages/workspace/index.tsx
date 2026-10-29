@@ -9,7 +9,7 @@ import { WorkspacePage } from "@/components/layout/workspace-page";
 import { RelativeTime } from "@/components/ui/product/relative-time";
 import { formatCredits } from "@/constant/credits";
 import { createBlankCanvasProject } from "@/lib/canvas/create-canvas-project";
-import { formatTaskKind, generationTaskShowsProgress, generationTaskStatusLabel } from "@/lib/generation-task-display";
+import { formatTaskKind, generationTaskShowsProgress, generationTaskStatusLabel, generationTaskTitle } from "@/lib/generation-task-display";
 import { curatedInspirations, type CreationInspiration } from "@/lib/inspirations/catalog";
 import { fillablePrompt } from "@/lib/inspirations/resolve";
 import { cn } from "@/lib/utils";
@@ -228,19 +228,22 @@ function WorkspaceHistoryRow({ task, creditsEnabled }: { task: GenerationTask; c
     const failed = isTaskFailed(task);
     const billing = task.billing;
     const activeLabel = generationTaskShowsProgress(task) ? `进行中 ${task.progress || 0}%` : generationTaskStatusLabel(task);
-    const cost = active ? activeLabel : failed ? (billing?.status === "refunded" ? "已退回" : "失败") : creditsEnabled && billing ? (billing.status === "refunded" ? "已退回" : billing.status === "uncertain" ? "待核对" : `−${formatCredits(billing.amountMicrocredits)}`) : "—";
+    const cost = active ? activeLabel : failed ? (billing?.status === "refunded" ? "已退回" : "失败") : creditsEnabled && billing ? (billing.status === "refunded" ? "已退回" : billing.status === "uncertain" ? "待核对" : `−${formatCredits(billing.amountMicrocredits, 2)}`) : "—";
+    const title = generationTaskTitle(task);
     return (
         <Link to="/tasks" className={cn("workspace-history-row", failed && "is-failed")}>
             <span className={cn("workspace-history-status-dot", `is-${task.status}`)} aria-hidden="true" />
             <span className="workspace-history-main">
-                <b title={task.prompt}>{task.prompt || "未命名任务"}</b>
+                <b title={title}>{title}</b>
                 {failed ? <small>{taskAttentionReason(task)}</small> : null}
             </span>
             <span className="workspace-history-kind">{formatTaskKind(task)}</span>
             <span className="workspace-history-time">
                 <RelativeTime value={task.createdAt} />
             </span>
-            <span className={cn("workspace-history-cost", active && "is-active", failed && "is-failed")}>{cost}</span>
+            <span className={cn("workspace-history-cost", active && "is-active", failed && "is-failed")} title={billing ? `${formatCredits(billing.amountMicrocredits, 6)} 积分` : undefined}>
+                {cost}
+            </span>
         </Link>
     );
 }

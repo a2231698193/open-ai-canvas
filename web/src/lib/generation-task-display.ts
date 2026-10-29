@@ -98,3 +98,27 @@ export function formatTaskKind(task: GenerationTask) {
     if (task.type.startsWith("video_")) return "视频任务";
     return "生成任务";
 }
+
+/** 任务标题优先展示用户可读内容；表单回答的 prompt 是 JSON，不能直接回显。 */
+export function generationTaskTitle(task: Pick<GenerationTask, "prompt">) {
+    const raw = (task.prompt || "").trim();
+    if (!raw) return "未命名任务";
+    if (!raw.startsWith("{")) return raw;
+    try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed.type === "form_answer") {
+            const display = parsed.displayAnswers && typeof parsed.displayAnswers === "object" && !Array.isArray(parsed.displayAnswers) ? (parsed.displayAnswers as Record<string, unknown>) : undefined;
+            const answers = parsed.answers && typeof parsed.answers === "object" && !Array.isArray(parsed.answers) ? (parsed.answers as Record<string, unknown>) : undefined;
+            const values = Object.values(display || answers || {}).flatMap((value) => {
+                if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+                return typeof value === "string" && value.trim() ? [value.trim()] : [];
+            });
+            return values.length ? values.join(" · ") : "已确认创作方向";
+        }
+        if (typeof parsed.prompt === "string" && parsed.prompt.trim()) return parsed.prompt.trim();
+        if (typeof parsed.question === "string" && parsed.question.trim()) return parsed.question.trim();
+    } catch {
+        // 不是合法 JSON，按原始文本展示。
+    }
+    return "结构化任务";
+}
