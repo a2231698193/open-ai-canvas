@@ -6,7 +6,7 @@ import { PaymentCheckoutCode } from "@/components/payment-checkout-code";
 import { AppModal } from "@/components/ui/product/app-modal";
 import { createClientUUID } from "@/lib/client-id";
 import { paymentOrderGrantLabel } from "@/lib/payment-order-grant";
-import { closePaymentOrder, createPaymentOrder, getPaymentOrder, queryPaymentOrder, refreshPaymentCheckout, type PaymentOrder } from "@/services/api/payments";
+import { closePaymentOrder, createPaymentOrder, formatPaymentAmount, getPaymentOrder, queryPaymentOrder, refreshPaymentCheckout, type PaymentOrder } from "@/services/api/payments";
 
 function grantedText(order: PaymentOrder) {
     if (order.kind === "membership") return "支付已确认，会员已开通，权益立即生效";
@@ -159,7 +159,7 @@ export function usePaymentOrderFlow({ onGranted }: { onGranted: (order: PaymentO
                     <span className="workspace-wallet-payment-icon">
                         <CreditCard />
                     </span>
-                    <strong>¥ {(order.amountFen / 100).toFixed(2)}</strong>
+                    <strong>{formatPaymentAmount(order.amountFen, order.currency)}</strong>
                     <p>
                         {order.productName} · {paymentOrderGrantLabel(order)}
                     </p>
