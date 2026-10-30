@@ -378,6 +378,7 @@ async function reloadSession() {
     sync.resetRemoteUserDataSync();
     await markConfirmedFixtureSnapshots();
     await sync.initializeRemoteUserDataSession("sync-test-user");
+    sync.installRemoteUserDataAutoSync();
 }
 function expectFencedRetry(original: ReturnType<typeof oldTaskEntry>["request"], replacement: typeof original) {
     expect(replacement.mutationId).not.toBe(original.mutationId);

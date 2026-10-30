@@ -12,6 +12,10 @@ import (
 func TestAudioTokenOrderBillsInputCharacters(t *testing.T) {
 	svc, db := newChannelModelTestService(t)
 	admin := &model.User{ID: "admin", Role: model.UserRoleAdmin}
+	if err := db.Create(admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	ensureTestUsers(t, db, "user")
 	channel := model.ModelChannel{ID: "channel", Scope: model.ChannelScopeSystem, Name: "音频渠道", Enabled: true, ModelsJSON: `[]`}
 	if err := db.Create(&channel).Error; err != nil {
 		t.Fatal(err)

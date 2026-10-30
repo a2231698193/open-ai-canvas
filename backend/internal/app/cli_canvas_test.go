@@ -55,8 +55,12 @@ func TestCLICanvasStateAndApplyStayOnExistingRules(t *testing.T) {
 	if created.(map[string]any)["nodeId"] != "storyboard-1" {
 		t.Fatalf("storyboard = %#v", created)
 	}
-	// 同一份写入路径新建的空节点可以撤销；撤销后画布哈希继续前进，旧哈希作废。
-	storyboardHash, _ := created.(map[string]any)["snapshotHash"].(string)
+	// 分镜工具返回的是节点版本哈希；通用画布写入必须先重新读取整张画布的哈希。
+	state, err = s.CLICanvasState("user", "cli-canvas", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storyboardHash, _ := state["snapshotHash"].(string)
 	blank, err := s.CLIApplyCanvasOps("user", "cli-canvas", []byte(`{"snapshotHash":"`+storyboardHash+`","ops":[{"type":"add_node","id":"blank","nodeType":"text","title":"待删"}]}`))
 	if err != nil {
 		t.Fatal(err)

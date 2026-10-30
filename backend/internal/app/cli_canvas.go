@@ -45,8 +45,20 @@ func (s *Service) CLIApplyCanvasOps(userID, canvasID string, raw json.RawMessage
 	if len(raw) == 0 || !json.Valid(raw) {
 		return nil, BadAuthRequest("画布操作必须是 JSON 对象")
 	}
-	if _, err := canvasProjectForUser(s.repo, userID, canvasID); err != nil {
+	canvas, err := canvasProjectForUser(s.repo, userID, canvasID)
+	if err != nil {
 		return nil, err
+	}
+	doc, err := creationDocument(canvas.PayloadJSON)
+	if err != nil {
+		return nil, err
+	}
+	args, err := decodeCloudAgentCanvasArgs(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	if cloudAgentCanvasHash(doc) != args.SnapshotHash {
+		return nil, BadAuthRequest("画布已变化，本次未写入；请重新读取后再提交")
 	}
 	policy, err := s.RuntimePolicy()
 	if err != nil {
@@ -227,7 +239,7 @@ func (s *Service) CLICanvasTool(userID, canvasID, tool string, raw json.RawMessa
 		if err != nil {
 			return nil, err
 		}
-		return s.cloudAgentModelList(intent)
+		return s.cloudAgentModelList(userID, intent)
 	case "generate_media", "image_layer_split":
 		return s.cliGenerateMedia(userID, canvasID, call)
 	default:

@@ -31,7 +31,12 @@ export function segmentState(segment: DramaSegment): { tone: SegmentTone; label:
     // 已请求但调度还没提交：显示真实的等待原因，不冒充“生成中”。
     if (segment.videoStatus === "queued" && segment.videoWait) return { tone: "blocked", label: videoWaitLabel(segment.videoWait), detail: segment.videoWait };
     if (segment.videoStatus === "queued" && segment.videoJob?.status !== "running") return { tone: "busy", label: "排队提交中" };
-    if (mediaBusy(segment.videoStatus)) return segment.request.firstFramePending ? { tone: "blocked", label: "等待上一段" } : { tone: "busy", label: "生成视频中" };
+    if (mediaBusy(segment.videoStatus)) {
+        if (segment.request.firstFramePending) return { tone: "blocked", label: "等待上一段" };
+        // 按班次出片的渠道会先候车，显示上游给出的真实阶段，而不是笼统的“生成中”。
+        const stage = segment.videoJob?.status === "running" ? segment.videoJob.providerStage : undefined;
+        return stage ? { tone: "busy", label: stage, detail: `上游进度：${stage}` } : { tone: "busy", label: "生成视频中" };
+    }
     if (segment.videoStatus === "ready") return { tone: "ready", label: "视频已生成" };
     if (segment.videoStatus === "stale") return { tone: "stale", label: "视频需重新生成" };
     return { tone: "idle", label: "待生成视频" };

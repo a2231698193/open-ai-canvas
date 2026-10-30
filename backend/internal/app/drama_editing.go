@@ -230,13 +230,28 @@ func (s *Service) SetDramaCastImage(userID, projectID, castID string, req SetDra
 	if resource.Status != model.ResourceStatusReady || !strings.HasPrefix(resource.MimeType, "image/") {
 		return nil, BadAuthRequest("请上传已完成的图片文件")
 	}
+	source := strings.TrimSpace(req.Source)
+	if source != "" && source != "upload" && source != "canvas" {
+		return nil, BadAuthRequest("参考图来源无效")
+	}
+	if cast.ImageResourceID == resource.ID && cast.ImageStatus == model.DramaMediaReady && cast.Locked {
+		// 重复采用同一张图（双击、Agent 重放）不再新增版本，也不再让剧情段过期。
+		return map[string]any{"cast": cast, "affectedSegments": 0, "unchanged": true}, nil
+	}
 	// 排队中的生图不再需要；生成中的结果回写时槽位已是 ready，只会进版本记录，不会覆盖上传的图。
 	if err := s.repo.CancelQueuedDramaJobs(project.ID, func(db *gorm.DB) *gorm.DB {
 		return db.Where("cast_id = ? AND kind = ?", cast.ID, model.DramaJobCastImage)
 	}); err != nil {
 		return nil, err
 	}
-	if err := s.repo.CreateDramaTake(&model.DramaTake{ID: newID(), ProjectID: project.ID, OwnerID: cast.ID, Kind: "cast", ResourceID: resource.ID, Prompt: "用户上传", CreatedAt: time.Now()}); err != nil {
+	take := &model.DramaTake{ID: newID(), ProjectID: project.ID, OwnerID: cast.ID, Kind: "cast", ResourceID: resource.ID, Prompt: dramaTakeUploadPrompt, CreatedAt: time.Now()}
+	if source == "canvas" {
+		take.Prompt = dramaTakeCanvasPrompt
+		if task := s.dramaCanvasSourceTask(userID, req.TaskID, resource.ID); task != nil {
+			take.TaskID, take.Prompt = task.ID, truncateRunes(firstNonEmpty(strings.TrimSpace(task.Prompt), dramaTakeCanvasPrompt), 2000)
+		}
+	}
+	if err := s.repo.CreateDramaTake(take); err != nil {
 		return nil, err
 	}
 	if err := s.repo.UpdateDramaCastFields(cast.ID, map[string]any{"image_resource_id": resource.ID, "image_status": model.DramaMediaReady, "image_version": gorm.Expr("image_version + 1"), "locked": true}); err != nil {

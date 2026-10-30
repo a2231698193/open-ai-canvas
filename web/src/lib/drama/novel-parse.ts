@@ -67,8 +67,12 @@ function chunkByParagraph(text: string, target: number) {
     return chunks.filter((chunk) => chunk.trim());
 }
 
-/** 逐集制作时单集原文上限（与服务端剧本提示词每章读取上限一致），超出部分的台词会丢失，所以直接拦下。 */
+/** 单章原文上限（与服务端剧本提示词每章读取上限一致），超出部分的台词会丢失，所以直接拦下。 */
 export const EPISODE_SOURCE_CHARS = 12_000;
+/** 按章合并成集时每集原文上限，与服务端 dramaEpisodeSourceRunes 一致。 */
+export const EPISODE_GROUP_CHARS = 40_000;
+// 自动拆分的目标字数（不含空白）：留出空白、换行与短章并入的余量，保证拆开后每章仍在 1.2 万字内。
+const AUTO_SPLIT_WORDS = 9_000;
 
 /** 与服务端一致的字符数：去掉首尾空白后的全部字符，包括换行与空格。 */
 export function sourceChars(text: string) {
@@ -99,8 +103,10 @@ export function analyzeNovel(raw: string, options: { perEpisode?: boolean } = {}
     let splitCount = 0;
     for (const section of sections) {
         const words = wordCount(section.text);
-        if (words > MAX_CHAPTER_WORDS) {
-            const parts = chunkByParagraph(section.text, Math.floor(MAX_CHAPTER_WORDS * 0.8));
+        // 交给模型分集时超长章节在段落处拆开：剧本每章最多读取 1.2 万字，超出部分会丢；逐集制作时由用户自己拆。
+        const tooLong = options.perEpisode ? words > MAX_CHAPTER_WORDS : sourceChars(section.text) > EPISODE_SOURCE_CHARS;
+        if (tooLong) {
+            const parts = chunkByParagraph(section.text, options.perEpisode ? Math.floor(MAX_CHAPTER_WORDS * 0.8) : AUTO_SPLIT_WORDS);
             parts.forEach((text, index) => chapters.push({ title: `${section.title}（${index + 1}/${parts.length}）`, text, words: wordCount(text) }));
             splitCount++;
             continue;

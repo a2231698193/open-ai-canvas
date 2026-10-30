@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Button, Checkbox } from "antd";
 import { AntTooltip as Tooltip } from "@/components/ui/base/tooltip/ant-tooltip";
-import { AlertCircle, Film, Play, RotateCcw, Sparkles, TriangleAlert, X } from "lucide-react";
+import { AlertCircle, Film, Play, RotateCcw, TriangleAlert, X, PenLine } from "lucide-react";
 
 import type { DramaCast, DramaModelChoice, DramaSegment, DramaShot } from "@/services/api/drama";
 
@@ -378,7 +378,7 @@ export function Storyboard({ shots, segments, aspectRatio, castById, defaultVide
                         </Tooltip>
                         <Button
                             size="small"
-                            icon={<Sparkles className="size-3.5" />}
+                            icon={<PenLine className="size-3.5" />}
                             disabled={busy || !toWrite.length}
                             onClick={() => {
                                 onWritePrompts(toWrite);

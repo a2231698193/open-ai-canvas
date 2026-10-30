@@ -21,6 +21,7 @@ func TestImageSpecificationQuoteAgreesWithTaskBilling(t *testing.T) {
 	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
 		t.Fatal(err)
 	}
+	ensureTestUsers(t, db, "user-1", "user")
 	channelModel := model.ChannelModel{
 		ID: "image-channel-model", ChannelID: "image-channel", ModelKey: "image-model", Capability: "image",
 		Protocol: model.ChannelInterfaceOpenAIImage, Enabled: true, PriceConfigured: true,
@@ -58,7 +59,7 @@ func TestImageSpecificationQuoteAgreesWithTaskBilling(t *testing.T) {
 			"channelId": channelModel.ChannelID, "model": channelModel.ModelKey, "quality": strings.ToUpper(selector["quality"]),
 		}}
 		intent := ModelRequestIntentFromTaskInput(input, "canvas_image", "image")
-		quote, err := svc.QuoteLogicalModel("logical-image", intent)
+		quote, err := svc.QuoteLogicalModel(testGroupUserID(svc), "logical-image", intent)
 		if err != nil {
 			t.Fatalf("quote %s: %v", tier.ID, err)
 		}
@@ -70,11 +71,11 @@ func TestImageSpecificationQuoteAgreesWithTaskBilling(t *testing.T) {
 			t.Fatalf("tier %s: quote=%#v order=%#v", tier.ID, quote, order)
 		}
 	}
-	quote, err := svc.QuoteLogicalModel("logical-image", ModelRequestIntent{Capability: "image"})
+	quote, err := svc.QuoteLogicalModel(testGroupUserID(svc), "logical-image", ModelRequestIntent{Capability: "image"})
 	if err != nil || quote.AmountMicrocredits != 2_000_000 {
 		t.Fatalf("default resolution quote=%#v error=%v", quote, err)
 	}
-	if _, err := svc.QuoteLogicalModel("logical-image", ModelRequestIntent{Capability: "image", Options: map[string]any{"quality": "8k"}}); err == nil {
+	if _, err := svc.QuoteLogicalModel(testGroupUserID(svc), "logical-image", ModelRequestIntent{Capability: "image", Options: map[string]any{"quality": "8k"}}); err == nil {
 		t.Fatal("unconfigured resolution must not be quoted")
 	}
 }
@@ -104,6 +105,7 @@ func TestPublicCatalogPriceAppliesCreditMultiplier(t *testing.T) {
 	if err := db.Create(&channelModel.PriceTiers).Error; err != nil {
 		t.Fatal(err)
 	}
+	ensureTestUsers(t, db, "user-1")
 	spec := CapabilitySpec{Version: 1, Capability: "image", Options: map[string]OptionConstraint{"quality": {Values: []any{"1k"}}}}
 	cached := cachedLogicalModel{
 		Model:       model.LogicalModel{ID: "logical-image", PricePolicy: "channel", Capability: "image"},
@@ -111,14 +113,14 @@ func TestPublicCatalogPriceAppliesCreditMultiplier(t *testing.T) {
 		Routes: []cachedLogicalRoute{{Route: model.LogicalModelRoute{ID: "image-route", Enabled: true, Weight: 1}, CapabilitySpec: spec, ChannelModel: channelModel}},
 	}
 	svc := &Service{repo: repository.New(db), routeCatalogTTL: time.Hour, routeCatalog: &routeCatalogSnapshot{LoadedAt: time.Now(), Models: map[string]cachedLogicalModel{"logical-image": cached}, Ordered: []string{"logical-image"}}}
-	models, err := svc.PublicLogicalModels(nil)
+	models, err := svc.PublicLogicalModels(testGroupAccess(svc), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(models) != 1 || len(models[0].PriceTiers) != 1 || models[0].PriceTiers[0].UnitPriceMicrocredits != 1_500_000 {
 		t.Fatalf("public catalog price = %#v", models)
 	}
-	quote, err := svc.QuoteLogicalModel("logical-image", ModelRequestIntent{Capability: "image", Options: map[string]any{"quality": "1k"}})
+	quote, err := svc.QuoteLogicalModel("user-1", "logical-image", ModelRequestIntent{Capability: "image", Options: map[string]any{"quality": "1k"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +137,7 @@ func TestTaskBillingOrderMatchesSystemImagePriceTierFromRequestedSpec(t *testing
 	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.SystemSetting{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}); err != nil {
 		t.Fatal(err)
 	}
+	ensureTestUsers(t, db, "user-1", "user")
 	channelModel := model.ChannelModel{
 		ID: "channel-model-1", ChannelID: "channel-1", ModelKey: "gpt-image-2", ProviderModelKey: "gpt-image-2",
 		Capability: "image", Protocol: model.ChannelInterfaceOpenAIImage, BillingMode: "fixed_request",

@@ -1,10 +1,16 @@
-import { Blocks, CircleDollarSign, Clapperboard, GalleryVerticalEnd, Images, LibraryBig, ListTodo, PanelsTopLeft, Settings } from "lucide-react";
+import { Blocks, CircleDollarSign, Clapperboard, GalleryVerticalEnd, Images, LibraryBig, ListTodo, PanelsTopLeft, PenTool, Settings } from "lucide-react";
 
 export const navigationTools = [
     {
         slug: "inspirations",
         label: "灵感",
         icon: GalleryVerticalEnd,
+        section: "创作空间",
+    },
+    {
+        slug: "create",
+        label: "创作",
+        icon: PenTool,
         section: "创作空间",
     },
     {

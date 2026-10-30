@@ -30,6 +30,7 @@ type CanvasProjectContextMenuProps = {
     onDeleteNode: (nodeId: string) => void;
     onDeleteConnection: (connectionId: string) => void;
     onSaveAsset: (node: CanvasNodeData) => void;
+    onViewMedia: (node: CanvasNodeData) => void;
     onOpenVersions: (node: CanvasNodeData) => void;
     onEditText: (node: CanvasNodeData) => void;
     onOpenDrawing: (node: CanvasNodeData) => void;
@@ -43,9 +44,14 @@ type CanvasProjectContextMenuProps = {
     onSendToAgent: () => void;
     downloadableSelectionCount: number;
     onDownloadSelection: () => void;
+    /** 关联短剧时提供：图片与视频节点可采用到短剧。 */
+    onAdoptToDrama?: (node: CanvasNodeData) => void;
+    /** 开放短剧时提供：分镜脚本节点可交给短剧自动制作。 */
+    onCreateDramaFromStoryboard?: (node: CanvasNodeData) => void;
 };
 
 export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props }: CanvasProjectContextMenuProps) {
+    const { onAdoptToDrama, onCreateDramaFromStoryboard } = props;
     if (!menu) return null;
     const menuPosition = () => menu.type === "canvas" ? menu.position : screenToCanvas(menu.x, menu.y);
     return (
@@ -89,6 +95,7 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
             onSaveAsset={() => {
                 if (node) props.onSaveAsset(node);
             }}
+            onViewMedia={node ? () => props.onViewMedia(node) : undefined}
             onOpenVersions={() => {
                 if (node) props.onOpenVersions(node);
             }}
@@ -114,6 +121,8 @@ export function CanvasProjectContextMenu({ menu, node, screenToCanvas, ...props 
             onSendToAgent={props.onSendToAgent}
             downloadableSelectionCount={props.downloadableSelectionCount}
             onDownloadSelection={props.onDownloadSelection}
+            onAdoptToDrama={onAdoptToDrama && node && (node.type === CanvasNodeType.Image || node.type === CanvasNodeType.Video) ? () => onAdoptToDrama(node) : undefined}
+            onCreateDramaFromStoryboard={onCreateDramaFromStoryboard && node?.type === CanvasNodeType.Script ? () => onCreateDramaFromStoryboard(node) : undefined}
         />
     );
 }

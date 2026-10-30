@@ -47,8 +47,9 @@ describe("large canvas media rendering", () => {
     });
 
     test("paints canvas images from resource URLs instead of origin blob downloads", () => {
-        const resourceResolver = canvasNodeContentSource.match(/function useNodeResourceUrl[\s\S]*?\n}\n\nfunction useNearViewport/)?.[0] || "";
-        expect(resourceResolver).toContain("resolveMediaUrl(storageKey");
+        const resourceResolver = canvasNodeContentSource.match(/function useNodeResourceUrl[\s\S]*?\n}\n\n(?:export )?function useNearViewport/)?.[0] || "";
+        expect(resourceResolver).toContain('getResourceAccess(storageKey, "display", variant)');
+        expect(resourceResolver).toContain("resolveResourceAccessURL(access.url)");
         expect(resourceResolver).not.toContain("cacheResourceObjectUrl");
         expect(resourceResolver).not.toContain("getCachedResourceObjectUrl");
     });

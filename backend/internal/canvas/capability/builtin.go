@@ -146,13 +146,19 @@ func generatedMediaDescriptor(nodeType, version, label string, width, height flo
 	semantics := generatedMediaSemantics(nodeType)
 	fields := editableNodeFields("metadata.generationSpec.prompt", "提示词", "生成合同中的当前提示词；这是 Agent 唯一读写的媒体提示词")
 	readFields := []string{"prompt", "assetTags", "referenceNodeIds"}
-	if generationMode == "video" {
+	switch generationMode {
+	case "image":
+		readFields = append(readFields, "model", "size", "imageResolution", "quality", "count", "transparentBackground")
+	case "video":
+		readFields = append(readFields, "model", "size", "seconds", "vquality", "generateAudio", "watermark")
 		for i, frame := range []struct{ key, label string }{
 			{"videoStartFrameNodeId", "首帧"}, {"videoEndFrameNodeId", "尾帧"},
 		} {
 			fields[frame.key] = PatchField{Path: "metadata." + frame.key, Kind: patchKindString, Label: frame.label, Order: 40 + i, MaxRunes: 80, Description: "已连接图片ID；空字符串取消"}
 			readFields = append(readFields, frame.key)
 		}
+	case "audio":
+		readFields = append(readFields, "model", "audioVoice", "audioFormat", "audioSpeed", "audioInstructions")
 	}
 	return Descriptor{
 		Type: nodeType, Version: version, Label: label, DefaultWidth: width, DefaultHeight: height,

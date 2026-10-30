@@ -182,7 +182,7 @@ func (s *Service) buildAdminLogicalModel(item model.LogicalModel, graph *reposit
 	for _, channelModel := range graph.ChannelModels {
 		channelModelByID[channelModel.ID] = channelModel
 	}
-	admin := AdminLogicalModel{PublicLogicalModel: publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: map[string]any{}}, false, nil), Enabled: item.Enabled, ActiveRevisionID: graph.Revision.ID, RevisionVersion: graph.Revision.Version, Routes: []AdminLogicalRoute{}}
+	admin := AdminLogicalModel{PublicLogicalModel: publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: map[string]any{}}, false), Enabled: item.Enabled, ActiveRevisionID: graph.Revision.ID, RevisionVersion: graph.Revision.Version, Routes: []AdminLogicalRoute{}}
 	projectionRoutes := make([]cachedLogicalRoute, 0, len(graph.Routes))
 	for _, route := range graph.Routes {
 		channelModel, channelOK := channelModelByID[route.ChannelModelID]
@@ -211,7 +211,7 @@ func (s *Service) buildAdminLogicalModel(item model.LogicalModel, graph *reposit
 	if err != nil {
 		return nil, err
 	}
-	admin.PublicLogicalModel = publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: defaults, Routes: projectionRoutes}, false, nil)
+	admin.PublicLogicalModel = publicLogicalModel(cachedLogicalModel{Model: item, ProductSpec: productSpec, Defaults: defaults, Routes: projectionRoutes}, false)
 	admin.CapabilitySpec = productSpec
 	admin.DefaultOptions = defaults
 	structuralRouteSpecs := structuralAdminRouteSpecs(admin.Routes)

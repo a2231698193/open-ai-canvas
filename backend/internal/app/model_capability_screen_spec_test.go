@@ -224,7 +224,7 @@ func TestAutoDLScreenSpecSystemSaveCatalogAndExecutionIgnoreClientOverride(t *te
 				continue
 			}
 			priceInput := map[string]any{"mode": "video", "prompt": "test", "config": map[string]any{"channelId": channel.ID, "channelModelKey": saved.ModelKey, "model": saved.ModelKey, "vquality": tier.Resolution, "videoSeconds": "6"}}
-			priced, err := svc.resolveSystemChannelModelSelection(priceInput, "canvas_video", "text_to_video")
+			priced, err := svc.resolveSystemChannelModelSelection(testGroupAccess(svc), priceInput, "canvas_video", "text_to_video")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -239,7 +239,7 @@ func TestAutoDLScreenSpecSystemSaveCatalogAndExecutionIgnoreClientOverride(t *te
 			t.Fatalf("catalog = %s, err = %v", data, err)
 		}
 		input := map[string]any{"mode": "video", "prompt": "test", "config": map[string]any{"channelId": channel.ID, "channelModelKey": saved.ModelKey, "model": saved.ModelKey, "interfaceType": "autodl-comfyui", "vquality": "auto", "size": "16:9", "videoSeconds": "6", "capabilityConfig": autoDLProfile(t, !subset)}}
-		resolved, err := svc.resolveSystemChannelModelSelection(input, "canvas_video", "text_to_video")
+		resolved, err := svc.resolveSystemChannelModelSelection(testGroupAccess(svc), input, "canvas_video", "text_to_video")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,7 +259,7 @@ func TestAutoDLScreenSpecSystemSaveCatalogAndExecutionIgnoreClientOverride(t *te
 		}
 		if subset {
 			rejected := map[string]any{"mode": "video", "prompt": "test", "config": map[string]any{"channelId": channel.ID, "model": saved.ModelKey, "vquality": "768p竖", "videoSeconds": "6"}}
-			resolved, err = svc.resolveSystemChannelModelSelection(rejected, "canvas_video", "text_to_video")
+			resolved, err = svc.resolveSystemChannelModelSelection(testGroupAccess(svc), rejected, "canvas_video", "text_to_video")
 			if err == nil && svc.ValidateTaskCapability(resolved) == nil {
 				t.Fatal("unselected preset bypassed saved capability restrictions")
 			}

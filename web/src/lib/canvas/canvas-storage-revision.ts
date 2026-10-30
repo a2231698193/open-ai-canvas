@@ -378,7 +378,7 @@ function mergeProjectContent(base: CanvasProject | undefined, local: CanvasProje
         local: local.chatSessions,
         durable: durable.chatSessions,
     });
-    merged.revision = local.revision ?? durable.revision;
+    merged.revision = durable.revision ?? local.revision;
     merged.viewport = local.viewport;
     merged.remoteContentHash = undefined;
     return merged;

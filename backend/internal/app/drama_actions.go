@@ -34,11 +34,26 @@ func (s *Service) UpdateDramaSettings(userID string, projectID string, req Updat
 		if productionRow.Stage != model.DramaStageBible && next.AspectRatio != current.AspectRatio {
 			return DramaSummary{}, BadAuthRequest("制作开始后不能修改画幅")
 		}
-		models, err := s.resolveDramaModels(next.Models)
+		// 分集方式只影响尚未分集的章节：分集完成后已有的集里可能写好了剧本，不重新分组。
+		if next.EpisodeMode != current.EpisodeMode || next.ChaptersPerEpisode != current.ChaptersPerEpisode {
+			if productionRow.PlanDone {
+				return DramaSummary{}, BadAuthRequest("已完成分集，不能再修改分集方式；之后可在制作台逐集追加新的一集")
+			}
+			if next.EpisodeMode == "" {
+				next.EpisodeMode, next.ChaptersPerEpisode = current.EpisodeMode, current.ChaptersPerEpisode
+			}
+		}
+		models, err := s.resolveDramaModels(userID, next)
 		if err != nil {
 			return DramaSummary{}, err
 		}
+		if err := s.validateDramaImageSettings(models, next.Assets); err != nil {
+			return DramaSummary{}, err
+		}
 		next.Models = models
+		if err := s.validateDramaVideoSettings(next); err != nil {
+			return DramaSummary{}, err
+		}
 		fields["settings_json"] = encodeDramaSettings(next)
 	}
 	if req.BudgetMicrocredits != nil {
@@ -47,8 +62,14 @@ func (s *Service) UpdateDramaSettings(userID string, projectID string, req Updat
 			return DramaSummary{}, BadAuthRequest("预算不能为负数")
 		}
 		fields["budget_microcredits"] = budget
-		if productionRow.PauseReason == dramaBudgetPauseReason && (budget == 0 || productionRow.SpentMicrocredits < budget) {
-			fields["pause_reason"] = ""
+		if productionRow.PauseReason == dramaBudgetPauseReason {
+			spent, err := s.dramaTotalSpent(productionRow)
+			if err != nil {
+				return DramaSummary{}, err
+			}
+			if budget == 0 || spent < budget {
+				fields["pause_reason"] = ""
+			}
 		}
 	}
 	if len(fields) > 0 {
@@ -80,15 +101,17 @@ func (s *Service) SetDramaRunning(userID string, projectID string, running bool)
 // resumeDrama 校验模型与预算后把制作切回运行；“继续制作”和所有显式生成请求共用这一入口。
 func (s *Service) resumeDrama(productionRow *model.DramaProduction) error {
 	settings := parseDramaSettings(productionRow.SettingsJSON)
-	models, err := s.resolveDramaModels(settings.Models)
+	models, err := s.resolveDramaModels(productionRow.UserID, settings)
 	if err != nil {
 		return err
 	}
 	if missing := missingDramaCapabilities(models); len(missing) > 0 {
 		return BadAuthRequest("还没有可用的" + strings.Join(missing, "、") + "模型")
 	}
-	if productionRow.BudgetMicrocredits > 0 && productionRow.SpentMicrocredits >= productionRow.BudgetMicrocredits {
-		return BadAuthRequest("已达到预算上限，请先提高预算")
+	if exhausted, err := s.dramaBudgetExhausted(productionRow); err != nil {
+		return err
+	} else if exhausted {
+		return BadAuthRequest("已达到预算上限（含画布精修花费），请先提高预算")
 	}
 	settings.Models = models
 	fields := map[string]any{"status": model.DramaStatusRunning, "pause_reason": "", "settings_json": encodeDramaSettings(settings)}
@@ -564,7 +587,7 @@ func (s *Service) GenerateDramaSegments(userID, projectID, episodeID string, req
 	if req.VideoModel != nil {
 		encoded := ""
 		if !req.VideoModel.Empty() {
-			if err := s.requireDramaModelOption("video", *req.VideoModel); err != nil {
+			if err := s.requireDramaModelOption(userID, "video", *req.VideoModel); err != nil {
 				return nil, err
 			}
 			b, _ := json.Marshal(req.VideoModel)
@@ -593,12 +616,18 @@ func (s *Service) GenerateDramaSegments(userID, projectID, episodeID string, req
 		if mediaBusyStatus(seg.VideoStatus) {
 			return nil, BadAuthRequest("剧情段视频正在生成或排队")
 		}
-		choice := segmentVideoChoice(seg, parseDramaSettings(p.SettingsJSON).Models.Video)
+		settings := parseDramaSettings(p.SettingsJSON)
+		choice := segmentVideoChoice(seg, settings.Models.Video)
 		if req.VideoModel != nil && !req.VideoModel.Empty() {
 			choice = *req.VideoModel
 		}
-		if _, err := s.dramaVideoProfile(choice); err != nil {
+		profile, err := s.dramaVideoProfile(choice)
+		if err != nil {
 			return nil, err
+		}
+		// 第 1 段总用参考图或文生视频；尾帧续接的后续段才需要图生视频。
+		if issue := profile.continuityIssue(settings); issue != "" && index > 0 {
+			return nil, BadAuthRequest(issue)
 		}
 		if !seen[index] {
 			seen[index] = true
@@ -619,8 +648,8 @@ func mediaBusyStatus(status string) bool {
 }
 
 // requireDramaModelOption 只接受当前目录中可由服务端执行的模型，防止提交任意渠道标识。
-func (s *Service) requireDramaModelOption(capability string, choice DramaModelChoice) error {
-	options, unavailable, err := s.dramaModelOptions(capability)
+func (s *Service) requireDramaModelOption(userID string, capability string, choice DramaModelChoice) error {
+	options, unavailable, err := s.dramaModelOptions(userID, capability)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,8 @@ import { getAntThemeConfig } from "@/lib/app-theme";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 
 import { chapters, getWelcomeLook, showcases, welcomeLooks, type WelcomeLook } from "./story";
+// 欢迎页是独立入口、不加载 globals.css；按钮 token 单独引入，antd 主题里的 var(--button-*) 才能解析。
+import "@/styles/button-tokens.css";
 import "./welcome.css";
 import { Select } from "@/components/ui/base/select";
 
@@ -37,7 +39,7 @@ export default function WelcomePage() {
         setLook(next);
     };
     return (
-        <ConfigProvider theme={getAntThemeConfig(true, appearance.activeSkin)}>
+        <ConfigProvider theme={getAntThemeConfig(true, appearance.activeSkin)} button={{ autoInsertSpace: false }}>
             <WelcomeExperience key={look.id} look={look} brandName={appearance.brandName} onLookChange={changeLook} />
         </ConfigProvider>
     );

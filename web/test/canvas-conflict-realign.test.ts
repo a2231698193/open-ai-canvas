@@ -80,8 +80,8 @@ describe("画布版本冲突重新对齐", () => {
 
     test("保存遇到版本冲突时先重新对齐，再回落到冲突提示", () => {
         const source = readFileSync(resolve(import.meta.dir, "../src/services/user-data-sync.ts"), "utf8");
-        expect(source).toContain("rebaseEditedProjectOntoRemote({ base, local: current, durable: remote");
-        expect(source).toContain("if (conflict && await realignProjectAfterConflict(source)) continue;");
-        expect(source).toContain("realignedProjectsThisDrain = new Set();");
+        expect(source).toContain("rebaseCanvasLocalEdits");
+        expect(source).toContain("await reconcileCanvasLocalEdits(source.id, rejected);");
+        expect(source).toContain("class CanvasMutationRejectedError");
     });
 });

@@ -59,9 +59,14 @@ type BillingOrder struct {
 	PriceVersion                 int64  `json:"priceVersion"`
 	UnitPriceMicrocredits        int64  `json:"unitPriceMicrocredits"`
 	MultiplierBasisPoints        int64  `json:"multiplierBasisPoints"`
-	Quantity                     int64  `json:"quantity"`
-	AmountMicrocredits           int64  `json:"amountMicrocredits"`
-	ReservedAmountMicrocredits   int64  `json:"reservedAmountMicrocredits"`
+	// UserGroup/PriceCurrency/CurrencyRateMicrocredits 固化下单时的分组和货币换算；
+	// 单价字段已是换算后的微积分，结算只读取快照。
+	UserGroup                  string `json:"userGroup,omitempty" gorm:"size:40;not null;default:''"`
+	PriceCurrency              string `json:"priceCurrency,omitempty" gorm:"size:16;not null;default:''"`
+	CurrencyRateMicrocredits   int64  `json:"currencyRateMicrocredits,omitempty" gorm:"not null;default:0"`
+	Quantity                   int64  `json:"quantity"`
+	AmountMicrocredits         int64  `json:"amountMicrocredits"`
+	ReservedAmountMicrocredits int64  `json:"reservedAmountMicrocredits"`
 	// ChargeLimitSet distinguishes an authorized zero price from an uncapped order.
 	// All Agent prices remain capped across route changes and settlement.
 	ChargeLimitSet               bool  `json:"chargeLimitSet,omitempty" gorm:"not null;default:false"`

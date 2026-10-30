@@ -11,7 +11,7 @@ import (
 // 读素材两个工具，取的是条件暴露的并集，而不是最小集）。
 func platformToolSchema(t *testing.T) ([]map[string]any, []byte) {
 	t.Helper()
-	req := CloudAgentRequest{PermissionMode: "auto", ContextScope: []string{"canvas"}, SkillIDs: []string{"capability-list"}, VisionEnabled: true}
+	req := CloudAgentRequest{PermissionMode: "auto", ContextScope: []string{"canvas"}, SkillsEnabled: true, MemoryMode: "auto", VisionEnabled: true}
 	req.Budget.MaxGenerationTasks = 1
 	tools := cloudAgentTools(req)
 	raw, err := json.Marshal(tools)
@@ -63,9 +63,8 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 		t.Fatal("启用视觉能力后 canvas_inspect_image 未暴露")
 	}
 
-	// 官方 v1.6.1 的预演台工具与本仓库的批量识图、素材事实、空节点删除和带角色参考叠在一起。
-	// 合并官方 v1.6.8.12 后实测 30 个工具、40,935 字节，预算显式上调到 42,000（约 2.6% 余量）。
-	// 新增工具或字段时须重新度量，不要悄悄膨胀。
+	// 本地画布工具与官方记忆、技能推荐、短剧工具叠加后，schema 会随双方能力一起增长。
+	// 新增工具或字段时必须重新度量，不要悄悄膨胀。
 	if len(raw) > 42000 {
 		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 42000：请压缩描述或显式调整预算", len(raw))
 	}

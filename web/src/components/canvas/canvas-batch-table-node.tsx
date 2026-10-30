@@ -655,8 +655,8 @@ type RowStatus = { label: string; tone: RowStatusTone; loading: boolean; retryab
 function rowStatus(item: CanvasGenerationBatchItem | undefined, output: CanvasNodeData | undefined): RowStatus {
     if (item?.status === "failed") return { label: item.errorDetails ? generationErrorMessage(item.errorDetails) : "生成失败", tone: "error", loading: false, retryable: true };
     if (item?.status === "cancelled") return { label: "已停止", tone: "error", loading: false, retryable: false };
-    // 未完成项统一显示「生成中」，不再区分等待/提交/排队。
-    if (item && ["waiting", "submitting", "queued", "running"].includes(item.status)) return { label: "生成中", tone: "loading", loading: true, retryable: false };
+    if (item?.status === "waiting") return { label: "等待中", tone: "loading", loading: true, retryable: false };
+    if (item && ["submitting", "queued", "running"].includes(item.status)) return { label: "生成中", tone: "loading", loading: true, retryable: false };
     if (output?.metadata?.status === "error") return { label: output.metadata.errorDetails ? generationErrorMessage(output.metadata.errorDetails) : "生成失败", tone: "error", loading: false, retryable: false };
     if (output?.metadata?.status === "loading") return { label: "生成中", tone: "loading", loading: true, retryable: false };
     if (hasNodeMedia(output)) return batchOutputResultPending(output?.metadata)

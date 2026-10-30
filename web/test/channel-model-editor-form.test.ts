@@ -224,7 +224,7 @@ describe("pricing write validation", () => {
         audio.priceTiers[0] = { ...defaultPriceTier(), billingMode: "token" as const, inputTokenPrice: NaN };
         expect(() => validateChannelModelPrices(audio)).toThrow("有效数值");
         audio.priceTiers[0] = { ...defaultPriceTier(), billingMode: "per_second" as const, unitPrice: 1 };
-        expect(() => validateChannelModelPrices(audio)).toThrow("按秒");
+        expect(() => validateChannelModelPrices(audio)).not.toThrow();
     });
     test("validates all text Token prices and accepts free video Token pricing", () => {
         expect(() => validateChannelModelPrices({ ...draft, priceTiers: [{ ...defaultPriceTier(), billingMode: "token", inputTokenPrice: NaN }] })).toThrow();

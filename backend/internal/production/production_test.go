@@ -16,6 +16,16 @@ func TestExtractJSONObjectToleratesFences(t *testing.T) {
 	}
 }
 
+func TestReferenceTokensNormalizeAndFlagUnknownNumbers(t *testing.T) {
+	text := CleanWrittenPrompt("林逸（@参考图1）站在石碑（参考图 3）旁，王镇山（参考图5）冷笑。")
+	if text != "林逸（参考图1）站在石碑（参考图3）旁，王镇山（参考图5）冷笑。" {
+		t.Fatalf("tokens must be normalized: %q", text)
+	}
+	if unknown := UnknownReferenceTokens(text, 4); len(unknown) != 1 || unknown[0] != "参考图5" {
+		t.Fatalf("only out-of-range references are unknown: %v", unknown)
+	}
+}
+
 func TestParsePlanCoversEveryChapterInBatch(t *testing.T) {
 	batch := []Chapter{{Index: 1, Title: "一", Text: "甲"}, {Index: 2, Title: "二", Text: "乙"}, {Index: 3, Title: "三", Text: "丙"}}
 	raw := `{"episodes":[{"title":"开端","chapters":[1,"2",9],"synopsis":"开端剧情"}]}`

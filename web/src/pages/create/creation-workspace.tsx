@@ -16,7 +16,7 @@ import { Button, Popover } from "antd";
 import { useWorkspaceTopBarMount } from "@/components/layout/workspace-top-bar-extension";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { Reorder, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { ArrowUp, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Film, History, Image as ImageIcon, Images, LoaderCircle, Maximize2, MessageSquareText, Minimize2, Plus, SlidersHorizontal, Trash2, WandSparkles, Waves, X } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Film, History, Image as ImageIcon, Images, Lightbulb, LoaderCircle, Maximize2, MessageSquareText, Minimize2, Orbit, PenLine, Plus, SlidersHorizontal, Trash2, WandSparkles, Waves, X } from "lucide-react";
 
 import { WorkingGlow } from "@/components/ai/working-indicator";
 import { formatVideoResolutionLabel as videoResolutionLabel } from "@/lib/video-generation-options";
@@ -43,6 +43,7 @@ import { type CreationReference, type CreationReferenceLimits } from "./creation
 import { creationAttachmentKind, type CreationAttachment, type CreationMode } from "./creation-assets";
 import { isImageAttachment } from "./creation-conversations";
 import { countOptions, modeLabels, qualityOptions, resolutionOptions, type CreationShotRailEntry } from "./creation-types";
+import { creationMessageNeedsResultSync } from "./creation-conversations";
 import "./creation-product.css";
 import "./creation-scrollbars.css";
 import { CreationAttachmentThumbnail, CreationMediaPreviewModal } from "./creation-workspace-messages";
@@ -72,11 +73,12 @@ export function CreationWorkspaceToolbar({ shots, onJumpToShot, onNewConversatio
                 <div className="creation-rail-pop-head"><span className="creation-rail-pop-title">镜头时间线<small>{shots.length ? `共 ${shots.length} 镜` : "空轨道"}</small></span><button type="button" className="creation-rail-pop-close" aria-label="关闭镜头列表" onClick={() => setRailOpen(false)}><X /></button></div>
                 {shots.length ? <ol className="creation-rail-list">{shots.map((shot) => {
                     const resultStatus = shot.result?.status;
-                    const statusLabel = resultStatus === "done" ? "完成" : resultStatus === "error" ? "生成失败" : resultStatus === "pending" ? "生成中" : resultStatus === "cancelled" ? "已停止" : "待生成";
+                    const resultNeedsSync = Boolean(shot.result && creationMessageNeedsResultSync(shot.result));
+                    const statusLabel = resultStatus === "done" ? "完成" : resultNeedsSync ? "待同步" : resultStatus === "error" ? "生成失败" : resultStatus === "pending" ? "生成中" : resultStatus === "cancelled" ? "已停止" : "待生成";
                     return <li key={shot.key}><button type="button" role="option" aria-selected="false" className="creation-rail-row" onClick={() => { setRailOpen(false); onJumpToShot(shot); }}>
                         <span className="creation-rail-row-shot">{formatShotOrdinal(shot.ordinal - 1)}</span>
                         <span className="creation-rail-row-prompt">{shot.user.content || "视频镜头"}</span>
-                        <span className={`creation-rail-row-state is-${resultStatus || "idle"}`}>{statusLabel}</span>
+                        <span className={`creation-rail-row-state is-${resultNeedsSync ? "sync" : resultStatus || "idle"}`}>{statusLabel}</span>
                     </button></li>;
                 })}</ol> : <p className="creation-rail-empty">在下方发送一条视频消息，就会自动成为第 1 镜。</p>}
             </div> : null}
@@ -450,7 +452,7 @@ export function CreationComposer(props: ComposerProps) {
                         aria-expanded={promptOptimizerOpen}
                         aria-haspopup="dialog"
                     >
-                        <WandSparkles />
+                        <PenLine />
                         <span>优化</span>
                     </button>
                 </Tooltip> : null}
@@ -468,9 +470,9 @@ export function CreationComposer(props: ComposerProps) {
                     </Tooltip>
                     <Tooltip title={interactionBusy ? "生成中，此开关将在下次发送时生效" : (props.textThinking ? "思考已开启，会展示模型返回的推理摘要" : "开启模型思考")}>
                         <button type="button" className="creation-chat-control" aria-pressed={props.textThinking} disabled={interactionBusy} onClick={() => props.setTextThinking(!props.textThinking)}>
-                            <Brain />
+                            <Lightbulb />
                             <span>思考</span>
-                            {props.textThinking ? <span className="size-1.5 rounded-full bg-blue-400 shrink-0 shadow-sm" /> : null}
+                            {props.textThinking ? <span className="size-1.5 rounded-full bg-current shrink-0" aria-hidden /> : null}
                         </button>
                     </Tooltip>
                 </> : null}
@@ -488,7 +490,7 @@ export function CreationComposer(props: ComposerProps) {
                 aria-label={actionLabel}
                 title={!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
             >
-                {showWorkingGlow ? <WorkingGlow active color="var(--creation-text)" radius="999px" /> : null}
+                {showWorkingGlow ? <WorkingGlow active color="var(--creation-text)" radius="var(--button-radius)" /> : null}
                 {showCost ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
                 <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}<span>{showWorkingSpinner ? "生成中" : "开始创作"}</span></span>
             </Button>
@@ -593,7 +595,7 @@ export function CreationModeTabs({ mode, onModeChange, agentActive = false, onAg
                 <span>{item.label}</span>
             </button>
         ))}
-        {onAgentSelect ? <button type="button" className="creation-mode-button" data-mode="agent" aria-pressed={agentActive} onClick={onAgentSelect}>{indicator(agentActive)}<Brain /><span>Agent</span><i className="creation-mode-spark" aria-hidden /></button> : null}
+        {onAgentSelect ? <button type="button" className="creation-mode-button" data-mode="agent" aria-pressed={agentActive} onClick={onAgentSelect}>{indicator(agentActive)}<Orbit /><span>Agent</span><i className="creation-mode-spark" aria-hidden /></button> : null}
         </div>
     </LayoutGroup>;
 }

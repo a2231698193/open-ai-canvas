@@ -102,8 +102,8 @@ type dramaRun struct {
 	active     map[string]bool
 	running    int
 	newJobs    []model.DramaJob
-	// imageSizes 缓存本轮调度中“期望画幅 → 模型 size 值”的换算，避免每个镜头重复读取能力合同。
-	imageSizes map[string]string
+	// imageSizes 缓存本轮调度中“期望画幅 → 模型尺寸参数”的换算，避免每张参考图重复读取能力合同。
+	imageSizes map[string]dramaImageRequest
 }
 
 func dramaJobKey(kind, episodeID, shotID, castID string) string {
@@ -202,6 +202,10 @@ func (r *dramaRun) syncRunningJob(job *model.DramaJob) error {
 		}
 		recordDramaAttempt(job, task.ID, string(task.Status), "", job.CostMicrocredits)
 		if applyErr := r.applyJob(job, task); applyErr != nil {
+			var issue *dramaResultIssue
+			if errors.As(applyErr, &issue) {
+				return r.failJob(job, issue.message)
+			}
 			return r.failJob(job, "结果处理失败（保留原任务，重试不重复生成）："+applyErr.Error())
 		}
 		now := time.Now()
@@ -217,6 +221,11 @@ func (r *dramaRun) syncRunningJob(job *model.DramaJob) error {
 	}
 	return nil
 }
+
+// dramaResultIssue 是生成结果本身不合格（例如参考图画幅不符）：任务已成功结算，失败原因原样展示给用户。
+type dramaResultIssue struct{ message string }
+
+func (e *dramaResultIssue) Error() string { return e.message }
 
 func (r *dramaRun) taskCost(task *model.Task) int64 {
 	if task.BillingOrderID == "" {
@@ -337,6 +346,11 @@ func (r *dramaRun) plan() error {
 	if !p.PlanDone {
 		if p.PlanCursor >= len(chapters) {
 			p.PlanDone = true
+		} else if r.settings.EpisodeMode == DramaEpisodeModeChapter {
+			// 规划中途改成按章分集：剩余章节直接分组建集，在途的规划结果因游标前移作废。
+			if err := r.groupRemainingChapters(chapters); err != nil {
+				return err
+			}
 		} else if !r.active[dramaJobKey(model.DramaJobPlan, "", "", "")] {
 			end, runes := p.PlanCursor, 0
 			for end < len(chapters) && end-p.PlanCursor < dramaPlanBatchChapters && (runes == 0 || runes+chapters[end].WordCount <= dramaPlanBatchRunes) {
@@ -432,6 +446,19 @@ func (r *dramaRun) advanceEpisode(e *model.DramaEpisode, loadedStage string) err
 	if err != nil {
 		return err
 	}
+	// 从画布采用的视频可能只写入了视频（Agent 在事务内采用不做存储 IO），尾帧在这里补抽；每集每轮最多一段。
+	for _, segment := range segments {
+		if segment.VideoStatus != model.DramaMediaReady || segment.VideoResourceID == "" || segment.TailFrameResourceID != "" {
+			continue
+		}
+		if err := r.s.backfillDramaSegmentTail(r.project.UserID, segment); err != nil {
+			return err
+		}
+		if segments, err = r.s.repo.DramaSegments(e.ID); err != nil {
+			return err
+		}
+		break
+	}
 	switch e.Stage {
 	case model.DramaEpisodeScript:
 		if e.Error != "" || r.active[dramaJobKey(model.DramaJobScript, e.ID, "", "")] {
@@ -488,12 +515,16 @@ func (r *dramaRun) advanceEpisode(e *model.DramaEpisode, loadedStage string) err
 	return err
 }
 
-// enqueueSegmentVideos 按段序提交下一个可生成的段视频：第 2 段起要等上一段尾帧。
+// enqueueSegmentVideos 提交可生成的段视频。尾帧续接时按段序只提交下一段（第 2 段起要等上一段尾帧）；
+// 并行出片时本集所有满足条件的段一起提交，由派发并发与渠道排队决定实际出片节奏。
 // requestedOnly 时只提交用户明确请求（queued）的段，用于全集尚未进入视频阶段时。返回全部段视频是否就绪。
 // 等待条件与 dramaVideoWaitReason 同源，详情页显示的等待原因就是这里卡住的条件。
 func (r *dramaRun) enqueueSegmentVideos(e *model.DramaEpisode, segments []model.DramaSegment, requestedOnly bool) (bool, error) {
 	if len(segments) == 0 {
 		return false, nil
+	}
+	if r.settings.parallelVideo() {
+		return r.enqueueParallelSegmentVideos(e, segments, requestedOnly)
 	}
 	var shots []model.DramaShot
 	for i, seg := range segments {
@@ -520,6 +551,34 @@ func (r *dramaRun) enqueueSegmentVideos(e *model.DramaEpisode, segments []model.
 	return true, nil
 }
 
+// enqueueParallelSegmentVideos 是并行出片的提交：段与段互不依赖，过期、失败或未请求的段只影响自己。
+// r.enqueue 按作业键去重，已在队列或生成中的段不会重复提交。
+func (r *dramaRun) enqueueParallelSegmentVideos(e *model.DramaEpisode, segments []model.DramaSegment, requestedOnly bool) (bool, error) {
+	var shots []model.DramaShot
+	ready := true
+	for i, seg := range segments {
+		if dramaSegmentVideoDone(seg) {
+			continue
+		}
+		ready = false
+		wanted := seg.VideoStatus == model.DramaMediaQueued || (!requestedOnly && seg.VideoStatus == "")
+		if !wanted {
+			continue
+		}
+		if shots == nil {
+			loaded, err := r.s.repo.DramaShots(e.ID)
+			if err != nil {
+				return false, err
+			}
+			shots = loaded
+		}
+		if dramaVideoWaitReason(r.settings, r.production, e, segments, i, shots, r.castLookup) == "" {
+			r.enqueue(model.DramaJobSegmentVideo, e.ID, seg.ID, "", episodePriority(40, e.Number), fmt.Sprintf("第 %d 集 第 %d 段视频", e.Number, seg.SegmentIndex+1), nil)
+		}
+	}
+	return ready, nil
+}
+
 func (r *dramaRun) castLookup(id string) (model.DramaCast, bool) {
 	cast := r.castByID[id]
 	if cast == nil {
@@ -536,11 +595,20 @@ func (r *dramaRun) dispatch() error {
 	}
 	sort.SliceStable(queued, func(i, j int) bool { return queued[i].Priority > queued[j].Priority })
 	capacity := r.settings.Concurrency - r.running
+	// 画布精修花费计入预算；每轮只查一次，流水线花费在本轮内按结算逐项累加。
+	var canvasSpent int64
+	if r.production.BudgetMicrocredits > 0 && len(queued) > 0 {
+		spent, err := r.s.dramaCanvasSpent(r.production)
+		if err != nil {
+			return err
+		}
+		canvasSpent = spent
+	}
 	for i := range queued {
 		if capacity <= 0 {
 			return nil
 		}
-		if r.production.BudgetMicrocredits > 0 && r.production.SpentMicrocredits >= r.production.BudgetMicrocredits {
+		if r.production.BudgetMicrocredits > 0 && r.production.SpentMicrocredits+canvasSpent >= r.production.BudgetMicrocredits {
 			r.production.Status, r.production.PauseReason = model.DramaStatusPaused, dramaBudgetPauseReason
 			return nil
 		}
@@ -728,6 +796,22 @@ func (r *dramaRun) applyPlan(job *model.DramaJob, task *model.Task) error {
 	return r.s.repo.AppendDramaEpisodes(r.production, episodes, expected)
 }
 
+// groupRemainingChapters 把尚未分集的章节按“每 N 章一集”直接建集，写入与模型规划同一游标 CAS。
+func (r *dramaRun) groupRemainingChapters(chapters []model.ProjectUnit) error {
+	next, err := r.s.repo.MaxDramaEpisodeNumber(r.project.ID)
+	if err != nil {
+		return err
+	}
+	episodes, err := groupDramaChapterEpisodes(r.project.ID, next+1, chapters[r.production.PlanCursor:], r.settings.ChaptersPerEpisode, model.DramaSourceNovel, time.Now())
+	if err != nil {
+		r.production.Status, r.production.PauseReason = model.DramaStatusPaused, "分集失败："+err.Error()
+		return nil
+	}
+	expected := r.production.PlanCursor
+	r.production.PlanCursor, r.production.PlanDone = len(chapters), true
+	return r.s.repo.AppendDramaEpisodes(r.production, episodes, expected)
+}
+
 func (r *dramaRun) applyScript(job *model.DramaJob, task *model.Task) error {
 	text, err := dramaTaskText(task)
 	if err != nil {
@@ -910,6 +994,14 @@ func (r *dramaRun) applyCastImage(job *model.DramaJob, task *model.Task) error {
 	if err := r.s.repo.CreateDramaTake(&model.DramaTake{ID: newID(), ProjectID: r.project.ID, OwnerID: job.CastID, Kind: "cast", ResourceID: resourceID, TaskID: task.ID, Prompt: truncateRunes(task.Prompt, 2000), CreatedAt: time.Now()}); err != nil {
 		return err
 	}
+	// 有的模型会无视尺寸参数出方图：画幅明显不符时不设为当前参考图（否则会带进每个剧情段），
+	// 结果保留在版本记录里，设定标记失败并写明实际尺寸。
+	if cast, err := r.s.repo.DramaCast(r.project.ID, job.CastID); err == nil {
+		ratio := r.castImageRatio(cast.Kind)
+		if resource, err := r.s.repo.ResourceForUser(r.project.UserID, resourceID); err == nil && resource != nil && dramaImageRatioMismatch(resource.Width, resource.Height, ratio) {
+			return &dramaResultIssue{message: fmt.Sprintf("图片模型返回了 %d×%d（%s）的参考图，与要求的 %s 不符；结果已保留在版本记录中，请换用支持 %s 的图片模型后重新生成", resource.Width, resource.Height, dramaRatioLabel(fmt.Sprintf("%dx%d", resource.Width, resource.Height)), ratio, ratio)}
+		}
+	}
 	_, err := r.s.repo.UpdateDramaCastIf(job.CastID, []string{model.DramaMediaRunning, model.DramaMediaQueued}, map[string]any{"image_resource_id": resourceID, "image_status": model.DramaMediaReady, "image_version": gorm.Expr("image_version + 1")})
 	return err
 }
@@ -1008,7 +1100,8 @@ func (r *dramaRun) submitSegmentPrompt(job *model.DramaJob) (*model.Task, bool, 
 			return nil, false, errors.New("剧情段时长超过所选模型上限")
 		}
 		seconds := production.SnapVideoSeconds(draft.view.DurationMs, profile.Durations)
-		draft.input.FirstFrame = position > 0
+		// 并行出片不带上一段尾帧，提示词不能写“首帧承接上一段”。
+		draft.input.FirstFrame = position > 0 && !r.settings.parallelVideo()
 		if len(draft.input.Shots) > 0 {
 			draft.input.Shots[len(draft.input.Shots)-1].DurationMs += int64(seconds)*1000 - draft.view.DurationMs
 		}
@@ -1068,21 +1161,25 @@ func (r *dramaRun) createTaskWith(choice DramaModelChoice, capability string, op
 	return task, err
 }
 
-// imageConfig 生成图片任务的尺寸参数：期望画幅换算到所选模型真正支持的档位。
-func (r *dramaRun) imageConfig(ratio string) map[string]any {
-	config := map[string]any{"count": "1"}
+// imageRequest 把参考图期望画幅与作品指定的分辨率换算到所选模型真正支持的尺寸；一轮调度内按画幅缓存。
+func (r *dramaRun) imageRequest(ratio string) dramaImageRequest {
 	if r.imageSizes == nil {
-		r.imageSizes = map[string]string{}
+		r.imageSizes = map[string]dramaImageRequest{}
 	}
-	size, cached := r.imageSizes[ratio]
+	request, cached := r.imageSizes[ratio]
 	if !cached {
-		size = r.s.dramaImageSize(r.settings.Models.Image, ratio)
-		r.imageSizes[ratio] = size
+		request = r.s.dramaImageRequestFor(r.settings.Models.Image, ratio, r.settings.Assets.Resolution)
+		r.imageSizes[ratio] = request
 	}
-	if size != "" {
-		config["size"] = size
+	return request
+}
+
+// castImageRatio 是设定参考图的期望画幅：场景与道具统一横版 16:9，角色按参考图方案。
+func (r *dramaRun) castImageRatio(kind string) string {
+	if kind == "character" {
+		return r.settings.Assets.CharacterRatio
 	}
-	return config
+	return production.AssetImageRatio
 }
 
 func (r *dramaRun) textInput(job *model.DramaJob, systemPrompt string) map[string]any {
@@ -1216,17 +1313,21 @@ func (r *dramaRun) submitCastImage(job *model.DramaJob) (*model.Task, bool, erro
 	assets := r.settings.Assets
 	prompt := production.CastImagePrompt(assets, cast.Kind, cast.Name, appearance, r.settings.StylePrompt, r.meta.VisualRules)
 	// 资产参考图统一横版 16:9，与作品画幅无关：场景要容纳完整空间，道具要留足展示余量。
-	// 角色按参考图方案的画幅（内置方案均为 16:9，自定义方案可改）。
-	ratio := production.AssetImageRatio
-	if cast.Kind == "character" {
-		ratio = assets.CharacterRatio
+	// 角色按参考图方案的画幅（内置方案均为 16:9，自定义方案可改）。画幅通过尺寸参数约束，
+	// 不只靠提示词；模型给不出接近的尺寸时直接失败并说明原因，不退回模型默认的方图。
+	ratio := r.castImageRatio(cast.Kind)
+	request := r.imageRequest(ratio)
+	if request.Issue != "" {
+		return nil, false, errors.New(request.Issue)
 	}
 	metadata := r.metadata(job)
-	metadata["assetMode"] = assets.Mode
+	metadata["assetMode"], metadata["assetRatio"] = assets.Mode, ratio
 	if assets.SourceSkillID != "" {
 		metadata["assetSourceSkillId"], metadata["assetSourcePath"] = assets.SourceSkillID, assets.SourcePath
 	}
-	input := map[string]any{"config": r.imageConfig(ratio), "metadata": metadata}
+	config := map[string]any{"count": "1"}
+	request.apply(config)
+	input := map[string]any{"config": config, "metadata": metadata}
 	task, err := r.createTask("image", "text_to_image", prompt, input)
 	return task, false, err
 }

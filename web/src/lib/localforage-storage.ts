@@ -12,7 +12,9 @@ localforage.config({
 // 此时直接跳过读写，避免 localforage 内部回退并输出 "No available storage method found"。
 function browserStorageAvailable(): boolean {
     if (typeof window === "undefined") return false;
-    return typeof window.localStorage !== "undefined" || typeof window.indexedDB !== "undefined";
+    const storage = window.localStorage;
+    const usableLocalStorage = Boolean(storage && typeof storage.getItem === "function" && typeof storage.setItem === "function" && typeof storage.removeItem === "function");
+    return usableLocalStorage || typeof window.indexedDB !== "undefined";
 }
 
 export function localForageStorageForScope(scope?: string): StateStorage {

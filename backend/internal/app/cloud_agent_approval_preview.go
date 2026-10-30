@@ -303,6 +303,14 @@ func applyCloudAgentCanvasPlan(doc map[string]any, ops []agentCanvasOp, attacher
 				if err := capability.ApplyPatch(nodes[index], op.Patch); err != nil {
 					return nil, BadAuthRequest(err.Error())
 				}
+				// 媒体节点的 content 写入生成合同；画布输入框草稿仍读 composerContent。
+				// 同步清空/更新，避免 Agent 已撤掉提示词但节点永远因旧草稿不可删除。
+				if capability.GenerationMode != "" {
+					if content, ok := op.Patch["content"].(string); ok {
+						nodeMetadata, _ := nodes[index]["metadata"].(map[string]any)
+						nodeMetadata["composerContent"] = content
+					}
+				}
 			}
 			if len(op.Generation) > 0 {
 				generationMetadata, generationErr := cloudAgentGenerationMetadata(capability.Type, op.Generation)

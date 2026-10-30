@@ -43,6 +43,7 @@ const SystemPerformancePage = lazy(() => import("@/pages/admin/settings/system-p
 const StoryboardPromptsPage = lazy(() => import("@/pages/admin/storyboard-prompts/storyboard-prompts-page"));
 const AdminFeedbacksPage = lazy(() => import("@/pages/admin/feedbacks/feedbacks-page"));
 const UsersPage = lazy(() => import("@/pages/admin/users/users-page"));
+const UserGroupsPage = lazy(() => import("@/pages/admin/user-groups/user-groups-page"));
 const AssetsPage = lazy(loadAssetsPage);
 const MembershipPage = lazy(() => import("@/pages/membership"));
 const LoginPage = lazy(() => import("@/pages/auth/login"));
@@ -239,6 +240,7 @@ export const router = createBrowserRouter([
                 children: [
                     { index: true, element: <AnalyticsPage /> },
                     { path: "users", element: <UsersPage /> },
+                    { path: "user-groups", element: <UserGroupsPage /> },
                     { path: "login-logs", element: <LoginLogsPage /> },
                     { path: "feedbacks", element: <AdminFeedbacksPage /> },
                     { path: "channels", element: <ChannelsPage /> },

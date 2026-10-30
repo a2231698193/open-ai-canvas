@@ -28,6 +28,8 @@ export type DramaAssetSettings = {
     characterPrompt: string;
     scenePrompt: string;
     characterRatio: string;
+    /** 参考图分辨率档位（1k / 1.5k / 2k / 4k）；空串或缺省按图片模型默认档位。 */
+    resolution?: string;
     sourceSkillId?: string;
     sourceSkillName?: string;
     sourcePath?: string;
@@ -83,7 +85,18 @@ export type DramaSettings = {
     models: DramaModels;
     /** 自动取参考图时每段最多发送的张数，0 为按视频模型上限；手动指定参考图的段只受模型上限约束。 */
     referenceLimit: number;
+    /** 小说分集方式：chapter 每 chaptersPerEpisode 章一集，auto 由模型规划；空表示早期作品没有记录。分集完成后不能修改。 */
+    episodeMode?: DramaEpisodeMode;
+    chaptersPerEpisode?: number;
+    /** 剧情段视频衔接方式；缺省按尾帧续接。 */
+    videoContinuity?: DramaVideoContinuity;
 };
+
+/**
+ * 剧情段视频衔接方式：tail_frame 第 2 段起用上一段最后一帧做首帧，同集各段按顺序生成；
+ * parallel 每段只按角色/场景参考图独立生成，同集各段同时提交，适合按班次批量出片的渠道。
+ */
+export type DramaVideoContinuity = "tail_frame" | "parallel";
 
 export type DramaStatus = "draft" | "running" | "paused" | "completed";
 
@@ -103,7 +116,10 @@ export type DramaProductionView = {
     pauseReason: string;
     settings: DramaSettings;
     budgetMicrocredits: number;
+    /** 作品总花费：流水线任务加关联精修画布上的生成任务，预算按它判断。 */
     spentMicrocredits: number;
+    /** 其中精修画布上的花费。 */
+    canvasSpentMicrocredits: number;
     planDone: boolean;
     planCursor: number;
     sampleApproved: boolean;
@@ -218,6 +234,8 @@ export type DramaJob = {
     startedAt?: string;
     finishedAt?: string;
     updatedAt: string;
+    /** 生成中任务的上游进度文案（如“候车 · 前面 3 条”），上游已接收任务时才有。 */
+    providerStage?: string;
 };
 
 export type DramaJobTask = {
@@ -266,6 +284,8 @@ export type DramaSegmentPromptStatus = "none" | "queued" | "running" | "ready" |
 /** 一个剧情段；videoPrompt 为生效内容（手动改写优先），generated 为模型撰写的版本。 */
 export type DramaSegment = {
     id: string;
+    /** 段版本；从画布采用视频时用于乐观并发校验。 */
+    revision: number;
     index: number;
     title: string;
     shotIds: string[];
@@ -278,6 +298,8 @@ export type DramaSegment = {
     videoStatus: DramaMediaStatus;
     videoResourceId?: string;
     tailFrameResourceId?: string;
+    /** 当前视频进入成片的秒数，与成片时间线一致。 */
+    videoSeconds?: number;
     videoError?: string;
     /** 视频已生成，只是后处理（如抽尾帧）失败；可重新处理已有视频，不重新生成。 */
     videoReprocessable?: boolean;
@@ -313,6 +335,8 @@ export type DramaSegmentRequest = {
     referenceLimited?: boolean;
     header: string;
     warning?: string;
+    /** 提示词正文里不属于本段的“参考图N”；存在时服务端拒绝生成视频。 */
+    unknownReferences?: string[];
 };
 
 export type DramaCastKind = "character" | "prop" | "scene";
@@ -352,7 +376,22 @@ export type DramaListItem = {
 
 export type DramaListPage = { items: DramaListItem[]; page: number; pageSize: number; total: number; hasMore: boolean; statusCounts: Partial<Record<DramaStatus | "all", number>> };
 
-export type DramaModelOption = { choice: DramaModelChoice; capability: DramaCapability; label: string; priceLabel: string; maxVideoSeconds?: number };
+/**
+ * imageResolutions / defaultImageResolution / imageRatios 仅图片模型：可指定的参考图分辨率档位、默认档位，
+ * 以及能按默认档位准确出图的参考图画幅（给不出的画幅会被服务端拒绝，而不是悄悄出方图）。
+ */
+export type DramaModelOption = {
+    choice: DramaModelChoice;
+    capability: DramaCapability;
+    label: string;
+    priceLabel: string;
+    maxVideoSeconds?: number;
+    /** 仅视频模型：支持图生视频，可用于尾帧续接；为 false 时只能并行出片。 */
+    tailFrameChain?: boolean;
+    imageResolutions?: string[];
+    defaultImageResolution?: string;
+    imageRatios?: string[];
+};
 
 /** 平台目录里有、但短剧流水线无法使用的模型及原因；前端置灰展示。 */
 export type DramaModelUnavailable = { choice: DramaModelChoice; reason: string };
@@ -512,9 +551,16 @@ export function updateDramaCast(projectId: string, castId: string, patch: DramaC
     return http.patch<{ cast: DramaCast }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}`, patch);
 }
 
-/** 用已上传的图片资源替换参考图并锁定；restyleSegments=true 时引用它的剧情段视频标记过期。 */
-export function setDramaCastImage(projectId: string, castId: string, resourceId: string, restyleSegments: boolean) {
-    return http.put<{ cast: DramaCast; affectedSegments: number }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}/image`, { resourceId, restyleSegments });
+/**
+ * 用已上传或画布采用的图片资源替换参考图并锁定；restyleSegments=true 时引用它的剧情段视频标记过期。
+ * origin.source=canvas 时版本记录标为“来自画布”，taskId 是产出这张图的画布生成任务（可省略）。
+ */
+export function setDramaCastImage(projectId: string, castId: string, resourceId: string, restyleSegments: boolean, origin?: { source: "canvas"; taskId?: string }) {
+    return http.put<{ cast: DramaCast; affectedSegments: number; unchanged?: boolean }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}/image`, {
+        resourceId,
+        restyleSegments,
+        ...(origin ? { source: origin.source, taskId: origin.taskId || "" } : {}),
+    });
 }
 
 export function getDramaCastImpact(projectId: string, castId: string, signal?: AbortSignal) {
@@ -543,4 +589,61 @@ export function regenerateDramaCasts(projectId: string, kind: DramaCastKind, res
 /** 手动模式下放行生成：assets 只生成参考图，episodes 生成指定集的参考图与段视频，all 全部开始。 */
 export function releaseDramaMedia(projectId: string, target: "assets" | "episodes" | "all", episodeIds?: string[]) {
     return http.post<DramaSummary>(`${base(projectId)}/media/release`, { target, ...(episodeIds ? { episodeIds } : {}) });
+}
+
+// ===== 精修画布 =====
+
+/** 服务端稳定原因：预算已用完（含画布精修），以及采用时剧情段刚被修改。 */
+export const DRAMA_ERROR_REASON = { budgetExhausted: "drama_budget_exhausted", segmentChanged: "drama_segment_changed" } as const;
+
+export type DramaTakeKind = "cast" | "video" | "final";
+/** pipeline 流水线生成；upload 制作台上传；canvas 从精修画布采用。 */
+export type DramaTakeSource = "pipeline" | "upload" | "canvas";
+
+export type DramaTake = {
+    id: string;
+    ownerId: string;
+    kind: DramaTakeKind;
+    version: number;
+    resourceId: string;
+    taskId?: string;
+    prompt: string;
+    durationMs?: number;
+    source: DramaTakeSource;
+    current: boolean;
+    createdAt: string;
+};
+
+export type DramaSegmentAdoptResult = {
+    adopted: boolean;
+    unchanged?: boolean;
+    /** cascade 时重新排队的后续段数量。 */
+    requeued: number;
+    /** 制作暂停中：重新合成成片要等继续制作。 */
+    paused: boolean;
+    tailPending?: boolean;
+    tailError?: string;
+    videoError?: string;
+    videoSeconds?: number;
+    /** 后续段已排队，但恢复制作被拒（例如预算用完）。 */
+    resumeError?: string;
+};
+
+/** 作品最近使用的精修画布；canvasId 为空表示还没有，由前端新建并关联。 */
+export function getDramaCanvas(projectId: string, signal?: AbortSignal) {
+    return http.get<{ canvasId: string; canvasCount: number }>(`${base(projectId)}/canvas`, { signal });
+}
+
+/** 为投送到画布的短剧媒体登记素材记录；同一资源只登记一次，返回资源到素材的对应关系。不存在或未就绪的资源不在结果里。 */
+export function registerDramaCanvasAssets(projectId: string, resources: Array<{ resourceId: string; title?: string; category?: string }>) {
+    return http.post<{ assets: Array<{ resourceId: string; assetId: string }> }>(`${base(projectId)}/canvas-assets`, { resources });
+}
+
+export function listDramaTakes(projectId: string, ownerId: string, kind: DramaTakeKind, signal?: AbortSignal) {
+    return http.get<{ takes: DramaTake[]; currentResourceId: string }>(`${base(projectId)}/takes`, { params: { ownerId, kind }, signal });
+}
+
+/** 把画布视频采用为剧情段当前视频；默认只换本段，cascade 时后续已生成的段重新排队生成。 */
+export function adoptDramaSegmentVideo(projectId: string, episodeId: string, segmentIndex: number, input: { resourceId: string; taskId?: string; cascade: boolean; expectedRevision?: number }) {
+    return http.put<DramaSegmentAdoptResult>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/segments/${segmentIndex}/video`, input, { timeout: 300_000 });
 }

@@ -39,6 +39,10 @@ func TestBuiltinPackagesShipReferencedCards(t *testing.T) {
 	// 只认具体文件名；`cards/<slug>.md` 这类占位写法不算引用。
 	reference := regexp.MustCompile("`(cards/[^`<>\\s]+\\.md)`")
 	for _, item := range packages {
+		// 该技能是外部剧典技能库的总纲，卡片按上游仓库路径按需安装，不随内置包分发。
+		if item.skill.ID == "16000000000106" {
+			continue
+		}
 		for _, match := range reference.FindAllStringSubmatch(string(item.archive.Files["SKILL.md"]), -1) {
 			if _, ok := item.archive.Files[match[1]]; !ok {
 				t.Errorf("builtin skill %s (%s) references missing %s", item.skill.ID, item.skill.Name, match[1])
@@ -57,7 +61,7 @@ func TestBuiltinMarkdownPackagesPreserveHistoryAndUserState(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Skill{}, &model.UserSkillState{}, &model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}, &model.User{}, &model.UserIdentity{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.Skill{}, &model.UserSkillState{}, &model.SkillVersion{}, &model.SkillFile{}, &model.BuiltinSkillTombstone{}, &model.SkillCurationSetting{}, &model.SkillCurationCategory{}, &model.SkillCurationAssignment{}, &model.SkillCurationRootAssignment{}, &model.User{}, &model.UserIdentity{}); err != nil {
 		t.Fatal(err)
 	}
 	svc := New(repository.New(db), t.TempDir(), nil)

@@ -20,6 +20,8 @@ function stubWindow() {
             },
             clearTimeout: () => undefined,
             localStorage: { getItem: () => null, setItem: () => undefined },
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
         },
     });
     return timers;
@@ -67,6 +69,7 @@ test("teardown uninstalls the auto-sync subscriptions instead of leaving them li
     const afterReset = timers.length;
 
     // 重新开会话但没有重新安装：泄漏的订阅会在这里排同步，修好后不会。
+    useCanvasStore.setState({ projects: [] });
     await initializeRemoteUserDataSession("user-1");
     useCanvasStore.setState({ projects: [canvasProject("second")] });
     expect(timers.length).toBe(afterReset);

@@ -764,12 +764,18 @@ function clearSyncTimer() {
 export function installRemoteUserDataAutoSync() {
     if (subscriptionsInstalled) return;
     subscriptionsInstalled = true;
-    if (typeof window !== "undefined")
-        window.addEventListener("online", () => {
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        const browserWindow = window;
+        const handleOnline = () => {
             if (remoteUserDataPhase === "ready") scheduleRemoteUserDataSync();
             else if (activeRemoteUserId && remoteUserDataPhase === "failed") void syncRemoteUserData(activeRemoteUserId).catch(() => undefined);
+        };
+        browserWindow.addEventListener("online", handleOnline);
+        autoSyncUnsubscribers.push(() => {
+            if (typeof browserWindow.removeEventListener === "function") browserWindow.removeEventListener("online", handleOnline);
         });
-    useCanvasStore.subscribe((state, previous) => {
+    }
+    autoSyncUnsubscribers.push(useCanvasStore.subscribe((state, previous) => {
         if (state.projects === previous.projects) return;
         const before = new Map(previous.projects.map((project) => [project.id, project]));
         const changed = state.projects.filter((project) => !sameCanvasContent(before.get(project.id), project));
@@ -783,7 +789,7 @@ export function installRemoteUserDataAutoSync() {
             }
         }
         scheduleRemoteUserDataSync();
-    });
+    }));
     autoSyncUnsubscribers.push(useAssetStore.subscribe((state, previous) => {
         if (state.assets !== previous.assets) scheduleRemoteUserDataSync();
     }));
@@ -889,17 +895,17 @@ export function withRemoteUserDataSyncExclusive<T>(operation: () => Promise<T>):
 
 export function scheduleRemoteUserDataSync() {
     if (!activeRemoteUserId || remoteUserDataPhase !== "ready") return;
-    if (syncPromise) {
-        autoSyncQueued = true;
-        return;
-    }
-    autoSyncQueued = false;
+    if (typeof window === "undefined") return;
+    // A scoped save may already hold the exclusive lock. Arm the debounce timer
+    // now so edits on another canvas are not lost behind that in-flight save.
+    autoSyncQueued = Boolean(syncPromise);
     if (syncTimer) window.clearTimeout(syncTimer);
     if (!syncFirstQueuedAt) syncFirstQueuedAt = Date.now();
     syncTimer = window.setTimeout(
         () => {
             syncTimer = null;
             syncFirstQueuedAt = 0;
+            autoSyncQueued = false;
             void saveRemoteUserDataNow().catch((error) => console.warn("云端自动同步失败", error));
         },
         Math.min(1200, Math.max(0, 5000 - (Date.now() - syncFirstQueuedAt))),

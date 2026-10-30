@@ -8,6 +8,7 @@ import type { ModelTag } from "@/lib/model-tags";
 import { initializeImageRatioDefaults, resolveImageParameters } from "@/lib/image-parameters";
 import { findProtocolWorkflow, resolveWorkflowVideoScreenSpec } from "@/lib/video-screen-specs";
 import { defaultPriceTier, legacyPriceTierToForm, normalizeUpstreamModelKey, priceTierToForm, type PriceTierFormValues } from "./channel-model-price-tier-form";
+import type { PriceCurrency } from "@/services/api/user-groups";
 
 export type ChannelModelFormValues = {
     modelKey: string;
@@ -20,6 +21,8 @@ export type ChannelModelFormValues = {
     capability: ModelCapabilityChoice;
     protocol?: string;
     priceTiers: PriceTierFormValues[];
+    /** 售价单位；成本价始终以积分计。 */
+    priceCurrency: PriceCurrency;
     enabled: boolean;
     capabilityConfig?: ModelCapabilityConfig;
 };
@@ -62,6 +65,7 @@ export function initialChannelModelValues(item: ChannelModel | null, protocols: 
         capability,
         protocol,
         priceTiers: item ? (item.priceTiers?.length ? item.priceTiers.map((tier) => priceTierToForm(tier, capabilityConfig?.image, protocol)) : [legacyPriceTierToForm(item)]) : [defaultPriceTier()],
+        priceCurrency: item?.priceCurrency || "credits",
         enabled: item?.enabled ?? true,
         capabilityConfig,
     };
@@ -94,6 +98,7 @@ export function changeChannelModelCapability(values: ChannelModelFormValues, pro
             capabilityConfig,
             priceTiers: values.priceTiers.map((tier) => ({
                 ...tier,
+                matchMode: capability === "audio" ? "default" : tier.matchMode,
                 operation: "*",
                 imageSelector: {},
                 imageResolution: "*",

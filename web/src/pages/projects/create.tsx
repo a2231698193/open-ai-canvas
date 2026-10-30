@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { App, Button, Input, InputNumber, Select } from "antd";
-import { AlertTriangle, ArrowLeft, BookOpenText, ClipboardPaste, FileUp, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BookOpenText, ClipboardPaste, FileUp, Cpu, Play } from "lucide-react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { WorkspacePage } from "@/components/layout/workspace-page";
 import { DEFAULT_DRAMA_STYLE_ID, findDramaStyle } from "@/lib/drama/drama-styles";
 import { decodeNovelText } from "@/lib/canvas/canvas-document";
-import { analyzeNovel, EPISODE_SOURCE_CHARS, sourceChars, titleFromFileName } from "@/lib/drama/novel-parse";
+import { analyzeNovel, EPISODE_GROUP_CHARS, EPISODE_SOURCE_CHARS, sourceChars, titleFromFileName } from "@/lib/drama/novel-parse";
 import { ApiError } from "@/services/api/request";
+import { linkCanvasToDrama } from "@/services/drama-canvas";
 import { dramaChoiceKey } from "@/lib/drama/model-choice";
 import { DEFAULT_STORYBOARD } from "@/lib/drama/storyboard";
 import {
@@ -23,9 +24,10 @@ import {
     type DramaSkillRef,
     type DramaSourceFormat,
     type DramaStoryboardSettings,
+    type DramaVideoContinuity,
 } from "@/services/api/drama";
 
-import { formatCount, formatCredits, MEDIA_MODE_LABEL, SOURCE_FORMAT_LABEL, SourceFormatPicker } from "./drama-shared";
+import { EpisodeGroupField, formatCount, formatCredits, MEDIA_MODE_LABEL, SOURCE_FORMAT_LABEL, SourceFormatPicker, VIDEO_CONTINUITY_LABEL } from "./drama-shared";
 import { AssetSchemePicker, defaultAssetSettings, useAssetSchemes } from "./asset-scheme";
 import { DramaModelPicker, useDramaModelCatalog } from "./drama-model-picker";
 import { PromptSkillField } from "./prompt-skill";
@@ -34,6 +36,9 @@ import { DramaStylePicker } from "./style-picker";
 import "./drama.css";
 
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
+
+/** 从画布“交给短剧自动制作”带来的预填内容；canvasId 是创建后要关联的原画布（已关联项目的画布不带）。 */
+type DramaCreatePrefill = { name?: string; sourceFormat?: DramaSourceFormat; text: string; canvasId?: string };
 const RATIOS = [
     { value: "9:16", label: "竖屏 9:16", w: 9, h: 16 },
     { value: "16:9", label: "横屏 16:9", w: 16, h: 9 },
@@ -47,9 +52,20 @@ const REVIEW_MODES: Array<{ value: DramaReviewMode; title: string; detail: strin
 ];
 const CAPABILITY_LABEL: Record<DramaCapability, string> = { text: "改编与分镜", image: "角色与场景参考图", video: "剧情段视频" };
 const EPISODE_MODES: Array<{ value: DramaEpisodeMode; title: string; detail: string }> = [
-    { value: "chapter", title: "每章一集，逐集制作", detail: "每个“第 N 章 / 第 N 集”就是一集；可以只放第 1 集，做完再在制作台追加下一集。单集不超过 1.2 万字。" },
-    { value: "auto", title: "整本导入，自动分集", detail: "由模型把章节规划成集，适合一次导入整本小说；章节多时耗时更长。" },
+    { value: "chapter", title: "按章分集", detail: "按章节顺序固定分集，默认每章一集，也可以每 2–12 章合成一集；可以只放第 1 集，之后在制作台追加。单章不超过 1.2 万字。" },
+    { value: "auto", title: "整本导入，自动分集", detail: "由模型按剧情把章节规划成集（可合并或拆分章节），适合一次导入整本小说；章节多时耗时更长。" },
 ];
+
+/** 按章分集时的章节分组预览，与服务端 groupDramaChapterEpisodes 一致。 */
+function groupChapters(chapters: Array<{ text: string }>, size: number) {
+    const groups: Array<{ label: string; chars: number }> = [];
+    for (let start = 0; start < chapters.length; start += size) {
+        const end = Math.min(start + size, chapters.length);
+        const chars = chapters.slice(start, end).reduce((sum, chapter) => sum + sourceChars(chapter.text), 0);
+        groups.push({ label: end - start > 1 ? `第 ${start + 1}–${end} 章` : `第 ${start + 1} 章`, chars });
+    }
+    return groups;
+}
 
 export default function DramaCreatePage() {
     const navigate = useNavigate();
@@ -64,9 +80,14 @@ export default function DramaCreatePage() {
     const [sourceFormat, setSourceFormat] = useState<DramaSourceFormat>("novel");
     // 默认逐集：一次只让流水线处理一集，长篇整本导入容易让改编任务超时。
     const [chapterMode, setChapterMode] = useState<DramaEpisodeMode>("chapter");
+    const [groupSize, setGroupSize] = useState(1);
     const episodeMode: DramaEpisodeMode = sourceFormat === "novel" ? chapterMode : "chapter";
     const perEpisode = episodeMode === "chapter";
+    // 剧本与分镜每个标题就是一集；小说按章分集时可每 N 章合成一集。
+    const chaptersPerEpisode = sourceFormat === "novel" && perEpisode ? groupSize : 1;
     const analysis = useMemo(() => (sourceText ? analyzeNovel(sourceText, { perEpisode }) : null), [perEpisode, sourceText]);
+    const episodeGroups = useMemo(() => (analysis && perEpisode ? groupChapters(analysis.chapters, chaptersPerEpisode) : []), [analysis, chaptersPerEpisode, perEpisode]);
+    const oversizedGroup = episodeGroups.find((group) => group.chars > EPISODE_GROUP_CHARS);
     const [name, setName] = useState("");
     const [aspectRatio, setAspectRatio] = useState("9:16");
     const [episodeSeconds, setEpisodeSeconds] = useState(90);
@@ -75,6 +96,7 @@ export default function DramaCreatePage() {
     const [reviewMode, setReviewMode] = useState<DramaReviewMode>("sample");
     // 默认先只跑文本：先看剧情、镜头、设定和段提示词对不对，再决定花钱生成参考图与视频。
     const [mediaMode, setMediaMode] = useState<DramaMediaMode>("manual");
+    const [videoContinuity, setVideoContinuity] = useState<DramaVideoContinuity>("tail_frame");
     const [storyboard, setStoryboard] = useState<DramaStoryboardSettings>(DEFAULT_STORYBOARD);
     const [promptSkill, setPromptSkill] = useState<DramaSkillRef>();
     const [models, setModels] = useState<Partial<DramaModels>>({});
@@ -92,6 +114,7 @@ export default function DramaCreatePage() {
         return { text: models.text || defaults.text, image: models.image || defaults.image, video: models.video || defaults.video };
     }, [catalogQuery.data, models]);
     const videoOption = catalogQuery.data?.options.video?.find((option) => dramaChoiceKey(option.choice) === dramaChoiceKey(resolvedModels?.video));
+    const imageOption = catalogQuery.data?.options.image?.find((option) => dramaChoiceKey(option.choice) === dramaChoiceKey(resolvedModels?.image));
     const missingCapabilities = (Object.keys(CAPABILITY_LABEL) as DramaCapability[]).filter((capability) => catalogQuery.data && !dramaChoiceKey(resolvedModels?.[capability]));
     const settings = {
         aspectRatio,
@@ -101,14 +124,30 @@ export default function DramaCreatePage() {
         language,
         reviewMode,
         mediaMode,
+        videoContinuity,
         storyboard,
         ...(promptSkill ? { promptSkill } : {}),
         concurrency: 4,
         models: resolvedModels,
+        episodeMode,
+        chaptersPerEpisode,
         ...(assets ? { assets } : {}),
     };
     const estimateQuery = useQuery({
-        queryKey: ["drama-estimate", analysis?.chapters.length, analysis?.words, episodeMode, episodeSeconds, JSON.stringify(storyboard), dramaChoiceKey(resolvedModels?.text), dramaChoiceKey(resolvedModels?.image), dramaChoiceKey(resolvedModels?.video)],
+        queryKey: [
+            "drama-estimate",
+            analysis?.chapters.length,
+            analysis?.words,
+            episodeMode,
+            chaptersPerEpisode,
+            episodeSeconds,
+            videoContinuity,
+            JSON.stringify(storyboard),
+            assets?.resolution || "",
+            dramaChoiceKey(resolvedModels?.text),
+            dramaChoiceKey(resolvedModels?.image),
+            dramaChoiceKey(resolvedModels?.video),
+        ],
         queryFn: ({ signal }) => estimateDrama({ chapterCount: analysis!.chapters.length, wordCount: analysis!.words, settings, episodeMode }, signal),
         enabled: Boolean(analysis && resolvedModels),
         staleTime: 30_000,
@@ -140,15 +179,26 @@ export default function DramaCreatePage() {
         }
         loadText(decodeNovelText(await file.arrayBuffer()), file.name);
     };
-    const handedFile = (location.state as { file?: File } | null)?.file;
+    const routeState = location.state as { file?: File; prefill?: DramaCreatePrefill } | null;
+    const handedFile = routeState?.file;
+    const prefill = routeState?.prefill;
     const handedRef = useRef(false);
+    // 画布分镜带过来的原画布：作品创建后关联过去，成为它的精修画布。
+    const linkCanvasRef = useRef<string | undefined>(undefined);
     useEffect(() => {
-        if (!handedFile || handedRef.current) return;
+        if (handedRef.current || (!handedFile && !prefill?.text)) return;
         handedRef.current = true;
-        void loadFile(handedFile);
-        // 文件只用于首次进入，清掉路由状态避免刷新或返回时重复解析。
+        if (handedFile) void loadFile(handedFile);
+        else if (prefill) {
+            if (prefill.sourceFormat) setSourceFormat(prefill.sourceFormat);
+            loadText(prefill.text);
+            // loadText 在没有名称时会取首章标题，这里在它之后设置，以画布带来的名称为准。
+            if (prefill.name?.trim()) setName(prefill.name.trim().slice(0, 80));
+            linkCanvasRef.current = prefill.canvasId;
+        }
+        // 文件与预填内容只用于首次进入，清掉路由状态避免刷新或返回时重复解析。
         navigate(".", { replace: true, state: null });
-    }, [handedFile]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [handedFile, prefill]); // eslint-disable-line react-hooks/exhaustive-deps
     const onDrop = (event: DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         setDragOver(false);
@@ -167,12 +217,19 @@ export default function DramaCreatePage() {
                 sourceFormat,
                 episodeMode,
             }),
-        onSuccess: (summary) => navigate(`/projects/${summary.project.id}`, { replace: true }),
+        onSuccess: async (summary) => {
+            const canvasId = linkCanvasRef.current;
+            if (canvasId) {
+                const { warning } = await linkCanvasToDrama(canvasId, summary.project.id);
+                if (warning) message.warning(warning);
+            }
+            navigate(`/projects/${summary.project.id}`, { replace: true });
+        },
         onError: (error) => message.error(error instanceof ApiError || error instanceof Error ? error.message : "创建失败"),
     });
-    const tooLong = Boolean(analysis?.issues.some((issue) => issue.kind === "too_long"));
+    const tooLong = Boolean(analysis?.issues.some((issue) => issue.kind === "too_long")) || Boolean(oversizedGroup);
     const canStart = Boolean(analysis && name.trim() && resolvedModels && missingCapabilities.length === 0 && !tooLong && !create.isPending);
-    const unitLabel = perEpisode ? "集" : "章";
+    const unitLabel = perEpisode && chaptersPerEpisode === 1 ? "集" : "章";
 
     const previewChapter = analysis?.chapters[previewIndex];
     const reset = () => {
@@ -350,6 +407,14 @@ export default function DramaCreatePage() {
                                     ))}
                                 </div>
                             ) : null}
+                            {sourceFormat === "novel" && perEpisode ? (
+                                <EpisodeGroupField
+                                    value={groupSize}
+                                    onChange={setGroupSize}
+                                    chapterCount={analysis.chapters.length}
+                                    error={oversizedGroup ? `${oversizedGroup.label}合计 ${formatCount(oversizedGroup.chars)} 字，每集原文不超过 ${formatCount(EPISODE_GROUP_CHARS)} 字，请减少每集章数` : undefined}
+                                />
+                            ) : null}
                         </div>
                     </section>
                     <DramaStylePicker value={styleId} onChange={setStyleId} />
@@ -358,7 +423,7 @@ export default function DramaCreatePage() {
                             <h2>角色参考图方案</h2>
                             <span>参考图是每个镜头保持人物一致的锚点，开工后也能在设置里改</span>
                         </div>
-                        <AssetSchemePicker value={assets} onChange={setAssetDraft} sample={{ style: style?.prompt || "", characterName: "主角", sceneName: "主场景" }} layout="compact" />
+                        <AssetSchemePicker value={assets} onChange={setAssetDraft} sample={{ style: style?.prompt || "", characterName: "主角", sceneName: "主场景" }} layout="compact" imageModel={imageOption} />
                     </section>
                     <section>
                         <div className="drama-section-title">
@@ -450,9 +515,28 @@ export default function DramaCreatePage() {
                                 ))}
                             </div>
                         </div>
+                        <div>
+                            <div className="drama-option-label">段落衔接</div>
+                            <div className="drama-media-modes" role="radiogroup" aria-label="段落衔接">
+                                {(Object.keys(VIDEO_CONTINUITY_LABEL) as DramaVideoContinuity[]).map((mode) => (
+                                    <button key={mode} type="button" role="radio" aria-checked={videoContinuity === mode} className="drama-media-mode" onClick={() => setVideoContinuity(mode)}>
+                                        <span className="drama-radio" />
+                                        <span>
+                                            <strong>{VIDEO_CONTINUITY_LABEL[mode].title}</strong>
+                                            <span>{VIDEO_CONTINUITY_LABEL[mode].detail}</span>
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                            {videoContinuity === "tail_frame" && videoOption?.tailFrameChain === false ? (
+                                <p className="drama-cfg-note" role="alert">
+                                    当前视频模型不支持图生视频，无法尾帧续接；请改用并行出片或换模型。
+                                </p>
+                            ) : null}
+                        </div>
                         <section className="drama-compose-models" aria-label="制作模型">
                             <div className="drama-compose-models-head">
-                                <Wand2 className="size-4 text-[var(--workspace-accent)]" />
+                                <Cpu className="size-4 text-[var(--workspace-accent)]" />
                                 <strong>制作模型</strong>
                                 <span>{catalogQuery.isLoading ? "正在读取可用模型…" : "已自动选好，可按需更换"}</span>
                             </div>
@@ -505,7 +589,7 @@ export default function DramaCreatePage() {
                             <div className="text-[var(--fs-tiny)] text-foreground/50">先做第 1 集样片，约 {formatCredits(estimate.sampleMicrocredits)} 积分，确认后再跑全剧</div>
                         ) : null}
                         {estimate?.note ? <div className="text-[var(--fs-micro)] text-foreground/40">{estimate.note}</div> : null}
-                        <Button type="primary" size="large" block icon={<Sparkles className="size-4" />} disabled={!canStart} loading={create.isPending} onClick={() => create.mutate()}>
+                        <Button type="primary" size="large" block icon={<Play className="size-4" />} disabled={!canStart} loading={create.isPending} onClick={() => create.mutate()}>
                             {mediaMode === "manual" ? "开始改编剧本与分镜" : "开始自动制作"}
                         </Button>
                     </footer>
