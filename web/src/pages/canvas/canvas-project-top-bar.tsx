@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { Clapperboard, CloudDownload, CopyPlus, Focus, FolderKanban, FolderTree, Home, LayoutGrid, Workflow, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
+import { Clapperboard, CloudDownload, CopyPlus, Focus, FolderKanban, Home, LayoutGrid, PanelsLeftBottom, Workflow, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
 import { Button, Dropdown } from "antd";
 import { AntTooltip as Tooltip } from "@/components/ui/base/tooltip/ant-tooltip";
 
@@ -9,7 +9,7 @@ import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { canvasDockStyle } from "@/lib/canvas/canvas-aceternity-style";
 import type { CanvasContextSummary } from "@/lib/canvas/canvas-context-summary";
 import type { CanvasShortDramaProgress } from "@/lib/canvas/canvas-short-drama";
-import { canvasThemes } from "@/lib/canvas-theme";
+import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useCanvasThemeStore } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { CanvasShortcutsModal } from "./canvas-shortcuts-modal";
@@ -82,6 +82,7 @@ export function CanvasTopBar({
     const { availableMicrocredits, refreshing } = useWalletBalance(user?.id, creditsEnabled);
     const titleRef = useRef<HTMLDivElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+    const [importMenuOpen, setImportMenuOpen] = useState(false);
 
     const handleShortDramaGuideToggle = () => {
         shortDramaGuide?.onToggle();
@@ -111,7 +112,7 @@ export function CanvasTopBar({
                                 items: [
                                     {
                                         key: "view",
-                                        icon: view === "canvas" ? <FolderTree className="size-4" /> : <Workflow className="size-4" />,
+                                        icon: view === "canvas" ? <PanelsLeftBottom className="size-4" /> : <Workflow className="size-4" />,
                                         label: view === "canvas" ? "切换到资产视图" : "切换到画布视图",
                                         onClick: () => onViewChange(view === "canvas" ? "assets" : "canvas"),
                                     },
@@ -193,7 +194,7 @@ export function CanvasTopBar({
                     {syncIcon}
                 </div>
 
-                <CanvasViewSwitch view={view} onChange={onViewChange} dockStyle={dockStyle} activeBg={theme.toolbar.activeBg} color={theme.node.text} />
+                <CanvasViewSwitch view={view} onChange={onViewChange} dockStyle={dockStyle} theme={theme} />
 
                 <div className="canvas-topbar-cluster canvas-topbar-tools-cluster pointer-events-auto flex items-center gap-2 justify-self-end" style={dockStyle}>
                     <CanvasTopBarTooltip label="搜索画布节点">
@@ -206,10 +207,11 @@ export function CanvasTopBar({
                             aria-label="搜索画布节点"
                         />
                     </CanvasTopBarTooltip>
-                    <CanvasTopBarTooltip label="导入第三方画布">
+                    <CanvasTopBarTooltip label="导入第三方画布" suppressed={importMenuOpen}>
                         <Dropdown
                             trigger={["click"]}
                             placement="bottomRight"
+                            onOpenChange={setImportMenuOpen}
                             menu={{
                                 items: [
                                     { key: "libtv", icon: <CopyPlus className="size-4" />, label: "导入 LibTV 画布", onClick: onImportLibTV },
@@ -264,26 +266,29 @@ export function CanvasTopBar({
     );
 }
 
-// 居中的视图切换：两项都是持久状态，用 aria-pressed 表达；窄屏两侧命令组占满时隐藏，入口保留在画布菜单里。
-function CanvasViewSwitch({ view, onChange, dockStyle, activeBg, color }: { view: CanvasProjectView; onChange: (view: CanvasProjectView) => void; dockStyle: CSSProperties; activeBg: string; color: string }) {
+// 居中的视图切换：胶囊轨道里两个圆形图标按钮，当前视图用反色圆形标出；两项都是持久状态，用 aria-pressed 表达。
+// 文字收进提示与 aria-label。窄屏两侧命令组占满时隐藏，入口保留在画布菜单里。
+function CanvasViewSwitch({ view, onChange, dockStyle, theme }: { view: CanvasProjectView; onChange: (view: CanvasProjectView) => void; dockStyle: CSSProperties; theme: CanvasTheme }) {
     const items: Array<{ value: CanvasProjectView; label: string; icon: ReactNode }> = [
-        { value: "canvas", label: "画布", icon: <Workflow className="size-4" /> },
-        { value: "assets", label: "资产", icon: <FolderTree className="size-4" /> },
+        { value: "canvas", label: "画布", icon: <Workflow /> },
+        { value: "assets", label: "资产", icon: <PanelsLeftBottom /> },
     ];
+    const style = {
+        ...dockStyle,
+        "--view-switch-idle": theme.node.muted,
+        "--view-switch-hover": theme.node.text,
+        "--view-switch-active-bg": theme.node.text,
+        "--view-switch-active-fg": theme.canvas.background,
+    } as CSSProperties;
     return (
-        <div role="group" aria-label="画布视图" className="canvas-topbar-cluster canvas-topbar-view-switch pointer-events-auto hidden items-center gap-1 justify-self-center xl:flex" style={dockStyle}>
+        <div role="group" aria-label="画布视图" className="canvas-topbar-cluster canvas-topbar-view-switch pointer-events-auto hidden items-center justify-self-center xl:flex" style={style}>
             {items.map((item) => (
-                <button
-                    key={item.value}
-                    type="button"
-                    className="canvas-topbar-action inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium"
-                    style={{ color, background: view === item.value ? activeBg : undefined }}
-                    aria-pressed={view === item.value}
-                    onClick={() => onChange(item.value)}
-                >
-                    {item.icon}
-                    {item.label}
-                </button>
+                <CanvasTopBarTooltip key={item.value} label={view === item.value ? `当前：${item.label}视图` : `切换到${item.label}视图`}>
+                    {/* 未分层的 `button { color: inherit }` 会压过 @layer 里的颜色规则，颜色走行内变量，由样式表按状态切换。 */}
+                    <button type="button" className="canvas-topbar-view-option" style={{ color: "var(--view-switch-color)" }} aria-label={`${item.label}视图`} aria-pressed={view === item.value} onClick={() => onChange(item.value)}>
+                        {item.icon}
+                    </button>
+                </CanvasTopBarTooltip>
             ))}
         </div>
     );
@@ -292,9 +297,11 @@ function CanvasViewSwitch({ view, onChange, dockStyle, activeBg, color }: { view
 // 顶栏是 --z-toolbar 上的绝对定位浮层，会为子元素建立层叠上下文。行内绝对定位的提示
 // 无论 z-index 多高都无法越过它，会被顶栏下方 --z-panel-floating 的生成任务面板盖住，
 // 因此提示必须走 portal 的浮层层级。
-function CanvasTopBarTooltip({ label, children }: { label: string; children: ReactNode }) {
+// 提示向下弹出会盖住顶栏下方的节点工具栏：离开立即消失，且提示本身不接收指针，避免截获下方按钮的点击。
+// suppressed 用于对应菜单展开期间不再显示提示。
+function CanvasTopBarTooltip({ label, suppressed = false, children }: { label: string; suppressed?: boolean; children: ReactNode }) {
     return (
-        <Tooltip title={label} placement="bottom">
+        <Tooltip title={suppressed ? null : label} placement="bottom" mouseLeaveDelay={0} styles={{ root: { pointerEvents: "none" } }}>
             <span className="relative inline-flex">{children}</span>
         </Tooltip>
     );

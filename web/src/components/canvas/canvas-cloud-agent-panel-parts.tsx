@@ -9,6 +9,8 @@ import { agentAvatarClipForState, agentAvatarStateForRunStatus, agentCopy, DEFAU
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePopoverAnchorAlign } from "@/hooks/use-popover-anchor-align";
 import { useAgentLauncherPosition } from "./use-agent-launcher-position";
+import { resolveAgentLauncherAvatarHeight } from "@/lib/canvas/agent-launcher-position";
+import { useMatch } from "react-router";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { Live2DAvatar } from "./live2d-avatar";
@@ -113,11 +115,17 @@ export const AgentLauncher = memo(function AgentLauncher({
     const media = Boolean(mediaURL && !mediaError);
     const aspectRatio = live ? 0.75 : bundleManifest ? bundleManifest.width / bundleManifest.height : appearance.avatarType === "bundle" ? 480 / 432 : 1;
     const largeAvatar = live || media || bundleManifestLoading;
+    const inCanvasEditor = Boolean(useMatch("/canvas/:id"));
     // 收起后只留小圆球入口：不加载 Live2D / 动画，也不挡画布。位置以右下角为锚点，收起展开不跳位。
     const keepsAvatarSize = largeAvatar && !collapsed;
-    const height = collapsed ? AGENT_LAUNCHER_COLLAPSED_SIZE : keepsAvatarSize ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / aspectRatio)) : 76;
+    const height = collapsed ? AGENT_LAUNCHER_COLLAPSED_SIZE : keepsAvatarSize ? resolveAgentLauncherAvatarHeight(appearance.avatarHeight, aspectRatio, viewport, inCanvasEditor) : 76;
     const width = collapsed ? AGENT_LAUNCHER_COLLAPSED_SIZE : keepsAvatarSize ? Math.round(height * aspectRatio) : 76;
     const { position, dragging, handlers } = useAgentLauncherPosition(onOpen, width, height);
+    const { onClick, onKeyDown, onDoubleClick, ...pointerHandlers } = handlers;
+    // 大形象的外框大多是透明像素：外框不接收指针，只有身体热区可点、可拖，透明处的点击落到下面的页面。
+    // 键盘聚焦与激活仍在按钮上；小圆球和默认 76px 入口整块可点。
+    const bodyHitOnly = keepsAvatarSize && (live || media);
+    const hitInset = bodyHitOnly ? AGENT_LAUNCHER_HIT_INSET : null;
     const showToggle = !hidden && (largeAvatar || collapsed);
     return (
         <>
@@ -126,9 +134,10 @@ export const AgentLauncher = memo(function AgentLauncher({
                 aria-label={`打开${appearance.agentName}`}
                 title={live && live2DError ? live2DError : `${approvalPending ? "Agent 等待你的审批" : "打开 Agent 助手"} · 拖动可调整位置，聚焦后可用方向键移动`}
                 className={cn(
-                    "canvas-agent-launcher fixed z-[calc(var(--z-toast)+1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35",
+                    "canvas-agent-launcher fixed z-[var(--z-panel-floating)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35",
                     dragging && "is-dragging",
                     collapsed && "is-collapsed",
+                    bodyHitOnly && "is-body-hit",
                     keepsAvatarSize && live && "canvas-agent-launcher-live2d",
                     keepsAvatarSize && media && "canvas-agent-launcher-media",
                 )}
@@ -137,11 +146,15 @@ export const AgentLauncher = memo(function AgentLauncher({
                 tabIndex={hidden ? -1 : undefined}
                 data-canvas-no-zoom
                 onDragStart={(event) => event.preventDefault()}
-                {...handlers}
+                {...(bodyHitOnly ? null : pointerHandlers)}
+                onClick={onClick}
+                onKeyDown={onKeyDown}
+                onDoubleClick={onDoubleClick}
                 whileHover={reducedMotion || dragging ? undefined : { scale: 1.035 }}
                 whileTap={reducedMotion || dragging ? undefined : { scale: 0.96 }}
                 transition={{ duration: reducedMotion ? 0 : 0.18 }}
             >
+                {hitInset ? <span className="canvas-agent-launcher-hit" aria-hidden="true" style={{ inset: `${hitInset.top * 100}% ${hitInset.side * 100}% ${hitInset.bottom * 100}%` }} {...pointerHandlers} /> : null}
                 {collapsed ? (
                     <FluidOrb size={30} color="#7164f6" />
                 ) : live ? (
@@ -176,8 +189,9 @@ export const AgentLauncher = memo(function AgentLauncher({
             {showToggle ? (
                 <button
                     type="button"
-                    className="canvas-agent-launcher-toggle fixed z-[calc(var(--z-toast)+2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35"
-                    style={{ right: position.right + width - 14, bottom: position.bottom + height - 14, color: theme.node.text } as CSSProperties}
+                    className="canvas-agent-launcher-toggle fixed z-[calc(var(--z-panel-floating)+1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35"
+                    // 只有身体热区可点时，按钮贴在热区左上角，而不是悬在透明外框的角上。
+                    style={{ right: position.right + width * (1 - (hitInset?.side ?? 0)) - 14, bottom: position.bottom + height * (1 - (hitInset?.top ?? 0)) - 14, color: theme.node.text } as CSSProperties}
                     aria-label={collapsed ? `展开${appearance.agentName}形象` : `收起${appearance.agentName}形象`}
                     aria-pressed={collapsed}
                     title={collapsed ? "展开形象" : "收起形象，只保留小入口"}
@@ -197,6 +211,8 @@ export const AgentLauncher = memo(function AgentLauncher({
 
 const AGENT_LAUNCHER_COLLAPSED_KEY = "canvas:agent-launcher-collapsed:v1";
 const AGENT_LAUNCHER_COLLAPSED_SIZE = 48;
+/** 大形象身体热区相对外框的内缩比例（上 / 左右 / 下），大致覆盖人物躯干与头部。 */
+const AGENT_LAUNCHER_HIT_INSET = { top: 0.15, side: 0.22, bottom: 0.04 };
 
 function readAgentLauncherCollapsed() {
     try {

@@ -44,6 +44,7 @@ func (w *taskWorkerCoordinator) processTimelineRender(task *model.Task, ctx cont
 	if err != nil {
 		return w.failTimelineTask(task, "渲染失败", err.Error())
 	}
+	plan.PropagateID = task.ID
 	for _, seg := range plan.Segments {
 		if seg.Source == nil || seg.Kind == "image" {
 			continue
@@ -94,12 +95,19 @@ func (w *taskWorkerCoordinator) processTimelineRender(task *model.Task, ctx cont
 		return w.failTimelineTask(task, "渲染失败", "保存渲染产物失败")
 	}
 
-	result := timelineRenderResult{
-		ResourceID:  resource.ID,
-		FileName:    fileName,
-		Size:        stat.Size(),
-		DurationMs:  durationMs,
-		SubtitleSRT: plan.SubtitleSRT,
+	result := timelineRenderOutput{
+		timelineRenderResult: timelineRenderResult{
+			ResourceID:  resource.ID,
+			FileName:    fileName,
+			Size:        stat.Size(),
+			DurationMs:  durationMs,
+			SubtitleSRT: plan.SubtitleSRT,
+		},
+		Width:   outWidth,
+		Height:  outHeight,
+		Fit:     plan.Fit,
+		AIGC:    renderAIGCJSON(plan),
+		Sources: renderSourceRecords(plan),
 	}
 	payload, err := json.Marshal(result)
 	if err != nil {
@@ -117,6 +125,21 @@ func (w *taskWorkerCoordinator) processTimelineRender(task *model.Task, ctx cont
 	s.logInfo(task.UserID, task.ID, fmt.Sprintf("时间线渲染完成，时长 %.1fs", float64(durationMs)/1000), "")
 	return nil
 }
+
+// timelineRenderOutput 是渲染任务写入 ResultJSON 的完整结构：在 timelineRenderResult 的字段之外
+// 记录输出画幅、请求的适配模式、写入成片的 AIGC 标识，以及逐片段的来源与实际适配方式。
+// 读取方（如短剧成片）仍按 timelineRenderResult 解码，新增字段对其透明。
+type timelineRenderOutput struct {
+	timelineRenderResult
+	Width   int                  `json:"width"`
+	Height  int                  `json:"height"`
+	Fit     string               `json:"fit"`
+	AIGC    string               `json:"aigc,omitempty"`
+	Sources []renderSourceRecord `json:"sources,omitempty"`
+}
+
+// renderAIGCTagMaxBytes 限制从来源文件读取的 AIGC 标签长度；超长视为无效，不写入结果。
+const renderAIGCTagMaxBytes = 4096
 
 func planDurationMs(plan renderPlan) int64 {
 	var total int64
@@ -137,15 +160,23 @@ func renderFfmpegBinary() (string, error) {
 	return path, nil
 }
 
+// renderSourceFile 是落盘后的一份来源媒体及其探测结果，同资源的多个片段共用。
+type renderSourceFile struct {
+	path          string
+	width, height int
+	aigc          string
+}
+
 // materializeRenderSources 把计划中每个媒体片段对应的资源下载到临时目录，
 // 同资源复用同一份本地文件；返回工作目录与清理函数。
+// 每份文件探测一次显示尺寸（决定裁切还是留边）与容器 AIGC 标签；探测不可用时沿用资源记录的尺寸。
 func materializeRenderSources(ctx context.Context, s *Service, userID string, plan *renderPlan) (string, func(), error) {
 	tmpDir, err := os.MkdirTemp("", "yingce-render-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
-	cache := map[string]string{}
+	cache := map[string]renderSourceFile{}
 	segments := make([]*renderSegment, 0, len(plan.Segments)+len(plan.AudioOverlays))
 	for i := range plan.Segments {
 		segments = append(segments, &plan.Segments[i])
@@ -159,7 +190,7 @@ func materializeRenderSources(ctx context.Context, s *Service, userID string, pl
 			// 无可用媒体引用时渲染为黑场段，保证时间轴连续。
 			continue
 		}
-		path, cached := cache[resourceID]
+		entry, cached := cache[resourceID]
 		if !cached {
 			resource, reader, err := s.OpenResource(userID, resourceID)
 			if err != nil || reader == nil {
@@ -171,7 +202,7 @@ func materializeRenderSources(ctx context.Context, s *Service, userID string, pl
 			if strings.HasPrefix(resource.MimeType, "image/") {
 				ext = "." + strings.TrimPrefix(strings.SplitN(resource.MimeType, ";", 2)[0], "image/")
 			}
-			path = filepath.Join(tmpDir, fmt.Sprintf("src-%d%s", len(cache), ext))
+			path := filepath.Join(tmpDir, fmt.Sprintf("src-%d%s", len(cache), ext))
 			file, err := os.Create(path)
 			if err != nil {
 				reader.Close()
@@ -186,9 +217,18 @@ func materializeRenderSources(ctx context.Context, s *Service, userID string, pl
 			}
 			file.Close()
 			reader.Close()
-			cache[resourceID] = path
+			entry = renderSourceFile{path: path, width: max(resource.Width, 0), height: max(resource.Height, 0)}
+			if info, probeErr := probeMediaFile(ctx, path); probeErr == nil {
+				if info.Width > 0 && info.Height > 0 {
+					entry.width, entry.height = info.Width, info.Height
+				}
+				if tag := mediaProbeTag(info.Tags, "AIGC"); len(tag) <= renderAIGCTagMaxBytes {
+					entry.aigc = tag
+				}
+			}
+			cache[resourceID] = entry
 		}
-		seg.Source = &renderSource{ResourceID: resourceID, Clip: seg.Clip, Path: path, Ext: filepath.Ext(path)}
+		seg.Source = &renderSource{ResourceID: resourceID, Clip: seg.Clip, Path: entry.path, Ext: filepath.Ext(entry.path), Width: entry.width, Height: entry.height, AIGC: entry.aigc}
 	}
 	return tmpDir, cleanup, nil
 }

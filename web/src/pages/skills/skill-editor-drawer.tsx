@@ -30,7 +30,7 @@ export function SkillEditorDrawer({ open, skill, onClose, onSaved }: { open: boo
             description: skill?.description || "",
             instruction: skill?.instruction || "",
             tag: skill?.tag || "creative",
-            is_public: skill ? !skill.isPrivate : true,
+            is_public: skill ? !skill.isPrivate : false,
             markdownUrl: skill?.markdownUrl || skill?.sourceUrl || "",
             showcaseMedia: skill?.showcaseMedia || [],
             extraInfo: skill?.extraInfo || "",

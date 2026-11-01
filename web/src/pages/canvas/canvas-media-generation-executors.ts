@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { canGenerateMediaInPlace } from "@/lib/canvas/canvas-generation-layout";
-import { isGenericCanvasNodeTitle, nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
+import { buildGenerationNodeTitle, isGenericCanvasNodeTitle, nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { nextCanvasVersionLabel } from "@/lib/canvas/canvas-layout";
 import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
@@ -168,7 +168,7 @@ export async function executeAudioGeneration({
     const audioNode: CanvasNodeData = {
         id: audioId,
         type: CanvasNodeType.Audio,
-        title: !isExistingAudioNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : (effectivePrompt.slice(0, 32) || "Generated Audio"),
+        title: !isExistingAudioNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : buildGenerationNodeTitle(effectivePrompt, "Generated Audio"),
         position: reuseSourceNode ? sourceNode!.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
         width: reuseSourceNode ? sourceNode!.width : spec.width,
         height: reuseSourceNode ? sourceNode!.height : spec.height,

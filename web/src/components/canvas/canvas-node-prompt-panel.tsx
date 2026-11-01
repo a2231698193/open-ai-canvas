@@ -12,6 +12,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { modelRequestOptions, defaultImageParamsForModel, type ModelRequirements } from "@/lib/model-selection";
+import { referenceImageSizeSelection, type ImageDimensions } from "@/lib/canvas/canvas-reference-image-size";
 import { navigateToSettings } from "@/lib/settings-navigation";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -62,6 +63,8 @@ type CanvasNodePromptPanelProps = {
     onImageSettingsOpenChange?: (open: boolean) => void;
     workspaceMode?: CanvasWorkspaceMode;
     onListGenerate?: (nodeId: string, prompt: string) => void;
+    /** 第一张上游参考图的尺寸；图片尺寸未由用户选择时按它的比例显示和生成。 */
+    referenceImageSize?: ImageDimensions;
 };
 
 export type CanvasTheme = (typeof canvasThemes)[keyof typeof canvasThemes];
@@ -80,7 +83,7 @@ const PROMPT_EDITOR_MODAL_WIDTH = "min(1200px, 92vw)";
 const PROMPT_EDITOR_MODAL_DEFAULT_WIDTH = 1200;
 const PROMPT_EDITOR_MODAL_DEFAULT_HEIGHT = 420;
 
-export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onAddReference, onRemoveReference, onReorderReferences, onReplaceReference, onReplaceReferenceFiles, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional", onListGenerate }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChange, onConfigChange, onGenerate, mentionReferences = [], onAddReference, onRemoveReference, onReorderReferences, onReplaceReference, onReplaceReferenceFiles, onClose, onNodeMouseDown, onImageSettingsOpenChange, workspaceMode = "professional", onListGenerate, referenceImageSize }: CanvasNodePromptPanelProps) {
     const globalConfig = useEffectiveConfig();
     const themeName = useActiveTheme();
     const theme = canvasThemes[themeName];
@@ -162,7 +165,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
             audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed,
         }, mode),
     };
-    const config = buildNodeConfig(globalConfig, node, mode, requirements);
+    const config = buildNodeConfig(globalConfig, node, mode, requirements, referenceImageSize);
     const resolvedRequirements: ModelRequirements = {
         ...requirements,
         options: modelRequestOptions(config, mode),
@@ -309,6 +312,17 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     };
 
     const removeMotionToolMention = () => updatePromptFromCurrent((currentPrompt) => removeToolMentions(currentPrompt, "motion"));
+
+    const changeModel = (model: string) => {
+        if (mode !== "image") {
+            onConfigChange(node.id, { model });
+            return;
+        }
+        // 切换模型回到新模型默认参数；接了参考图时比例仍跟随参考图，空节点占位框随之改比例。
+        const defaults = defaultImageParamsForModel(config, model);
+        const referenceSize = referenceImageSize ? referenceImageSizeSelection(config, model, referenceImageSize, defaults) : undefined;
+        onConfigChange(node.id, { model, ...defaults, ...referenceSize, imageSizeSource: referenceSize ? "reference" : "default" });
+    };
 
     const submit = () => {
         const text = prompt.trim();
@@ -464,7 +478,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         fullWidth
                         config={config}
                         value={config.model}
-                        onChange={(model) => onConfigChange(node.id, mode === "image" ? { model, ...defaultImageParamsForModel(config, model) } : { model })}
+                        onChange={changeModel}
                         capability={mode}
                         requirements={resolvedRequirements}
                         onMissingConfig={() => navigateToSettings({ continueCreation: true })}
@@ -532,7 +546,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                                 config={config}
                                 placement={expanded ? "topRight" : "topLeft"}
                                 buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
-                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
+                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : key === "size" ? { size: value, imageSizeSource: "user" } : { [key]: value })}
                                 onMissingConfig={() => navigateToSettings({ continueCreation: true })}
                                 onOpenChange={expanded ? undefined : onImageSettingsOpenChange}
                             />

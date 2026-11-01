@@ -2,7 +2,7 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/r
 import { ChevronDown, ChevronUp, Clock3, Coins, ListTodo, LoaderCircle, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { formatCredits } from "@/constant/credits";
+import { taskBillingLabel } from "@/lib/generation-task-billing";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { canCancelGenerationTask, formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "@/lib/generation-task-display";
 import { canvasThemes } from "@/lib/canvas-theme";
@@ -136,7 +136,7 @@ function ActiveTaskCard({
     const elapsedMs = Math.max(0, now - parseTime(startedAt));
     // 文案已统一为「生成中」，计时也不再区分排队与运行。
     const durationLabel = `已运行 ${formatDuration(elapsedMs)}`;
-    const billingLabel = task.billing ? `冻结 ${formatCredits(task.billing.amountMicrocredits)} 积分` : "未计费";
+    const billingLabel = task.billing ? taskBillingLabel(task.billing) : "未计费";
     const statusTone = task.status === "running" ? theme.accent.primary : theme.node.muted;
     const stageLabel = generationTaskStageLabel(task);
     const statusText = generationTaskStatusLabel(task);

@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Clock3, Coins, LoaderCircle, MoreHorizontal, XCircle } from "lucide-react";
 import { Dropdown, type MenuProps } from "antd";
 
-import { formatCredits } from "@/constant/credits";
+import { taskBillingLabel } from "@/lib/generation-task-billing";
 import { canCancelGenerationTask, formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel, generationTaskTitle } from "@/lib/generation-task-display";
 import type { GenerationTask } from "@/services/api/task-center";
 import { useUserStore } from "@/stores/use-user-store";
@@ -26,7 +26,7 @@ export const TaskListItem = memo(function TaskListItem({ task, onCancelTask }: {
     const startedAt = task.startedAt || task.createdAt;
     const elapsedMs = Math.max(0, (task.completedAt ? parseTime(task.completedAt) : now) - parseTime(startedAt));
     const durationLabel = `${task.status === "queued" ? "已等待" : "已运行"} ${formatDuration(elapsedMs)}`;
-    const billingLabel = task.billing ? `${({ reserved: "冻结", running: "处理中", settled: "已结算", refunded: "已退还", uncertain: "待核对" } as const)[task.billing.status]} ${formatCredits(task.billing.amountMicrocredits, 2)} 积分` : "";
+    const billingLabel = task.billing ? taskBillingLabel(task.billing) : "";
     const isActive = task.status === "queued" || task.status === "running";
     const statusColor = task.status === "running" ? "var(--primary)" : task.status === "succeeded" ? "var(--success, #16a34a)" : task.status === "failed" ? "var(--danger, #dc2626)" : "color-mix(in srgb, var(--foreground) 40%, transparent)";
 

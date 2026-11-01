@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,6 +27,9 @@ const (
 	dramaTakeCanvasPrompt = "画布采用"
 	dramaCanvasAssetLimit = 64
 	dramaTakeListLimit    = 50
+	// 一次登记最多为几个尺寸未知的媒体补探测，以及补探测的总时长上限。
+	dramaCanvasDimensionRepairLimit   = 8
+	dramaCanvasDimensionRepairTimeout = 45 * time.Second
 )
 
 // DramaCanvas 返回作品最近使用的精修画布；没有时 canvasId 为空，由前端新建画布并写入关联。
@@ -49,8 +54,9 @@ func dramaCanvasAssetID(resourceID string) string {
 	return "drama-" + resourceID
 }
 
-// DramaCanvasAssets 为投送到画布的短剧媒体登记素材记录。画布保存要求媒体节点由当前用户的素材引用资源；
+// DramaCanvasAssets 为投送到画布的短剧媒体登记素材记录，并挂到短剧项目的素材库。画布保存要求媒体节点由当前用户的素材引用资源；
 // 这里只建素材入口，不复制媒体，资源仍由短剧表持有（素材删除时会保留被短剧使用的资源）。
+// 重复登记是幂等的，同时为旧版本登记的素材补项目归属、项目链接与真实尺寸。
 func (s *Service) DramaCanvasAssets(userID, projectID string, req DramaCanvasAssetsRequest) (map[string]any, error) {
 	project, _, err := s.dramaForUser(userID, projectID)
 	if err != nil {
@@ -91,10 +97,22 @@ func (s *Service) DramaCanvasAssets(userID, projectID string, req DramaCanvasAss
 	if err != nil {
 		return nil, err
 	}
-	known := make(map[string]bool, len(existing))
-	for _, asset := range existing {
-		known[asset.ID] = true
+	existingByID := make(map[string]*model.Asset, len(existing))
+	for index := range existing {
+		existingByID[existing[index].ID] = &existing[index]
 	}
+	links, err := s.repo.ProjectAssetLinks(project.ID)
+	if err != nil {
+		return nil, err
+	}
+	linked := make(map[string]bool, len(links))
+	for _, link := range links {
+		linked[link.AssetID] = true
+	}
+	// 尺寸未知的媒体按需补探测；数量与总时长有界，没轮到的在下次投送时继续。
+	repairCtx, cancelRepair := context.WithTimeout(context.Background(), dramaCanvasDimensionRepairTimeout)
+	defer cancelRepair()
+	repairBudget := dramaCanvasDimensionRepairLimit
 	items := make([]map[string]string, 0, len(inputs))
 	for _, input := range inputs {
 		// 不存在、未就绪或不是图片/视频的资源不登记，也不让整批失败：历史版本可能已不可用，
@@ -107,20 +125,65 @@ func (s *Service) DramaCanvasAssets(userID, projectID string, req DramaCanvasAss
 		if kind == "" {
 			continue
 		}
+		if (resource.Width <= 0 || resource.Height <= 0) && repairBudget > 0 && repairCtx.Err() == nil {
+			repairBudget--
+			s.repairResourceDimensions(repairCtx, &resource)
+		}
 		assetID := dramaCanvasAssetID(resource.ID)
-		if !known[assetID] {
-			asset, err := dramaCanvasAsset(userID, project, resource, kind, input)
+		if asset := existingByID[assetID]; asset == nil {
+			created, err := dramaCanvasAsset(userID, project, resource, kind, input)
 			if err != nil {
 				return nil, err
 			}
-			if err := s.repo.UpsertAsset(asset); err != nil {
+			// 素材与项目链接在同一事务内创建，不会留下“未关联项目”的短剧素材。
+			if err := s.linkAssetToProject(created, project.ID, created.CreatedAt); err != nil {
 				return nil, err
 			}
-			known[assetID] = true
+			linked[assetID] = true
+		} else if asset.Status != model.AssetVersionStatusArchived {
+			// 旧版本登记的素材缺项目归属、尺寸被写成 1×1：补齐后再确保项目链接存在。用户归档的素材保持原样。
+			if _, err := s.rewriteAssetPayload(asset, func(payload map[string]any) bool {
+				return dramaCanvasAssetRepair(payload, project, resource)
+			}); err != nil {
+				return nil, err
+			}
+			if !linked[assetID] {
+				if err := s.linkAssetToProject(asset, project.ID, time.Now()); err != nil {
+					return nil, err
+				}
+				linked[assetID] = true
+			}
 		}
 		items = append(items, map[string]string{"resourceId": resource.ID, "assetId": assetID})
 	}
 	return map[string]any{"assets": items}, nil
+}
+
+// dramaCanvasAssetRepair 为已登记的短剧素材补项目归属（projectIds/projectName）与真实尺寸；已正确的文档不改。
+func dramaCanvasAssetRepair(payload map[string]any, project *model.Project, resource model.Resource) bool {
+	changed := assetDataWithDimensions(payload, resource.Width, resource.Height)
+	metadata, _ := payload["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+		payload["metadata"] = metadata
+	}
+	projectIDs := []string{}
+	if values, ok := metadata["projectIds"].([]any); ok {
+		for _, value := range values {
+			if id, ok := value.(string); ok && strings.TrimSpace(id) != "" {
+				projectIDs = append(projectIDs, id)
+			}
+		}
+	}
+	if !slices.Contains(projectIDs, project.ID) {
+		metadata["projectIds"] = append(projectIDs, project.ID)
+		changed = true
+	}
+	if name, _ := metadata["projectName"].(string); strings.TrimSpace(name) == "" && strings.TrimSpace(project.Name) != "" {
+		metadata["projectName"] = project.Name
+		changed = true
+	}
+	return changed
 }
 
 func dramaResourceMediaKind(resource model.Resource) string {
@@ -141,13 +204,8 @@ func dramaCanvasAsset(userID string, project *model.Project, resource model.Reso
 		title = truncateRunes(project.Name, 80) + map[string]string{"image": " · 图片", "video": " · 视频"}[kind]
 	}
 	category := model.NormalizeAssetCategory(model.AssetCategory(strings.TrimSpace(input.Category)), kind)
-	width, height := resource.Width, resource.Height
-	if width <= 0 {
-		width = 1
-	}
-	if height <= 0 {
-		height = 1
-	}
+	// 尺寸未知时如实写 0（调用方已尝试补探测）；素材合同允许视频为 0，图片在读取时由 ClientAssetPayload 兜底。
+	width, height := max(resource.Width, 0), max(resource.Height, 0)
 	storageKey := "resource:" + resource.ID
 	fileURL := "/api/resources/" + resource.ID + "/file"
 	data := map[string]any{"storageKey": storageKey, "mimeType": resource.MimeType, "bytes": resource.Size, "width": width, "height": height}
@@ -167,7 +225,7 @@ func dramaCanvasAsset(userID string, project *model.Project, resource model.Reso
 		"title": title, "coverUrl": coverURL, "tags": []string{}, "source": "短剧",
 		"createdAt": now.UTC().Format(time.RFC3339Nano), "updatedAt": now.UTC().Format(time.RFC3339Nano),
 		"data":     data,
-		"metadata": map[string]any{"source": "short-drama", "dramaProjectId": project.ID, "resourceKey": storageKey},
+		"metadata": map[string]any{"source": "short-drama", "dramaProjectId": project.ID, "resourceKey": storageKey, "projectIds": []string{project.ID}, "projectName": project.Name},
 	})
 	if err != nil {
 		return nil, err
@@ -442,22 +500,22 @@ func (s *Service) backfillDramaSegmentTail(userID string, segment model.DramaSeg
 	return err
 }
 
-// dramaCanvasSpent 是关联到作品的画布上生成任务的花费。
+// dramaCanvasSpent 是关联到作品的画布上生成任务的预算占用：已结算按实收、未结算按冻结额、已退回不计。
 func (s *Service) dramaCanvasSpent(production *model.DramaProduction) (int64, error) {
-	spends, err := s.repo.DramaCanvasSpends(production.UserID, []string{production.ProjectID})
+	totals, err := s.dramaBillingTotals(production)
 	if err != nil {
 		return 0, err
 	}
-	return spends[production.ProjectID], nil
+	return totals.CanvasChargedMicrocredits + totals.CanvasHeldMicrocredits, nil
 }
 
-// dramaTotalSpent 是预算判断使用的作品总花费：流水线已结算花费加画布精修花费。
+// dramaTotalSpent 是预算判断使用的作品总占用，与调度派发同一口径：流水线与画布精修的实收，加上所有未结算订单的冻结额。
 func (s *Service) dramaTotalSpent(production *model.DramaProduction) (int64, error) {
-	canvas, err := s.dramaCanvasSpent(production)
+	totals, err := s.dramaBillingTotals(production)
 	if err != nil {
 		return 0, err
 	}
-	return production.SpentMicrocredits + canvas, nil
+	return totals.ChargedMicrocredits() + totals.HeldMicrocredits(), nil
 }
 
 func (s *Service) dramaBudgetExhausted(production *model.DramaProduction) (bool, error) {

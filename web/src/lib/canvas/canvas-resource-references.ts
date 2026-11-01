@@ -52,6 +52,15 @@ export function canvasToolMentionToken(toolId: number, label: string, type: stri
 
 const TOOL_REF_PATTERN = /@\[tool:(\w+):(\d+):([^:\]]+):([^\]]+)\]/g;
 
+function decodeToolMentionLabel(label: string) {
+    try {
+        return decodeURIComponent(label);
+    } catch {
+        // Keep readable text for malformed imported labels.
+        return label;
+    }
+}
+
 /** 从文本中解析所有 @[tool:type:ID:label:icon] 令牌，返回去重的工具引用。 */
 export function parseToolMentionTokens(text: string): { type: string; toolId: number; label: string; icon: string }[] {
     const results: { type: string; toolId: number; label: string; icon: string }[] = [];
@@ -61,11 +70,21 @@ export function parseToolMentionTokens(text: string): { type: string; toolId: nu
         const identity = `${match[1]}:${toolId}`;
         if (seen.has(identity)) continue;
         seen.add(identity);
-        let label = match[3];
-        try { label = decodeURIComponent(label); } catch { /* Keep readable text for malformed imported labels. */ }
-        results.push({ type: match[1], toolId, label, icon: match[4] });
+        results.push({ type: match[1], toolId, label: decodeToolMentionLabel(match[3]), icon: match[4] });
     }
     return results;
+}
+
+/**
+ * 提示词的单行可读摘要，用于节点标题等展示：工具标签换成名称，节点、素材、技能、附件这类只含内部 ID 的令牌去掉。
+ * 提交生成仍使用原提示词。
+ */
+export function canvasPromptSummaryText(prompt: string) {
+    return prompt
+        .replace(TOOL_REF_PATTERN, (_token, _type: string, _id: string, label: string) => ` ${decodeToolMentionLabel(label)} `)
+        .replace(/@\[(?:node|asset|skill|attachment):[^\]]*\]/gu, " ")
+        .replace(/\s+/gu, " ")
+        .trim();
 }
 
 export function removeToolMentions(prompt: string, type: string) {

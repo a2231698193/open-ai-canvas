@@ -31,6 +31,18 @@ description: 信封、错误码与 OpenAPI
 
 图片的 `role=first_frame/last_frame` 表示帧约束；`reference` 或未指定角色表示普通参考，不能静默改成首帧。模式、素材数量和参数共同参与模型能力校验及价格档选择；不支持的组合在创建任务和计费前拒绝。执行输入的 `metadata.videoEditOperation` 与任务操作保持一致，并保留帧素材标识。浏览器自定义渠道的工作台任务使用同一模式规则，其他入口沿用各自的意图解析。
 
+## 工作台批量生成的批次标识
+
+一次生成多张图片或多条视频时，页面把请求拆成多个任务（视频每条一个任务，图片按模型单次张数拆分），逐个调用 `POST /api/workbench/tasks`，每个请求带上同一个批次：
+
+```json
+{ "batch": { "id": "3f6c…", "index": 0, "count": 3 } }
+```
+
+`id` 为 8–64 位字母、数字、`-` 或 `_`，`count` 为 1–20，`index` 从 0 开始且小于 `count`；字段非法时 `POST /api/workbench/tasks` 返回 400。批次只写入任务输入的 `metadata.workbench.batch`，用于列表分组，不参与调度、准入和计费，每个任务仍各自校验、预占积分与结算。浏览器自定义渠道走 `POST /api/tasks` 时把同样的对象放在 `input.metadata.workbench.batch`；该入口不校验批次，非法批次在列表中按单任务展示。
+
+`GET /api/workbench/tasks` 与 `GET /api/tasks` 的列表项对 `metadata.source=workbench` 且批次合法的任务返回 `clientContext.batchId`、`batchIndex`、`batchCount`（`batchIndex` 为 0 时省略）；任务详情的 `inputJson.workbench.batch` 保留同一批次。旧任务没有批次，页面按单任务展示。
+
 ## 图片响应格式
 
 渠道模型的 `capabilityConfig.image.responseFormat` 包含 `supported` 和可选的 `default`。默认值为 `auto`，表示请求中不发送 `response_format`，由上游决定返回 URL 或 Base64；`b64_json` 和 `url` 会分别强制发送对应值。该配置按模型保存，不根据 `openai-image` 协议名称自动推断，避免兼容网关不接受 Base64 时生成失败。需要持久化 Base64 结果的模型（例如已验证的 ddcat 图片模型）应将默认值设为 `b64_json`。
@@ -379,6 +391,37 @@ Token 报价的 `estimated` 为 `true`，`quantity` 是预留 Token 数。参考
 
 `GET /admin/billing-orders` 的每条订单额外返回 `userDisplayName`、`userAccount`，按当前页用户 ID 批量读取；字段不入库，普通用户的订单接口不返回。
 
+## 用户任务计费与作品花费口径
+
+任务列表与详情的 `billing` 同时返回预授权、实收与退回，前端不能再把 `amountMicrocredits` 当作扣费额：
+
+| 字段 | 含义 |
+|---|---|
+| `amountMicrocredits` | 订单预授权额（冻结额），结算后不变 |
+| `reservedMicrocredits` | 同上，显式命名的冻结额 |
+| `chargedMicrocredits` | 实收，只在 `status=settled` 时返回 |
+| `refundedMicrocredits` | 已退回额（差额退回或失败全额退回） |
+
+界面口径：已结算显示实收并注明「退回 X」；冻结中显示「冻结 X」；已退回显示「已退回」；待核对显示冻结额并标「待核对」。
+
+短剧作品的花费按计费订单当前状态汇总，每次读取重算：已结算记实收、已退回记 0、其余状态记冻结额。`DramaProductionView.spentMicrocredits` 与列表项 `spentMicrocredits` 是流水线与关联精修画布的实收合计，`canvasSpentMicrocredits` 是其中画布的实收，新增 `heldMicrocredits` 是尚未结算订单的冻结额。预算判断（调度派发、画布生成准入、调整预算后解除暂停）一律按 `spent + held`。分集详情新增 `revision`、`updatedAt`，剧情段新增 `updatedAt`。
+
+## 视频时长与看图准入提示
+
+视频任务时长不在模型范围内时仍返回 `durationSeconds` / `unsupported_value`，`msg` 带上请求值与允许范围，例如「视频时长 4 秒不在当前模型支持范围内（5–30 秒，步长 1）」或「（可选 5、10 秒）」。短剧切段的最短时长取作品设置与视频模型最短时长的较大值；提交前再次核对，失败返回「第 N 段需要 X 秒，所选模型只支持 …」。
+
+文字任务带参考图、而所选文字模型未声明图片输入（`text.references.maxImages <= 0`）时，在预授权扣费前返回 `referenceNodeIds` / `unsupported_value`「当前文字模型不支持图片输入，请选择支持看图的文字模型」。系统渠道直连路径在模型选择阶段已用通用提示「所选模型不支持当前请求」拒绝。
+
+## 时间线渲染规格与来源标识
+
+时间线渲染请求的 `timeline` 可带 `fit`（`auto` / `pad` / `crop`，缺省 `auto`）。`auto` 按片段判断：来源与输出宽高比相对差 `|源宽高比 ÷ 目标宽高比 − 1|` 不超过 3% 时裁切填满，否则等比缩小补黑边；来源尺寸未知时补黑边。浏览器端精剪导出使用同一规则，默认目标为关联短剧的作品画幅，未关联时跟随首个片段（长边不超过 1920）。
+
+渲染结果 JSON 在原字段外增加 `width`、`height`、`fit`、`aigc`（写入成片的 AIGC 标识 JSON）与 `sources[]`（`clipId`、`resourceId`、`kind`、`width`、`height`、实际 `fit`、来源文件原有的 `aigc`）。成片不继承来源容器元数据，改写为 GB 45438 隐式标识：`AIGC` 字段为 `{Label, ContentProducer, ProduceID, ReservedCode1, ContentPropagator, PropagateID, ReservedCode2}`，`Label` 与生成方字段取自来源文件，`ContentPropagator` 为常量 `AIGCPlatformPropagator`（默认占位 `yingce`，部署方须替换为登记的服务提供者编码），`PropagateID` 为渲染任务 ID；另写 `comment=AI生成合成内容`。
+
+## 素材尺寸与短剧素材归属
+
+服务端生成的视频入库时用 ffprobe 读取宽高（按显示旋转换算）与时长；视频素材 `data.width/height` 为 0 表示尺寸未知，不再写成 1。短剧投送画布登记的素材（`drama-<resourceId>`）在 `metadata` 写入 `projectIds`、`projectName`，并建立 `project_asset_links`；重复登记时为旧素材补齐归属、链接与真实尺寸。
+
 `GET /admin/users` 的每个用户额外返回 `rechargedMicrocredits`（已到账支付订单的到账积分合计）和 `consumedMicrocredits`（已结算计费订单的实收合计），按当前页用户批量汇总。
 
 渠道模型运营接口（均要求管理员）：
@@ -461,7 +504,7 @@ operations 的结构化配额在提交事务内实时统计账号的素材/画�
 - 创建和追加消息可选择 `reasoningMode`，默认 `off`；`auto`/`deep` 为服务端行为策略与模型推理配置的选择，不等于允许暴露内部思维链。供应商能力由后端校验；声明式 Agent 渠道不支持时明确报错。推理可能增加耗时和费用。
 - Cloud Agent 与首页创造的规划请求使用自动工具选择。OpenAI Chat Completion 兼容协议会把显式 `auto` 归一化为省略 `tool_choice`，沿用协议默认的自动选择语义；显式开启思考模式时还会在首个上游请求前移除 `required` 或指定函数对象。非思考模式仍保留艺术点评、提示词优化等结构化任务的强制函数选择。若上游隐式开启思考而本地未声明，仍按 `required` → `auto` → 省略字段做兼容重试。
 - `GET /agent/profile?scope=user|project|canvas&projectId=...&canvasId=...` 按作用域读取生效的用户 → 项目 → 画布偏好；`PATCH /agent/profile` 用 `{ scope, projectId?, canvasId?, content, revision }` 更新单层（首次 revision 为 0，冲突返回 409）。读取返回各层独立数字 revision，以及合并文档的 `revision`/`hash`；新轮次携带合并 `profileRevision`，发生变化拒绝创建，已运行轮次仍用提交时固定的快照。system prompt 只包含层级、revision、hash 和长度清单，正文保存在运行快照中；本轮快照有层时才提供 `agent_profile_read`，只读清单中存在的层。没有偏好层时工具清单不含该工具。偏好仅是非授权数据，不能扩展工具、节点或预算，不能绕过审批；最多 12000 字符/层。
-- 行为规则唯一来源是编译进后端的 `agent-system-policy.md` v19；不再 embed 旧操作合同或独立媒体策略。媒体 ID/版本/哈希从同一系统合同派生，仅服务于冻结校验。画布能力和工具 Policy 仍由代码强制执行；新生成模式还须接入共享任务适配器。用户目标、画布内容和长期记忆以动态消息提供，不写入稳定 system 前缀。
+- 行为规则唯一来源是编译进后端的 `agent-system-policy.md` v20；不再 embed 旧操作合同或独立媒体策略。媒体 ID/版本/哈希从同一系统合同派生，仅服务于冻结校验。画布能力和工具 Policy 仍由代码强制执行；新生成模式还须接入共享任务适配器。用户目标、画布内容和长期记忆以动态消息提供，不写入稳定 system 前缀。
 - 技能自动发现：创建运行时，服务端把用户已安装、`agentMode` 不是 `manual` 的技能（最多 1000 个）编成「已安装技能目录」放进 system，排在执行上下文 JSON 之后。目录最多占本轮模型输入预算的 5%（至少 1000 token）：先按 Agent 实际读取次数、排序权重和安装时间选出“名称 [skillId]：60 字简介”，用到预算 70% 后只列名称，再放不下的只报数量并提示用 `skill_search`；入选条目按分类和名称稳定排序，使用次数变化不打乱顺序。`pinnedSkillIds` 中的技能和关键词预筛出的候选（最多 3 个）放在当前用户消息前的「技能提示」数据消息里（`agentContextSource: "skill_hints"`），点名的技能要求先读 `SKILL.md`。
 - 运行只冻结每个可读技能的版本号，不预存正文或文件清单。`skill_read_file` 按需读取 `SKILL.md` 或必要引用，支持字符偏移 `offset`（默认 0），每页最多 12000 字符，返回 `hasMore` / `nextOffset`。读取时重新验证用户权限、启用状态和冻结版本；技能更新后拒绝混读，需新开一轮。成功读取会递增该技能的 `agent_use_count`，只用于目录排序。技能是不可信数据，不能创造工具、改变权限或覆盖系统规则。
 - Agent 按实际文本模型的 `contextWindowTokens` 与 `maxOutputTokens` 计算输入预算，并在达到该模型预算的压缩阈值时移除较早工具结果中可重新读取的正文，保留工具调用/结果配对、用户原始要求、生成回执及最近完整工具轮次，并允许重新读取。此机制是确定性正文卸载，不是 LLM 语义摘要；运行 checkpoint 的持久化上限与模型上下文窗口独立。技能读取事件只保存回执，不复制正文，正文页只进入模型对话。
@@ -585,12 +628,12 @@ Agent 已不再注入、召回或写入下列经验条目，记忆设置页只�
 | 路径 | 请求与结果 |
 | --- | --- |
 | `GET/POST /api/agent/memories` | 按状态读取 / 手工添加；状态含 `pending/approved/rejected/expired`，新增正文按受控字段校验 |
-| `PATCH/DELETE /api/agent/memories/:id` | 编辑 / 删除自己的条目；`POST .../:id/decide` 的 `{ decision: "approve" | "reject" }` 决定待审经验是否以后可用 |
+| `PATCH/DELETE /api/agent/memories/:id` | 编辑 / 删除自己的条目；`POST .../:id/decide` 的 `{ decision: "approve" \| "reject" }` 决定待审经验是否以后可用 |
 | `GET /api/agent/memories/export`、`POST /api/agent/memories/import` | `kind=agent-memories` 的个人记忆 JSON；一次导入最多 200 条，仍校验内容与归属 |
 | `GET/PATCH /api/agent/memories/settings` | 读取压缩设置或更新 `compactInterval: off/daily/weekly/monthly` 与受管文本模型 |
 | `POST /api/agent/memories/compact` | 按文本模型计费生成压缩提案，返回设置视图的 `taskId/proposalId/lastStatus/summary`；模型完成不直接改删记忆 |
 | `GET /api/agent/memories/proposals?limit=30` | 返回 `{ proposals }`；每项含 `id/status/version/taskId?/summary/changes/createdAt/decidedAt?`，change 含 `kind`、全部 `before` 和拟保留的 `after` |
-| `POST /api/agent/memories/proposals/:proposalId/decide` | 必填 `{ decision: "approve" | "reject", version }`；批准原子应用整份提案，拒绝不改原记忆；返回更新后的提案 |
+| `POST /api/agent/memories/proposals/:proposalId/decide` | 必填 `{ decision: "approve" \| "reject", version }`；批准原子应用整份提案，拒绝不改原记忆；返回更新后的提案 |
 | `GET /api/agent/memories/revisions?limit=30` | 返回 `{ revisions }`；每项含 `id/proposalId/version/before/after/createdAt/restoredAt?` |
 | `POST /api/agent/memories/revisions/:revisionId/restore` | 必填 `{ version }`；原子恢复该批次压缩前的内容，返回更新后的版本视图 |
 
@@ -782,7 +825,7 @@ install 的 Base URL、协议、能力和成本全部从服务端快照读取，
 | `POST /dramas/estimate` | 按章节数、字数与设置估算集数、镜头数、剧情段视频数、参考图数与费用区间（基于真实报价，含重试余量）；`episodeMode=chapter` 时集数等于章节数 |
 | `POST /dramas` | 一次性创建作品、写入原文与制作设置；`start=true` 立即进入自动制作。`sourceFormat` 为 `novel`（默认）/ `script` / `storyboard`；分集方式写在 `settings.episodeMode`（`auto` 模型分集 / `chapter` 按章分集，顶层 `episodeMode` 只在设置里没写时使用）与 `settings.chaptersPerEpisode`（按章分集时每 1–12 章一集，默认 1），剧本与分镜总是每章一集。按章分集时建档即写好各集、不经过分集规划，合并后单集原文 ≤ 4 万字。任何分集方式下单章都 ≤ 1.2 万字（剧本提示词每章读取上限，超出会丢台词，所以直接拒绝）。请求体上限 32 MiB，单章 ≤ 6 万字，全书 ≤ 600 万字 |
 | `GET /dramas/:id` | 制作台摘要：控制面状态、每集按剧情段聚合的进度 `stats`（`segments`、`promptReady`、`videoReady`、`failed`）、队列计数、待处理收件箱。`cast_failed` 的 `castKind` 为 character/prop/scene；`segment_failed` 带 `episodeNumber`、`segmentIndex` 与失败环节 `media`（prompt/video） |
-| `PATCH /dramas/:id/settings` | 修改单集时长（30–1200 秒）、分镜规则 `storyboard`（`segmentMode` auto/fixed/range、`segmentSeconds`、`segmentMinSeconds`、`segmentMaxSeconds`、`pacing`、`dialogue`、`transition`、`transitionMs`）、视频提示词技能 `promptSkill`（`{ skillId, skillName, path }`，不可读时返回 400；传空 `skillId` 清除）、每段最多参考图 `referenceLimit`（0–20，0 为按视频模型上限，只约束自动取参考图的段）、审阅方式、生成节奏、参考图方案、模型、并发与预算；分集方式 `episodeMode` / `chaptersPerEpisode` 只能在分集完成（`planDone`）前修改，只影响还没分集的章节，改成按章分集后下一轮调度直接把剩余章节分组建集、在途的模型规划作废；开工后不能修改画幅；画幅只接受 9:16 / 16:9 / 1:1 / 3:4 / 4:3（创建作品同样，未知值返回 400，不再改成 9:16），视频模型给不出作品画幅时返回 400；提示词包含未知变量时返回 400 |
+| `PATCH /dramas/:id/settings` | 修改单集时长（30–1200 秒）、分镜规则 `storyboard`（`segmentMode` auto/fixed/range、`segmentSeconds`、`segmentMinSeconds`、`segmentMaxSeconds`、`pacing`、`dialogue`、`transition`、`transitionMs`、`performance`、`cameraMotion`）、视频提示词技能 `promptSkill`（`{ skillId, skillName, path }`，不可读时返回 400；传空 `skillId` 清除）、资产提取与分镜拆分技能 `bibleSkill` / `scriptSkill`（同格式）、视频分辨率 `videoResolution`（空为模型默认）、每段最多参考图 `referenceLimit`（0–20，0 为按视频模型上限，只约束自动取参考图的段）、审阅方式、生成节奏、参考图方案、模型、并发与预算；分集方式 `episodeMode` / `chaptersPerEpisode` 只能在分集完成（`planDone`）前修改，只影响还没分集的章节，改成按章分集后下一轮调度直接把剩余章节分组建集、在途的模型规划作废；开工后不能修改画幅；画幅只接受 9:16 / 16:9 / 1:1 / 3:4 / 4:3（创建作品同样，未知值返回 400，不再改成 9:16），视频模型给不出作品画幅时返回 400；提示词包含未知变量时返回 400 |
 | `POST /dramas/:id/media/release` | 手动模式下放行生成：`target=assets` 只生成参考图，`episodes`（配合 `episodeIds`，最多 500）生成指定集的参考图与剧情段视频，`all` 全部开始 |
 | `POST /dramas/:id/start` · `/pause` · `/retry-failed` | 继续 / 暂停 / 把失败的参考图、段提示词与段视频重新排队，返回 `{ segments, casts }` |
 
@@ -827,6 +870,16 @@ install 的 Base URL、协议、能力和成本全部从服务端快照读取，
 - 既没有比例也没有 `fixedScreenSpec` 的模型视为给不出任何画幅。
 
 给不出作品画幅的视频模型：创建作品、保存设置与按段生成返回 400；已排队的段提交前失败并写明原因，不调用上游，避免模型按自己的默认画幅（多为横屏）出片。`videoGenerateAudio` 按模型能力发送：声明同步出声的模型为 `"true"`，否则为 `"false"`。估算报价使用同样的画面参数与声音开关。
+
+视频分辨率：`settings.videoResolution` 为空时不发 `vquality`，由任务准入按模型默认分辨率补齐；指定后，声明比例的模型同时发送 `size` 与匹配到的 `vquality`（`720`、`720p`、`4k`、`2160p` 等写法按同一档位匹配），`fixedScreenSpec` 模型只在与作品画幅一致的标签里取同档（作品竖屏、选 `768p` 时发 `768p竖`）。所选模型没有这一档时按“给不出”处理（保存设置与生成返回 400，已排队的段失败并写明原因），不悄悄降档。`GET /dramas/models` 的视频模型附 `videoResolutions` 与 `defaultVideoResolution`；`fixedScreenSpec` 模型的横竖标签合并成一档（`768p竖`、`768p横` 列为 `768p`）。
+
+提示词长度：剧情段请求预演 `request.promptMaxChars` 是视频模型的提示词上限（含开头的参考图说明）。撰写段提示词时，正文上限 = 模型上限 − 当前参考图说明 − 2，写作目标再留一成余量；结果超出正文上限时同一作业自动提交精简任务（最多 2 次，保留镜头、时间码、台词与参考图编号），仍超长时保存这一版并让本段提示词失败。提交视频前再核对一次：模型撰写的版本超长（换了上限更小的模型，或参考图说明变长）时退回待撰写并按当前上限重写，不截断；手动改写的版本超长时本段视频失败并写明字数。
+
+段提示词写法：`settings.storyboard.performance`（表演强度）与 `cameraMotion`（运镜动感）都是 1–10 的整数，缺省或 0 按 5，超出范围夹到 1–10。提示词写入档位与刻度两端，并按 1–2 / 3–4 / 5–6 / 7–8 / 9–10 五段给出具体要求（表演：内敛 / 克制 / 自然 / 饱满 / 夸张；运镜：静态 / 稳定 / 标准 / 动感 / 强烈）；镜头表里的运镜词按 1–3 缓慢、4–7 按情绪、8–10 快速三组换写。不改镜头时长。尾帧续接时段末只要求末 0.5 秒动作收住、镜头停稳，不再要求整段凝固的硬定格。
+
+文字步骤与参考图模型：`settings.models` 可选 `bibleText`（资产提取）、`scriptText`（分镜拆分）、`promptText`（视频提示词与自动精简）、`characterImage`、`propImage`、`sceneImage`，为空沿用 `text` / `image`；单独指定的模型必须在当前用户的短剧模型目录里，否则保存返回 400。`settings.bibleSkill`、`settings.scriptSkill` 与 `promptSkill` 同格式，执行该步骤时把技能文件全文交给文本模型；资产提取与分镜拆分的输出 JSON 结构不变，技能与结构冲突时以结构为准。`settings.assets.propResolution`、`sceneResolution` 分别是道具、场景参考图的分辨率档位，`resolution` 只用于角色参考图。
+
+文本任务：短剧的作品圣经、分集、剧本、段提示词与精简任务都以上游流式（`textOptions.stream=true`）请求，避免长输出在中转站网关前因长时间无响应被断开（524）；结果仍在流结束后整段写入任务结果，模型能力声明不支持流式时改走非流式。单次任务仍受运行策略“文本任务超时”约束。
 
 ### 精修画布
 

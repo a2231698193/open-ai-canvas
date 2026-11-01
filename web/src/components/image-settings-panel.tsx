@@ -83,35 +83,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-base font-semibold">图像设置</div> : null}
-                {showQuality && profile.quality.supported && !imageResolutionUsesQuality(profile) ? <div className="space-y-2">
-                    <SettingTitle color={theme.node.muted}>{isGrokResolutionQuality(profile) ? "分辨率" : "质量"}</SettingTitle>
-                    <div className={`grid gap-2 ${activeQualityOptions.length <= 2 ? "grid-cols-2" : "grid-cols-4"}`}>
-						{activeQualityOptions.map((item) => (
-                            <OptionPill key={item.value} selected={quality === item.value} disabled={!bypassPriceGuard && !hasPriceTierForImageSelection(priceTiers, item.value, activeSize)} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
-                                {item.label}
-                            </OptionPill>
-                        ))}
-                    </div>
-                </div> : null}
-                {showTransparent && profile.transparentBackground.supported ? <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <SettingTitle color={theme.node.muted}>透明背景</SettingTitle>
-                        <div className="mt-1 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
-                            请求模型输出保留 Alpha 通道的 PNG
-                        </div>
-                    </div>
-                    <span title="是否支持透明背景由当前模型接口决定" onMouseDown={(event) => event.stopPropagation()}>
-                        <Switch
-                            size="sm"
-                            checked={transparentBackground}
-                            onChange={(checked) => onConfigChange("transparentBackground", checked ? "true" : "false")}
-                        />
-                    </span>
-                </div> : null}
-                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} imageResolution={normalized.imageResolution} onChange={(size, nextQuality, nextResolution) => applyImageSizeSelection(onConfigChange, size, nextQuality, nextResolution)} /> : null}
-                {isLk888MjProtocol(protocol) ? <Lk888MjOptionsPanel compact /> : null}
-                {isApimartMjProtocol(protocol) ? <ApimartMjOptionsPanel compact /> : null}
-                {isTtImage25(protocol, modelOptionName(config.model || config.imageModel)) ? <Lk888Image25OptionsPanel compact /> : null}
+                {/* 张数与透明背景放在最前：尺寸列表较长，放在后面时需要滚动才能看到。 */}
                 {profile.batchOutputs && profile.batchOutputs > 1 ? (
                     <div className="space-y-2">
                         <SettingTitle color={theme.node.muted}>生成张数</SettingTitle>
@@ -134,6 +106,35 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         </div>
                     </div>
                 ) : null}
+                {showTransparent && profile.transparentBackground.supported ? <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <SettingTitle color={theme.node.muted}>透明背景</SettingTitle>
+                        <div className="mt-1 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
+                            请求模型输出保留 Alpha 通道的 PNG
+                        </div>
+                    </div>
+                    <span title="是否支持透明背景由当前模型接口决定" onMouseDown={(event) => event.stopPropagation()}>
+                        <Switch
+                            size="sm"
+                            checked={transparentBackground}
+                            onChange={(checked) => onConfigChange("transparentBackground", checked ? "true" : "false")}
+                        />
+                    </span>
+                </div> : null}
+                {showQuality && profile.quality.supported && !imageResolutionUsesQuality(profile) ? <div className="space-y-2">
+                    <SettingTitle color={theme.node.muted}>{isGrokResolutionQuality(profile) ? "分辨率" : "质量"}</SettingTitle>
+                    <div className={`grid gap-2 ${activeQualityOptions.length <= 2 ? "grid-cols-2" : "grid-cols-4"}`}>
+						{activeQualityOptions.map((item) => (
+                            <OptionPill key={item.value} selected={quality === item.value} disabled={!bypassPriceGuard && !hasPriceTierForImageSelection(priceTiers, item.value, activeSize)} theme={theme} onClick={() => onConfigChange("quality", item.value)}>
+                                {item.label}
+                            </OptionPill>
+                        ))}
+                    </div>
+                </div> : null}
+                {showSize ? <ImageSizePicker profile={profile} size={activeSize} quality={quality} imageResolution={normalized.imageResolution} onChange={(size, nextQuality, nextResolution) => applyImageSizeSelection(onConfigChange, size, nextQuality, nextResolution)} /> : null}
+                {isLk888MjProtocol(protocol) ? <Lk888MjOptionsPanel compact /> : null}
+                {isApimartMjProtocol(protocol) ? <ApimartMjOptionsPanel compact /> : null}
+                {isTtImage25(protocol, modelOptionName(config.model || config.imageModel)) ? <Lk888Image25OptionsPanel compact /> : null}
             </div>
         </ImageSettingsTheme>
     );

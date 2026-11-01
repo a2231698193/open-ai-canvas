@@ -40,7 +40,7 @@ import { createPrevisTransaction, installPrevisTerminalListeners } from "@/lib/c
 import { emptyPrevisPlacementIntent, finitePrevisGroundPoint, type PrevisGroundPoint, type PrevisPlacementIntent } from "@/lib/canvas/previs/previs-placement";
 import { previsDiagnosticObjectKind } from "@/lib/canvas/previs/previs-diagnostics";
 import { recordPrevisDiagnostic } from "@/lib/canvas/previs/previs-diagnostics-recorder";
-import { PREVIS_MIN_ORBIT_DISTANCE, resolvePrevisFrameBounds, resolvePrevisZoomMinDistance } from "@/lib/canvas/previs/previs-frame-bounds";
+import { PREVIS_INITIAL_FRAME_PADDING, PREVIS_MIN_ORBIT_DISTANCE, resolvePrevisFrameBounds, resolvePrevisInitialFrame, resolvePrevisZoomMinDistance } from "@/lib/canvas/previs/previs-frame-bounds";
 import {
     previsCaptureInitial,
     previsCaptureUsable,
@@ -72,7 +72,7 @@ import {
 import { PrevisViewToolbar } from "@/components/canvas/previs/previs-view-toolbar";
 import type { PrevisToolMode } from "@/lib/canvas/previs/previs-shortcuts";
 import { resolveMediaUrl } from "@/services/file-storage";
-import type { PrevisCamera, PrevisEnvironment, PrevisHumanoidBone, PrevisLight, PrevisObject, PrevisQuat, PrevisRenderMode, PrevisRig, PrevisScene, PrevisTransform, PrevisVec3 } from "@/types/previs";
+import type { PrevisAspectRatio, PrevisCamera, PrevisEnvironment, PrevisHumanoidBone, PrevisLight, PrevisObject, PrevisQuat, PrevisRenderMode, PrevisRig, PrevisScene, PrevisTransform, PrevisVec3 } from "@/types/previs";
 import { applyActorReferenceMaterial, applyPrevisBoneTracks, previsFingerGroup, inferPrevisRig, normalizeModel, readRigRestRotations, screenPixelsToWorldRadius, updateActorReferenceColor } from "./previs-viewport-rig";
 import { captureFrame, createPrevisShotSurface, recordCanvas, type PrevisCaptureOptions } from "./previs-viewport-capture";
 import { previsAspectValue, resolvePrevisSafeFrame } from "@/lib/canvas/previs/previs-optics";
@@ -304,7 +304,7 @@ export const PrevisViewport = forwardRef<PrevisViewportHandle, PrevisViewportPro
             </PrevisViewportErrorBoundary>
             {/* 取景切换是纯视口状态：放在 DOM 层，不随 Canvas 重建而丢失。 */}
             {onViewModeChange ? <PrevisViewToolbar viewMode={props.viewMode ?? PREVIS_DEFAULT_VIEW_MODE} onViewModeChange={onViewModeChange} /> : null}
-            {props.viewMode === "camera" ? <PrevisSafeFrameOverlay aspect={previsAspectValue(resolvePrevisActiveShot(props.scene)?.aspectRatio)} /> : null}
+            {props.viewMode === "camera" ? <PrevisSafeFrameOverlay aspectRatio={resolvePrevisActiveShot(props.scene)?.aspectRatio} /> : null}
             {showNavigation ? <PrevisNavigationToolbar navigation={navigation} /> : null}
             {capture.contextLost ? <PrevisViewportNotice title="3D 显示上下文已丢失" description="浏览器回收了 WebGL 上下文。等待自动恢复，或立即重建视口。" actionLabel="重建 3D 视口" onAction={retry} /> : null}
             {!capture.contextLost && showModelLoadNotice && failedIds.length ? (
@@ -508,10 +508,11 @@ function PrevisSceneContent({
     const [orthoCamera] = useState(() => new OrthographicCamera(-1, 1, 1, -1, 0.05, 500));
     // CAM 与正交轴向的取景解算都是纯函数：mode 不匹配时各自返回 null，互不冲突。
     // 活动相机不直接看 viewMode：CAM 取景失败必须回落 free，否则会露出从未写入的 camCamera。
-    const rawCamFraming = resolvePrevisViewFraming({ scene, mode: viewMode, playhead, cameraId: selectedCameraId });
     // CAM 视口满铺容器，但镜头画幅由安全框表达：按「安全框内正好是镜头取景」反推容器 fov。
-    const shotAspect = previsAspectValue(resolvePrevisActiveShot(scene)?.aspectRatio);
+    // 自适应画幅的镜头比例就是容器比例，安全框等于整个视口。
     const containerAspect = size.width / Math.max(size.height, 1);
+    const rawCamFraming = resolvePrevisViewFraming({ scene, mode: viewMode, playhead, cameraId: selectedCameraId, viewportAspect: containerAspect });
+    const shotAspect = previsAspectValue(resolvePrevisActiveShot(scene)?.aspectRatio, containerAspect);
     const camFraming = rawCamFraming ? { ...rawCamFraming, fov: resolvePrevisContainerFov(rawCamFraming.fov, shotAspect, containerAspect) } : null;
     const orthoFraming = resolvePrevisOrthographicFraming({ scene, mode: viewMode });
     const effectiveViewport = resolvePrevisEffectiveViewport({ mode: viewMode, framing: camFraming });
@@ -712,7 +713,7 @@ function PrevisSceneContent({
             orbitRef.current?.update();
             invalidate();
         };
-        const frame = (ids?: Set<string>, fixedDirection = false) => {
+        const frame = (ids?: Set<string>, fixedDirection = false, padding = PREVIS_INITIAL_FRAME_PADDING) => {
             const aspect = size.width / Math.max(size.height, 1);
             const bounds = resolvePrevisFrameBounds(scene.objects, ids, aspect, freeCamera.fov);
             if (!bounds) return resetCamera();
@@ -722,7 +723,7 @@ function PrevisSceneContent({
             if (direction.lengthSq() < 0.01) direction.set(...PREVIS_DEFAULT_VIEW_DIRECTION);
             direction.normalize();
             orbitRef.current?.target.copy(bounds.target);
-            freeCamera.position.copy(bounds.target).add(direction.multiplyScalar(Math.max(1.8, bounds.fitDistance * 1.18)));
+            freeCamera.position.copy(bounds.target).add(direction.multiplyScalar(Math.max(1.8, bounds.fitDistance * padding)));
             freeCamera.lookAt(bounds.target);
             orbitRef.current?.update();
             invalidate();
@@ -746,11 +747,11 @@ function PrevisSceneContent({
         };
         onNavigationReady?.(navigation);
         // 首次取景：等容器有真实尺寸再做；优先对准演员（道具可能是 8m 山体或地面板，会把人挤成小点），
-        // 用固定的 3/4 略俯视角，地平线落在画面上部三分之一附近。
+        // 没有演员时不算背景板与地面。用固定的 3/4 略俯视角，地平线落在画面上部三分之一附近。
         if (initialFrameSceneRef.current !== scene.id && size.width > 0 && size.height > 0) {
             initialFrameSceneRef.current = scene.id;
-            const actorIds = new Set(scene.objects.filter((item) => item.visible && (item.kind === "actor" || item.primitive === "character")).map((item) => item.id));
-            frame(actorIds.size ? actorIds : undefined, true);
+            const initial = resolvePrevisInitialFrame(scene.objects);
+            frame(initial.ids, true, initial.padding);
         }
         return () => onNavigationReady?.({ focusSelected: () => undefined, frameScene: () => undefined, resetCamera: () => undefined, zoom: () => undefined });
     }, [freeCamera, invalidate, onNavigationReady, scene.id, scene.objects, selectedObjectId, size.height, size.width]);
@@ -2150,7 +2151,7 @@ function resolvePrevisContainerFov(shotFov: number, shotAspect: number, containe
 }
 
 /** CAM 取景时的画幅安全框：框外压暗，框内即镜头成片。纯 DOM，不参与捕捉。 */
-function PrevisSafeFrameOverlay({ aspect }: { aspect: number }) {
+function PrevisSafeFrameOverlay({ aspectRatio }: { aspectRatio?: PrevisAspectRatio }) {
     const ref = useRef<HTMLDivElement>(null);
     const [box, setBox] = useState({ width: 0, height: 0 });
     useEffect(() => {
@@ -2160,7 +2161,7 @@ function PrevisSafeFrameOverlay({ aspect }: { aspect: number }) {
         observer.observe(element);
         return () => observer.disconnect();
     }, []);
-    const frame = resolvePrevisSafeFrame(box, aspect);
+    const frame = resolvePrevisSafeFrame(box, previsAspectValue(aspectRatio, box.width / Math.max(box.height, 1)));
     return (
         <div ref={ref} className="pv-safe-frame" aria-hidden>
             {box.width ? <div className="pv-safe-frame__window" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} /> : null}

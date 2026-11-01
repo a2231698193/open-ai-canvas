@@ -73,7 +73,8 @@ func TestShotDurationFollowsDialogue(t *testing.T) {
 	if got := ShotDurationMs(0, ""); got != DefaultShotMs {
 		t.Fatalf("default duration, got %d", got)
 	}
-	if got := ShotDurationMs(40, ""); got != 6000 {
+	// 默认快节奏，单镜上限 4 秒。
+	if got := ShotDurationMs(40, ""); got != 4000 {
 		t.Fatalf("script hints are clamped to the pacing max, got %d", got)
 	}
 	// 台词比上限更长时以说完为准，不截断台词；仍受单镜绝对上限约束。
@@ -111,19 +112,37 @@ func TestStoryboardRules(t *testing.T) {
 	if got := fast.LineTarget(300); got != 100 {
 		t.Fatalf("dense dialogue is a line every 3 seconds, got %d", got)
 	}
-	if got := fast.SegmentLimits(15); got != (SegmentLimits{Mode: SegmentFixed, MinMs: 10000, MaxMs: 10000}) {
+	upTo15 := DurationOptions{Max: 15}
+	if got := fast.SegmentLimits(upTo15); got != (SegmentLimits{Mode: SegmentFixed, MinMs: 10000, MaxMs: 10000}) {
 		t.Fatalf("fixed segment keeps its length under the model max: %+v", got)
 	}
-	if got := (StoryboardSettings{SegmentMode: SegmentFixed, SegmentSeconds: 30}).SegmentLimits(15); got.MaxMs != 15000 {
+	if got := (StoryboardSettings{SegmentMode: SegmentFixed, SegmentSeconds: 30}).SegmentLimits(upTo15); got.MaxMs != 15000 {
 		t.Fatalf("fixed segment is capped by the model max: %+v", got)
 	}
-	if got := (StoryboardSettings{}).SegmentLimits(15); got != (SegmentLimits{Mode: SegmentAuto, MaxMs: 15000}) {
+	if got := (StoryboardSettings{}).SegmentLimits(upTo15); got != (SegmentLimits{Mode: SegmentAuto, MaxMs: 15000}) {
 		t.Fatalf("auto segment uses the model max: %+v", got)
 	}
-	if got := (StoryboardSettings{SegmentMode: SegmentRange, SegmentMinSeconds: 20, SegmentMaxSeconds: 8}).SegmentLimits(15); got != (SegmentLimits{Mode: SegmentRange, MinMs: 8000, MaxMs: 15000}) {
+	if got := (StoryboardSettings{SegmentMode: SegmentRange, SegmentMinSeconds: 20, SegmentMaxSeconds: 8}).SegmentLimits(upTo15); got != (SegmentLimits{Mode: SegmentRange, MinMs: 8000, MaxMs: 15000}) {
 		t.Fatalf("range is ordered and capped by the model max: %+v", got)
 	}
-	rules := fast.PromptRules(300, fast.SegmentLimits(15))
+	// 模型下限在每种模式下都生效，智能模式也不例外；设置的上限低于模型下限时抬到模型下限。
+	fiveToTen := DurationOptions{Values: []int{10, 5}}
+	if got := (StoryboardSettings{}).SegmentLimits(fiveToTen); got != (SegmentLimits{Mode: SegmentAuto, MinMs: 5000, MaxMs: 10000}) {
+		t.Fatalf("auto segment uses the model min and max: %+v", got)
+	}
+	if got := (StoryboardSettings{SegmentMode: SegmentFixed, SegmentSeconds: 4}).SegmentLimits(fiveToTen); got != (SegmentLimits{Mode: SegmentFixed, MinMs: 5000, MaxMs: 5000}) {
+		t.Fatalf("fixed segment is raised to the model min: %+v", got)
+	}
+	if got := (StoryboardSettings{SegmentMode: SegmentRange, SegmentMinSeconds: 4, SegmentMaxSeconds: 8}).SegmentLimits(DurationOptions{Min: 6, Max: 30, Step: 1}); got != (SegmentLimits{Mode: SegmentRange, MinMs: 6000, MaxMs: 8000}) {
+		t.Fatalf("range minimum is raised to the model min: %+v", got)
+	}
+	if got := (StoryboardSettings{SegmentMode: SegmentRange, SegmentMinSeconds: 4, SegmentMaxSeconds: 4}).SegmentLimits(DurationOptions{Min: 5, Max: 30, Step: 1}); got != (SegmentLimits{Mode: SegmentRange, MinMs: 5000, MaxMs: 5000}) {
+		t.Fatalf("range below the model min becomes the model min: %+v", got)
+	}
+	if auto := (StoryboardSettings{}).PromptRules(300, (StoryboardSettings{}).SegmentLimits(fiveToTen)); !strings.Contains(auto, "单段 5–10 秒") || !strings.Contains(auto, "最短 5 秒") {
+		t.Fatalf("auto prompt rules must state the model minimum:\n%s", auto)
+	}
+	rules := fast.PromptRules(300, fast.SegmentLimits(upTo15))
 	for _, want := range []string{"每 10 秒一个剧情段", "3–6 个镜头", "每 3 秒有一句", "参考全集 100 句", "逐字取自原文"} {
 		if !strings.Contains(rules, want) {
 			t.Fatalf("prompt rules missing %q:\n%s", want, rules)
@@ -136,7 +155,7 @@ func TestStoryboardRules(t *testing.T) {
 	if (StoryboardSettings{}).EffectiveTransition("闪白", false) != TransitionWhite {
 		t.Fatalf("auto mode keeps the script transition")
 	}
-	if !strings.Contains(ScriptPrompt(ScriptContext{Segment: fast.SegmentLimits(15), Settings: Settings{EpisodeSeconds: 300, Storyboard: fast}}), "输出约 120 个镜头") {
+	if !strings.Contains(ScriptPrompt(ScriptContext{Segment: fast.SegmentLimits(upTo15), Settings: Settings{EpisodeSeconds: 300, Storyboard: fast}}), "输出约 120 个镜头") {
 		t.Fatalf("script prompt must use the storyboard shot target")
 	}
 }
@@ -222,10 +241,10 @@ func TestSegmentVideoPrompt(t *testing.T) {
 		},
 	})
 	for _, want := range []string{
-		"严格从第2段视频末尾硬定格", "第3段视频《神丹入腹》", "11.5秒｜9:16｜国漫3D｜中文对白｜无字幕｜2个镜头",
+		"严格从第2段视频末尾的站位", "第3段视频《神丹入腹》", "11.5秒｜9:16｜国漫3D｜中文对白｜无字幕｜2个镜头",
 		"首帧即第2段视频最后一帧（随请求附带）", "陆沉（参考图1）：18岁少年", "演武台（参考图2）：汉白玉浮空台", "陆沉：低沉青年音",
-		"【00.00—05.50秒｜镜头一：特写·推】", "85mm特写，缓慢推近。", "二狗：“张嘴！”",
-		"【05.50—11.50秒｜镜头二：中景】", "本镜从黑场淡入。", "无台词。", "作为第4段的无缝接续基准",
+		"【00.00—05.50秒｜镜头一：特写·推】", "85mm特写，随情绪推近。", "二狗：“张嘴！”",
+		"【05.50—11.50秒｜镜头二：中景】", "本镜从黑场淡入。", "无台词。", "作为第4段的接续基准",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("segment prompt missing %q:\n%s", want, prompt)
@@ -243,7 +262,7 @@ func TestSegmentVideoPrompt(t *testing.T) {
 
 func TestSegmentPromptKeepsDialogueAndNativeVoice(t *testing.T) {
 	prompt := SegmentVideoPrompt(SegmentPromptInput{Index: 0, Count: 2, Language: "中文", Shots: []SegmentShot{{Speaker: "林逸", Dialogue: "我来守护你。", DurationMs: 5000}}, References: []SegmentReference{{Kind: "character", Name: "林逸", Voice: "少年低沉", Label: "参考图1"}}})
-	for _, text := range []string{"我来守护你。", "少年低沉", "口型与台词同步", "末1.0秒"} {
+	for _, text := range []string{"我来守护你。", "少年低沉", "口型与台词同步", "末0.5秒"} {
 		if !strings.Contains(prompt, text) {
 			t.Fatalf("missing %s: %s", text, prompt)
 		}
@@ -273,15 +292,39 @@ func TestSegmentShotsForVideoRespectsModelLimit(t *testing.T) {
 	if len(fixed) != 3 || fixed[0].End != 2 || fixed[1].End != 4 || fixed[2].End != 6 || fixed[2].Title != "后山" {
 		t.Fatalf("fixed segments pack by duration: %+v", fixed)
 	}
-	// 范围 12–20 秒：大殿 20 秒成段；后山 8 秒不足下限，但并入会超过上限，只能单独成段。
+	// 范围 12–20 秒：大殿 20 秒成段；后山 8 秒不足下限且并入会超过上限，从大殿末尾挪一镜过来（15 秒 + 13 秒）。
 	ranged := SegmentShotsForVideo(scenes, durations, SegmentLimits{Mode: SegmentRange, MinMs: 12000, MaxMs: 20000})
-	if len(ranged) != 2 || ranged[0].End != 4 || ranged[1].Title != "后山" {
-		t.Fatalf("range segments break at scene changes once the minimum is met: %+v", ranged)
+	if len(ranged) != 2 || ranged[0].End != 3 || ranged[1].Start != 3 || ranged[1].Title != "大殿 / 后山" {
+		t.Fatalf("a short trailing range segment borrows shots from the previous one: %+v", ranged)
 	}
 	// 范围 12–20 秒、场景很碎：未达到下限时不在场景切换处断开。
 	choppy := SegmentShotsForVideo([]string{"a", "b", "c", "d", "e", "f"}, []int64{4000, 4000, 4000, 4000, 4000, 4000}, SegmentLimits{Mode: SegmentRange, MinMs: 12000, MaxMs: 20000})
 	if len(choppy) != 2 || choppy[0].End != 3 || choppy[0].Title != "a / b / c" {
 		t.Fatalf("range segments wait for the minimum before a scene break: %+v", choppy)
+	}
+}
+
+func TestSegmentShotsForVideoRebalancesShortTrailingSegment(t *testing.T) {
+	same := []string{"a", "a", "a", "a"}
+	// 4+4+4=12 秒装满上限，最后 1 秒并不进前一段；挪一镜后两段为 8 秒与 5 秒，都不低于 5 秒下限。
+	balanced := SegmentShotsForVideo(same, []int64{4000, 4000, 4000, 1000}, SegmentLimits{Mode: SegmentRange, MinMs: 5000, MaxMs: 12000})
+	if len(balanced) != 2 || balanced[0] != (Segment{Start: 0, End: 2, Title: "a"}) || balanced[1] != (Segment{Start: 2, End: 4, Title: "a"}) {
+		t.Fatalf("short trailing segment must borrow from the previous one: %+v", balanced)
+	}
+	// 挪走一镜会让前一段跌破 6 秒下限：保持原样，由提交时按模型档位补足。
+	kept := SegmentShotsForVideo(same[:3], []int64{5000, 5000, 1000}, SegmentLimits{Mode: SegmentRange, MinMs: 6000, MaxMs: 10000})
+	if len(kept) != 2 || kept[0].End != 2 || kept[1].Start != 2 {
+		t.Fatalf("rebalancing must not push the previous segment below the minimum: %+v", kept)
+	}
+	// 前一段 9 秒的单镜挪过来会超过 10 秒上限：保持原样。
+	overflow := SegmentShotsForVideo(same, []int64{5000, 5000, 9000, 2000}, SegmentLimits{Mode: SegmentRange, MinMs: 3000, MaxMs: 10000})
+	if len(overflow) != 3 || overflow[2] != (Segment{Start: 3, End: 4, Title: "a"}) {
+		t.Fatalf("rebalancing must not exceed the maximum: %+v", overflow)
+	}
+	// 智能模式同样按模型下限补足最后一段：后山 3 秒不足 4 秒下限，从前一段借一镜（4 秒 + 7 秒）。
+	auto := SegmentShotsForVideo([]string{"a", "a", "b", "b"}, []int64{4000, 4000, 2000, 1000}, SegmentLimits{Mode: SegmentAuto, MinMs: 4000, MaxMs: 10000})
+	if len(auto) != 2 || auto[0] != (Segment{Start: 0, End: 1, Title: "a"}) || auto[1] != (Segment{Start: 1, End: 4, Title: "a / b"}) {
+		t.Fatalf("auto mode must rebalance to the model minimum: %+v", auto)
 	}
 }
 

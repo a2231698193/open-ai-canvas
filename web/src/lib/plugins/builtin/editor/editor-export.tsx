@@ -94,7 +94,7 @@ export function EditorExport() {
         if (!project || sources.length === 0 || state.phase === "running") return;
         setState({ phase: "running", mode: "local", percent: 0, detail: "准备导出", result: null });
         try {
-            const blob = await exportTimelineToMp4(project, sources, {
+            const { blob, warnings } = await exportTimelineToMp4(project, sources, {
                 onProgress: (p: TimelineExportProgress) =>
                     setState({ phase: "running", mode: "local", percent: p.percent, detail: p.detail, result: null }),
             });
@@ -104,7 +104,7 @@ export function EditorExport() {
             a.download = "timeline-export.mp4";
             a.click();
             URL.revokeObjectURL(url);
-            setState({ phase: "done", mode: "local", percent: 100, detail: "导出完成，已开始下载", result: null });
+            setState({ phase: "done", mode: "local", percent: 100, detail: warnings.length ? `导出完成，已开始下载；${warnings.join("；")}` : "导出完成，已开始下载", result: null });
         } catch (error) {
             setState({
                 phase: "error",

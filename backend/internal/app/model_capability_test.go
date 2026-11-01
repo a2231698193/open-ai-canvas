@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -223,8 +224,17 @@ func TestDefaultMiniMaxVideoCapabilitySupportsThirtySecondGeneration(t *testing.
 					if valid && err != nil {
 						t.Fatalf("validateVideoTask(%d seconds): %v", seconds, err)
 					}
-					if !valid && (err == nil || !strings.Contains(err.Error(), "视频时长不在当前模型支持范围内")) {
-						t.Fatalf("validateVideoTask(%d seconds) error = %v", seconds, err)
+					label := videoDurationAllowedLabel(profile.Duration)
+					if !strings.Contains(label, "4–30 秒") {
+						t.Fatalf("allowed range label = %q", label)
+					}
+					want := fmt.Sprintf("视频时长 %d 秒不在当前模型支持范围内（%s）", seconds, label)
+					if !valid && (err == nil || !strings.Contains(err.Error(), want)) {
+						t.Fatalf("validateVideoTask(%d seconds) error = %v, want %q", seconds, err, want)
+					}
+					var argumentErr *modelCapabilityArgumentError
+					if !valid && (!errors.As(err, &argumentErr) || argumentErr.Field != "durationSeconds" || argumentErr.Issue != "unsupported_value") {
+						t.Fatalf("validateVideoTask(%d seconds) lost the field code: %#v", seconds, err)
 					}
 				})
 			}

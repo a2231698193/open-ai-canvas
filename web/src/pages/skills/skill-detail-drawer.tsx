@@ -5,11 +5,12 @@ import { Tooltip } from "@/components/ui/base/tooltip";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
 import type { DataNode } from "antd/es/tree";
 import { Check, ChevronRight, Code2, ExternalLink, File, FileArchive, FileCode2, FileImage, FileText, Folder, FolderOpen, Heart, Info, Pencil, Plus, RefreshCw, Users } from "lucide-react";
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { formatSkillCount, formatSkillDate, skillCategoryLabel } from "@/pages/skills/skill-catalog";
+import { splitSkillFrontmatter, type SkillFrontmatter } from "@/pages/skills/skill-frontmatter";
 import { getSkillFile, listSkillFiles, skillFileRawURL, type Skill, type SkillCategory, type SkillPackageFile, type SkillPackageFileContent } from "@/services/api/skills";
 
 type PreviewMode = "preview" | "source";
@@ -179,7 +180,53 @@ function SkillFilePreview({ skill, file, content, mode, filePaths, onNavigate }:
     return <pre className="skill-package-source"><code>{content.content}</code></pre>;
 }
 
+const FRONTMATTER_PRIMARY_LABELS: Record<string, string> = { name: "名称", description: "描述", version: "版本" };
+
+function SkillFrontmatterPanel({ frontmatter }: { frontmatter: SkillFrontmatter }) {
+    if (!frontmatter.entries) {
+        return (
+            <section className="mb-6" aria-label="技能元数据">
+                <div className="mb-1 text-[var(--fs-caption)] text-foreground/45">元数据（无法解析，显示原文）</div>
+                <pre>
+                    <code>{frontmatter.raw}</code>
+                </pre>
+            </section>
+        );
+    }
+    const primary = Object.keys(FRONTMATTER_PRIMARY_LABELS).flatMap((key) => frontmatter.entries!.filter((entry) => entry.key === key));
+    const others = frontmatter.entries.filter((entry) => !(entry.key in FRONTMATTER_PRIMARY_LABELS));
+    if (!primary.length && !others.length) return null;
+    return (
+        <section className="mb-6 rounded-[var(--r-md)] border border-foreground/10 bg-foreground/[0.03] px-4 py-3 text-[var(--fs-caption)] leading-5" aria-label="技能元数据">
+            {primary.length ? (
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                    {primary.map((entry) => (
+                        <Fragment key={entry.key}>
+                            <dt className="text-foreground/45">{FRONTMATTER_PRIMARY_LABELS[entry.key]}</dt>
+                            <dd className="m-0 whitespace-pre-wrap break-words text-foreground/80">{entry.value || "—"}</dd>
+                        </Fragment>
+                    ))}
+                </dl>
+            ) : null}
+            {others.length ? (
+                <details className={primary.length ? "mt-2" : undefined}>
+                    <summary className="cursor-pointer select-none text-foreground/45">其他字段（{others.length}）</summary>
+                    <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                        {others.map((entry, index) => (
+                            <Fragment key={`${entry.key}-${index}`}>
+                                <dt className="font-mono text-foreground/45">{entry.key}</dt>
+                                <dd className="m-0 whitespace-pre-wrap break-words text-foreground/80">{entry.value || "—"}</dd>
+                            </Fragment>
+                        ))}
+                    </dl>
+                </details>
+            ) : null}
+        </section>
+    );
+}
+
 export function SkillMarkdown({ source, currentPath, filePaths, onNavigate }: { source: string; currentPath: string; filePaths: Set<string>; onNavigate: (path: string) => void }) {
+    const { frontmatter, body } = useMemo(() => splitSkillFrontmatter(source), [source]);
     const navigate = (event: MouseEvent<HTMLAnchorElement>, href?: string) => {
         const target = resolveSkillPath(currentPath, href || "");
         if (!target || !filePaths.has(target)) return;
@@ -188,6 +235,7 @@ export function SkillMarkdown({ source, currentPath, filePaths, onNavigate }: { 
     };
     return (
         <article className="skill-package-markdown">
+            {frontmatter ? <SkillFrontmatterPanel frontmatter={frontmatter} /> : null}
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -200,7 +248,7 @@ export function SkillMarkdown({ source, currentPath, filePaths, onNavigate }: { 
                         return <span className="skill-package-inline-missing">{alt || src || "图片"}</span>;
                     },
                 }}
-            >{source}</ReactMarkdown>
+            >{body}</ReactMarkdown>
         </article>
     );
 }

@@ -5,6 +5,7 @@ import { ArrowLeft, Brush, CheckCheck, Clapperboard, Film, Inbox, Pause, Pencil,
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { WorkspacePage } from "@/components/layout/workspace-page";
+import { SegmentedControl } from "@/components/ui/base/segmented-control";
 import { WorkspaceErrorState, WorkspaceLoadingState } from "@/components/layout/workspace-state";
 import { approveDramaEpisode, deleteDramaShot, generateDramaSegments, insertDramaShot, pauseDrama, reprocessDramaSegmentVideo, regenerateDramaCast, releaseDramaMedia, renameDramaEpisode, rescriptDramaEpisode, retryFailedDrama, startDrama, updateDramaSegment, updateDramaSegmentReferences, writeDramaSegmentPrompts, updateDramaShot, type DramaInboxItem, type DramaJob, type DramaModelChoice, type DramaSegment, type DramaShot, type DramaShotPatch } from "@/services/api/drama";
 
@@ -36,6 +37,8 @@ export default function DramaStudioPage() {
     const castFocus = searchParams.get("cast") || "";
     const [renaming, setRenaming] = useState(false);
     const [adding, setAdding] = useState(false);
+    // 窄屏只显示一栏：集列表与制作区用分段切换（宽屏两栏并排，不受影响）。
+    const [mobilePane, setMobilePane] = useState<"episodes" | "production">("production");
     const invalidate = useDramaInvalidate(projectId);
 
     const summaryQuery = useDramaSummary(projectId);
@@ -199,6 +202,7 @@ export default function DramaStudioPage() {
     if (summaryQuery.isError || !summary) return <WorkspacePage><WorkspaceErrorState title="作品不可用" description="作品不存在、已被删除，或当前账号没有访问权限。" actionLabel="返回作品列表" onRetry={() => navigate("/projects")} /></WorkspacePage>;
 
     const { production } = summary;
+    const runLabel = running ? "暂停" : production.status === "draft" ? "开始制作" : "继续制作";
     const doneEpisodes = episodes.filter((episode) => episode.stage === "done" && !episode.finalStale).length;
     const progress = episodes.length ? doneEpisodes / episodes.length : 0;
     const aspectRatio = production.settings.aspectRatio;
@@ -240,13 +244,21 @@ export default function DramaStudioPage() {
                         <button type="button" className="drama-nav-item" aria-current={view === "inbox" ? "page" : undefined} onClick={() => openView("inbox")}><Inbox className="size-4" />待处理{summary.inbox.length ? <span className="drama-nav-count is-alert">{summary.inbox.length > 99 ? "99+" : summary.inbox.length}</span> : null}</button>
                         <button type="button" className="drama-nav-item" aria-current={view === "settings" ? "page" : undefined} onClick={() => openView("settings")}><Settings2 className="size-4" />设置</button>
                     </nav>
+                    {/* 窄屏只保留图标（全部生成保留集数），文字由 aria-label 与 title 提供。 */}
                     <div className="drama-topbar-actions">
-                        <Button icon={<Brush className="size-4" />} loading={canvas.opening === "canvas"} onClick={() => void canvas.open()} title="打开这部短剧的精修画布：投送设定、剧情段或成片，精修后采用回短剧">
-                            精修画布
+                        <Button icon={<Brush className="size-4" />} loading={canvas.opening === "canvas"} onClick={() => void canvas.open()} aria-label="精修画布" title="打开这部短剧的精修画布：投送设定、剧情段或成片，精修后采用回短剧">
+                            <span className="drama-topbar-action-label">精修画布</span>
                         </Button>
-                        {awaitingCount ? <Button icon={<Play className="size-4" />} loading={release.isPending && release.variables?.target === "all"} onClick={confirmReleaseAll}>全部生成视频 · {awaitingCount} 集</Button> : null}
+                        {awaitingCount ? (
+                            <Button icon={<Play className="size-4" />} loading={release.isPending && release.variables?.target === "all"} onClick={confirmReleaseAll} aria-label={`全部生成视频 · ${awaitingCount} 集`} title={`全部生成视频 · ${awaitingCount} 集`}>
+                                <span className="drama-topbar-action-label">全部生成视频 · </span>
+                                {awaitingCount} 集
+                            </Button>
+                        ) : null}
                         {production.status !== "completed" ? (
-                            <Button type={running ? "default" : "primary"} icon={running ? <Pause className="size-4" /> : <Play className="size-4" />} loading={toggleRun.isPending} onClick={() => toggleRun.mutate()}>{running ? "暂停" : production.status === "draft" ? "开始制作" : "继续制作"}</Button>
+                            <Button type={running ? "default" : "primary"} icon={running ? <Pause className="size-4" /> : <Play className="size-4" />} loading={toggleRun.isPending} onClick={() => toggleRun.mutate()} aria-label={runLabel} title={runLabel}>
+                                <span className="drama-topbar-action-label">{runLabel}</span>
+                            </Button>
                         ) : null}
                     </div>
                 </header>
@@ -255,8 +267,30 @@ export default function DramaStudioPage() {
                 : view === "inbox" ? <InboxPanel items={summary.inbox} castById={castById} retrying={retry.isPending} retryingGroup={retryingGroup} releasing={release.isPending} onRetryAll={() => retry.mutate()} onRetryGroup={(key, items) => retryGroup.mutate({ key, items })} onOpen={openInbox} onOpenSettings={() => openView("settings")} onReleaseAll={confirmReleaseAll} />
                 : view === "settings" ? <SettingsPanel projectId={projectId} summary={summary} cast={cast} onChanged={() => invalidate(episodeId)} />
                 : !episodes.length ? <StudioGenesis summary={summary} /> : (
-                    <div className={`drama-body is-inspector-hidden ${openSegmentIndex !== undefined ? "is-covered" : ""}`}>
-                        <EpisodeRail episodes={episodes} currentId={episodeId} planning={!production.planDone} onSelect={selectEpisode} onAdd={() => setAdding(true)} />
+                    <div className={`drama-body is-inspector-hidden ${openSegmentIndex !== undefined ? "is-covered" : ""}`} data-mobile-pane={mobilePane}>
+                        <div className="drama-mobile-tabs">
+                            <SegmentedControl<"episodes" | "production">
+                                block
+                                size="sm"
+                                ariaLabel="切换集列表与制作区"
+                                value={mobilePane}
+                                onChange={setMobilePane}
+                                options={[
+                                    { label: `剧集 · ${episodes.length}`, value: "episodes" },
+                                    { label: "制作", value: "production" },
+                                ]}
+                            />
+                        </div>
+                        <EpisodeRail
+                            episodes={episodes}
+                            currentId={episodeId}
+                            planning={!production.planDone}
+                            onSelect={(id) => {
+                                selectEpisode(id);
+                                setMobilePane("production");
+                            }}
+                            onAdd={() => setAdding(true)}
+                        />
                         <main className="drama-main">
                             {episodeRow ? (
                                 <div className="drama-ep-header">
@@ -335,6 +369,7 @@ export default function DramaStudioPage() {
                                         aspectRatio={aspectRatio}
                                         castById={castById}
                                         defaultVideoModel={production.settings.models.video}
+                                        videoResolution={production.settings.videoResolution}
                                         busy={busy}
                                         keyboardEnabled={openSegmentIndex === undefined && view === "production"}
                                         onOpen={openSegment}
@@ -391,6 +426,7 @@ export default function DramaStudioPage() {
                             reprocessing={reprocessSegment.isPending}
                             onReprocess={(segment) => reprocessSegment.mutate(segment.index)}
                             defaultVideoModel={production.settings.models.video}
+                            videoResolution={production.settings.videoResolution}
                             onOpenCast={(id) => openView("cast", { cast: id, segment: null, shot: null })}
                             onOpenCanvas={(segment) => void canvas.open({ kind: "segment", episodeId, segmentIndex: segment.index })}
                             canvasOpening={Boolean(canvas.opening?.startsWith("segment:"))}

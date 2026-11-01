@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"yingce/backend/internal/assets"
 	"yingce/backend/internal/canvas/capability"
@@ -171,6 +172,7 @@ func cloudAgentCanvasStateSelected(repo *repository.Repository, userID, canvasID
 	if includeRelated && len(focusNodeIDs) == 0 {
 		return nil, BadAuthRequest("includeRelated 只能与 focusNodeIds 一起使用")
 	}
+	readAt := time.Now()
 	all := creationMaps(doc["nodes"])
 	connectionOffset := 0
 	if len(connectionOffsets) > 0 {
@@ -285,6 +287,10 @@ func cloudAgentCanvasStateSelected(repo *repository.Repository, userID, canvasID
 		item := map[string]any{"id": id, "type": stringValue(node["type"])}
 		if title, ok := node["title"].(string); ok {
 			item["title"] = truncateRunes(title, 300)
+		}
+		if _, bound := meta["dramaRef"].(map[string]any); bound {
+			// 短剧投影节点只是投送时的快照，生成状态以短剧数据为准。
+			item["dramaStatusSource"] = "drama_get_context"
 		}
 		if position, ok := node["position"].(map[string]any); ok {
 			safePosition := map[string]any{}
@@ -460,6 +466,13 @@ func cloudAgentCanvasStateSelected(repo *repository.Repository, userID, canvasID
 		nextConnection = cursor
 	}
 	view := map[string]any{"snapshotHash": cloudAgentCanvasHash(doc), "mediaSnapshotHash": cloudAgentMediaContentHash(doc), "nodes": nodes, "connections": edges, "totalNodes": len(all), "totalConnections": len(allEdges), "nextOffset": next, "hasMore": next > 0, "connectionOffset": connectionOffset, "nextConnectionOffset": nextConnection, "hasMoreConnections": hasMoreConnections, "pageByteBudget": cloudAgentReadPageBytes}
+	// 读取来源与时间：画布是保存时的快照，短剧节点不随调度完成更新，状态要以 drama_get_context 为准。
+	view["source"], view["readAt"] = "canvas_snapshot", readAt.Format(time.RFC3339)
+	if repo != nil {
+		if canvas, err := repo.CanvasProjectMetadataForUser(userID, canvasID); err == nil && canvas != nil {
+			view["canvasRevision"] = canvas.Revision
+		}
+	}
 	if selectedMode {
 		view["totalSelectedNodes"] = len(candidateNodes)
 		selection := map[string]any{"mode": "subgraph", "focusNodeIds": focusNodeIDs, "selectedNodes": len(candidateNodes)}

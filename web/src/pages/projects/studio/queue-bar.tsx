@@ -23,7 +23,10 @@ export function QueueBar({ projectId, summary, retrying, onRetry, onJump }: { pr
         [filter, jobsQuery.data],
     );
     const budget = production.budgetMicrocredits;
-    const usage = budget ? Math.min(1, production.spentMicrocredits / budget) : 0;
+    const held = production.heldMicrocredits || 0;
+    // 预算进度与后端预算判断同一口径：已扣费加未结算订单的冻结额。
+    const committed = production.spentMicrocredits + held;
+    const usage = budget ? Math.min(1, committed / budget) : 0;
     return (
         <div className="drama-queue">
             <div className="drama-queue-bar">
@@ -50,10 +53,11 @@ export function QueueBar({ projectId, summary, retrying, onRetry, onJump }: { pr
                 <span className="drama-queue-budget">
                     {budget ? (
                         <span className="drama-queue-meter">
-                            <span className={usage >= 0.9 ? "is-warn" : ""} style={{ width: `${Math.max(usage * 100, production.spentMicrocredits ? 3 : 0)}%` }} />
+                            <span className={usage >= 0.9 ? "is-warn" : ""} style={{ width: `${Math.max(usage * 100, committed ? 3 : 0)}%` }} />
                         </span>
                     ) : null}
                     已用 <b>{formatCredits(production.spentMicrocredits)}</b>
+                    {held > 0 ? <> · 冻结 {formatCredits(held)}</> : null}
                     {budget ? <> / {formatCredits(budget)} 积分</> : " 积分 · 不限预算"}
                 </span>
                 <button type="button" className="drama-queue-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>

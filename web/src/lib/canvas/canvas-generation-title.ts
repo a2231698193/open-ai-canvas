@@ -1,8 +1,15 @@
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
+import { canvasPromptSummaryText } from "./canvas-resource-references";
 
 const COPY_SUFFIX = /(_copy\d+|\s+Copy)$/i;
 const VERSION_SUFFIX = /\s*·\s*([A-Z])\s*$/;
 const OUTPUT_INDEX_SUFFIX = /\s*·\s*\d+\s*$/;
+const TITLE_MAX_LENGTH = 32;
+
+/** 生成结果节点的默认标题：取提示词摘要，@ 引用令牌不以原始编码出现在标题里。 */
+export function buildGenerationNodeTitle(prompt: string, fallback: string) {
+    return canvasPromptSummaryText(prompt).slice(0, TITLE_MAX_LENGTH) || fallback;
+}
 
 /** 新节点的默认名称：图片节点N / 视频节点N，按画布内同类型现有名称递增。 */
 export function nextDefaultCanvasNodeTitle(nodes: CanvasNodeData[], type: "image" | "video") {
@@ -59,7 +66,7 @@ export function mergeLiveCanvasNodeTitles(persistedNodes: CanvasNodeData[], live
 
 export function buildImageGenerationNodeTitle(prompt: string, sourceNode?: CanvasNodeData, outputIndex?: number, outputCount = 1, options?: { preserveCustomTitle?: boolean }) {
     const preservedTitle = options?.preserveCustomTitle && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title.trim() : "";
-    let title = preservedTitle || prompt.trim().slice(0, 32) || "Generated Image";
+    let title = preservedTitle || buildGenerationNodeTitle(prompt, "Generated Image");
     if (sourceNode && !preservedTitle) {
         const sourceTitleWithoutVersion = sourceNode.title.replace(VERSION_SUFFIX, "");
         const copySuffix = sourceTitleWithoutVersion.match(COPY_SUFFIX)?.[1] || "";

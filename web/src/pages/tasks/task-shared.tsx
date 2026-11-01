@@ -1,7 +1,7 @@
 import { Coins } from "lucide-react";
 
-import { formatCredits } from "@/constant/credits";
 import { CONTENT_MODERATION_ERROR_CODE, generationErrorMessage, isContentModerationError } from "@/lib/generation-error";
+import { taskBillingDisplay, taskBillingLabel } from "@/lib/generation-task-billing";
 import { mediaDeliverySummary } from "@/lib/generation-task-display";
 import type { GenerationTask, TaskStatus } from "@/services/api/task-center";
 import { modelDisplayName, type AiConfig } from "@/stores/use-config-store";
@@ -60,14 +60,13 @@ export function TaskDate({ value }: { value?: string }) {
 
 export function TaskBilling({ billing }: { billing?: GenerationTask["billing"] }) {
     if (!billing) return <span className="task-record-billing-empty text-xs text-foreground/30">-</span>;
-    const amount = formatCredits(billing.amountMicrocredits, 2);
-    const note = billing.status === "settled" ? "已结算" : billing.status === "refunded" ? "已退回" : billing.status === "uncertain" ? "待核对" : "预计";
+    const display = taskBillingDisplay(billing);
     return (
-        <div className={`task-record-billing ${billing.status === "uncertain" ? "is-uncertain" : ""}`} title={`${formatCredits(billing.amountMicrocredits, 6)} 积分 · ${note}`}>
+        <div className={`task-record-billing ${display.tone === "uncertain" ? "is-uncertain" : ""}`} title={taskBillingLabel(billing)}>
             <Coins className="size-4" />
             <span>
-                <strong>{amount}</strong>
-                <small>{note}</small>
+                <strong>{display.amount}</strong>
+                <small>{display.refundNote ? `${display.note} · ${display.refundNote}` : display.note}</small>
             </span>
         </div>
     );

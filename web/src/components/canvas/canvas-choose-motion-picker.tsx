@@ -110,15 +110,16 @@ export function CanvasChooseMotionPicker({
                                 ))}
                             </div>
                         </div>
-                        <div className="thin-scrollbar grid max-h-80 grid-cols-5 gap-2 overflow-y-auto p-2" role="listbox" aria-label="运镜工具">
+                        {/* 窄屏减到 3 列，网格高度随视口收缩，筛选栏始终可见。 */}
+                        <div className="thin-scrollbar grid max-h-[min(20rem,calc(100dvh-14rem))] grid-cols-3 gap-2 overflow-y-auto p-2 min-[520px]:grid-cols-5" role="listbox" aria-label="运镜工具">
                             {toolsQuery.isPending ? (
-                                <div className="col-span-5 grid h-24 place-items-center text-foreground/40">
-                                    <LoaderCircle className="size-4 animate-spin" />
+                                <div className="col-span-full grid h-24 place-items-center text-foreground/40">
+                                    <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
                                 </div>
                             ) : toolsQuery.isError ? (
-                                <div className="col-span-5 grid h-24 place-items-center text-xs text-foreground/40">运镜工具加载失败，请稍后重试</div>
+                                <div className="col-span-full grid h-24 place-items-center text-xs text-foreground/40">运镜工具加载失败，请稍后重试</div>
                             ) : tools.length === 0 ? (
-                                <div className="col-span-5 grid h-24 place-items-center text-xs text-foreground/40">{searchText ? "没有匹配的运镜" : "暂无运镜工具"}</div>
+                                <div className="col-span-full grid h-24 place-items-center text-xs text-foreground/40">{searchText ? "没有匹配的运镜" : "暂无运镜工具"}</div>
                             ) : (
                                 tools.map((tool) => <MotionToolCard key={tool.id} tool={tool} selected={activeIdSet.has(tool.id)} onSelect={handleSelect} />)
                             )}

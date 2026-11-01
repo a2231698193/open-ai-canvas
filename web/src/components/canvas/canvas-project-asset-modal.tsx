@@ -11,6 +11,12 @@ import { getRemoteAsset } from "@/services/api/user-data";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 
 const categoryLabels: Record<string, string> = { all: "全部资产", ...ASSET_CATEGORY_LABELS };
+
+/** 弹窗标题与底部说明：未关联项目的自由画布展示的是个人素材库，标题不能写成“项目资产”。 */
+export function projectAssetModalCopy(linkedToProject: boolean) {
+    return linkedToProject ? { title: "项目资产", note: "角色引用会在生成时解析当前角色版本" } : { title: "我的素材", note: "当前画布未关联项目，以下为你的全部素材" };
+}
+
 type ProjectPickerItem = { id: string; category: string; folderId?: string; project?: ProjectAsset; character?: ProjectAsset; media?: Asset };
 
 export function CanvasProjectAssetModal({
@@ -75,6 +81,7 @@ export function CanvasProjectAssetModal({
         [items],
     );
     const pickerItems = useMemo<AssetLibraryPickerItem[]>(() => [...localPickerItems, ...externalAssetSources.items], [externalAssetSources.items, localPickerItems]);
+    const copy = projectAssetModalCopy(Boolean(detail));
 
     return (
         <AssetLibraryPickerModal
@@ -87,11 +94,11 @@ export function CanvasProjectAssetModal({
             initialFolderId={initialFolderId}
             folders={externalAssetSources.folders}
             folderActionSource="local"
-            title="项目资产"
+            title={copy.title}
             confirmLabel={(count) => `引入已选资产${count ? `（${count}）` : ""}`}
             emptyTitle="此分类没有可引用资产"
             emptyDescription={detail ? "先在项目角色与资产中完成角色确认或素材关联。" : "当前为自由画布，可先在素材库添加内容。"}
-            footerNote={externalAssetSources.error || "角色引用会在生成时解析当前角色版本"}
+            footerNote={externalAssetSources.error || copy.note}
             onFolderAction={
                 onInsertFolder
                     ? async (folderId) => {

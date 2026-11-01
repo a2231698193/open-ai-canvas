@@ -72,7 +72,8 @@ export function createInlineMentionChip(reference: CanvasResourceReference, toke
     chip.dataset.mentionReferenceId = reference.id;
     const isDecorated = reference.kind === "skill" || reference.kind === "tool";
     chip.className = `canvas-resource-inline-mention ${isDecorated ? `is-${reference.kind}` : ""}`;
-    chip.title = "双击放大预览";
+    // 图片、视频、角色悬停时有预览卡（卡里提示双击放大），不再叠一层原生 title。
+    if (!MEDIA_PREVIEW_KINDS.has(reference.kind)) chip.title = reference.title || reference.label;
     if (reference.kind === "skill") chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference));
     if (reference.kind === "tool") chip.style.setProperty("--canvas-skill-mention-color", skillMentionColor(reference));
 
@@ -106,6 +107,9 @@ export function skillMentionColor(reference: CanvasResourceReference) {
     for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) | 0;
     return SKILL_MENTION_COLORS[Math.abs(hash) % SKILL_MENTION_COLORS.length];
 }
+
+/** 带画面的引用类型：胶囊显示缩略图，悬停显示预览卡，双击放大。 */
+export const MEDIA_PREVIEW_KINDS: ReadonlySet<CanvasResourceReference["kind"]> = new Set(["image", "video", "character"]);
 
 export function referencePreviewUrl(reference: CanvasResourceReference) {
     return reference.previewUrl || (reference.kind === "video" ? reference.mediaUrl : "") || "";

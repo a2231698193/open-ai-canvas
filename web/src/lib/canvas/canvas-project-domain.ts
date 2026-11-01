@@ -256,6 +256,7 @@ export function storyboardRowsFromTask(task: GenerationTask) {
 // 新模型不支持时若残留，会在 buildNodeConfig 的「节点优先、全局兜底」合并中反复叠加（issue #254）。
 const NODE_MODEL_GENERATION_PARAMS: ReadonlyArray<keyof CanvasNodeMetadata> = [
     "size",
+    "imageSizeSource",
     "quality",
     "transparentBackground",
     "count",

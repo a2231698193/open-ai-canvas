@@ -359,6 +359,8 @@ export type CanvasNodeMetadata = {
     /** 当前画布节点覆盖的工作流动态字段，键为 source:* 或 field:nodeId:fieldName。 */
     workflowParameters?: Record<string, unknown>;
     size?: string;
+    /** 图片尺寸来源：user 为用户在图像设置中选择；default / reference 为模型默认值或参考图比例填入，图生图时继续跟随参考图。缺省且已有 size 按用户选择处理。 */
+    imageSizeSource?: "user" | "default" | "reference";
     quality?: string;
     imageResolution?: string;
     imageParameters?: string;

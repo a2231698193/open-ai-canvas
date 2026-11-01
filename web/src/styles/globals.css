@@ -1332,6 +1332,7 @@
     --canvas-mention-item-height: 38px;
     --canvas-mention-chip-height: 22px;
     --canvas-mention-chip-preview-size: 18px;
+    --canvas-mention-hover-preview-size: 160px;
     --canvas-mention-chip-gap: 0.12em;
     --canvas-mention-chip-padding-inline: 0.16em;
     --canvas-mention-chip-offset-y: 0.14em;
@@ -2255,6 +2256,54 @@
     .canvas-topbar-project-cluster {
         width: max-content;
         max-width: min(360px, calc(50vw - 88px));
+    }
+
+    /* 视图切换：胶囊轨道 + 圆形图标按钮，当前视图为反色圆形（深色主题白底深色图标，浅色主题反之）；各状态形状不变。 */
+    .canvas-topbar-cluster.canvas-topbar-view-switch {
+        gap: var(--space-1);
+        padding: var(--space-1);
+        border-radius: var(--r-full);
+    }
+
+    .canvas-topbar-view-option {
+        display: grid;
+        place-items: center;
+        width: var(--space-8);
+        height: var(--space-8);
+        border: 0;
+        border-radius: var(--r-full);
+        background: transparent;
+        --view-switch-color: var(--view-switch-idle);
+        cursor: pointer;
+        transition:
+            background-color var(--motion-instant) ease-out,
+            color var(--motion-instant) ease-out;
+    }
+
+    .canvas-topbar-view-option svg {
+        width: var(--space-4);
+        height: var(--space-4);
+        stroke-width: 1.75;
+    }
+
+    .canvas-topbar-view-option:hover:not([aria-pressed="true"]) {
+        --view-switch-color: var(--view-switch-hover);
+        background: var(--dock-command-hover);
+    }
+
+    .canvas-topbar-view-option[aria-pressed="true"] {
+        background: var(--view-switch-active-bg);
+        --view-switch-color: var(--view-switch-active-fg);
+        box-shadow: 0 1px 2px color-mix(in srgb, black 24%, transparent);
+    }
+
+    .canvas-topbar-view-option:focus-visible {
+        outline: 2px solid var(--view-switch-hover);
+        outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .canvas-topbar-view-option { transition: none; }
     }
 
     /* 右侧命令组在窄屏保持可达，不挤压项目标题，也不制造横向溢出。 */
@@ -8528,26 +8577,54 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
         background-image: linear-gradient(to bottom, color-mix(in srgb, var(--cn-frame-fill) 90%, transparent), var(--cn-frame-fill));
     }
 
-.canvas-connection-create-description {
-    display: grid;
-    grid-template-rows: 0fr;
-    opacity: 0;
-    pointer-events: none;
-    transition: grid-template-rows var(--motion-dur-base-calc) var(--motion-ease-out), opacity var(--motion-dur-base-calc) var(--motion-ease-out);
+/* 连线新建菜单：行高固定，说明只在底部固定高度的说明区切换，悬停不会推动列表。 */
+.canvas-connection-create-option {
+    transition: background-color var(--motion-dur-fast-calc) var(--motion-ease-out);
 }
 
-.canvas-connection-create-option[data-expanded="true"] .canvas-connection-create-description {
-    grid-template-rows: 1fr;
+.canvas-connection-create-icon {
+    opacity: .65;
+    transition: opacity var(--motion-dur-fast-calc) var(--motion-ease-out);
+}
+
+.canvas-connection-create-option[data-active="true"] .canvas-connection-create-icon {
     opacity: 1;
 }
 
-.canvas-connection-create-option[data-motion="reduced"] .canvas-connection-create-description,
-.no-motion .canvas-connection-create-description {
-    transition: none;
+.canvas-connection-create-detail {
+    flex-shrink: 0;
+    height: calc(var(--space-12) + var(--space-1));
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid;
+    display: flex;
+    align-items: center;
+}
+
+.canvas-connection-create-detail-text {
+    margin: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    font-size: var(--fs-label);
+    line-height: 1.5;
+    animation: canvas-connection-create-detail-in var(--motion-dur-fast-calc) var(--motion-ease-out);
+}
+
+@keyframes canvas-connection-create-detail-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.canvas-connection-create-detail[data-motion="reduced"] .canvas-connection-create-detail-text,
+.no-motion .canvas-connection-create-detail-text {
+    animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .canvas-connection-create-description { transition: none; }
+    .canvas-connection-create-option,
+    .canvas-connection-create-icon { transition: none; }
+    .canvas-connection-create-detail-text { animation: none; }
 }
 
 /* 拖动跨过沙箱 iframe 时仍由父画布接收事件；结束后恢复正文滚动与交互。 */
@@ -10320,6 +10397,78 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
         display: grid;
         place-items: center;
         background: color-mix(in srgb, currentColor 10%, transparent);
+    }
+
+    /* 胶囊悬停预览：挂在 body 上，放大编辑弹窗里也要压过 AntD Modal，所以用 tooltip 层级。 */
+    .canvas-mention-hover-preview {
+        position: fixed;
+        z-index: var(--z-tooltip);
+        display: flex;
+        width: max-content;
+        min-width: 132px;
+        max-width: calc(var(--canvas-mention-hover-preview-size) + var(--space-1) * 2 + 2px);
+        flex-direction: column;
+        gap: var(--space-1);
+        border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+        border-radius: var(--r-lg);
+        background: var(--canvas-composer-surface);
+        padding: var(--space-1);
+        color: var(--cn-text);
+        box-shadow: var(--elevation-overlay);
+        pointer-events: none;
+    }
+
+    .canvas-mention-hover-preview-media {
+        display: grid;
+        min-height: 72px;
+        place-items: center;
+        overflow: hidden;
+        border-radius: var(--r-md);
+        background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    }
+
+    .canvas-mention-hover-preview-media > img,
+    .canvas-mention-hover-preview-media > video {
+        display: block;
+        max-width: var(--canvas-mention-hover-preview-size);
+        max-height: var(--canvas-mention-hover-preview-size);
+        object-fit: contain;
+    }
+
+    .canvas-mention-hover-preview-fallback {
+        width: var(--space-6);
+        height: var(--space-6);
+        color: var(--cn-faint);
+    }
+
+    .canvas-mention-hover-preview-caption {
+        display: flex;
+        min-width: 0;
+        align-items: baseline;
+        gap: var(--space-1);
+        padding: 0 var(--space-1) var(--space-half);
+        font-size: var(--fs-tiny);
+        line-height: 1.4;
+    }
+
+    .canvas-mention-hover-preview-caption > strong {
+        flex: none;
+        font-weight: 500;
+    }
+
+    .canvas-mention-hover-preview-caption > span {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--cn-muted);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .canvas-mention-hover-preview-caption > small {
+        flex: none;
+        margin-left: auto;
+        color: var(--cn-faint);
+        font-size: var(--fs-micro);
     }
 
     .canvas-resource-mention-menu {

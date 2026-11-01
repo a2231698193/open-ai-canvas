@@ -9,6 +9,7 @@ import { canvasImageReferenceLimitError, buildImageGenerationMetadata, getGenera
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { resolveImageBatchPlan, resolveResultGridSplit } from "@/lib/canvas/canvas-image-batch-plan";
 import { imageGenerationReferenceConnections } from "@/lib/canvas/canvas-resource-references";
+import { followsReferenceImageSize } from "@/lib/canvas/canvas-reference-image-size";
 import { canvasGenerationPromptMetadata } from "@/lib/canvas/canvas-generation-submission";
 import { batchOutputResultPending } from "@/lib/canvas/canvas-batch-references";
 import { mediaVersionFieldsBeforeReplace } from "@/lib/canvas/canvas-media-versions";
@@ -83,6 +84,8 @@ export async function executeImageGeneration(
     const referenceImages = generationContext.referenceImages;
     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
     const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages);
+    // 生成会把实际尺寸写回节点；来源尺寸不是用户所选时保留跟随标记，换参考图后重新生成仍取新参考图比例。
+    const sizeSourceMetadata = followsReferenceImageSize(sourceNode) ? { imageSizeSource: "reference" as const } : {};
     const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? CanvasNodeType.Image : CanvasNodeType.Text];
     const imageDefaults = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
     // 生成中占位框按设置比例显示，避免 16:9 任务显示成默认 340x240。
@@ -138,6 +141,7 @@ export async function executeImageGeneration(
             ...canvasGenerationPromptMetadata(prompt, effectivePrompt),
             status: NODE_STATUS_LOADING,
             size: generationConfig.size,
+            ...sizeSourceMetadata,
             isBatchRoot: count > 1,
             batchGrid: undefined,
             batchChildIds: count > 1 ? childIds : undefined,
@@ -167,6 +171,7 @@ export async function executeImageGeneration(
             ...canvasGenerationPromptMetadata(prompt, effectivePrompt),
             status: NODE_STATUS_LOADING,
             size: generationConfig.size,
+            ...sizeSourceMetadata,
             batchRootId: rootId,
             // 只有固定批量协议才让子节点记住输出序号：普通批量里每个子节点跑自己的任务，
             // 记了序号反而会去取自己不存在的第 N 张。

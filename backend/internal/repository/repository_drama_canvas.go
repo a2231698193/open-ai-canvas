@@ -8,34 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// 短剧与精修画布之间的数据：画布花费汇总、产物版本读取、外部视频采用，以及短剧持有的资源引用。
-
-// DramaCanvasSpends 汇总关联到短剧作品（canvas_projects.project_id）的画布上生成任务的计费。
-// 口径与流水线 taskCost 一致：未退款订单按下单金额计，运行中的订单也计入，避免预算被在途任务超出。
-func (r *Repository) DramaCanvasSpends(userID string, projectIDs []string) (map[string]int64, error) {
-	spends := make(map[string]int64, len(projectIDs))
-	if len(projectIDs) == 0 {
-		return spends, nil
-	}
-	var rows []struct {
-		ProjectID string
-		Total     int64
-	}
-	err := r.db.Table("canvas_projects").
-		Select("canvas_projects.project_id AS project_id, COALESCE(SUM(billing_orders.amount_microcredits), 0) AS total").
-		Joins("JOIN tasks ON tasks.project_id = canvas_projects.id AND tasks.user_id = canvas_projects.user_id").
-		Joins("JOIN billing_orders ON billing_orders.id = tasks.billing_order_id").
-		Where("canvas_projects.user_id = ? AND canvas_projects.project_id IN ? AND billing_orders.status <> ?", userID, projectIDs, model.BillingStatusRefunded).
-		Group("canvas_projects.project_id").
-		Scan(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		spends[row.ProjectID] = row.Total
-	}
-	return spends, nil
-}
+// 短剧与精修画布之间的数据：产物版本读取、外部视频采用，以及短剧持有的资源引用。
+// 作品花费（含画布精修）的汇总在 drama_billing.go 的 DramaBillingTotals。
 
 // DramaTakes 返回某个产物最近的版本，新版本在前。
 func (r *Repository) DramaTakes(projectID string, ownerID string, kind string, limit int) ([]model.DramaTake, error) {

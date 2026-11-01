@@ -2068,6 +2068,24 @@ summary.agent-tool-step:hover {
     transform: scale(1.18);
 }
 
+/* 大形象外框不接收指针，透明处的点击落到页面按钮上；拖拽与点击由身体热区承接，内缩比例见组件。 */
+.canvas-agent-launcher.is-body-hit {
+    pointer-events: none;
+}
+
+.canvas-agent-launcher-hit {
+    position: absolute;
+    z-index: 2;
+    border-radius: 32%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.canvas-agent-launcher.is-body-hit .canvas-agent-launcher-label,
+.canvas-agent-launcher.is-body-hit .canvas-agent-launcher-badge {
+    pointer-events: auto;
+}
+
 .canvas-agent-keyed-video {
     position: absolute;
     inset: 0;
@@ -2124,7 +2142,7 @@ summary.agent-tool-step:hover {
     right: 2px;
 }
 
-/* 收起 / 展开形象的小按钮：悬停入口或聚焦时出现，触屏设备常驻。 */
+/* 收起 / 展开形象的小按钮：常驻半透明，悬停入口或聚焦时完全显示。 */
 .canvas-agent-launcher-toggle {
     display: grid;
     width: 22px;
@@ -2135,7 +2153,7 @@ summary.agent-tool-step:hover {
     background: color-mix(in srgb, var(--background) 94%, transparent);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--foreground) 12%, transparent);
     cursor: pointer;
-    opacity: 0;
+    opacity: 0.55;
     transition: opacity 0.16s ease;
     backdrop-filter: blur(10px);
 }

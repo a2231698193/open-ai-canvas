@@ -5,6 +5,7 @@ import { App } from "antd";
 import { buildNodeGenerationContext, hydrateNodeGenerationContext } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { buildGenerationConfig, isGenerationCanceled, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
+import { canvasReferenceImageDimensions } from "@/lib/canvas/canvas-reference-image-size";
 import { canvasGenerationPromptMetadata, canvasGenerationRequestFingerprint, runCanvasGenerationSubmissionOnce } from "@/lib/canvas/canvas-generation-submission";
 import { isGenerationTaskCapacityError } from "@/lib/canvas/canvas-generation-batch";
 import { canvasGenerationInputPrompt } from "@/lib/canvas/canvas-generation-input-prompt";
@@ -116,7 +117,9 @@ export function useCanvasGenerationExecutor({
                         message.info("合并成片节点不直接重新生成，请重新选择源视频合并");
                         return;
                     }
-                    let generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
+                    // 与提示词面板同一来源：第一张上游参考图决定未选尺寸时的默认比例。
+                    const referenceImageSize = mode === "image" ? canvasReferenceImageDimensions(nodeId, nodesRef.current, connectionsRef.current) : undefined;
+                    let generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, undefined, false, referenceImageSize);
                     const hasLiveBatchChildren =
                         sourceNode?.type === CanvasNodeType.Image && (sourceNode.metadata?.batchChildIds || []).some((childId) => nodesRef.current.some((node) => node.id === childId && node.metadata?.batchRootId === sourceNode.id));
                     const hasStaleImageBatchState =
@@ -190,13 +193,13 @@ export function useCanvasGenerationExecutor({
                         ));
                         const projectedBaseContext = mode === "video" && !usesWorkflowProvider ? videoGenerationContextForMode(sourceNode, baseContext, generationConfig) : baseContext;
                         const requirements = generationModelRequirements(mode, projectedBaseContext, sourceNode, generationConfig, true);
-                        generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, requirements);
+                        generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, requirements, false, referenceImageSize);
                         const compatibilityError = usesWorkflowProvider ? "" : modelCompatibilityError(generationConfig, generationConfig.model, requirements);
                         if (compatibilityError) throw new Error(`当前模型无法支持这组输入和参数：${compatibilityError}`);
                         const referenceLimits = usesWorkflowProvider ? undefined : modelGroupReferenceLimits(effectiveConfig, generationConfig.model, mode, requirements);
                         rawGenerationContext = await hydrateNodeGenerationContext(projectedBaseContext, projectId, domainProjectId, mode, mode === "video" && Boolean(referenceLimits?.maxAudios), !promptOnly, referenceLimits, false);
                         const hydratedRequirements = generationModelRequirements(mode, rawGenerationContext, sourceNode, generationConfig);
-                        generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, hydratedRequirements);
+                        generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, hydratedRequirements, false, referenceImageSize);
                         const hydratedCompatibilityError = usesWorkflowProvider ? "" : modelCompatibilityError(generationConfig, generationConfig.model, hydratedRequirements);
                         if (hydratedCompatibilityError) throw new Error(`当前模型无法支持这组输入和参数：${hydratedCompatibilityError}`);
                     } catch (error) {

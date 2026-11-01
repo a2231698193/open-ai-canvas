@@ -11,20 +11,88 @@ function nodeDurationMs(node: CanvasNodeData, fallbackMs = 4_000): number {
     return durationMs && durationMs > 0 ? Math.round(durationMs) : fallbackMs;
 }
 
+function hasTimelineMedia(node: CanvasNodeData): boolean {
+    return (node.type === "video" || node.type === "audio") && Boolean(node.metadata?.content || node.metadata?.storageKey);
+}
+
+/** 时间线草稿的来源范围：触发节点 / 画布多选 / 整个画布。 */
+export type TimelineBuildScope = "current" | "selection" | "canvas";
+
+export type TimelineScopeOptions = {
+    scope: TimelineBuildScope;
+    triggerNodeId: string;
+    selectedNodeIds?: Iterable<string>;
+    /** 整个画布范围是否带上预演台产出的参考视频（白膜/深度），默认不带 */
+    includeReferenceVideos?: boolean;
+};
+
+/** 预演台产出的白膜/深度参考视频：用于给生成模型做参考，不是成片素材。 */
+export function isReferenceVideoNode(node: CanvasNodeData): boolean {
+    return node.type === "video" && node.metadata?.workflowKind === "reference_video";
+}
+
+export function referenceVideoTitlePrefix(node: CanvasNodeData): string {
+    if (!isReferenceVideoNode(node)) return "";
+    const tags = node.metadata?.assetTags || [];
+    if (tags.includes("预演台深度")) return "深度参考";
+    if (tags.includes("预演台白膜")) return "白膜参考";
+    return "参考视频";
+}
+
+function byCanvasPosition(left: CanvasNodeData, right: CanvasNodeData): number {
+    return left.position.x - right.position.x || left.position.y - right.position.y;
+}
+
+/** 选中节点里可入轨的视频数量；多于 1 个时才提供「选中视频」范围。 */
+export function countTimelineSelectionVideos(nodes: CanvasNodeData[], selectedNodeIds: Iterable<string> | undefined): number {
+    const selected = new Set(selectedNodeIds || []);
+    return nodes.filter((node) => node.type === "video" && selected.has(node.id) && hasTimelineMedia(node)).length;
+}
+
+/** 按来源范围挑出要入轨的节点（已排好顺序）。 */
+export function selectTimelineScopeNodes(nodes: CanvasNodeData[], options: TimelineScopeOptions): CanvasNodeData[] {
+    if (options.scope === "current") return nodes.filter((node) => node.id === options.triggerNodeId && hasTimelineMedia(node));
+    if (options.scope === "selection") {
+        const selected = new Set(options.selectedNodeIds || []);
+        return nodes.filter((node) => selected.has(node.id) && hasTimelineMedia(node)).sort(byCanvasPosition);
+    }
+    return nodes.filter((node) => hasTimelineMedia(node) && (options.includeReferenceVideos || !isReferenceVideoNode(node)));
+}
+
+export function buildTimelineForScope(nodes: CanvasNodeData[], options: TimelineScopeOptions): TimelineProject {
+    return buildTimelineFromNodes(selectTimelineScopeNodes(nodes, options), { prefixReferenceTitles: options.scope !== "current" });
+}
+
+export type TimelineSourceSummary = { videoCount: number; durationMs: number; subtitleCount: number };
+
+export function summarizeTimelineSource(timeline: TimelineProject): TimelineSourceSummary {
+    return {
+        videoCount: timeline.clips.filter((clip) => clip.kind === "video").length,
+        durationMs: getTimelineVisualEndMs(timeline.clips),
+        subtitleCount: timeline.clips.filter((clip) => clip.kind === "subtitle").length,
+    };
+}
+
+/** 「来源：当前视频 · 1 段 · 3.0s · 字幕 0 条」 */
+export function formatTimelineSourceSummary(sourceLabel: string, summary: TimelineSourceSummary): string {
+    return `来源：${sourceLabel} · ${summary.videoCount} 段 · ${(summary.durationMs / 1000).toFixed(1)}s · 字幕 ${summary.subtitleCount} 条`;
+}
+
 /**
- * 从画布节点生成时间线片段。
+ * 从画布节点生成时间线片段（节点顺序即入轨顺序，范围筛选见 selectTimelineScopeNodes）。
  * - 视频节点 → 视频轨片段（顺序排布，首尾相接）；
  * - 音频节点 → 音频轨片段（顺序排布）；
  * - 视频节点的字幕条目 → 字幕轨片段（相对该视频片段起点偏移）。
  */
-export function buildTimelineFromNodes(nodes: CanvasNodeData[]): TimelineProject {
-    const videoNodes = nodes.filter((node) => node.type === "video" && Boolean(node.metadata?.content || node.metadata?.storageKey));
-    const audioNodes = nodes.filter((node) => node.type === "audio" && Boolean(node.metadata?.content || node.metadata?.storageKey));
+export function buildTimelineFromNodes(nodes: CanvasNodeData[], options: { prefixReferenceTitles?: boolean } = {}): TimelineProject {
+    const videoNodes = nodes.filter((node) => node.type === "video" && hasTimelineMedia(node));
+    const audioNodes = nodes.filter((node) => node.type === "audio" && hasTimelineMedia(node));
     const clips: TimelineClip[] = [];
 
     let videoCursorMs = 0;
     for (const node of videoNodes) {
         const durationMs = nodeDurationMs(node);
+        const prefix = options.prefixReferenceTitles ? referenceVideoTitlePrefix(node) : "";
         clips.push({
             id: `clip-${node.id}`,
             kind: "video",
@@ -32,7 +100,7 @@ export function buildTimelineFromNodes(nodes: CanvasNodeData[]): TimelineProject
             trackId: DEFAULT_VIDEO_TRACK_ID,
             startMs: videoCursorMs,
             durationMs,
-            title: node.title || "视频片段",
+            title: prefix ? `${prefix} · ${node.title || "视频片段"}` : node.title || "视频片段",
             sourceStartMs: 0,
             sourceDurationMs: durationMs,
         });

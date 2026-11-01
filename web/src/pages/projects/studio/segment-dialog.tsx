@@ -8,7 +8,10 @@ import { TRANSITION_LABEL } from "@/lib/drama/storyboard";
 import type { DramaCast, DramaEpisodeDetail, DramaModelChoice, DramaSegment, DramaShot, DramaShotPatch, DramaTransition } from "@/services/api/drama";
 import { dramaChoiceKey } from "@/lib/drama/model-choice";
 
-import { DramaModelPicker } from "../drama-model-picker";
+import { DramaModelPicker, useDramaModelCatalog } from "../drama-model-picker";
+import { useEffectiveConfig } from "@/stores/use-config-store";
+import { useUserStore } from "@/stores/use-user-store";
+import { dramaSegmentQuoteMissing, dramaSegmentVideoRequirements, dramaVideoOptionFor, SEGMENT_NO_QUOTE_HINT } from "./segment-quote";
 
 import { CAST_KIND_LABEL, formatCredits, mediaBusy, MediaThumb, parseList } from "../drama-shared";
 import { promptReady, referenceMissingReason, secondsLabel, SegmentStatus, SegmentVideo, videoWaitLabel } from "./segment-parts";
@@ -58,6 +61,8 @@ type Props = {
     reprocessing: boolean;
     onReprocess: (segment: DramaSegment) => void;
     defaultVideoModel: DramaModelChoice;
+    /** 作品指定的视频分辨率；换模型时给不出的置灰。 */
+    videoResolution?: string;
     onOpenCast: (castId: string) => void;
     /** 把本段投送到精修画布（已投送则定位），在画布上换首尾帧、延长或重新生成后采用回来。 */
     onOpenCanvas: (segment: DramaSegment) => void;
@@ -79,6 +84,7 @@ export function SegmentDialog({
     writing,
     reprocessing,
     defaultVideoModel,
+    videoResolution,
     onClose,
     onNavigate,
     onPatchShot,
@@ -145,6 +151,7 @@ export function SegmentDialog({
                                 busy={busy}
                                 writing={writing}
                                 defaultVideoModel={defaultVideoModel}
+                                videoResolution={videoResolution}
                                 onGenerate={(model) => onGenerate(segment, model)}
                                 onWritePrompt={() => onWritePrompt(segment)}
                             />
@@ -210,7 +217,7 @@ export function SegmentDialog({
                                     <dd>{segment.videoSeconds ? `${segment.videoSeconds} 秒` : "—"}</dd>
                                 </div>
                                 <div>
-                                    <dt>本段花费</dt>
+                                    <dt>上次花费</dt>
                                     <dd>{segment.videoJob ? `${formatCredits(segment.videoJob.costMicrocredits)} 积分` : "—"}</dd>
                                 </div>
                             </dl>
@@ -230,6 +237,7 @@ function SegmentToolbar({
     busy,
     writing,
     defaultVideoModel,
+    videoResolution,
     onGenerate,
     onWritePrompt,
 }: {
@@ -238,6 +246,7 @@ function SegmentToolbar({
     busy: boolean;
     writing: boolean;
     defaultVideoModel: DramaModelChoice;
+    videoResolution?: string;
     onGenerate: (model?: DramaModelChoice) => void;
     onWritePrompt: () => void;
 }) {
@@ -245,6 +254,10 @@ function SegmentToolbar({
     const baseline = segment.videoModel?.logicalModelId || segment.videoModel?.modelKey ? segment.videoModel : defaultVideoModel;
     const [choice, setChoice] = useState<DramaModelChoice>(baseline);
     const changed = dramaChoiceKey(choice) !== dramaChoiceKey(baseline);
+    const config = useEffectiveConfig();
+    const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
+    const catalogQuery = useDramaModelCatalog();
+    const quoteMissing = creditsEnabled && dramaSegmentQuoteMissing(config, choice, dramaSegmentVideoRequirements(segment.request, dramaVideoOptionFor(catalogQuery.data?.options.video, choice), changed, videoResolution));
     const running = mediaBusy(segment.videoStatus);
     const writingNow = segment.promptStatus === "queued" || segment.promptStatus === "running";
     const sent = [segment.request.header, segment.videoPrompt.trim()].filter(Boolean).join("\n\n");
@@ -260,7 +273,7 @@ function SegmentToolbar({
     return (
         <section className="drama-sdx-toolbar" aria-label="生成设置">
             <div className="drama-sdx-toolbar-row">
-                <DramaModelPicker capability="video" size="sm" value={choice} onChange={setChoice} placeholder="视频模型" className="drama-sdx-model" aspectRatio={aspectRatio} />
+                <DramaModelPicker capability="video" size="sm" value={choice} onChange={setChoice} placeholder="视频模型" className="drama-sdx-model" aspectRatio={aspectRatio} videoResolution={videoResolution} />
                 <Tooltip title={segment.request.maxVideoSeconds ? `按本段镜头时长生成；模型单次最长 ${segment.request.maxVideoSeconds} 秒` : "按本段镜头时长生成"}>
                     <span className="drama-sdx-chip">{segment.request.seconds ? `${segment.request.seconds}s` : secondsLabel(segment.durationMs)}</span>
                 </Tooltip>
@@ -291,13 +304,14 @@ function SegmentToolbar({
                     type="primary"
                     size="small"
                     icon={running ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Play className="size-3.5" />}
-                    disabled={busy || !promptReady(segment) || running || Boolean(segment.request.unknownReferences?.length)}
+                    disabled={busy || !promptReady(segment) || running || Boolean(segment.request.unknownReferences?.length) || quoteMissing}
                     onClick={() => onGenerate(changed ? choice : undefined)}
                 >
                     {generateLabel}
                 </Button>
             </div>
             {!promptReady(segment) && !running ? <p className="drama-sdx-hint">提示词就绪后才能生成视频</p> : null}
+            {quoteMissing && !running ? <p className="drama-sdx-hint is-error">{SEGMENT_NO_QUOTE_HINT}</p> : null}
             {segment.request.unknownReferences?.length ? <p className="drama-sdx-hint is-error">提示词里的 {segment.request.unknownReferences.join("、")} 不是本段的参考图，改正编号后才能生成视频</p> : null}
         </section>
     );
@@ -712,6 +726,9 @@ function SegmentPrompt({ segment, castById, writing, onSave, onWrite }: { segmen
         [castById, request.references],
     );
     const usage = useMemo(() => referenceUsage(draft, request.references.length), [draft, request.references.length]);
+    // 与服务端一致按字符（码点）计：参考图说明 + 空行 + 正文。
+    const sentChars = Array.from([request.header, draft.trim()].filter(Boolean).join("\n\n")).length;
+    const overLimit = Boolean(request.promptMaxChars && sentChars > request.promptMaxChars);
     const unmentioned = request.references.filter((_, index) => !usage.used.has(index + 1));
     const commit = () => {
         const next = draft.trim();
@@ -813,9 +830,18 @@ function SegmentPrompt({ segment, castById, writing, onSave, onWrite }: { segmen
             ) : draft && unmentioned.length ? (
                 <p className="drama-sg-note">正文还没有引用 {unmentioned.map((ref) => `${ref.label}（${ref.name}）`).join("、")}；参考图仍会随请求发送，在正文里写明谁是谁，视频模型才不会认错。</p>
             ) : null}
+            {overLimit ? (
+                <p className="drama-sg-note is-error" role="alert">
+                    连同开头的参考图说明共 {sentChars} 个字符，超过视频模型上限 {request.promptMaxChars} 个字符。
+                    {segment.custom ? "手动改写的版本需要精简后才能生成视频。" : "生成视频时会按上限自动重新撰写，不会截断。"}
+                </p>
+            ) : null}
             <div className="drama-sd-pane-foot">
                 {dirty ? <span className="is-dirty">未保存 · 失焦或 ⌘↵ 保存，Esc 放弃</span> : <span>直接修改正文，失焦自动保存</span>}
-                <span>{draft.length} 字</span>
+                <span className={overLimit ? "is-over" : undefined} title="与视频模型校验口径一致：开头的参考图说明 + 正文">
+                    发送全文 {sentChars}
+                    {request.promptMaxChars ? ` / ${request.promptMaxChars}` : ""} 字
+                </span>
             </div>
         </section>
     );

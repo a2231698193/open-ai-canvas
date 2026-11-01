@@ -59,7 +59,10 @@ func (s *Service) CreateDrama(userID string, req CreateDramaRequest) (DramaSumma
 	if problem := production.ValidateAssetPrompts(settings.Assets); problem != "" {
 		return DramaSummary{}, BadAuthRequest(problem)
 	}
-	if _, err := s.dramaWritingSkill(userID, settings.PromptSkill); err != nil {
+	if err := s.validateDramaSkills(userID, settings); err != nil {
+		return DramaSummary{}, err
+	}
+	if err := s.validateDramaModelOverrides(userID, settings.Models); err != nil {
 		return DramaSummary{}, err
 	}
 	models, err := s.resolveDramaModels(userID, settings)
@@ -226,7 +229,7 @@ func (s *Service) ListDramas(userID string, req DramaListRequest) (map[string]an
 	if err != nil {
 		return nil, err
 	}
-	canvasSpends, err := s.repo.DramaCanvasSpends(userID, ids)
+	spends, err := s.repo.DramaBillingTotals(userID, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +244,8 @@ func (s *Service) ListDramas(userID string, req DramaListRequest) (map[string]an
 		item := DramaListItem{
 			Project: project, Status: productionRow.Status, Stage: productionRow.Stage, PauseReason: productionRow.PauseReason,
 			EpisodeCount: count[0], DoneCount: count[1], CoverResourceIDs: covers[project.ID], AspectRatio: settings.AspectRatio,
-			StyleName: settings.StyleName, SpentMicrocredits: productionRow.SpentMicrocredits + canvasSpends[project.ID], UpdatedAt: project.UpdatedAt.Format(time.RFC3339),
+			StyleName: settings.StyleName, SpentMicrocredits: spends[project.ID].ChargedMicrocredits(), HeldMicrocredits: spends[project.ID].HeldMicrocredits(),
+			UpdatedAt: project.UpdatedAt.Format(time.RFC3339),
 		}
 		if len(item.CoverResourceIDs) > 0 {
 			item.CoverResourceID = item.CoverResourceIDs[0]
@@ -285,7 +289,7 @@ func (s *Service) DramaSummary(userID string, projectID string) (DramaSummary, e
 	for _, chapter := range chapters {
 		words += chapter.WordCount
 	}
-	canvasSpent, err := s.dramaCanvasSpent(productionRow)
+	spend, err := s.dramaBillingTotals(productionRow)
 	if err != nil {
 		return DramaSummary{}, err
 	}
@@ -295,7 +299,8 @@ func (s *Service) DramaSummary(userID string, projectID string) (DramaSummary, e
 		Production: DramaProductionView{
 			Status: productionRow.Status, Stage: productionRow.Stage, PauseReason: productionRow.PauseReason,
 			Settings: parseDramaSettings(productionRow.SettingsJSON), BudgetMicrocredits: productionRow.BudgetMicrocredits,
-			SpentMicrocredits: productionRow.SpentMicrocredits + canvasSpent, CanvasSpentMicrocredits: canvasSpent, PlanDone: productionRow.PlanDone, PlanCursor: productionRow.PlanCursor,
+			SpentMicrocredits: spend.ChargedMicrocredits(), CanvasSpentMicrocredits: spend.CanvasChargedMicrocredits, HeldMicrocredits: spend.HeldMicrocredits(),
+			PlanDone: productionRow.PlanDone, PlanCursor: productionRow.PlanCursor,
 			SampleApproved: productionRow.SampleApproved, AssetsReleased: productionRow.AssetsReleased, Logline: meta.Logline, Tone: meta.Tone,
 			ChapterCount: len(chapters), WordCount: words,
 		},
@@ -316,7 +321,8 @@ func (s *Service) DramaSummary(userID string, projectID string) (DramaSummary, e
 			ID: episode.ID, Number: episode.Number, Title: episode.Title, Synopsis: truncateRunes(episode.Synopsis, 120), Stage: episode.Stage, SourceFormat: production.NormalizeSourceFormat(episode.SourceFormat), Error: episode.Error,
 			ShotCount: episode.ShotCount, DurationMs: episode.DurationMs, Approved: episode.Approved, MediaReleased: episode.MediaReleased, AwaitingMedia: held,
 			FinalResourceID: episode.FinalResourceID, FinalStale: episode.FinalStale,
-			Stats: DramaEpisodeStats{Segments: stat.Total, PromptReady: stat.PromptReady, VideoReady: stat.VideoReady, Failed: stat.Failed},
+			Stats:    DramaEpisodeStats{Segments: stat.Total, PromptReady: stat.PromptReady, VideoReady: stat.VideoReady, Failed: stat.Failed},
+			Revision: episode.Revision, UpdatedAt: episode.UpdatedAt.Format(time.RFC3339),
 		})
 		if episode.Stage == model.DramaEpisodeReview {
 			summary.Inbox = append(summary.Inbox, DramaInboxItem{ID: "review:" + episode.ID, Kind: "review", Severity: "info", Title: "第 " + itoa(episode.Number) + " 集视频提示词待审阅", Detail: "确认剧情段提示词后继续生成视频", EpisodeID: episode.ID})
@@ -768,7 +774,7 @@ func buildDramaSegmentDrafts(settings DramaSettings, meta dramaBibleMeta, shots 
 	for position, group := range groups {
 		view := DramaSegmentView{Index: group[0].SegmentIndex, Title: firstNonEmpty(group[0].SegmentTitle, group[0].Scene, "剧情段"), ShotIDs: []string{}, Request: DramaSegmentRequest{References: []DramaSegmentReference{}}}
 		characterIDs, propIDs, sceneIDs := []string{}, []string{}, []string{}
-		input := production.SegmentPromptInput{Index: position, Count: len(groups), Title: view.Title, AspectRatio: settings.AspectRatio, Style: settings.StylePrompt, VisualRules: meta.VisualRules, Language: settings.Language, PauseMs: settings.Storyboard.DialoguePauseMs(), Independent: settings.parallelVideo()}
+		input := production.SegmentPromptInput{Index: position, Count: len(groups), Title: view.Title, AspectRatio: settings.AspectRatio, Style: settings.StylePrompt, VisualRules: meta.VisualRules, Language: settings.Language, PauseMs: settings.Storyboard.DialoguePauseMs(), Independent: settings.parallelVideo(), Performance: settings.Storyboard.Performance, CameraMotion: settings.Storyboard.CameraMotion}
 		for _, shot := range group {
 			view.ShotIDs = append(view.ShotIDs, shot.ID)
 			view.DurationMs += shot.DurationMs
@@ -821,7 +827,7 @@ func buildDramaSegmentViews(settings DramaSettings, meta dramaBibleMeta, shots [
 		view := draft.view
 		view.PromptStatus = "none"
 		if row, ok := rowByIndex[view.Index]; ok {
-			view.ID, view.Revision = row.ID, row.Revision
+			view.ID, view.Revision, view.UpdatedAt = row.ID, row.Revision, row.UpdatedAt.Format(time.RFC3339)
 			view.Generated, view.PromptError = strings.TrimSpace(row.VideoPrompt), row.PromptError
 			view.VideoStatus, view.VideoResourceID, view.TailFrameResourceID, view.VideoError = row.VideoStatus, row.VideoResourceID, row.TailFrameResourceID, row.VideoError
 			view.VideoSeconds = row.VideoSeconds

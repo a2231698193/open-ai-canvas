@@ -9,12 +9,9 @@ import (
 	"image"
 	"io"
 	"log/slog"
-	"math"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -317,7 +314,13 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		// Audio and video-processing duration is the source of truth for per-second
 		// settlement. The media can still be saved when ffprobe is unavailable;
 		// settlement then falls back to provider usage or moves the order to review.
-		durationMs = probeMediaDurationMs(path)
+		// Video width/height come from the same probe; unknown stays 0, never a fake size.
+		if probed, probeErr := probeMediaFile(context.Background(), path); probeErr == nil {
+			durationMs = probed.DurationMs
+			if kind == "video" {
+				width, height = probed.Width, probed.Height
+			}
+		}
 	}
 	day, err := s.reserveGeneratedResourceQuota(task.UserID, info.Size())
 	if err != nil {
@@ -339,6 +342,9 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 			return nil, nil, errors.New("恢复文件与原始资源不一致")
 		}
 		resource.DurationMs = durationMs
+		if kind == "video" && width > 0 && height > 0 {
+			resource.Width, resource.Height = width, height
+		}
 		resource.ETag, err = writeObject(resource, "generated."+extensionFromMimeType(mimeType), file)
 		if err == nil {
 			resource.Status, resource.Error, resource.UpdatedAt = model.ResourceStatusReady, "", time.Now()
@@ -361,24 +367,6 @@ func (s *Service) storeTaskMediaFile(task *model.Task, index int, path, mimeType
 		s.maybeStartPlaybackTranscode(resource)
 	}
 	return resource, fallbackCause, nil
-}
-
-func probeMediaDurationMs(path string) int64 {
-	if strings.TrimSpace(path) == "" {
-		return 0
-	}
-	if _, err := exec.LookPath("ffprobe"); err != nil {
-		return 0
-	}
-	output, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
-	if err != nil {
-		return 0
-	}
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
-	if err != nil || seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-		return 0
-	}
-	return int64(math.Ceil(seconds * 1000))
 }
 
 // storeTaskMediaObjectContext 直传对象存储。是否改存本地由 taskMediaObjectWriter
