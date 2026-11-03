@@ -141,4 +141,34 @@ describe("canvas node toolbar model", () => {
         expect(tools.find((tool) => tool.id === "previs")?.group).toBe("camera");
         expect(tools.find((tool) => tool.id === "previs")?.description).toContain("Agent");
     });
+
+    test("depth capture only appears for video nodes when the host provides the handler", () => {
+        const video: CanvasNodeData = { id: "video", type: CanvasNodeType.Video, title: "打斗", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "clip.mp4", status: "success" } };
+        const image: CanvasNodeData = { id: "image", type: CanvasNodeType.Image, title: "图片", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "image.png" } };
+        const received: CanvasNodeData[] = [];
+
+        // 分享页只提供空处理器集合，工具必须自动隐藏。
+        const readOnlyTools = resolveToolbarTools("node-hover", createNodeContext(video), null);
+        expect(readOnlyTools.some((tool) => tool.id === "depthCapture")).toBe(false);
+
+        const ctx = createNodeContext(video);
+        ctx.handlers.onNodeDepthCapture = (node) => { received.push(node); };
+        const tools = resolveToolbarTools("node-hover", ctx, null);
+        const depth = tools.find((tool) => tool.id === "depthCapture")!;
+        expect(depth).toBeDefined();
+        expect(depth.displayLabel).toBe("深度捕捉");
+        expect(resolveNodeToolbarPlacement(depth, ctx).group).toBe("process");
+        depth.run?.(ctx);
+        expect(received).toEqual([video]);
+
+        // 图片节点不提供深度捕捉。
+        const imageCtx = createNodeContext(image);
+        imageCtx.handlers.onNodeDepthCapture = () => {};
+        expect(resolveToolbarTools("node-hover", imageCtx, null).some((tool) => tool.id === "depthCapture")).toBe(false);
+
+        // 加载中的视频节点也不提供，避免并发写同一节点。
+        const loadingCtx = createNodeContext({ ...video, metadata: { ...video.metadata, status: "loading" } });
+        loadingCtx.handlers.onNodeDepthCapture = () => {};
+        expect(resolveToolbarTools("node-hover", loadingCtx, null).some((tool) => tool.id === "depthCapture")).toBe(false);
+    });
 });

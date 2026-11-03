@@ -42,6 +42,11 @@ export default defineConfig({
             "@": resolve(webDir, "src"),
         },
     },
+    // onnxruntime-web 的 wasm 胶水依赖模块内的动态分派表，预打包会把它压成
+    // `Wn[(a >>> 0)] is not a function`。深度捕捉只在用户点击时加载，不需要预打包提速。
+    optimizeDeps: {
+        exclude: ["onnxruntime-web"],
+    },
     build: {
         rolldownOptions: {
             output: {

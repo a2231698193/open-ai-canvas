@@ -102,6 +102,8 @@ export type ToolbarHandlers = {
     onNodeTrimVideoSegments: (node: CanvasNodeData) => void;
     /** 视频画质增强；只在存在 processing 视频模型时由项目页提供。 */
     onNodeEnhanceVideo?: (node: CanvasNodeData) => void;
+    /** 视频深度捕捉：逐帧估深生成静音深度视频；只在本机可用的项目页提供。 */
+    onNodeDepthCapture?: (node: CanvasNodeData) => void;
     onNodeSubtitles: (node: CanvasNodeData) => void;
     onNodeTimeline: (node: CanvasNodeData) => void;
     /** 打开媒体版本面板；只读分享页不提供。 */

@@ -56,6 +56,7 @@ import { captureVideoFrames } from "@/lib/canvas/canvas-video-frame";
 import { buildVideoFrameNodes } from "@/lib/canvas/canvas-video-frame-nodes";
 import { mergeVideos, type MergeVideoProgress } from "@/lib/canvas/canvas-video-merge";
 import { extractVideoAudio, trimVideoSegment } from "@/lib/canvas/canvas-video-segment";
+import { captureVideoDepth, type DepthCapturePhase } from "@/lib/canvas/depth/video-depth-capture";
 import { generationErrorMessage } from "@/lib/generation-error";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { defaultImageParamsForModel, modelCompatibilityError } from "@/lib/model-selection";
@@ -111,6 +112,14 @@ type UseCanvasMediaToolsOptions = {
 
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
+
+/** 深度捕捉的可见进度；total 为 0 表示总帧数尚未确定（加载阶段）。 */
+export type DepthCaptureStatus = { nodeId: string; phase: DepthCapturePhase; done: number; total: number };
+
+/** 节点不记录源帧率，按 24 处理；与帧提取、短剧管道的默认一致。 */
+function depthFrameRate() {
+    return 24;
+}
 const NODE_STATUS_ERROR = "error" as const;
 const NODE_STATUS_IDLE = "idle" as const;
 
@@ -163,6 +172,8 @@ export function useCanvasMediaTools({
     const segmentRunningRef = useRef(false);
     const [panoramaConfigNodeId, setPanoramaConfigNodeId] = useState<string | null>(null);
     const [enhanceDialogNodeId, setEnhanceDialogNodeId] = useState<string | null>(null);
+    const [depthCaptureState, setDepthCaptureState] = useState<DepthCaptureStatus | null>(null);
+    const depthCaptureRef = useRef<AbortController | null>(null);
 
     const resolveImageEditStyle = useCallback((node: CanvasNodeData, prompt: string, config: AiConfig) => {
         try {
@@ -608,6 +619,72 @@ export function useCanvasMediaTools({
     }, [connectionsRef, message, nodesRef, persistMediaNodes, selectedNodeIdsRef, setConnections, setDialogNodeId, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
 
     const mergeSelectedVideos = useCallback(() => mergeVideosByIds(Array.from(selectedNodeIdsRef.current)), [mergeVideosByIds, selectedNodeIdsRef]);
+
+    /** 视频深度捕捉：逐帧估深生成静音深度视频节点，不自动连线。 */
+    const runDepthCapture = useCallback(async (node: CanvasNodeData) => {
+        if (depthCaptureRef.current) return;
+        if (!node.metadata?.content && !node.metadata?.storageKey) {
+            message.warning("视频节点为空，无法深度捕捉");
+            return;
+        }
+        const controller = new AbortController();
+        depthCaptureRef.current = controller;
+        setDepthCaptureState({ nodeId: node.id, phase: "loading", done: 0, total: 0 });
+        try {
+            const storedBlob = node.metadata?.storageKey ? await getMediaBlob(node.metadata.storageKey).catch(() => null) : null;
+            const source: Blob = storedBlob || await fetch(node.metadata?.content || "").then((response) => {
+                if (!response.ok) throw new Error(`视频资源请求失败（${response.status}）`);
+                return response.blob();
+            });
+            const output = await captureVideoDepth(source, {
+                signal: controller.signal,
+                frameRate: depthFrameRate(),
+                onProgress: (progress) => setDepthCaptureState({ nodeId: node.id, ...progress }),
+            });
+            if (controller.signal.aborted) return;
+            const uploaded = await uploadMediaFile(output, "depth");
+            const size = fitNodeSize(uploaded.width || node.width, uploaded.height || node.height, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);
+            const depthNode = createCanvasNode(
+                CanvasNodeType.Video,
+                { x: node.position.x + node.width + 120 + size.width / 2, y: node.position.y + node.height / 2 },
+                {
+                    ...videoMetadata(uploaded),
+                    prompt: `「${node.title || "视频"}」的深度视频`,
+                    workflowKind: "reference_video",
+                    workflowTitle: `${node.title || "视频"} · 深度`,
+                    // 深度片是数据 pass，不标记产出模型，也不自动连到源节点。
+                    assetTags: ["深度捕捉", `源:${node.title || node.id}`],
+                    videoFrameSourceNodeId: node.id,
+                    producedModel: undefined,
+                    producedModelCandidate: undefined,
+                    status: NODE_STATUS_SUCCESS,
+                },
+            );
+            depthNode.title = `${node.title || "视频"} · 深度`;
+            depthNode.width = size.width;
+            depthNode.height = size.height;
+            const nextNodes = [...nodesRef.current, depthNode];
+            nodesRef.current = nextNodes;
+            setNodes(nextNodes);
+            setSelectedNodeIds(new Set([depthNode.id]));
+            setSelectedConnectionId(null);
+            await persistMediaNodes([depthNode]);
+            message.success("深度视频已生成并添加到画布");
+        } catch (error) {
+            if (controller.signal.aborted) {
+                message.info("已取消深度捕捉");
+                return;
+            }
+            message.error(error instanceof Error ? error.message : "深度捕捉失败");
+        } finally {
+            depthCaptureRef.current = null;
+            setDepthCaptureState(null);
+        }
+    }, [message, nodesRef, persistMediaNodes, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
+
+    const cancelDepthCapture = useCallback(() => {
+        depthCaptureRef.current?.abort();
+    }, []);
 
     const openPanoramaConfig = useCallback((node: CanvasNodeData) => {
         setPanoramaConfigNodeId(node.id);
@@ -1914,6 +1991,9 @@ export function useCanvasMediaTools({
         mergeSelectedVideos,
         mergeVideosByIds,
         mergeVideoProgress,
+        runDepthCapture,
+        cancelDepthCapture,
+        depthCaptureState,
         saveAnnotatedImageNode,
         segmentDialogMode,
         segmentDialogNodeId,

@@ -131,7 +131,7 @@ import { stampCanvasNodeChanges, updateCanvasNode, updateCanvasNodes } from "@/l
 import { canvasAssetHandoffAttempt, finalizeCanvasAssetHandoff, uninsertedCanvasAssetHandoffPayloads } from "@/lib/canvas/canvas-asset-handoff";
 import { batchSourceRestriction } from "@/lib/canvas/canvas-batch-connection";
 import { deriveStoryboardPipelineProgress } from "@/lib/canvas/canvas-storyboard-progress";
-import { CanvasOperationChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
+import { CanvasOperationChangeToast, CanvasMergeStatusToast, CanvasDepthCaptureToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
 import { getGenerationCount } from "@/lib/canvas/canvas-project-generation";
 import { canvasReferenceImageDimensions } from "@/lib/canvas/canvas-reference-image-size";
 import { cancelGenerationTask } from "@/services/api/task-center";
@@ -930,6 +930,9 @@ function CanvasViewportPage() {
         mergeSelectedVideos,
         mergeVideosByIds,
         mergeVideoProgress,
+        runDepthCapture,
+        cancelDepthCapture,
+        depthCaptureState,
         saveAnnotatedImageNode,
         segmentDialogMode,
         segmentDialogNodeId,
@@ -3320,6 +3323,7 @@ function CanvasViewportPage() {
 
                             {uploadStatus ? <CanvasUploadStatusToast status={uploadStatus} theme={theme} /> : null}
                             {mergeVideoProgress ? <CanvasMergeStatusToast progress={mergeVideoProgress} theme={theme} /> : null}
+                            {depthCaptureState ? <CanvasDepthCaptureToast progress={depthCaptureState} theme={theme} onCancel={cancelDepthCapture} /> : null}
                             {lastAgentChange ? (
                                 <CanvasOperationChangeToast
                                     change={lastAgentChange}
@@ -3381,6 +3385,7 @@ function CanvasViewportPage() {
                                 onExtractAudioFromVideo={(node) => void extractAudioFromVideo(node)}
                                 onTrimVideoSegments={openVideoSegmentExtractor}
                                 onEnhanceVideo={hasVideoEnhanceModels ? openVideoEnhance : undefined}
+                                onDepthCapture={runDepthCapture}
                                 onSubtitles={(node) => setSubtitleNodeId(node.id)}
                                 onTimeline={(node) => setTimelineNodeId(node.id)}
                                 onVersions={(node) => setMediaVersionNodeId(node.id)}

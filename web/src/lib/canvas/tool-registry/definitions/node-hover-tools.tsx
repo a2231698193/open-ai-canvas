@@ -1,4 +1,4 @@
-import { AudioLines, Captions, CircleCheckBig, Clapperboard, Download, FolderPlus, History, Images, Image as ImageIcon, Info, LoaderCircle, Lock, Maximize2, MessageSquare, Minus, Music2, Plus, RefreshCw, RotateCcw, RotateCw, Scissors, Settings2, Trash2, Unlock, Upload, UserRound, Video, ImageUpscale, WandSparkles } from "lucide-react";
+import { AudioLines, Captions, CircleCheckBig, Clapperboard, Download, FolderPlus, History, Images, Image as ImageIcon, Info, Layers, LoaderCircle, Lock, Maximize2, MessageSquare, Minus, Music2, Plus, RefreshCw, RotateCcw, RotateCw, Scissors, Settings2, Trash2, Unlock, Upload, UserRound, Video, ImageUpscale, WandSparkles } from "lucide-react";
 
 import { CONTENT_MODERATION_ERROR_CODE, isContentModerationError } from "@/lib/generation-error";
 import { registerToolbarTools, type ToolContext, type ToolDefinition } from "@/lib/canvas/tool-registry";
@@ -176,6 +176,20 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         applicable: (ctx) => hasVideo(ctx) && !simpleMode(ctx) && Boolean(ctx.handlers.onNodeEnhanceVideo) && ctx.nodeMetadata?.status !== "loading",
         disabled: (ctx) => !ctx.nodeMetadata?.storageKey && !ctx.nodeMetadata?.content,
         run: (ctx) => ctx.handlers.onNodeEnhanceVideo?.(ctx.node!),
+    },
+    {
+        id: "depthCapture",
+        toolbar: "node-hover",
+        category: "node-state",
+        label: "视频深度捕捉：逐帧估算深度，生成近白远黑的深度视频",
+        displayLabel: "深度捕捉",
+        icon: <Layers className="size-3.5" />,
+        defaultVisible: true,
+        defaultOrder: 46,
+        nodeToolbar: { group: "process", order: 35, section: "提取素材", description: "生成静音深度视频，另存为新视频节点" },
+        applicable: (ctx) => hasVideo(ctx) && !simpleMode(ctx) && Boolean(ctx.handlers.onNodeDepthCapture) && ctx.nodeMetadata?.status !== "loading",
+        disabled: (ctx) => !ctx.nodeMetadata?.storageKey && !ctx.nodeMetadata?.content,
+        run: (ctx) => ctx.handlers.onNodeDepthCapture?.(ctx.node!),
     },
     {
         id: "saveAsset",

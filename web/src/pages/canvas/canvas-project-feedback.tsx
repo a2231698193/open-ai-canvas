@@ -3,8 +3,10 @@ import { CheckCircle2, CloudUpload, Eye, LoaderCircle, RotateCcw, TriangleAlert,
 
 import type { GenerationTask } from "@/services/api/task-center";
 import type { MergeVideoProgress } from "@/lib/canvas/canvas-video-merge";
+import type { DepthCapturePhase } from "@/lib/canvas/depth/video-depth-capture";
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { CanvasOperationChange } from "./use-canvas-operation-history";
+import type { DepthCaptureStatus } from "./use-canvas-media-tools";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 
 export type CanvasUploadStatus = {
@@ -108,6 +110,49 @@ export function CanvasMergeStatusToast({ progress, theme }: { progress: MergeVid
             </div>
             <div className="mt-2 h-1 overflow-hidden rounded-full" style={{ background: theme.toolbar.itemHover }}>
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${percent}%`, background: theme.node.activeStroke }} />
+            </div>
+        </div>
+    );
+}
+
+const DEPTH_PHASE_LABELS: Record<DepthCapturePhase, string> = {
+    loading: "加载深度模型（首次约 26MB）",
+    calibrating: "抽样定标深度范围",
+    processing: "逐帧估算深度",
+    encoding: "编码深度视频",
+};
+
+/** 深度捕捉进度条。与合并提示不同，这里必须能点取消——一段长视频可能要跑几分钟。 */
+export function CanvasDepthCaptureToast({ progress, theme, onCancel }: { progress: DepthCaptureStatus; theme: CanvasTheme; onCancel: () => void }) {
+    const percent = progress.total > 0 ? Math.max(0, Math.min(100, Math.round((progress.done / progress.total) * 100))) : 0;
+    return (
+        <div
+            data-canvas-no-zoom
+            aria-live="polite"
+            className="absolute right-4 top-[164px] z-[var(--z-panel-floating)] w-[292px] overflow-hidden rounded-2xl border px-3 py-3 shadow-lg backdrop-blur-xl"
+            style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+        >
+            <div className="flex items-start gap-2">
+                <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-xl" style={{ background: theme.toolbar.itemHover, color: theme.node.activeStroke }}>
+                    <LoaderCircle className="size-4 animate-spin" />
+                </span>
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold">深度捕捉</span>
+                    <span className="mt-0.5 block truncate text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
+                        {DEPTH_PHASE_LABELS[progress.phase]}
+                    </span>
+                </span>
+                <span className="shrink-0 text-[var(--fs-tiny)] tabular-nums" style={{ color: theme.node.faint }}>
+                    {progress.total > 0 ? `${progress.done}/${progress.total}` : "…"}
+                </span>
+            </div>
+            <div className="mt-2 h-1 overflow-hidden rounded-full" style={{ background: theme.toolbar.itemHover }}>
+                <div className="h-full rounded-full transition-all duration-300" style={{ width: `${percent}%`, background: theme.node.activeStroke }} />
+            </div>
+            <div className="mt-2 flex justify-end">
+                <button type="button" className="rounded-md px-2 py-1 text-[var(--fs-label)] font-medium hover:underline" style={{ color: theme.node.muted }} onClick={onCancel}>
+                    取消
+                </button>
             </div>
         </div>
     );
