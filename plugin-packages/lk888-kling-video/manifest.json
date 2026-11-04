@@ -1,0 +1,697 @@
+{
+  "apiVersion": "yingce.plugin/v2",
+  "id": "lk888-kling-video",
+  "name": "问鼎 LK888 可灵视频",
+  "version": "1.0.0",
+  "author": "问鼎数据 / 影策",
+  "description": "问鼎数据可灵动作控制 V3 与可灵 V4 视频协议，覆盖 kling-motion-control-v3、kling-v4-video。",
+  "permissions": [
+    "generation.run",
+    "media.read"
+  ],
+  "configuration": {
+    "fields": [
+      {
+        "name": "apiKey",
+        "type": "secret",
+        "label": "API Key",
+        "required": true
+      }
+    ]
+  },
+  "contributes": {
+    "providers": [
+      {
+        "id": "lk888-kling-video",
+        "label": "问鼎 LK888 可灵视频",
+        "capabilities": [
+          "video"
+        ],
+        "scopes": [
+          "admin.system-channel",
+          "user.custom-channel",
+          "canvas",
+          "creation",
+          "agent"
+        ],
+        "baseUrl": "https://api.lk888.ai",
+        "requiresPublicMediaUrls": true,
+        "auth": {
+          "type": "bearer",
+          "field": "apiKey"
+        },
+        "parameters": [
+          {
+            "name": "model",
+            "type": "string",
+            "required": true,
+            "mapping": "model",
+            "description": "视频模型 ID：kling-motion-control-v3、kling-v4-video。"
+          },
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "prompt",
+            "description": "视频提示词。V4 可直接文生视频，也可用 [图1]、[视频1] 引用参考素材。"
+          },
+          {
+            "name": "images",
+            "type": "media[]",
+            "required": false,
+            "mapping": "params.image_url",
+            "description": "参考图片。动作控制取第一张（必填，jpg/png，≤10MB）；V4 全量映射为数组（最多 10 张）。"
+          },
+          {
+            "name": "videos",
+            "type": "media[]",
+            "required": false,
+            "mapping": "params.video_url",
+            "description": "参考视频。动作控制取第一段（必填，mp4/mov，3～30 秒，≤100MB）；V4 全量映射为数组（最多 5 段）。"
+          },
+          {
+            "name": "duration",
+            "type": "integer",
+            "required": false,
+            "mapping": "params.duration",
+            "description": "成片时长秒数，仅 V4 使用（3～30），以字符串发送，缺省 5；动作控制由参考视频决定，不发送。"
+          },
+          {
+            "name": "aspectRatio",
+            "type": "string",
+            "required": false,
+            "mapping": "params.aspect_ratio",
+            "description": "画面比例，仅 V4 使用：16:9 / 9:16 / 1:1 / 21:9，缺省 16:9。"
+          },
+          {
+            "name": "resolution",
+            "type": "string",
+            "required": false,
+            "mapping": "params.resolution / params.mode",
+            "description": "V4 映射 720p / 1080p；动作控制把 720p 映射 std、1080p 映射 pro。"
+          },
+          {
+            "name": "generateAudio",
+            "type": "boolean",
+            "required": false,
+            "mapping": "params.keep_original_sound",
+            "description": "动作控制是否保留参考视频原声：true 映射 yes，false 映射 no。"
+          },
+          {
+            "name": "providerOptions",
+            "type": "object",
+            "required": false,
+            "mapping": "params.mode / params.character_orientation / params.keep_original_sound",
+            "description": "命名空间 lk888-kling-video。动作控制可用 mode（std/pro）、character_orientation（video/image）、keep_original_sound（yes/no）覆盖默认值。"
+          }
+        ],
+        "validations": [
+          {
+            "assert": {
+              "$if": {
+                "condition": {
+                  "$eq": [
+                    {
+                      "$lower": {
+                        "$trim": {
+                          "$ref": "request.model"
+                        }
+                      }
+                    },
+                    "kling-motion-control-v3"
+                  ]
+                },
+                "then": {
+                  "$and": [
+                    {
+                      "$gt": [
+                        {
+                          "$len": {
+                            "$ref": "request.images"
+                          }
+                        },
+                        0
+                      ]
+                    },
+                    {
+                      "$gt": [
+                        {
+                          "$len": {
+                            "$ref": "request.videos"
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  ]
+                },
+                "else": true
+              }
+            },
+            "message": "可灵动作控制 V3 需要至少 1 张参考图片和 1 段参考视频"
+          },
+          {
+            "assert": {
+              "$if": {
+                "condition": {
+                  "$eq": [
+                    {
+                      "$lower": {
+                        "$trim": {
+                          "$ref": "request.model"
+                        }
+                      }
+                    },
+                    "kling-v4-video"
+                  ]
+                },
+                "then": {
+                  "$and": [
+                    {
+                      "$lte": [
+                        {
+                          "$len": {
+                            "$ref": "request.images"
+                          }
+                        },
+                        10
+                      ]
+                    },
+                    {
+                      "$lte": [
+                        {
+                          "$len": {
+                            "$ref": "request.videos"
+                          }
+                        },
+                        5
+                      ]
+                    }
+                  ]
+                },
+                "else": true
+              }
+            },
+            "message": "可灵 V4 最多支持 10 张参考图片和 5 段参考视频"
+          }
+        ],
+        "create": {
+          "method": "POST",
+          "path": "/v1/media/generate",
+          "contentType": "application/json",
+          "body": {
+            "model": {
+              "$ref": "request.model"
+            },
+            "prompt": {
+              "$ref": "request.prompt"
+            },
+            "params": {
+              "mode": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-motion-control-v3"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.providerOptions.lk888-kling-video.mode"
+                                  }
+                                }
+                              },
+                              [
+                                "pro",
+                                "professional"
+                              ]
+                            ]
+                          },
+                          "then": "pro"
+                        },
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.providerOptions.lk888-kling-video.mode"
+                                  }
+                                }
+                              },
+                              [
+                                "std",
+                                "standard"
+                              ]
+                            ]
+                          },
+                          "then": "std"
+                        },
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.resolution"
+                                  }
+                                }
+                              },
+                              [
+                                "1080p",
+                                "1080",
+                                "high",
+                                "pro"
+                              ]
+                            ]
+                          },
+                          "then": "pro"
+                        }
+                      ],
+                      "default": "std"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "image_url": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-motion-control-v3"
+                    ]
+                  },
+                  "then": {
+                    "$first": {
+                      "$map": {
+                        "from": {
+                          "$sortByOrder": {
+                            "$ref": "request.images"
+                          }
+                        },
+                        "as": "media",
+                        "in": {
+                          "$ref": "media.value"
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "$if": {
+                      "condition": {
+                        "$eq": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.model"
+                              }
+                            }
+                          },
+                          "kling-v4-video"
+                        ]
+                      },
+                      "then": {
+                        "$map": {
+                          "from": {
+                            "$sortByOrder": {
+                              "$ref": "request.images"
+                            }
+                          },
+                          "as": "media",
+                          "in": {
+                            "$ref": "media.value"
+                          }
+                        }
+                      },
+                      "else": null
+                    }
+                  }
+                }
+              },
+              "video_url": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-motion-control-v3"
+                    ]
+                  },
+                  "then": {
+                    "$first": {
+                      "$map": {
+                        "from": {
+                          "$sortByOrder": {
+                            "$ref": "request.videos"
+                          }
+                        },
+                        "as": "media",
+                        "in": {
+                          "$ref": "media.value"
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "$if": {
+                      "condition": {
+                        "$eq": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.model"
+                              }
+                            }
+                          },
+                          "kling-v4-video"
+                        ]
+                      },
+                      "then": {
+                        "$map": {
+                          "from": {
+                            "$sortByOrder": {
+                              "$ref": "request.videos"
+                            }
+                          },
+                          "as": "media",
+                          "in": {
+                            "$ref": "media.value"
+                          }
+                        }
+                      },
+                      "else": null
+                    }
+                  }
+                }
+              },
+              "duration": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-v4-video"
+                    ]
+                  },
+                  "then": {
+                    "$if": {
+                      "condition": {
+                        "$gt": [
+                          {
+                            "$ref": "request.duration"
+                          },
+                          0
+                        ]
+                      },
+                      "then": {
+                        "$toString": {
+                          "$ref": "request.duration"
+                        }
+                      },
+                      "else": "5"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "aspect_ratio": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-v4-video"
+                    ]
+                  },
+                  "then": {
+                    "$if": {
+                      "condition": {
+                        "$in": [
+                          {
+                            "$lower": {
+                              "$trim": {
+                                "$ref": "request.aspectRatio"
+                              }
+                            }
+                          },
+                          [
+                            "",
+                            "auto",
+                            "adaptive",
+                            "default"
+                          ]
+                        ]
+                      },
+                      "then": "16:9",
+                      "else": {
+                        "$ref": "request.aspectRatio"
+                      }
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "resolution": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-v4-video"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.resolution"
+                                  }
+                                }
+                              },
+                              [
+                                "1080p",
+                                "1080",
+                                "high",
+                                "pro"
+                              ]
+                            ]
+                          },
+                          "then": "1080p"
+                        }
+                      ],
+                      "default": "720p"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "character_orientation": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-motion-control-v3"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.providerOptions.lk888-kling-video.character_orientation"
+                                  }
+                                }
+                              },
+                              [
+                                "image",
+                                "picture",
+                                "img"
+                              ]
+                            ]
+                          },
+                          "then": "image"
+                        }
+                      ],
+                      "default": "video"
+                    }
+                  },
+                  "else": null
+                }
+              },
+              "keep_original_sound": {
+                "$if": {
+                  "condition": {
+                    "$eq": [
+                      {
+                        "$lower": {
+                          "$trim": {
+                            "$ref": "request.model"
+                          }
+                        }
+                      },
+                      "kling-motion-control-v3"
+                    ]
+                  },
+                  "then": {
+                    "$switch": {
+                      "cases": [
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.providerOptions.lk888-kling-video.keep_original_sound"
+                                  }
+                                }
+                              },
+                              [
+                                "yes",
+                                "true",
+                                "1"
+                              ]
+                            ]
+                          },
+                          "then": "yes"
+                        },
+                        {
+                          "when": {
+                            "$in": [
+                              {
+                                "$lower": {
+                                  "$trim": {
+                                    "$ref": "request.providerOptions.lk888-kling-video.keep_original_sound"
+                                  }
+                                }
+                              },
+                              [
+                                "no",
+                                "false",
+                                "0"
+                              ]
+                            ]
+                          },
+                          "then": "no"
+                        }
+                      ],
+                      "default": {
+                        "$if": {
+                          "condition": {
+                            "$ref": "request.generateAudio"
+                          },
+                          "then": "yes",
+                          "else": "no"
+                        }
+                      }
+                    }
+                  },
+                  "else": null
+                }
+              }
+            }
+          }
+        },
+        "poll": {
+          "method": "GET",
+          "path": "/v1/media/status",
+          "query": {
+            "task_id": {
+              "$ref": "taskId"
+            }
+          }
+        },
+        "response": {
+          "taskId": {
+            "$coalesce": [
+              {
+                "$ref": "response.data.task_id"
+              },
+              {
+                "$ref": "response.task_id"
+              },
+              {
+                "$ref": "taskId"
+              }
+            ]
+          },
+          "status": {
+            "$coalesce": [
+              {
+                "$ref": "response.state"
+              },
+              "pending"
+            ]
+          },
+          "message": {
+            "$ref": "response.error"
+          },
+          "videos": {
+            "$omitEmpty": {
+              "$ref": "response.result_url"
+            }
+          },
+          "errorPaths": [
+            "error"
+          ],
+          "resultEphemeral": true
+        },
+        "description": "问鼎数据可灵视频异步任务协议：动作控制 V3 与 V4 视频。"
+      }
+    ]
+  }
+}

@@ -33,12 +33,21 @@ func (s *Service) cloudAgentModelList(userID string, intent *ModelRequestIntent)
 	items := []map[string]any{}
 	for _, m := range logicalModels {
 		if m.Available && cloudAgentGenerationModeSupported(normalizeCapability(m.Capability)) {
+			if !cloudAgentVideoCatalogMatches(intent, m.CapabilitySpec.Operations, "") {
+				continue
+			}
 			items = append(items, map[string]any{"name": m.Name, "capability": m.Capability, "selection": map[string]any{"logicalModelId": m.ID}, "priceLabel": m.PriceLabel, "priceTiers": m.PriceTiers, "options": m.CapabilitySpec, "profiles": m.CapabilityProfiles, "defaults": m.DefaultOptions})
 		}
 	}
 	for _, channel := range catalog.Channels {
 		for _, m := range channel.Models {
 			if m.Available && cloudAgentGenerationModeSupported(normalizeCapability(m.Capability)) {
+				if intent != nil && intent.Capability == "video" {
+					video, _ := m.CapabilityConfig["video"].(map[string]any)
+					if !cloudAgentVideoCatalogMatches(intent, stringSlice(video["operations"]), stringValue(video["defaultOperation"])) {
+						continue
+					}
+				}
 				items = append(items, map[string]any{"name": m.DisplayName, "capability": m.Capability, "selection": map[string]any{"channelId": channel.ID, "channelModelKey": m.ModelKey}, "priceLabel": m.PriceLabel, "priceTiers": m.PriceTiers, "options": m.CapabilityConfig, "defaults": m.DefaultOptions})
 			}
 		}
@@ -111,6 +120,10 @@ func (s *Service) cloudAgentModelIntent(userID, canvasID, arguments string) (*Mo
 	operation, err := cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
 	if err != nil {
 		return nil, err
+	}
+	if a.Mode == "video" && strings.TrimSpace(a.VideoEditOperation) == "" {
+		// 查询目录时尚未选择模型；先按真实输入筛选，再按各模型的操作合同匹配。
+		operation = ""
 	}
 	intent := ModelRequestIntentFromTaskInput(refs, "canvas_"+a.Mode, operation)
 	return &intent, nil
@@ -931,7 +944,7 @@ func (s *Service) prepareCloudAgentMedia(run *model.CloudAgentExecution, state *
 	if err := validateCloudAgentMediaReferences(a.Mode, refs); err != nil {
 		return CreateTaskRequest{}, nil, err
 	}
-	operation, err := cloudAgentMediaOperation(a.Mode, refs, a.VideoEditOperation)
+	operation, err := s.resolveCloudAgentMediaOperation(a, refs)
 	if err != nil {
 		return CreateTaskRequest{}, nil, err
 	}
