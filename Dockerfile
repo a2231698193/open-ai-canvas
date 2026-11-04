@@ -63,6 +63,7 @@ COPY CHANGELOG.md USER_CHANGELOG.md /app/
 COPY README.md CONTRIBUTORS.md /app/
 COPY assets /app/assets
 COPY web ./
+COPY backend/internal/ecommerceagent/platform_knowledge.json /app/backend/internal/ecommerceagent/platform_knowledge.json
 ARG VITE_TLDRAW_LICENSE_KEY
 ARG BUILD_VERSION
 ARG BUILD_COMMIT=unknown

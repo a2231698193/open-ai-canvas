@@ -130,6 +130,7 @@ cd web && bun run dev
 - 节点和对象名称要有可发现的铅笔入口并支持单击编辑；双击或右键不能是唯一入口。图片节点保持原始比例，面板不能长期遮挡主要画布空间。
 - Ant Design 共性主题和控件状态集中在 `web/src/lib/app-theme.ts` / `AppProviders`。自带外壳的产品弹窗用 `AppModal flush`，侧栏用 `AppDrawer`；不要再复制 `padding: 0` 的 Modal styles。内容外壳仍是 `.ant-modal-container`。
 - 第三方覆盖限定在具体组件，不新增全局 `.ant-modal-*`、`.dark .ant-switch-*`、`.ant-checkbox-*` 或 Segmented 状态补丁。新增 CSS 前先搜索同名选择器，回到唯一源规则修改。
+- 新建或改造页面、面板、弹窗、后台页之前，先读 `skills/README.md`，按其中表格读取 `skills/yingce-product-design`、`yingce-ui-system`、`yingce-color`、`yingce-ui-copy`，交付前按 `skills/yingce-page-review` 自检。这些 Skill 是产品设计、UI、配色与文案的可执行规范，任何 AI 都按它执行。
 - 遵循 `docs/ui-design-system.md` 及项目三层 token：Primitive → Semantic → Component。inline style 优先引用 `var(--token-name)`，不要散落颜色、圆角、阴影和层级字面值。
 - 主操作、普通选中、Checkbox/Radio、Switch 是不同颜色角色；持久切换使用 `aria-pressed`，`type="primary"` 只表示当前主要命令。尊重 `prefers-reduced-motion`，键盘导航保留 `:focus-visible`。
 - 模型选择器是单层列表：打开菜单直接选模型，不按渠道/品牌做二级选择；同名模型按显示名相邻排序，来自多个渠道时在副标题标注渠道名。官方主线已把二级选择器当作全站标准（`variant` 默认 `creation`），合并主线时这一处以本仓库为准，不要跟着改回二级。

@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 82
+const CurrentSchemaVersion int64 = 83
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -277,11 +277,12 @@ var schemaMigrations = []migration{
 		}
 		return tx.Migrator().AddColumn(&model.DramaSegment{}, "ReferenceCastIDsJSON")
 	}},
-	// 官方 v75–v78 在本仓库顺延为 v79–v82，避免覆盖本地 v75–v78。
+	// 官方 v75–v78 在本仓库顺延为 v79–v82，避免覆盖本地 v75–v78；官方 v79 顺延为 v83。
 	{version: 79, name: "user_groups_pricing_currency", checksum: "sha256:user-groups-pricing-currency-v79-20261028", apply: migrateUserGroupsPricingCurrency},
 	{version: 80, name: "agent_memory_document_skill_discovery", checksum: "sha256:agent-memory-document-skill-discovery-v80-20261028", apply: migrateAgentMemoryDocumentSkillDiscovery},
 	{version: 81, name: "agent_memory_document_columns", checksum: "sha256:agent-memory-document-columns-v81-20261028", apply: migrateAgentMemoryDocumentColumns},
 	{version: 82, name: "drama_cast_voice_looks", checksum: "sha256:drama-cast-voice-looks-v82-20261101", apply: migrateDramaCastVoiceLooks},
+	{version: 83, name: "ecommerce_agent_and_knowledge", checksum: "sha256:ecommerce-agent-and-knowledge-v83-20261104", apply: migrateEcommerceFeature},
 }
 
 // migrateDramaCastVoiceLooks 为短剧设定补角色声音（声音库条目与样本音频）和造型（所属角色、造型名、默认适用章节）。

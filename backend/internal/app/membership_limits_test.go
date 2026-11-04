@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -118,6 +119,11 @@ func TestCheckinCreditsAppliesMembershipOverride(t *testing.T) {
 	}
 	createMembershipFixture(t, db, user.ID, model.MembershipPlan{ID: "plan-bonus", Name: "高签到", Level: 1, Enabled: true, CheckinBonusOverrideMicrocredits: 20 * CreditScale})
 	svc := &Service{repo: repository.New(db), dataDir: t.TempDir()}
+	// 全局签到奖励默认是 0（官方政策：未配置即不发放），这里显式配置基础值，
+	// 才能验证会员覆盖值优先于全局值。
+	if err := svc.repo.SaveSystemSetting(&model.SystemSetting{Key: creditPolicySettingKey, ValueJSON: `{"signupBonusMicrocredits":0,"checkinBonusMicrocredits":` + strconv.FormatInt(10*CreditScale, 10) + `,"defaultMultiplierBasisPoints":10000,"modelMultiplierBasisPoints":{}}`}); err != nil {
+		t.Fatal(err)
+	}
 	account, _, err := svc.CheckinCredits(user)
 	if err != nil {
 		t.Fatal(err)
