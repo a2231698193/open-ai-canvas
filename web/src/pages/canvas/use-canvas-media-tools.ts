@@ -620,7 +620,7 @@ export function useCanvasMediaTools({
 
     const mergeSelectedVideos = useCallback(() => mergeVideosByIds(Array.from(selectedNodeIdsRef.current)), [mergeVideosByIds, selectedNodeIdsRef]);
 
-    /** 视频深度捕捉：逐帧估深生成静音深度视频节点，不自动连线。 */
+    /** 视频深度捕捉：先建占位节点并连线到源视频，处理完成后原地填入深度视频。 */
     const runDepthCapture = useCallback(async (node: CanvasNodeData) => {
         if (depthCaptureRef.current) return;
         if (!node.metadata?.content && !node.metadata?.storageKey) {
@@ -629,6 +629,31 @@ export function useCanvasMediaTools({
         }
         const controller = new AbortController();
         depthCaptureRef.current = controller;
+        // 先落占位节点并连线，让用户立刻看到「生成中」以及结果会出现在哪里。
+        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
+        const depthNodeId = nanoid();
+        const placeholder = createCanvasNode(
+            CanvasNodeType.Video,
+            { x: node.position.x + node.width + 96 + spec.width / 2, y: node.position.y + node.height / 2 },
+            {
+                prompt: `「${node.title || "视频"}」的深度视频`,
+                workflowKind: "reference_video",
+                workflowTitle: `${node.title || "视频"} · 深度`,
+                assetTags: ["深度捕捉", `源:${node.title || node.id}`],
+                videoFrameSourceNodeId: node.id,
+                producedModel: undefined,
+                producedModelCandidate: undefined,
+                status: NODE_STATUS_LOADING,
+            },
+        );
+        placeholder.id = depthNodeId;
+        placeholder.title = `${node.title || "视频"} · 深度`;
+        const withPlaceholder = [...nodesRef.current, placeholder];
+        nodesRef.current = withPlaceholder;
+        setNodes(withPlaceholder);
+        setConnections((current) => [...current, { id: nanoid(), fromNodeId: node.id, toNodeId: depthNodeId }]);
+        setSelectedNodeIds(new Set([depthNodeId]));
+        setSelectedConnectionId(null);
         setDepthCaptureState({ nodeId: node.id, phase: "loading", done: 0, total: 0 });
         try {
             const storedBlob = node.metadata?.storageKey ? await getMediaBlob(node.metadata.storageKey).catch(() => null) : null;
@@ -644,34 +669,25 @@ export function useCanvasMediaTools({
             if (controller.signal.aborted) return;
             const uploaded = await uploadMediaFile(output, "depth");
             const size = fitNodeSize(uploaded.width || node.width, uploaded.height || node.height, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);
-            const depthNode = createCanvasNode(
-                CanvasNodeType.Video,
-                { x: node.position.x + node.width + 120 + size.width / 2, y: node.position.y + node.height / 2 },
-                {
-                    ...videoMetadata(uploaded),
-                    prompt: `「${node.title || "视频"}」的深度视频`,
-                    workflowKind: "reference_video",
-                    workflowTitle: `${node.title || "视频"} · 深度`,
-                    // 深度片是数据 pass，不标记产出模型，也不自动连到源节点。
-                    assetTags: ["深度捕捉", `源:${node.title || node.id}`],
-                    videoFrameSourceNodeId: node.id,
-                    producedModel: undefined,
-                    producedModelCandidate: undefined,
-                    status: NODE_STATUS_SUCCESS,
-                },
+            // 原地填进同一个节点，不额外新建，避免画布上留下两个节点。
+            const finishedNodes = nodesRef.current.map((item) =>
+                item.id === depthNodeId
+                    ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...videoMetadata(uploaded), status: NODE_STATUS_SUCCESS } }
+                    : item,
             );
-            depthNode.title = `${node.title || "视频"} · 深度`;
-            depthNode.width = size.width;
-            depthNode.height = size.height;
-            const nextNodes = [...nodesRef.current, depthNode];
+            nodesRef.current = finishedNodes;
+            setNodes(finishedNodes);
+            const finished = finishedNodes.find((item) => item.id === depthNodeId);
+            if (finished) await persistMediaNodes([finished]);
+            message.success("深度视频已生成");
+        } catch (error) {
+            const canceled = controller.signal.aborted;
+            // 失败或取消都撤掉占位节点与连线，不在画布上留下永远转圈的节点。
+            const nextNodes = nodesRef.current.filter((item) => item.id !== depthNodeId);
             nodesRef.current = nextNodes;
             setNodes(nextNodes);
-            setSelectedNodeIds(new Set([depthNode.id]));
-            setSelectedConnectionId(null);
-            await persistMediaNodes([depthNode]);
-            message.success("深度视频已生成并添加到画布");
-        } catch (error) {
-            if (controller.signal.aborted) {
+            setConnections((current) => current.filter((connection) => connection.toNodeId !== depthNodeId));
+            if (canceled) {
                 message.info("已取消深度捕捉");
                 return;
             }
@@ -680,7 +696,7 @@ export function useCanvasMediaTools({
             depthCaptureRef.current = null;
             setDepthCaptureState(null);
         }
-    }, [message, nodesRef, persistMediaNodes, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
+    }, [message, nodesRef, persistMediaNodes, setConnections, setNodes, setSelectedConnectionId, setSelectedNodeIds]);
 
     const cancelDepthCapture = useCallback(() => {
         depthCaptureRef.current?.abort();
