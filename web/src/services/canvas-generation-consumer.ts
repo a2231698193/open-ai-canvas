@@ -187,6 +187,28 @@ export async function applyCanvasGenerationTaskNodeEffect(input: {
     throwIfAborted(input.signal);
     // 持久化已完成；最后一次 await 之后仍按节点合并，保留期间发生的编辑。
     input.setNodes((current) => groupChanged(current) ? current : reconcileMaskBatchRoot(commitCanvasGenerationResult(current, before, node, input.task.id, additionalNodes), imageBatchRootId));
+    // 云端同步默认走 1.2–5 秒防抖；生成结果在这段窗口内刷新页面就会只留在内存里，
+    // 而任务已经成功计费。这里对当前画布立即同步一次，避免结果随刷新丢失。
+    await flushGenerationResultToRemote(input.projectId, input.signal);
+}
+
+/**
+ * 生成结果落盘后立即同步到服务端。
+ *
+ * 常规编辑走云端同步的防抖窗口（1.2–5 秒），但生成结果是「已计费且只存在于内存」的数据，
+ * 落在这个窗口里的刷新会让它彻底丢失。这里只对当前画布做一次定向同步；
+ * 没有云端会话（未登录/本地模式）时静默跳过，同步失败也不影响已经落地到本地的结果。
+ */
+async function flushGenerationResultToRemote(projectId: string, signal?: AbortSignal) {
+    if (signal?.aborted) return;
+    try {
+        const { hasRemoteUserDataSyncSession, saveRemoteUserDataNow } = await import("@/services/user-data-sync");
+        if (!hasRemoteUserDataSyncSession()) return;
+        await saveRemoteUserDataNow(projectId);
+    } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        console.warn("生成结果云端同步未完成，已保留本地结果并等待下次同步", { projectId, error });
+    }
 }
 
 export async function persistCanvasOperationContinuationEffect(input: {

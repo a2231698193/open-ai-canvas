@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
 
-import { applyGenerationTaskResultToNodes, generationTaskCanReloadResource, generationTaskNodeId, generationTaskOutputsApplied, shouldRecoverCanvasImageOutputs } from "@/lib/canvas/canvas-generation-task-sync";
+import { applyGenerationTaskResultToNodes, generationTaskCanReloadResource, generationTaskMode, generationTaskNodeId, generationTaskOutputsApplied, shouldRecoverCanvasImageOutputs } from "@/lib/canvas/canvas-generation-task-sync";
 import { commitCanvasGenerationResult } from "@/lib/canvas/canvas-generation-result";
 import { reconcileImageBatchRoot } from "@/lib/canvas/canvas-image-batch-retry";
 import { canvasTaskBindingStatus, markCanvasTaskRecoveryUnconfirmed } from "@/lib/canvas/canvas-task-state";
@@ -88,6 +88,51 @@ export function createCanvasGenerationRecoveryCoordinator() {
             await transitionTail;
         },
     };
+}
+
+/**
+ * 用服务端已成功的任务补建画布上已经不存在的节点。
+ *
+ * 场景：生成结果写进内存后、下一次云端同步前刷新页面，节点随内存丢失，
+ * 但任务在服务端已成功并计费。此时按任务里的节点 ID 重建一个占位节点，
+ * 再走与正常回写完全相同的消费链路，保证媒体、素材库和版本历史一致。
+ */
+async function recoverOrphanedGenerationTask(input: {
+    projectId: string;
+    task: GenerationTask;
+    nodeId: string;
+    nodesRef: { current: CanvasNodeData[] };
+    setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>;
+    applyGenerationTaskResult: (nodeId: string, task: GenerationTask, outputIndex?: number) => Promise<void>;
+    signal: AbortSignal;
+    isCurrentProject: () => boolean;
+}) {
+    const { task, nodeId } = input;
+    if (input.signal.aborted || !input.isCurrentProject()) return;
+    if (input.nodesRef.current.some((node) => node.id === nodeId)) return;
+    const mode = generationTaskMode(task);
+    const type = mode === "video" ? CanvasNodeType.Video : mode === "audio" ? CanvasNodeType.Audio : mode === "text" ? CanvasNodeType.Text : CanvasNodeType.Image;
+    // 位置放在画布可见区域右侧的空白处，避免叠到已有节点上。
+    const occupied = input.nodesRef.current;
+    const rightEdge = occupied.length ? Math.max(...occupied.map((node) => node.position.x + node.width)) : 0;
+    const topEdge = occupied.length ? Math.min(...occupied.map((node) => node.position.y)) : 0;
+    const placeholder: CanvasNodeData = {
+        id: nodeId,
+        type,
+        title: "恢复的生成结果",
+        position: { x: rightEdge + 120, y: topEdge },
+        width: 720,
+        height: 405,
+        metadata: {
+            ...generationTaskMetadata(task),
+            status: NODE_STATUS_LOADING,
+            taskId: task.id,
+        },
+    };
+    const next = [...input.nodesRef.current, placeholder];
+    input.nodesRef.current = next;
+    input.setNodes(next);
+    await input.applyGenerationTaskResult(nodeId, task, 0);
 }
 
 export async function recoverCanvasGenerationTaskNode(input: {
@@ -424,6 +469,49 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
     const recoverInterruptedGenerationTasks = useCallback(
         async (startedProjectId: string, signal: AbortSignal, isCurrentProject: () => boolean) => {
             if (!isCurrentProject()) return;
+            // 生成成功到下次保存之间刷新页面，新节点只存在于内存里，会随刷新丢失；
+            // 此时画布上既没有节点也没有 taskId，下面按节点扫描的恢复逻辑永远看不到它。
+            // 因此先按任务列表补建这些「孤儿结果」，否则服务端成功的任务再也回不到画布。
+            const adoptedNodeIds = new Set<string>();
+            try {
+                const candidates = (await listGenerationTasks(100, { projectId: startedProjectId }, undefined, signal)).filter(
+                    (task) => task.projectId === startedProjectId && task.type.startsWith("canvas_") && task.status === "succeeded" && Boolean(generationTaskNodeId(task)),
+                );
+                const existingNodeIds = new Set(nodesRef.current.map((node) => node.id));
+                const orphans = candidates.filter((task) => {
+                    const nodeId = generationTaskNodeId(task);
+                    // 只认领「画布上完全没有这个节点」的任务；已存在但未完成的节点走下面的常规恢复。
+                    return !existingNodeIds.has(nodeId) && !adoptedNodeIds.has(nodeId);
+                });
+                if (orphans.length && isCurrentProject()) {
+                    for (const task of orphans) {
+                        if (!isCurrentProject()) return;
+                        const nodeId = generationTaskNodeId(task);
+                        adoptedNodeIds.add(nodeId);
+                        try {
+                            await recoverOrphanedGenerationTask({
+                                projectId: startedProjectId,
+                                task,
+                                nodeId,
+                                nodesRef,
+                                setNodes,
+                                applyGenerationTaskResult,
+                                signal,
+                                isCurrentProject,
+                            });
+                        } catch {
+                            // 单个孤儿恢复失败不影响其余任务，也不阻断常规恢复。
+                            adoptedNodeIds.delete(nodeId);
+                        }
+                    }
+                    if (orphans.length && isCurrentProject()) {
+                        message.success({ key: `canvas-task-adopt:${startedProjectId}`, content: `已从服务端找回 ${adoptedNodeIds.size} 个生成结果并补到画布`, duration: 6 });
+                    }
+                }
+            } catch (error) {
+                // 补建是兜底路径：任务列表不可用时仍要继续执行按节点扫描的常规恢复。
+                if (error instanceof Error && error.name === "AbortError") return;
+            }
             const recoveryNodes = nodesRef.current.filter((node) => {
                 if (node.metadata?.experimentalLayerPlan) return false;
                 const pendingAgentContinuation = node.metadata?.agentGenerationContinuation?.status === "pending";

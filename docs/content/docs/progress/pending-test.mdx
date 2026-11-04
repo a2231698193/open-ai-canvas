@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 画布生成结果丢失与孤儿结果补建
+
+- 已修复（丢数据）：生成结果落盘只写本地 localforage，云端同步依赖 1.2–5 秒防抖窗口；在该窗口内刷新页面，已计费的成功结果只存在于内存并随之丢失。现在 `persistCanvasGenerationEffect` 完成后会对当前画布立即执行一次定向云端同步（`flushGenerationResultToRemote`），未登录/本地模式静默跳过，同步失败保留本地结果并等待下次同步。
+- 已修复（有救不回）：`recoverInterruptedGenerationTasks` 原先只扫描画布上仍存在的节点，节点一旦丢失就永远无法认领服务端已成功的任务。现在先按任务列表列出 `canvas_*` 且 `succeeded` 的任务，对画布上完全不存在的节点 ID 用 `recoverOrphanedGenerationTask` 补建占位节点，再走与正常回写相同的消费链路（媒体、素材库、版本历史一致），同一节点只补建一次。
+- 已验证：`bun test test/canvas-generation-orphan-recovery.test.ts`（6 项）覆盖孤儿判定、已存在节点跳过、未完成/失败任务不认领、无节点 ID 与非画布任务排除、节点类型映射，以及真实数据里「同一节点 7 次成功只补建一次」。
+- 现场证据：画布 `981Yqpc_qb5dHpVWvobrK`（自由画布 1）在 11-03 有 8 次成功生成（doubao-seedance-2-0-mini ×3、MiniMax-H3 ×4、doubao-seedance-2-5 ×1）未进入画布文档；`canvas_projects.payload_json` 最新节点固定于 11:14:45，而 `canvas_mutation_receipts` 的 revision 12→32 连续无缺口、`PATCH /operations` 日志全 200，确认是前端提交的文档里缺少节点，而非服务端丢弃。
+- [ ] 浏览器验收：正常生成后立刻刷新，结果应已在画布上；人为清空本地缓存后重进画布，应能通过任务列表补回孤儿结果并提示「已从服务端找回 N 个生成结果」。
+- [ ] 该画布中已丢失的 8 个历史结果需要用户重进画布触发补建后才能确认恢复效果。
+
 ## 画布视频节点深度捕捉
 
 - 已实现：画布视频节点「视频工具 → 深度捕捉」在浏览器内用 Depth Anything V2 Small（int8 量化，onnxruntime-web）逐帧估算深度，生成近白远黑、静音、与源同分辨率同时长的深度视频，作为新视频节点放在源节点右侧，不自动连线。模型与 wasm 都是同源资产，不上传视频到服务端，也不依赖已从本仓库删除的本机运行时（`127.0.0.1:17371`）。
