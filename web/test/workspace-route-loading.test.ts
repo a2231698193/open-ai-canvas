@@ -21,14 +21,37 @@ describe("workspace route loading", () => {
         const modules = source("../src/lib/workspace-route-modules.ts");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
 
-        for (const route of ["workspace", "projects", "canvas", "assets", "create"]) {
-            expect(modules).toContain(`${route}: () => import`);
+        for (const route of ["workspace", "inspirations", "projects", "canvas", "assets", "create"]) {
+            expect(modules).toContain(`${route}: preloadableLazy(() => import`);
         }
-        expect(modules).toContain('projectDetail: () => import("@/pages/projects/detail")');
+        expect(modules).toContain('projectDetail: preloadableLazy(() => import("@/pages/projects/detail"))');
         expect(modules).toContain('slug === "projects" && segments.length > 1');
         expect(navigation).toContain("onPointerEnter={() => preloadWorkspaceRoute(linkTo)}");
         expect(navigation).toContain("onPointerDown={() => preloadWorkspaceRoute(linkTo)}");
         expect(navigation).toContain("onFocus={() => preloadWorkspaceRoute(linkTo)}");
+    });
+
+    test("renders preloaded workspace pages without suspending the layout", async () => {
+        const router = source("../src/router.tsx");
+        const layout = source("../src/layouts/user-layout.tsx");
+        const html = source("../index.html");
+
+        // 功能守卫在页面 Suspense 之外，懒加载会把整个工作区换成全屏加载页。
+        expect(router).toContain('import { RequireFeature } from "@/components/auth/require-feature";');
+        expect(router).not.toContain("const RequireFeature = lazy(");
+        expect(router).not.toMatch(/const \w+Page = lazy\(load\w+Page\)/);
+        expect(layout).toContain("preloadWorkspaceNavigationPages()");
+        expect(html).not.toContain('style="background:#ffffff"');
+        expect(html).toContain("html.dark body");
+
+        const { preloadableLazy } = await import("../src/lib/preloadable-lazy");
+        function Loaded() {
+            return null;
+        }
+        const Page = preloadableLazy(async () => ({ default: Loaded }));
+        expect((Page({}) as { type: unknown }).type).not.toBe(Loaded);
+        await Page.preload();
+        expect((Page({}) as { type: unknown }).type).toBe(Loaded);
     });
 
     test("serves the public brand home at root and exposes the workspace route", () => {
@@ -40,14 +63,19 @@ describe("workspace route loading", () => {
         expect(router).toContain('{ path: "/", element: fullScreenDeferred(<RootHome />), errorElement: <RouteErrorPage /> }');
         expect(router).toContain('{ path: "/create", element: deferred(<CreatePage />) }');
         expect(router).toContain('{ path: "/workspace", element: deferred(<WorkspacePage />) }');
-        expect(router).toContain("lazy(loadWorkspacePage)");
+        expect(router).toContain("const WorkspacePage = workspaceRoutePages.workspace;");
         expect(router).toContain('{ path: "/welcome", element: <Navigate to="/" replace /> }');
+        expect(router).toContain("<RequireAuth allowAnonymous={isGuestWorkspacePath(pathname)}>");
+        expect(router).toContain('{ path: "/assets", element: <RequireAuth>{deferred(<AssetsPage />)}</RequireAuth> }');
+        expect(router).toMatch(/path: "\/canvas\/:id",\s+element: \(\s+<RequireAuth>\s+<CanvasProjectPage \/>\s+<\/RequireAuth>\s+\),/);
+        expect(router).not.toContain('path: "/home"');
+        expect(router).not.toContain("HomePage");
         expect(home).toContain("inspiration-home");
         expect(home).not.toContain("return <WelcomePage />");
-        expect(navigation).toContain('{ id: "workspace", title: "工作台", icon: LayoutDashboard, to: "/workspace" }');
+        expect(navigation).toContain('{ id: "workspace", title: t("nav.sidebar.workspace"), icon: LayoutDashboard, to: "/workspace" }');
         expect(navigation).not.toContain('{ ...toolItem("create", "/create"), id: "home", title: "创作" }');
         expect(navigation).not.toContain('to: "/home"');
-        expect(palette).toContain('{ id: "workspace", title: "工作台", icon: Home, to: "/workspace" }');
+        expect(palette).toContain('{ id: "workspace", title: t("shell.palette.workspace"), icon: Home, to: "/workspace" }');
     });
 
     test("preloads canvas detail and paints opening feedback before navigation", () => {
@@ -56,8 +84,9 @@ describe("workspace route loading", () => {
         const canvasLibrary = source("../src/pages/canvas/index.tsx");
         const canvasCard = source("../src/components/canvas/canvas-folder-card.tsx");
 
-        expect(modules).toContain('loadCanvasProjectPage = () => import("@/pages/canvas/project")');
-        expect(router).toContain("lazy(loadCanvasProjectPage)");
+        expect(modules).toContain('canvasProject: preloadableLazy(() => import("@/pages/canvas/project"))');
+        expect(modules).toContain("loadCanvasProjectPage = workspaceRoutePages.canvasProject.preload");
+        expect(router).toContain("const CanvasProjectPage = workspaceRoutePages.canvasProject;");
         expect(canvasLibrary).toContain("setOpeningProjectId(id)");
         expect(canvasLibrary).toContain("window.requestAnimationFrame(() => navigate(");
         expect(canvasCard).toContain("onPointerEnter={onPrefetch}");

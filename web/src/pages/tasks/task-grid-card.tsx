@@ -1,4 +1,5 @@
 import { Button } from "antd";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "@/components/ui/base/buttons";
 import { Tooltip } from "@/components/ui/base/tooltip";
 import { Eye, FileText, Image as ImageIcon, RotateCcw, Video } from "lucide-react";
@@ -12,6 +13,7 @@ import { TaskVideoThumbnail } from "./task-video-thumbnail";
 import { progressFillStyle } from "@/lib/progress-fill";
 
 export function TaskGridCard({ task, actingId, onOpen, onRetry }: { task: GenerationTask; actingId: string; onOpen: () => void; onRetry: () => void }) {
+    const { t } = useTranslation();
     const isActive = task.status === "queued" || task.status === "running";
     const title = generationTaskTitle(task);
     const isFailed = isTaskFailed(task);
@@ -27,12 +29,20 @@ export function TaskGridCard({ task, actingId, onOpen, onRetry }: { task: Genera
             <div className="task-grid-thumb">
                 {thumbnailUrl ? <MediaPreview src={thumbnailUrl} kind="image" loading="lazy" className="h-full w-full object-cover" /> : isVideo && task.previewUrl ? <TaskVideoThumbnail src={task.previewUrl} /> : <Icon />}
                 <div className="task-grid-overlay">
-                    <Tooltip title="查看详情">
-                        <IconButton size="sm" variant="ghost" icon={Eye} aria-label="查看详情" onClick={onOpen} />
+                    <Tooltip title={t("library.tasks.row.viewDetail")}>
+                        <IconButton size="sm" variant="ghost" icon={Eye} aria-label={t("library.tasks.row.viewDetail")} onClick={onOpen} />
                     </Tooltip>
                     {isFailed ? (
-                        <Tooltip title={retryDisabled ? "内容审核失败，无法自动重试" : task.canRecoverMedia ? "重试保存，不重新生成" : "重试任务"}>
-                            <Button type="text" size="small" icon={<RotateCcw className="size-3.5" />} aria-label={task.canRecoverMedia ? "重试保存" : "重试任务"} loading={actingId === task.id} disabled={retryDisabled} onClick={onRetry} />
+                        <Tooltip title={retryDisabled ? t("library.tasks.row.retryBlocked") : task.canRecoverMedia ? t("library.tasks.row.retrySaveHint") : t("library.tasks.row.retryTask")}>
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<RotateCcw className="size-3.5" />}
+                                aria-label={task.canRecoverMedia ? t("library.tasks.row.retrySave") : t("library.tasks.row.retryTask")}
+                                loading={actingId === task.id}
+                                disabled={retryDisabled}
+                                onClick={onRetry}
+                            />
                         </Tooltip>
                     ) : null}
                 </div>

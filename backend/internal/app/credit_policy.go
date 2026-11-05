@@ -68,24 +68,28 @@ func billedCreditPrice(unit int64, multiplierBPS int64) (int64, error) {
 	return creditAmount(unit, 1, multiplierBPS)
 }
 
-func billedCreditPrices(unit int64, input int64, output int64, cached int64, multiplierBPS int64) (int64, int64, int64, int64, error) {
+func billedCreditPrices(unit int64, input int64, output int64, cached int64, cacheWrite int64, multiplierBPS int64) (int64, int64, int64, int64, int64, error) {
 	unit, err := billedCreditPrice(unit, multiplierBPS)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, err
 	}
 	input, err = billedCreditPrice(input, multiplierBPS)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, err
 	}
 	output, err = billedCreditPrice(output, multiplierBPS)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, err
 	}
 	cached, err = billedCreditPrice(cached, multiplierBPS)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, err
 	}
-	return unit, input, output, cached, nil
+	cacheWrite, err = billedCreditPrice(cacheWrite, multiplierBPS)
+	if err != nil {
+		return 0, 0, 0, 0, 0, err
+	}
+	return unit, input, output, cached, cacheWrite, nil
 }
 
 // userCreditPolicy 取当前用户的积分策略；未初始化仓储时回落到默认值。

@@ -38,6 +38,13 @@ func insertMembershipPaymentOrder(t *testing.T, db *gorm.DB, order model.Payment
 	if order.Currency == "" {
 		order.Currency = "CNY"
 	}
+	// 实收金额快照是渠道回调校验的依据，测试订单默认与商品价一致（未发生币种换算）。
+	if order.ChargeAmountFen == 0 {
+		order.ChargeAmountFen = order.AmountFen
+	}
+	if order.ChargeCurrency == "" {
+		order.ChargeCurrency = order.Currency
+	}
 	if order.ProviderID == "" {
 		order.ProviderID = "wechat-native"
 	}

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export type CanvasCreateCommand = {
  * 工作流与导入资源合并到底部浅底轨道，hover 时提亮为浮层表面。
  */
 export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[] }) {
+    const { t } = useTranslation();
     const themeKey = useActiveTheme();
     const theme = canvasThemes[themeKey];
     const isDark = themeKey === "dark";
@@ -40,35 +42,34 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
     return (
         <div className="flex flex-col" style={vars}>
             <header className="flex h-8 items-center pl-2 pr-1">
-                <h2 className="font-semibold leading-none" style={{ fontSize: "var(--fs-ui)" }}>添加节点</h2>
+                <h2 className="font-semibold leading-none" style={{ fontSize: "var(--fs-ui)" }}>
+                    {t("canvasA.createMenu.title")}
+                </h2>
             </header>
 
             {projectCommands.length ? (
                 <>
-                    <MenuSection title="项目设定" color={theme.node.muted} />
+                    <MenuSection title={t("canvasA.createMenu.projectGroup")} color={theme.node.muted} />
                     <CanvasProjectCommandGrid commands={projectCommands} variant="project" />
                 </>
             ) : null}
 
-            <div role="group" aria-label="创作节点" className="mt-1 grid grid-cols-4 gap-0.5">
+            <div role="group" aria-label={t("canvasA.createMenu.nodesGroup")} className="mt-1 grid grid-cols-4 gap-0.5">
                 {nodeCommands.map((command) => (
                     <button
                         key={command.id}
                         type="button"
                         className="group relative flex h-[var(--canvas-create-node-height)] min-w-0 flex-col items-center justify-center gap-2 rounded-[var(--r-md)] px-1 outline-none transition-colors hover:bg-[var(--create-hover)] focus-visible:ring-2"
-                        title={command.badge ? `${command.label}（${command.badge}）` : command.label}
+                        title={command.badge ? t("canvasA.createMenu.commandWithBadge", { label: command.label, badge: command.badge }) : command.label}
                         onMouseDown={(event) => event.stopPropagation()}
                         onClick={command.onClick}
                     >
-                        <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--create-chip)] transition-colors group-hover:bg-[var(--create-chip-hover)] [&_svg]:size-[18px] [&_svg]:stroke-[1.75]">
-                            {command.icon}
+                        <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--create-chip)] transition-colors group-hover:bg-[var(--create-chip-hover)] [&_svg]:size-[18px] [&_svg]:stroke-[1.75]">{command.icon}</span>
+                        <span className="block w-full truncate text-center font-medium leading-none" style={{ fontSize: "var(--fs-caption)" }}>
+                            {command.label}
                         </span>
-                        <span className="block w-full truncate text-center font-medium leading-none" style={{ fontSize: "var(--fs-caption)" }}>{command.label}</span>
                         {command.badge ? (
-                            <span
-                                className="absolute right-1 top-1 rounded-[var(--r-xs)] px-1 font-medium leading-4"
-                                style={{ color: theme.node.muted, background: "var(--create-chip)", fontSize: "var(--fs-label)" }}
-                            >
+                            <span className="absolute right-1 top-1 rounded-[var(--r-xs)] px-1 font-medium leading-4" style={{ color: theme.node.muted, background: "var(--create-chip)", fontSize: "var(--fs-label)" }}>
                                 {command.badge}
                             </span>
                         ) : null}
@@ -77,7 +78,7 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
             </div>
 
             {footerCommands.length ? (
-                <div role="group" aria-label="工作流与导入资源" className="mt-2 grid gap-0.5 rounded-[10px] p-0.5" style={{ background: "var(--create-track)", gridTemplateColumns: `repeat(${footerCommands.length}, minmax(0, 1fr))` }}>
+                <div role="group" aria-label={t("canvasA.createMenu.footerGroup")} className="mt-2 grid gap-0.5 rounded-[10px] p-0.5" style={{ background: "var(--create-track)", gridTemplateColumns: `repeat(${footerCommands.length}, minmax(0, 1fr))` }}>
                     {footerCommands.map((command) => (
                         <button
                             key={command.id}
@@ -116,8 +117,14 @@ function CanvasProjectCommandGrid({ commands, variant }: { commands: CanvasCreat
                 >
                     <span className="grid size-7 shrink-0 place-items-center rounded-[var(--r-sm)] bg-[var(--create-chip)] [&_svg]:size-4">{command.icon}</span>
                     <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold" style={{ fontSize: "var(--fs-label)" }}>{command.label}</span>
-                        {command.description ? <span className="block truncate" style={{ color: theme.node.muted, fontSize: "var(--fs-micro)" }}>{command.description}</span> : null}
+                        <span className="block truncate font-semibold" style={{ fontSize: "var(--fs-label)" }}>
+                            {command.label}
+                        </span>
+                        {command.description ? (
+                            <span className="block truncate" style={{ color: theme.node.muted, fontSize: "var(--fs-micro)" }}>
+                                {command.description}
+                            </span>
+                        ) : null}
                     </span>
                 </button>
             ))}
@@ -126,5 +133,9 @@ function CanvasProjectCommandGrid({ commands, variant }: { commands: CanvasCreat
 }
 
 function MenuSection({ title, color }: { title: string; color: string }) {
-    return <h3 className="mb-1 mt-2 px-1 font-medium leading-none" style={{ color, fontSize: "var(--fs-micro)" }}>{title}</h3>;
+    return (
+        <h3 className="mb-1 mt-2 px-1 font-medium leading-none" style={{ color, fontSize: "var(--fs-micro)" }}>
+            {title}
+        </h3>
+    );
 }

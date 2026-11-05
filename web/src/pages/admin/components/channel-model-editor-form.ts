@@ -202,8 +202,15 @@ export function validateChannelModelPrices(values: Pick<ChannelModelFormValues, 
                 specific(tier.size);
             if (!(specific(tier.operation) || (capability === "image" && imageCondition) || (capability === "video" && specific(tier.resolution)))) fail("规格价格至少需要一个匹配条件；统一价格请选择默认价格");
         }
-        // 音频按输入量计费（只有输入价），视频按视频用量（只有输出价），文本三个价都给。
-        const prices = tier.billingMode !== "token" ? [tier.unitPrice] : capability === "video" ? [tier.outputTokenPrice] : capability === "audio" ? [tier.inputTokenPrice] : [tier.inputTokenPrice, tier.outputTokenPrice, tier.cachedTokenPrice];
+        // 音频按输入量计费（只有输入价），视频按视频用量（只有输出价），文本四个价都给。
+        const prices =
+            tier.billingMode !== "token"
+                ? [tier.unitPrice]
+                : capability === "video"
+                  ? [tier.outputTokenPrice]
+                  : capability === "audio"
+                    ? [tier.inputTokenPrice]
+                    : [tier.inputTokenPrice, tier.outputTokenPrice, tier.cachedTokenPrice, tier.cacheWriteTokenPrice ?? 0];
         if (prices.some((price) => typeof price !== "number" || !Number.isFinite(price) || price < 0 || price > 1_000_000)) fail("积分价格必须是 0 到 1000000 之间的有效数值");
         if (tier.costConfigured) {
             const costs =
@@ -213,7 +220,7 @@ export function validateChannelModelPrices(values: Pick<ChannelModelFormValues, 
                       ? [tier.costOutputTokenPrice]
                       : capability === "audio"
                         ? [tier.costInputTokenPrice]
-                        : [tier.costInputTokenPrice, tier.costOutputTokenPrice, tier.costCachedTokenPrice];
+                        : [tier.costInputTokenPrice, tier.costOutputTokenPrice, tier.costCachedTokenPrice, tier.costCacheWriteTokenPrice ?? 0];
             if (costs.some((price) => typeof price !== "number" || !Number.isFinite(price) || price < 0 || price > 1_000_000)) fail("积分成本价必须是 0 到 1000000 之间的有效数值");
         }
     });

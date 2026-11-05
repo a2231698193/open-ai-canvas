@@ -15,7 +15,7 @@ import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { ModelLogo } from "@/components/model-logo";
 import { ModelTags } from "@/components/model-tags";
-import { videoReferenceCapabilityTag } from "@/lib/model-tags";
+import { referenceCapabilityTag } from "@/lib/model-tags";
 import { quoteModel, type LogicalModelQuote, type PublicChannelModelAvailability } from "@/services/api/logical-models";
 
 type ModelPickerProps = {
@@ -102,7 +102,11 @@ export function ModelPicker({
     const duplicatedLabels = useMemo(() => {
         const counts = new Map<string, number>();
         optionGroups.forEach((group) => counts.set(group.label, (counts.get(group.label) || 0) + 1));
-        return new Set(Array.from(counts).filter(([, count]) => count > 1).map(([label]) => label));
+        return new Set(
+            Array.from(counts)
+                .filter(([, count]) => count > 1)
+                .map(([label]) => label),
+        );
     }, [optionGroups]);
     const storedCurrent = value?.trim() || "";
     // 参数档位会在选中模型后由调用方归一到其能力配置，不能因为旧模型留下的参数而禁止切换。
@@ -180,7 +184,7 @@ export function ModelPicker({
     };
     const focusMenuOption = (last = false) => {
         window.requestAnimationFrame(() => {
-            const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>('[data-model-picker-item]:not(:disabled)');
+            const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>("[data-model-picker-item]:not(:disabled)");
             const target = last ? buttons?.item((buttons?.length || 1) - 1) : buttons?.item(0);
             focusPickerOption(target);
         });
@@ -199,7 +203,7 @@ export function ModelPicker({
             return;
         }
         if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-model-picker-item]:not(:disabled)'));
+        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-model-picker-item]:not(:disabled)"));
         if (!buttons.length) return;
         event.preventDefault();
         const activeIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -210,10 +214,7 @@ export function ModelPicker({
         <div
             ref={menuRef}
             data-canvas-no-zoom
-            className={cn(
-                "canvas-model-picker-menu max-w-[calc(100vw-24px)]",
-                creationVariant ? "creation-model-picker-menu" : "w-[var(--panel-width-compact)]",
-            )}
+            className={cn("canvas-model-picker-menu max-w-[calc(100vw-24px)]", creationVariant ? "creation-model-picker-menu" : "w-[var(--panel-width-compact)]")}
             style={{ "--canvas-model-picker-available-height": `${availableHeight}px` } as CSSProperties}
             role="listbox"
             aria-label={placeholder}
@@ -296,11 +297,13 @@ export function ModelPicker({
                 }}
                 // 弹窗与发起它的输入框同一表面：画布入口取节点面板色，工作台入口回退到 --user-surface-raised（model-picker.css）。
                 styles={{
-                    container: (!inSpatialWorkspace ? {} : {
-                        "--model-picker-surface": theme.node.panel,
-                        "--model-picker-ink": theme.node.text,
-                        "--model-picker-edge": theme.toolbar.border,
-                    }) as CSSProperties,
+                    container: (!inSpatialWorkspace
+                        ? {}
+                        : {
+                              "--model-picker-surface": theme.node.panel,
+                              "--model-picker-ink": theme.node.text,
+                              "--model-picker-edge": theme.toolbar.border,
+                          }) as CSSProperties,
                 }}
             >
                 <button
@@ -318,11 +321,7 @@ export function ModelPicker({
                             <ModelIcon config={config} model={current} />
                         </span>
                         <span className="min-w-0 flex-1 truncate">{current ? (creationVariant ? pickerModelDisplayName(config, current, showConfiguredModelName) : pickerModelOptionLabel(config, current, showConfiguredModelName)) : placeholder}</span>
-                        {isCurrentCustomChannel ? (
-                            <span className="shrink-0 rounded px-2 py-0.5 text-[var(--fs-label)] font-medium leading-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">
-                                个人
-                            </span>
-                        ) : null}
+                        {isCurrentCustomChannel ? <span className="shrink-0 rounded px-2 py-0.5 text-[var(--fs-label)] font-medium leading-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">个人</span> : null}
                         {showSelectedPrice && creditsEnabled ? <ModelPrice price={currentPrice} quote={routeQuote} compact /> : null}
                     </span>
                     <ChevronDown className={cn("canvas-model-picker-chevron", open && "is-open")} aria-hidden="true" />
@@ -383,12 +382,11 @@ export function ModelLabel({
     const logicalSpec = logicalCost?.logicalCapabilitySpec;
     const videoProfile = capability === "video" ? modelCapabilityConfigFor(config, model).video : undefined;
     const videoSummary = videoProfile ? [videoProfile.durationSupported === false ? "" : formatDurationSummary(videoProfile), videoProfile.resolutions.map((item) => item.toUpperCase()).join("/")].filter(Boolean).join(" · ") : "";
-    const capabilityTag = videoReferenceCapabilityTag(videoProfile?.references);
+    // 文本模型同样标出能识别几张图、几个视频；未开启识图 / 视频识别时上限为 0，不出标签。
+    const textReferences = capability === "text" ? modelCapabilityConfigFor(config, model).text?.references : undefined;
+    const capabilityTag = referenceCapabilityTag(videoProfile?.references ?? textReferences);
     const modelTags = capabilityTag ? [capabilityTag, ...(logicalCost?.tags || [])] : logicalCost?.tags;
-    const capabilitySummary =
-        disabledReason ||
-        logicalCost?.description?.trim() ||
-        (isDirectSystemModel(config, model) ? "" : logicalSpec ? logicalCapabilitySummary(logicalSpec) : videoProfile ? videoSummary : meta.description);
+    const capabilitySummary = disabledReason || logicalCost?.description?.trim() || (isDirectSystemModel(config, model) ? "" : logicalSpec ? logicalCapabilitySummary(logicalSpec) : videoProfile ? videoSummary : meta.description);
     const summaryText = [sourceLabel, capabilitySummary].filter(Boolean).join(" · ");
     return (
         <span className="flex w-full min-w-0 items-center gap-2 overflow-hidden py-0">
@@ -398,12 +396,10 @@ export function ModelLabel({
             <span className="min-w-0 flex-1 overflow-hidden">
                 <span className="canvas-model-picker-option-heading">
                     <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                        <span className="canvas-model-picker-option-name text-[var(--fs-body)] font-medium leading-none truncate !flex-initial max-w-full" title={pickerModelDisplayName(config, model, showConfiguredModelName)}>{pickerModelDisplayName(config, model, showConfiguredModelName)}</span>
-                        {channel.scope !== "system" ? (
-                            <span className="shrink-0 rounded px-2 py-0.5 text-[var(--fs-label)] font-medium leading-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">
-                                个人
-                            </span>
-                        ) : null}
+                        <span className="canvas-model-picker-option-name text-[var(--fs-body)] font-medium leading-none truncate !flex-initial max-w-full" title={pickerModelDisplayName(config, model, showConfiguredModelName)}>
+                            {pickerModelDisplayName(config, model, showConfiguredModelName)}
+                        </span>
+                        {channel.scope !== "system" ? <span className="shrink-0 rounded px-2 py-0.5 text-[var(--fs-label)] font-medium leading-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25">个人</span> : null}
                     </span>
                     {showPrice ? (
                         <span className="canvas-model-picker-option-price">
@@ -501,9 +497,10 @@ function modelMenuPrice(config: AiConfig, model: string, capability?: ModelCapab
         return channelTierPriceSummary(matched.length ? matched : tiers, tiers, capability);
     }
     if (cost.billingMode === "token") {
-        const pricing = capability === "audio"
-            ? { rate: cost.inputTokenPriceMicrocredits, unit: "积分/百万输入 Token", title: "按待合成文本的字符数估算输入 Token（1 个字符 = 1 Token），成功任务按这次请求的字符数结算" }
-            : { rate: cost.outputTokenPriceMicrocredits, unit: "积分/百万视频 Token", title: "按视频 Token 单价预估，优先按有效上游用量结算；未返回用量时按视频公式结算" };
+        const pricing =
+            capability === "audio"
+                ? { rate: cost.inputTokenPriceMicrocredits, unit: "积分/百万输入 Token", title: "按待合成文本的字符数估算输入 Token（1 个字符 = 1 Token），成功任务按这次请求的字符数结算" }
+                : { rate: cost.outputTokenPriceMicrocredits, unit: "积分/百万视频 Token", title: "按视频 Token 单价预估，优先按有效上游用量结算；未返回用量时按视频公式结算" };
         return (capability === "video" || capability === "audio") && typeof pricing.rate === "number" && Number.isFinite(pricing.rate) && pricing.rate >= 0
             ? { kind: "estimate", label: formatPriceRange([pricing.rate / 1_000_000], pricing.unit), title: pricing.title }
             : { kind: "estimate" };
@@ -583,12 +580,19 @@ function ModelPrice({ price, quote, compact = false }: { price: ModelMenuPrice |
         );
     }
     if (price.kind === "estimate") {
-        return <span className="model-picker-price inline-flex shrink-0 items-center text-[var(--fs-tiny)] font-semibold"><Coins className="model-picker-price-icon" aria-hidden="true" />{price.label || "按量预估"}</span>;
+        return (
+            <span className="model-picker-price inline-flex shrink-0 items-center text-[var(--fs-tiny)] font-semibold">
+                <Coins className="model-picker-price-icon" aria-hidden="true" />
+                {price.label || "按量预估"}
+            </span>
+        );
     }
     return (
         <span className="model-picker-price inline-flex shrink-0 items-center gap-1 text-[var(--fs-tiny)] font-semibold tabular-nums">
             <Coins className="model-picker-price-icon" aria-hidden="true" />
-            {price.value.toLocaleString("zh-CN", { maximumFractionDigits: compact ? 3 : 6 })}{compact ? "/" : " 积分/"}{price.unit}
+            {price.value.toLocaleString("zh-CN", { maximumFractionDigits: compact ? 3 : 6 })}
+            {compact ? "/" : " 积分/"}
+            {price.unit}
         </span>
     );
 }
@@ -599,15 +603,12 @@ function modelAvailability(config: AiConfig, model: string): PublicChannelModelA
     return channel.modelCosts?.find((item) => item.model === modelOptionName(model))?.availability;
 }
 
-
 export function ModelRecentHealthTrack({ availability, inPopover = false }: { availability?: PublicChannelModelAvailability; inPopover?: boolean }) {
     const recentResults = availability?.recentResults ?? [];
     const successCount = recentResults.filter(Boolean).length;
     const failCount = recentResults.filter((item) => item === false).length;
     const hasRuns = recentResults.length > 0;
-    const title = hasRuns
-        ? `最近 ${recentResults.length} 次调用：${successCount} 成功，${failCount} 失败`
-        : "近期暂无调用记录";
+    const title = hasRuns ? `最近 ${recentResults.length} 次调用：${successCount} 成功，${failCount} 失败` : "近期暂无调用记录";
 
     return (
         <span className={cn("model-picker-availability-track", inPopover && "in-popover")} title={title} aria-label={title}>
@@ -616,11 +617,7 @@ export function ModelRecentHealthTrack({ availability, inPopover = false }: { av
                 const isSuccess = hasRun ? recentResults[idx] : null;
                 const stateClass = isSuccess === true ? "is-success" : isSuccess === false ? "is-failed" : "is-empty";
                 return (
-                    <span
-                        key={idx}
-                        className={cn("model-picker-availability-pill", inPopover && "in-popover", stateClass)}
-                        title={inPopover ? (hasRun ? `第 ${idx + 1} 次：${isSuccess ? "成功" : "失败"}` : `槽位 ${idx + 1}：未发生调用`) : undefined}
-                    />
+                    <span key={idx} className={cn("model-picker-availability-pill", inPopover && "in-popover", stateClass)} title={inPopover ? (hasRun ? `第 ${idx + 1} 次：${isSuccess ? "成功" : "失败"}` : `槽位 ${idx + 1}：未发生调用`) : undefined} />
                 );
             })}
         </span>
@@ -636,30 +633,22 @@ function ModelAvailabilityBadge({ availability, available, showAvailability }: {
     const failCount = recentResults.filter((item) => item === false).length;
     const hasRuns = recentResults.length > 0;
 
-    const label = availability?.dataState === "ready" && availability.rate24h !== null
-        ? `${Math.round(availability.rate24h * 100)}%`
-        : availability?.dataState === "insufficient"
-            ? "数据不足"
-            : "暂无数据";
+    const label = availability?.dataState === "ready" && availability.rate24h !== null ? `${Math.round(availability.rate24h * 100)}%` : availability?.dataState === "insufficient" ? "数据不足" : "暂无数据";
     const trend = availability?.trend7d || [];
     const trendSamples = trend.reduce((total, item) => total + item.sampleCount, 0);
     const summary = hasRuns
         ? `最近${recentResults.length}次调用：${successCount}成功、${failCount}失败；当前${available ? "可用" : "不可用"}`
         : availability
-            ? `当前${available ? "可用" : "不可用"}；近24小时${label}，暂无近期调用记录`
-            : `当前${available ? "可用" : "不可用"}；历史成功率暂不可用`;
+          ? `当前${available ? "可用" : "不可用"}；近24小时${label}，暂无近期调用记录`
+          : `当前${available ? "可用" : "不可用"}；历史成功率暂不可用`;
 
     const content = availability ? (
         <div className="model-picker-availability-popover">
             <div className="model-picker-availability-popover-head">
                 <strong>最近 10 次调用</strong>
-                <span className={failCount > 0 ? "has-failures" : ""}>
-                    {hasRuns ? `${successCount} 成功 / ${failCount} 失败` : "暂无调用记录"}
-                </span>
+                <span className={failCount > 0 ? "has-failures" : ""}>{hasRuns ? `${successCount} 成功 / ${failCount} 失败` : "暂无调用记录"}</span>
             </div>
-            <div className="model-picker-availability-popover-meta">
-                {hasRuns ? `共记录最近 ${recentResults.length} 次执行（绿=成功 红=失败 灰=无记录）` : "该模型近期尚无调用记录，默认展示10个空槽"}
-            </div>
+            <div className="model-picker-availability-popover-meta">{hasRuns ? `共记录最近 ${recentResults.length} 次执行（绿=成功 红=失败 灰=无记录）` : "该模型近期尚无调用记录，默认展示10个空槽"}</div>
             <div style={{ margin: "6px 0 8px" }}>
                 <ModelRecentHealthTrack availability={availability} inPopover />
             </div>
@@ -667,11 +656,15 @@ function ModelAvailabilityBadge({ availability, available, showAvailability }: {
                 <strong>近24小时成功率</strong>
                 <span>{label}</span>
             </div>
-            <div className="model-picker-availability-popover-meta">{availability.sampleCount24h} 次 create 尝试 · 7天样本 {trendSamples} 条</div>
+            <div className="model-picker-availability-popover-meta">
+                {availability.sampleCount24h} 次 create 尝试 · 7天样本 {trendSamples} 条
+            </div>
             <div className="model-picker-availability-trend" aria-label="近7天成功率趋势">
                 {trend.map((item) => {
                     const dayLabel = item.rate === null ? "暂无数据" : `${Math.round(item.rate * 100)}%`;
-                    return <span key={item.day} className={`model-picker-availability-segment is-${item.dataState}`} title={`${item.day}：${dayLabel}，${item.sampleCount} 条`} style={item.rate === null ? undefined : { opacity: 0.35 + item.rate * 0.65 }} />;
+                    return (
+                        <span key={item.day} className={`model-picker-availability-segment is-${item.dataState}`} title={`${item.day}：${dayLabel}，${item.sampleCount} 条`} style={item.rate === null ? undefined : { opacity: 0.35 + item.rate * 0.65 }} />
+                    );
                 })}
             </div>
             <div className="model-picker-availability-popover-foot">绿点=成功 · 红点=失败 · 灰点=空槽</div>
@@ -690,9 +683,7 @@ function ModelAvailabilityBadge({ availability, available, showAvailability }: {
                 onPointerDown={(event) => event.stopPropagation()}
             >
                 <ModelRecentHealthTrack availability={availability} />
-                <span className="model-picker-availability-label">
-                    {hasRuns ? `${successCount}/${recentResults.length}` : label}
-                </span>
+                <span className="model-picker-availability-label">{hasRuns ? `${successCount}/${recentResults.length}` : label}</span>
             </span>
         </Popover>
     );

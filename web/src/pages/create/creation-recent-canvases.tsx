@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useMemo, useRef, useState } from "react";
 import { App } from "antd";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +17,9 @@ import { cn } from "@/lib/utils";
 
 const RECENT_COUNT = 4;
 
-export function CreationRecentCanvases({ onRequireLogin, title = "最近画布", limit = RECENT_COUNT, variant = "strip" }: { onRequireLogin: () => void; title?: string; limit?: number; variant?: "strip" | "grid" | "cards" }) {
+export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_COUNT, variant = "strip" }: { onRequireLogin: () => void; title?: string; limit?: number; variant?: "strip" | "grid" | "cards" }) {
+    const { t } = useTranslation();
+    const heading = title || t("create.recent.title");
     const { message } = App.useApp();
     const navigate = useNavigate();
     const userId = useUserStore((state) => state.user?.id);
@@ -55,10 +58,10 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
         setCreating(true);
         try {
             const { id, syncError } = await createBlankCanvasProject();
-            if (syncError) message.warning("画布已保存在本机，云端同步尚未完成，将自动重试。");
+            if (syncError) message.warning(t("create.recent.syncPending"));
             navigate(`/canvas/${id}`);
         } catch (error) {
-            if (getActiveUserScope() === scope) message.error(error instanceof Error ? error.message : "创建画布失败，请重试");
+            if (getActiveUserScope() === scope) message.error(error instanceof Error ? error.message : t("create.recent.createFailed"));
         } finally {
             creatingRef.current = false;
             setCreating(false);
@@ -69,20 +72,20 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
         return (
             <section className="creation-recent-canvases workspace-canvas-section" aria-labelledby="creation-recent-title">
                 <header className="workspace-section-heading">
-                    <h2 id="creation-recent-title">{title}</h2>
+                    <h2 id="creation-recent-title">{heading}</h2>
                     <Link to="/canvas" className="workspace-section-link">
-                        全部画布
+                        {t("create.recent.allCanvases")}
                         <ArrowUpRight aria-hidden="true" />
                     </Link>
                 </header>
-                <div className="workspace-canvas-grid" role="list" aria-label={title} aria-busy={loading}>
+                <div className="workspace-canvas-grid" role="list" aria-label={heading} aria-busy={loading}>
                     <button type="button" className="workspace-canvas-create" disabled={!sessionHydrated || !canvasHydrated || creating} onClick={() => void createCanvas()} onPointerEnter={preload} onFocus={preload}>
                         {creating ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Plus aria-hidden="true" />}
-                        <span>{creating ? "正在创建…" : "新建画布"}</span>
+                        <span>{creating ? t("create.recent.creating") : t("create.recent.create")}</span>
                     </button>
                     {loading ? (
                         Array.from({ length: limit }, (_, index) => (
-                            <div key={index} className="workspace-canvas-card is-skeleton" role="listitem" aria-label="正在读取画布">
+                            <div key={index} className="workspace-canvas-card is-skeleton" role="listitem" aria-label={t("create.recent.loading")}>
                                 <span className="workspace-canvas-thumb" />
                                 <span className="workspace-canvas-body">
                                     <i />
@@ -92,9 +95,9 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
                         ))
                     ) : userId && recentQuery.isError ? (
                         <div className="workspace-canvas-state" role="listitem">
-                            <span role="alert">{title}暂时无法读取</span>
+                            <span role="alert">{t("create.recent.loadFailed")}</span>
                             <button type="button" onClick={() => void recentQuery.refetch()} disabled={recentQuery.isFetching}>
-                                {recentQuery.isFetching ? "重试中…" : "重试"}
+                                {recentQuery.isFetching ? t("create.recent.retrying") : t("common.retry")}
                             </button>
                         </div>
                     ) : recentProjects.length ? (
@@ -102,10 +105,10 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
                             <Link key={project.id} to={`/canvas/${project.id}`} className="workspace-canvas-card" role="listitem" onPointerEnter={preload} onFocus={preload} title={project.title}>
                                 <div className="workspace-canvas-thumb" aria-hidden="true">
                                     <ProjectPreview project={{ id: project.id, nodes: project.previewNodes }} preferLatestImage />
-                                    <span className="workspace-canvas-node-count">{project.nodeCount} 节点</span>
+                                    <span className="workspace-canvas-node-count">{t("create.recent.nodeCount", { count: project.nodeCount })}</span>
                                 </div>
                                 <div className="workspace-canvas-body">
-                                    <b>{project.title || "未命名画布"}</b>
+                                    <b>{project.title || t("create.recent.untitledCanvas")}</b>
                                     <small>
                                         <RelativeTime value={project.updatedAt} />
                                     </small>
@@ -115,10 +118,10 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
                     ) : (
                         <div className="workspace-canvas-state" role="listitem">
                             <PanelsTopLeft aria-hidden="true" />
-                            <span>{userId ? "还没有画布，把第一个想法留在这里。" : "登录后，最近的画布会显示在这里。"}</span>
+                            <span>{userId ? t("create.recent.empty") : t("create.recent.loginHint")}</span>
                             {!userId ? (
                                 <button type="button" onClick={onRequireLogin}>
-                                    登录
+                                    {t("shell.login")}
                                 </button>
                             ) : null}
                         </div>
@@ -133,35 +136,35 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
             <header className="creation-section-heading">
                 <h2 id="creation-recent-title">
                     <Clock3 aria-hidden="true" />
-                    {title}
+                    {heading}
                 </h2>
                 <Link to="/canvas" className="creation-section-link">
-                    查看全部
+                    {t("create.recent.viewAll")}
                     <ArrowUpRight aria-hidden="true" />
                 </Link>
             </header>
-            <div className={cn("creation-canvas-strip creation-scrollbar", variant === "grid" && "is-grid")} role="list" aria-label={title} aria-busy={loading}>
+            <div className={cn("creation-canvas-strip creation-scrollbar", variant === "grid" && "is-grid")} role="list" aria-label={heading} aria-busy={loading}>
                 <div className="creation-canvas-strip-item" role="listitem">
                     <button type="button" className="creation-canvas-tile is-create" disabled={!sessionHydrated || !canvasHydrated || creating} onClick={() => void createCanvas()} onPointerEnter={preload} onFocus={preload}>
                         <span className="creation-canvas-thumbnail is-create">{creating ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}</span>
                         <span className="creation-canvas-copy">
-                            <strong>{creating ? "正在创建…" : "创建画布"}</strong>
-                            <small>从空白开始</small>
+                            <strong>{creating ? t("create.recent.creating") : t("create.recent.create")}</strong>
+                            <small>{t("create.recent.fromBlank")}</small>
                         </span>
                     </button>
                 </div>
                 {loading ? (
                     Array.from({ length: limit }, (_, index) => (
-                        <div key={index} className="creation-canvas-strip-item creation-canvas-skeleton" role="listitem" aria-label="正在读取画布">
+                        <div key={index} className="creation-canvas-strip-item creation-canvas-skeleton" role="listitem" aria-label={t("create.recent.loading")}>
                             <span />
                             <span />
                         </div>
                     ))
                 ) : userId && recentQuery.isError ? (
                     <div className="creation-canvas-strip-state" role="listitem">
-                        <span role="alert">{title}暂时无法读取</span>
+                        <span role="alert">{t("create.recent.loadFailed")}</span>
                         <button type="button" onClick={() => void recentQuery.refetch()} disabled={recentQuery.isFetching}>
-                            {recentQuery.isFetching ? "重试中…" : "重试"}
+                            {recentQuery.isFetching ? t("create.recent.retrying") : t("common.retry")}
                         </button>
                     </div>
                 ) : recentProjects.length ? (
@@ -172,9 +175,9 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
                                     <ProjectPreview project={{ id: project.id, nodes: project.previewNodes }} preferLatestImage />
                                 </span>
                                 <span className="creation-canvas-copy">
-                                    <strong>{project.title || "未命名画布"}</strong>
+                                    <strong>{project.title || t("create.recent.untitledCanvas")}</strong>
                                     <small>
-                                        {project.nodeCount} 个节点 · <RelativeTime value={project.updatedAt} />
+                                        {t("create.recent.nodeCount", { count: project.nodeCount })} · <RelativeTime value={project.updatedAt} />
                                     </small>
                                 </span>
                             </Link>
@@ -183,10 +186,10 @@ export function CreationRecentCanvases({ onRequireLogin, title = "最近画布",
                 ) : (
                     <div className="creation-canvas-strip-state" role="listitem">
                         <PanelsTopLeft aria-hidden="true" />
-                        <span>{userId ? "还没有画布，把第一个想法留在这里。" : "登录后，最近的画布会显示在这里。"}</span>
+                        <span>{userId ? t("create.recent.empty") : t("create.recent.loginHint")}</span>
                         {!userId ? (
                             <button type="button" onClick={onRequireLogin}>
-                                登录
+                                {t("shell.login")}
                             </button>
                         ) : null}
                     </div>

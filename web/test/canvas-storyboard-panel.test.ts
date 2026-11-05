@@ -41,7 +41,8 @@ describe("storyboard prompt panel boundaries", () => {
     test("project style is a prominent setup command for every canvas", () => {
         const menu = readFileSync(resolve(import.meta.dir, "../src/components/canvas/canvas-create-menu.tsx"), "utf8");
         const commands = readFileSync(resolve(import.meta.dir, "../src/lib/canvas/tool-registry/definitions/add-node-menu-tools.tsx"), "utf8");
-        expect(menu).toContain('MenuSection title="项目设定"');
+        // 菜单文案已迁到 i18n，断言键名而不是中文字面量。
+        expect(menu).toContain('t("canvasA.createMenu.projectGroup")');
         expect(menu).toContain('variant="project"');
         expect(commands).toContain('label: "设置项目画风"');
         expect(commands).toContain('description: "统一分镜、图片和视频的视觉风格"');

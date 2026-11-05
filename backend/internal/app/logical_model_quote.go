@@ -138,7 +138,7 @@ func (s *Service) QuoteLogicalModel(userID string, logicalModelID string, intent
 		if routed.ChannelModel.Capability != capability || !supportsTokenBilling(capability, routed.ChannelModel.Protocol) {
 			return nil, BadAuthRequest("当前供应线路不支持前台模型的 Token 计费方式")
 		}
-		if capability == "video" && (routed.LogicalModel.InputPriceMicrocredits != 0 || routed.LogicalModel.CachedPriceMicrocredits != 0) {
+		if capability == "video" && (routed.LogicalModel.InputPriceMicrocredits != 0 || routed.LogicalModel.CachedPriceMicrocredits != 0 || routed.LogicalModel.CacheWritePriceMicrocredits != 0) {
 			return nil, BadAuthRequest("视频 Token 仅按视频用量定价，请将输入与缓存价格设为 0")
 		}
 		// 音频按输入量计价：统一定价也不允许用输出/缓存价参与报价，否则报价与实际用量口径不一致。
@@ -146,9 +146,10 @@ func (s *Service) QuoteLogicalModel(userID string, logicalModelID string, intent
 			return nil, BadAuthRequest("音频 Token 仅按输入量定价，请将输出与缓存价格设为 0")
 		}
 		tokenPricing := &model.ChannelModel{
-			InputTokenPriceMicrocredits:  routed.LogicalModel.InputPriceMicrocredits,
-			OutputTokenPriceMicrocredits: routed.LogicalModel.OutputPriceMicrocredits,
-			CachedTokenPriceMicrocredits: routed.LogicalModel.CachedPriceMicrocredits,
+			InputTokenPriceMicrocredits:      routed.LogicalModel.InputPriceMicrocredits,
+			OutputTokenPriceMicrocredits:     routed.LogicalModel.OutputPriceMicrocredits,
+			CachedTokenPriceMicrocredits:     routed.LogicalModel.CachedPriceMicrocredits,
+			CacheWriteTokenPriceMicrocredits: routed.LogicalModel.CacheWritePriceMicrocredits,
 		}
 		amount, err = tokenEstimateAmount(tokenPricing, tokenEstimate, groupBPS)
 		quantity = tokenEstimate.InputTokens + tokenEstimate.OutputTokens

@@ -43,6 +43,7 @@ export type PublicLogicalModel = {
     inputPriceMicrocredits: number;
     outputPriceMicrocredits: number;
     cachedPriceMicrocredits: number;
+    cacheWritePriceMicrocredits?: number;
     priceTiers: PublicLogicalModelPriceTier[];
     legacyModelIds: string[];
     capabilitySpec: CapabilitySpec;
@@ -60,6 +61,7 @@ export type PublicLogicalModelPriceTier = {
     inputTokenPriceMicrocredits: number;
     outputTokenPriceMicrocredits: number;
     cachedTokenPriceMicrocredits: number;
+    cacheWriteTokenPriceMicrocredits?: number;
 };
 
 export type AdminLogicalRoute = {
@@ -114,6 +116,7 @@ export type LogicalModelMutation = {
     inputPriceMicrocredits: number;
     outputPriceMicrocredits: number;
     cachedPriceMicrocredits: number;
+    cacheWritePriceMicrocredits?: number;
     legacyModelIds?: string[];
     capabilitySpec: CapabilitySpec;
     defaultOptions: Record<string, unknown>;
@@ -209,6 +212,7 @@ export type PublicChannelModelPriceTier = {
     inputTokenPriceMicrocredits: number;
     outputTokenPriceMicrocredits: number;
     cachedTokenPriceMicrocredits: number;
+    cacheWriteTokenPriceMicrocredits?: number;
 };
 
 export type ModelCatalogResponse = {

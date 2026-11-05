@@ -1,5 +1,8 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
 
+import { translate } from "@/i18n";
+import { localizedApiErrorMessage } from "@/services/api/error-codes";
+
 export type ApiParams = Record<string, string | string[] | number | number[] | undefined>;
 
 export type BackendEnvelope<T> = {
@@ -51,7 +54,7 @@ export async function request<T>(promise: Promise<{ data: BackendEnvelope<T>; st
         const response = await promise;
         if (response.status === 304 && options.allowNotModified) return { notModified: true } as T;
         if (response.data.code !== 0) {
-            throw new ApiError(response.data.msg || "请求失败", {
+            throw new ApiError(localizedApiErrorMessage(response.data.reason, response.data.msg || translate("errors.requestFailed")), {
                 status: response.status,
                 code: response.data.code,
                 reason: response.data.reason,
@@ -71,13 +74,13 @@ function unwrapTransportError(error: unknown): never {
         throw error;
     }
     if (axios.isCancel(error) || (axios.isAxiosError(error) && error.code === axios.AxiosError.ERR_CANCELED)) {
-        throw new DOMException("请求已取消", "AbortError");
+        throw new DOMException(translate("errors.canceled"), "AbortError");
     }
     const response = failedHttpResponse(error);
     if (response) {
         const status = response.status;
         const envelope = backendErrorEnvelope(response.data);
-        throw new ApiError(readBackendErrorMessage(response.data) || transportFailureMessage(status), {
+        throw new ApiError(localizedApiErrorMessage(envelope?.reason, readBackendErrorMessage(response.data) || transportFailureMessage(status)), {
             status,
             code: envelope?.code,
             reason: envelope?.reason,
@@ -89,10 +92,10 @@ function unwrapTransportError(error: unknown): never {
     }
     if (axios.isAxiosError(error) && !error.response) {
         // 无 HTTP 响应的传输失败交给调用方按幂等性和重试预算决定是否重试。
-        throw new ApiError("网络连接失败，请稍后重试", { retryable: true, cause: error });
+        throw new ApiError(translate("errors.networkFailed"), { retryable: true, cause: error });
     }
     if (error instanceof Error && isGenericTransportMessage(error.message)) {
-        throw new ApiError("请求失败", { cause: error });
+        throw new ApiError(translate("errors.requestFailed"), { cause: error });
     }
     throw error;
 }
@@ -100,15 +103,15 @@ function unwrapTransportError(error: unknown): never {
 function transportFailureMessage(status?: number) {
     switch (status) {
         case 400:
-            return "请求无效（HTTP 400），接口未返回具体原因，请检查填写内容后重试";
+            return translate("errors.badRequest");
         case 502:
-            return "后端服务暂时不可用，请稍后重试";
+            return translate("errors.badGateway");
         case 503:
-            return "服务暂时不可用，请稍后重试";
+            return translate("errors.unavailable");
         case 504:
-            return "服务响应超时，请稍后重试";
+            return translate("errors.timeout");
         default:
-            return "请求失败";
+            return translate("errors.requestFailed");
     }
 }
 

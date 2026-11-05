@@ -238,6 +238,27 @@ func (s *Service) CreateMembershipOrder(ctx context.Context, actor *model.User, 
 		return nil, NewAppError(http.StatusConflict, "未支付订单过多，请先完成或关闭已有订单")
 	}
 
+	// 会员价按 CNY 定价；渠道结算货币不同时必须按下单时汇率换算实收金额，
+	// 回调与对账都用这份快照校验（与充值商品一致）。
+	values, err := s.decryptPaymentConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	options, err := s.paymentProviderOptions(provider.Descriptor().ID, values)
+	if err != nil {
+		return nil, err
+	}
+	rateMicros := int64(0)
+	if options.SettlementCurrency != model.PriceCurrencyCNY {
+		if rateMicros, err = s.paymentRateMicros(); err != nil {
+			return nil, err
+		}
+	}
+	chargeAmount, appliedRate, err := convertPaymentAmount(amountFen, model.PriceCurrencyCNY, options.SettlementCurrency, rateMicros)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	order := &model.PaymentOrder{
 		ID: newID(), UserID: actor.ID, IdempotencyKey: idempotencyKey, MerchantOrderNo: newID(),
@@ -249,6 +270,7 @@ func (s *Service) CreateMembershipOrder(ctx context.Context, actor *model.User, 
 		ProviderConfigID:      config.ID,
 		ProviderConfigVersion: config.Version,
 		AmountFen:             amountFen, Currency: "CNY", CreditsMicrocredits: 0,
+		ChargeAmountFen: chargeAmount, ChargeCurrency: options.SettlementCurrency, ExchangeRateMicros: appliedRate,
 		Status: model.PaymentOrderCreated, CheckoutMode: provider.Descriptor().CheckoutMode,
 		ExpiresAt: now.Add(time.Duration(config.CloseAfterMinutes) * time.Minute),
 

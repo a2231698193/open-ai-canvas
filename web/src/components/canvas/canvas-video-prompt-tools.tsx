@@ -7,6 +7,8 @@ import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { VIDEO_GENERATION_MODE_OPTIONS, clampVideoGenerationMode, normalizeVideoGenerationMode, supportedVideoGenerationModes, videoFrameSelectionPatch, videoGenerationModeFromMetadata, videoModeOperation, type VideoGenerationMode, type VideoModeCapabilityLike } from "@/lib/video-generation-mode";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
+import { useTranslation } from "react-i18next";
+import { translate } from "@/i18n";
 
 type VideoFrameOption = {
     nodeId: string;
@@ -67,6 +69,7 @@ export function CanvasVideoModePicker({ metadata, referenceSummary, videoProfile
 }
 
 export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChange, referenceMode = "frames", referenceSummary }: CanvasVideoPromptToolsProps) {
+    const { t } = useTranslation();
     const theme = canvasThemes[useActiveTheme()];
     const videoMode = selectedVideoMode(metadata, referenceSummary);
     const startFrame = metadata?.videoStartFrameNodeId || EMPTY_FRAME_VALUE;
@@ -85,13 +88,13 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
                 className="flex min-h-8 min-w-0 items-center gap-2 rounded-md px-2 py-2"
                 data-canvas-no-zoom
                 style={{ background: theme.toolbar.itemHover, color: theme.node.text }}
-                title="已连接的图片、视频和音频会按工作流字段映射传入"
+                title={t("canvasC.videoPromptTools.workflowReferenceHint")}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
             >
                 <ImageIcon className="size-3.5 shrink-0 opacity-80" />
-                <span className="shrink-0 text-[var(--fs-tiny)] font-medium">工作流参考</span>
-                <span className="min-w-0 truncate text-[var(--fs-micro)] opacity-65">{summary || "尚未连接媒体"}</span>
+                <span className="shrink-0 text-[var(--fs-tiny)] font-medium">{t("canvasC.videoPromptTools.workflowReference")}</span>
+                <span className="min-w-0 truncate text-[var(--fs-micro)] opacity-65">{summary || t("canvasC.videoPromptTools.noMedia")}</span>
             </div>
         );
     }
@@ -106,17 +109,17 @@ export function CanvasVideoPromptTools({ metadata, frameOptions, onMetadataChang
             onPointerDown={(event) => event.stopPropagation()}
         >
             {videoMode === "image" ? (
-                <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
+                <FrameMenu label={t("canvasC.videoPromptTools.startFrame")} value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
             ) : null}
             {videoMode === "keyframes" ? (
                 <div className="grid min-w-0 grid-cols-2 items-center gap-1">
-                    <FrameMenu label="首帧" value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
-                    <FrameMenu label="尾帧" value={endFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoEndFrameNodeId", value)} />
+                    <FrameMenu label={t("canvasC.videoPromptTools.startFrame")} value={startFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoStartFrameNodeId", value)} />
+                    <FrameMenu label={t("canvasC.videoPromptTools.endFrame")} value={endFrame} options={frameOptions} theme={theme} onChange={(value) => setFrame("videoEndFrameNodeId", value)} />
                 </div>
             ) : null}
             {videoMode === "text" || videoMode === "reference" ? (
                 <div className="min-w-0 truncate px-1.5 py-1 text-[var(--fs-micro)] opacity-60">
-                    {videoMode === "text" ? "本次只使用提示词，不发送已连接媒体" : summary || "尚未连接媒体"}
+                    {videoMode === "text" ? t("canvasC.videoPromptTools.textOnlyHint") : summary || t("canvasC.videoPromptTools.noMedia")}
                 </div>
             ) : null}
         </div>
@@ -136,16 +139,17 @@ function selectedVideoMode(metadata?: CanvasNodeMetadata, referenceSummary?: { i
 function referenceSummaryLabel(referenceSummary?: { imageCount: number; videoCount: number; audioCount: number }) {
     return referenceSummary
         ? [
-              referenceSummary.imageCount ? `${referenceSummary.imageCount} 图` : "",
-              referenceSummary.videoCount ? `${referenceSummary.videoCount} 视频` : "",
-              referenceSummary.audioCount ? `${referenceSummary.audioCount} 音频` : "",
+              referenceSummary.imageCount ? translate("canvasC.videoPromptTools.imageCount", { count: referenceSummary.imageCount }) : "",
+              referenceSummary.videoCount ? translate("canvasC.videoPromptTools.videoCount", { count: referenceSummary.videoCount }) : "",
+              referenceSummary.audioCount ? translate("canvasC.videoPromptTools.audioCount", { count: referenceSummary.audioCount }) : "",
           ].filter(Boolean).join(" · ")
         : "";
 }
 
 function FrameMenu({ label, value, options, theme, onChange }: { label: string; value: string; options: VideoFrameOption[]; theme: CanvasTheme; onChange: (value: string) => void }) {
+    const { t } = useTranslation();
     const selected = options.find((item) => item.nodeId === value);
-    const items = [{ value: EMPTY_FRAME_VALUE, label: options.length ? "不指定" : "尚未连接图片" }, ...options.map((option) => ({ value: option.nodeId, label: `${option.label} · ${option.title}`, previewUrl: option.previewUrl }))];
+    const items = [{ value: EMPTY_FRAME_VALUE, label: options.length ? t("canvasC.videoPromptTools.none") : t("canvasC.videoPromptTools.noMedia") }, ...options.map((option) => ({ value: option.nodeId, label: `${option.label} · ${option.title}`, previewUrl: option.previewUrl }))];
     return (
         <CompactMenuButton
             theme={theme}

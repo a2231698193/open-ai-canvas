@@ -70,6 +70,8 @@ type TopupProduct struct {
 	Kind        TopupProductKind `json:"kind" gorm:"size:24;not null;default:credits;index"`
 	AmountFen   int64            `json:"amountFen" gorm:"index"`
 	// Currency 是售价货币；AmountFen 统一表示该货币的最小单位（分 / 美分）。
+	// 列默认值保持 CNY：Schema 75 用它把升级前的旧商品归为人民币。新建商品总是显式写入货币
+	// （为空时取后台默认充值货币，默认 USD），不依赖列默认值。
 	Currency            string `json:"currency" gorm:"size:8;not null;default:CNY"`
 	CreditsMicrocredits int64  `json:"creditsMicrocredits"`
 	// StorageBytes / StorageDurationDays 只对 storage 商品有效；天数为 0 表示永久扩容。
@@ -137,6 +139,13 @@ type PaymentOrder struct {
 	ProviderConfigVersion              int64                `json:"providerConfigVersion"`
 	AmountFen                          int64                `json:"amountFen"`
 	Currency                           string               `json:"currency" gorm:"size:8"`
+	// ChargeAmountFen / ChargeCurrency 是下单时向渠道实际收取的金额快照。渠道结算货币与商品货币不同时
+	// 按 ExchangeRateMicros（1 USD 兑换的 CNY × 1e6）换算；同币种时与 AmountFen / Currency 相同。
+	// 回调、查单和对账都按实收金额校验，汇率调整不影响已创建的订单。
+	ChargeAmountFen     int64              `json:"chargeAmountFen" gorm:"not null;default:0"`
+	ChargeCurrency      string             `json:"chargeCurrency" gorm:"size:8;not null;default:''"`
+	ExchangeRateMicros  int64              `json:"exchangeRateMicros" gorm:"not null;default:0"`
+	PaymentMethod       string             `json:"paymentMethod" gorm:"size:40;not null;default:''"`
 	CreditsMicrocredits                int64                `json:"creditsMicrocredits"`
 	Status                             PaymentOrderStatus   `json:"status" gorm:"size:24;index;index:idx_payment_order_status_expiry,priority:1"`
 	ProviderTradeNo                    *string              `json:"providerTradeNo,omitempty" gorm:"size:96;uniqueIndex:idx_payment_provider_trade,priority:2"`

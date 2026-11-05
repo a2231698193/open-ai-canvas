@@ -304,9 +304,10 @@ describe("asset kind clear wiring", () => {
         const page = readFileSync(resolve(import.meta.dir, "../src/pages/assets/index.tsx"), "utf8");
         const panels = readFileSync(resolve(import.meta.dir, "../src/pages/assets/asset-library-panels.tsx"), "utf8");
         const sync = readFileSync(resolve(import.meta.dir, "../src/services/user-data-sync.ts"), "utf8");
-        const kindStart = page.indexOf('title="素材类型"');
-        const categoryStart = page.indexOf('title="业务分类"');
-        const folderStart = page.indexOf("我的分类");
+        // 界面文案走 i18n 后，按目录键定位分组（键顺序即分组顺序）。
+        const kindStart = page.indexOf('t("library.assets.page.kindFilter")');
+        const categoryStart = page.indexOf('t("library.assets.batch.category")');
+        const folderStart = page.indexOf('t("library.assets.page.myFolders")');
         expect(kindStart).toBeGreaterThanOrEqual(0);
         expect(categoryStart).toBeGreaterThan(kindStart);
         const kindGroup = page.slice(kindStart, categoryStart);
