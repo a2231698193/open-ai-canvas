@@ -748,7 +748,7 @@ func paymentOrderView(order model.PaymentOrder) PaymentOrderView {
 		MembershipPreviousPlanName: order.MembershipPreviousPlanName, MembershipRemainingDays: order.MembershipRemainingDays,
 		MembershipMonthlyGrantMicrocredits: order.MembershipMonthlyGrantMicrocredits,
 		MembershipCreditDiffMicrocredits:   order.MembershipCreditDiffMicrocredits,
-		ProviderID: order.ProviderID, PaymentMethod: order.PaymentMethod, AmountFen: order.AmountFen, Currency: order.Currency,
+		ProviderID:                         order.ProviderID, PaymentMethod: order.PaymentMethod, AmountFen: order.AmountFen, Currency: order.Currency,
 		ChargeAmountFen: order.ChargeAmountFen, ChargeCurrency: order.ChargeCurrency, ExchangeRate: formatPaymentRate(order.ExchangeRateMicros),
 		CreditsMicrocredits: order.CreditsMicrocredits, Status: order.Status, ProviderStatus: order.ProviderStatus,
 		ProviderTradeNo: providerTradeNo, Checkout: checkout, ExpiresAt: order.ExpiresAt,

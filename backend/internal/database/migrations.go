@@ -277,7 +277,7 @@ var schemaMigrations = []migration{
 		}
 		return tx.Migrator().AddColumn(&model.DramaSegment{}, "ReferenceCastIDsJSON")
 	}},
-// 官方 v75–v78 在本仓库顺延为 v79–v82，v79 顺延为 v83，v80–v82 顺延为 v84–v86。
+	// 官方 v75–v78 在本仓库顺延为 v79–v82，v79 顺延为 v83，v80–v82 顺延为 v84–v86。
 	{version: 79, name: "user_groups_pricing_currency", checksum: "sha256:user-groups-pricing-currency-v79-20261028", apply: migrateUserGroupsPricingCurrency},
 	{version: 80, name: "agent_memory_document_skill_discovery", checksum: "sha256:agent-memory-document-skill-discovery-v80-20261028", apply: migrateAgentMemoryDocumentSkillDiscovery},
 	{version: 81, name: "agent_memory_document_columns", checksum: "sha256:agent-memory-document-columns-v81-20261028", apply: migrateAgentMemoryDocumentColumns},

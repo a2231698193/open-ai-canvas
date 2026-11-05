@@ -33,6 +33,6 @@ HTTP 路由由 `backend/internal/handler/ecommerce.go` 和 `ecommerce_agent.go` 
 
 `/api/ecommerce` 下提供项目、创意方向与技能提示接口；`/api/ecommerce/knowledge` 下提供知识与阶段模型管理接口，由服务端执行管理员权限校验。`/api/agent/quote`、`/api/agent/analyze`、`/api/agent/generate` 等接口提供独立 Agent 协议；`/api/canvas`、`/api/task` 下提供对应画布版本及任务查询接口。具体请求与响应以 handler 和前端 API 类型为准。管理员权限与用户资源归属均在服务端校验。
 
-迁移 79 新增 `ecommerce_projects`、`ecommerce_knowledge_sources`、`ecommerce_knowledge_entries`、`ecommerce_creative_recommendations`、`ecommerce_agent_analyses`、`ecommerce_agent_runs`、`ecommerce_agent_pages`、`ecommerce_agent_canvas_versions`，包括知识域索引。保留上游 1–78 的迁移身份。电商图片读取使用 `ecommerce-export`，仅允许当前用户拥有的、32 MB 以内的 PNG、JPEG、WebP 原图，经受限同源流读取。
+迁移 83 新增 `ecommerce_projects`、`ecommerce_knowledge_sources`、`ecommerce_knowledge_entries`、`ecommerce_creative_recommendations`、`ecommerce_agent_analyses`、`ecommerce_agent_runs`、`ecommerce_agent_pages`、`ecommerce_agent_canvas_versions`，包括知识域索引。保留既有 1–82 的迁移身份。电商图片读取使用 `ecommerce-export`，仅允许当前用户拥有的、32 MB 以内的 PNG、JPEG、WebP 原图，经受限同源流读取。
 
 本次功能未包含旧版通用画布的一键详情／复刻节点，也不引入品牌、登录注册、支付充值或部署定制。真实浏览器、付费生成及已有部署的完整升级流程仍需人工验收；自动化数据库迁移和初始化检查不能代替这些验收。

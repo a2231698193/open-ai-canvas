@@ -146,21 +146,21 @@ type PaymentOrder struct {
 	ChargeCurrency      string             `json:"chargeCurrency" gorm:"size:8;not null;default:''"`
 	ExchangeRateMicros  int64              `json:"exchangeRateMicros" gorm:"not null;default:0"`
 	PaymentMethod       string             `json:"paymentMethod" gorm:"size:40;not null;default:''"`
-	CreditsMicrocredits                int64                `json:"creditsMicrocredits"`
-	Status                             PaymentOrderStatus   `json:"status" gorm:"size:24;index;index:idx_payment_order_status_expiry,priority:1"`
-	ProviderTradeNo                    *string              `json:"providerTradeNo,omitempty" gorm:"size:96;uniqueIndex:idx_payment_provider_trade,priority:2"`
-	ProviderStatus                     string               `json:"providerStatus,omitempty" gorm:"size:40;index"`
-	CheckoutMode                       string               `json:"checkoutMode,omitempty" gorm:"size:24"`
-	CheckoutValue                      string               `json:"-" gorm:"type:text"`
-	CheckoutExpiresAt                  *time.Time           `json:"checkoutExpiresAt,omitempty"`
-	ExpiresAt                          time.Time            `json:"expiresAt" gorm:"index:idx_payment_order_status_expiry,priority:2"`
-	ProviderPaidAt                     *time.Time           `json:"providerPaidAt,omitempty" gorm:"index"`
-	CreditedAt                         *time.Time           `json:"creditedAt,omitempty" gorm:"index"`
-	ClosedAt                           *time.Time           `json:"closedAt,omitempty" gorm:"index"`
-	LastQueriedAt                      *time.Time           `json:"lastQueriedAt,omitempty"`
-	LastError                          string               `json:"lastError,omitempty" gorm:"size:1000"`
-	CreatedAt                          time.Time            `json:"createdAt" gorm:"index"`
-	UpdatedAt                          time.Time            `json:"updatedAt"`
+	CreditsMicrocredits int64              `json:"creditsMicrocredits"`
+	Status              PaymentOrderStatus `json:"status" gorm:"size:24;index;index:idx_payment_order_status_expiry,priority:1"`
+	ProviderTradeNo     *string            `json:"providerTradeNo,omitempty" gorm:"size:96;uniqueIndex:idx_payment_provider_trade,priority:2"`
+	ProviderStatus      string             `json:"providerStatus,omitempty" gorm:"size:40;index"`
+	CheckoutMode        string             `json:"checkoutMode,omitempty" gorm:"size:24"`
+	CheckoutValue       string             `json:"-" gorm:"type:text"`
+	CheckoutExpiresAt   *time.Time         `json:"checkoutExpiresAt,omitempty"`
+	ExpiresAt           time.Time          `json:"expiresAt" gorm:"index:idx_payment_order_status_expiry,priority:2"`
+	ProviderPaidAt      *time.Time         `json:"providerPaidAt,omitempty" gorm:"index"`
+	CreditedAt          *time.Time         `json:"creditedAt,omitempty" gorm:"index"`
+	ClosedAt            *time.Time         `json:"closedAt,omitempty" gorm:"index"`
+	LastQueriedAt       *time.Time         `json:"lastQueriedAt,omitempty"`
+	LastError           string             `json:"lastError,omitempty" gorm:"size:1000"`
+	CreatedAt           time.Time          `json:"createdAt" gorm:"index"`
+	UpdatedAt           time.Time          `json:"updatedAt"`
 }
 
 // PaymentNotification is a durable, verified inbox. NormalizedJSON contains
