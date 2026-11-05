@@ -259,6 +259,9 @@ func DefaultModelCapabilityConfigForModel(protocol string, modelName string) *Mo
 	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-video") {
 		applyLK888VideoCapability(video, modelName)
 	}
+	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-kling-video") {
+		applyLK888KlingVideoCapability(video, modelName)
+	}
 	if strings.EqualFold(strings.TrimSpace(protocol), "lk888-seedance") || strings.EqualFold(strings.TrimSpace(protocol), "lk888-seedance-anmiao") {
 		applyLK888SeedanceCapability(video, modelName)
 	}
@@ -280,6 +283,52 @@ func applyLK888SeedanceCapability(video *VideoCapabilityConfig, modelName string
 		video.Resolutions = []string{"480p", "720p"}
 	}
 	video.DefaultResolution = "720p"
+}
+
+// applyLK888KlingVideoCapability 是按模型覆盖问鼎可灵插件（lk888-kling-video）的能力：
+// 动作控制 V3 是参考视频驱动的视频改写（无时长/画幅参数，分辨率档位实际映射上游 mode），
+// V4 是文生/图生/参考生一体的通用视频模型。两者协议相同、参数集不同。
+func applyLK888KlingVideoCapability(video *VideoCapabilityConfig, modelName string) {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "kling-motion-control-v3":
+		video.Operations = []string{"reference_to_video"}
+		video.DefaultOperation = "reference_to_video"
+		video.References.MinImages = 1
+		video.References.MaxImages = 1
+		video.References.MaxImageBytes = 10 * 1024 * 1024
+		video.References.MaxVideos = 1
+		video.References.MaxVideoBytes = 100 * 1024 * 1024
+		video.References.MaxVideoDuration = 30
+		video.References.MaxAudios = 0
+		video.References.ImageRoles = []string{"reference_image"}
+		// 成片时长由参考视频决定，画布不提供时长输入；分辨率档位映射上游 mode（std/pro）。
+		durationUnsupported := false
+		video.DurationSupported = &durationUnsupported
+		video.Ratios = nil
+		video.DefaultRatio = ""
+		video.Resolutions = []string{"720p", "1080p"}
+		video.DefaultResolution = "720p"
+		video.GenerateAudio = VideoBooleanConfig{Supported: true, Default: false}
+		video.Watermark = VideoBooleanConfig{Supported: false, Default: false}
+	case "kling-v4-video":
+		video.Operations = []string{"text_to_video", "image_to_video", "reference_to_video"}
+		// 协议只有一个 image_url 数组，没有首尾帧字段：与万相参考生一致，只开放首帧与参考图，
+		// 避免画布「首尾帧参考」把两张图当帧序列发出去。
+		video.References.ImageRoles = []string{"first_frame", "reference_image"}
+		video.References.MaxImages = 10
+		video.References.MaxImageBytes = 30 * 1024 * 1024
+		video.References.MaxVideos = 5
+		video.References.MaxVideoBytes = 200 * 1024 * 1024
+		video.References.MaxVideoDuration = 30
+		video.References.MaxAudios = 0
+		video.Duration = VideoDurationConfig{Selection: "range", Min: 3, Max: 30, Step: 1, Default: 5}
+		video.Ratios = []string{"16:9", "9:16", "1:1", "21:9"}
+		video.DefaultRatio = "16:9"
+		video.Resolutions = []string{"720p", "1080p"}
+		video.DefaultResolution = "720p"
+		video.GenerateAudio = VideoBooleanConfig{Supported: false, Default: false}
+		video.Watermark = VideoBooleanConfig{Supported: false, Default: false}
+	}
 }
 
 func applyLK888VideoCapability(video *VideoCapabilityConfig, modelName string) {

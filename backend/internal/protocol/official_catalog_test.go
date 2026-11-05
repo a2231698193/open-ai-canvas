@@ -1503,6 +1503,129 @@ func TestLK888VideoProfile(t *testing.T) {
 	}
 }
 
+func TestLK888KlingVideoProfile(t *testing.T) {
+	adapter := officialPackageAdapter(t, "lk888-kling-video.yingce-plugin", "lk888-kling-video")
+
+	motion, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-motion-control-v3", Prompt: "让图中人物按视频动作起舞", GenerateAudio: true,
+		Images: []MediaReference{{URL: "https://cdn.example/hero.png", Role: "reference_image"}},
+		Videos: []MediaReference{{URL: "https://cdn.example/motion.mp4", Role: "reference_video"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	motionBody := manifestTestBody(t, motion)
+	motionParams, _ := motionBody["params"].(map[string]any)
+	if motion.Path != "/v1/media/generate" || motionBody["model"] != "kling-motion-control-v3" {
+		t.Fatalf("kling motion create = %#v, body = %#v", motion, motionBody)
+	}
+	// 动作控制固定单图单视频：image_url / video_url 是字符串，不是数组。
+	if motionParams["image_url"] != "https://cdn.example/hero.png" || motionParams["video_url"] != "https://cdn.example/motion.mp4" {
+		t.Fatalf("kling motion media params = %#v", motionParams)
+	}
+	if motionParams["mode"] != "std" || motionParams["character_orientation"] != "video" || motionParams["keep_original_sound"] != "yes" {
+		t.Fatalf("kling motion enums = %#v", motionParams)
+	}
+	for _, unsupported := range []string{"duration", "aspect_ratio", "resolution"} {
+		if _, ok := motionParams[unsupported]; ok {
+			t.Fatalf("kling motion must not send %s: %#v", unsupported, motionParams)
+		}
+	}
+
+	pro, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-motion-control-v3", Prompt: "动作", Resolution: "1080p",
+		Images: []MediaReference{{URL: "https://cdn.example/hero.png", Role: "reference_image"}},
+		Videos: []MediaReference{{URL: "https://cdn.example/motion.mp4", Role: "reference_video"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proParams, _ := manifestTestBody(t, pro)["params"].(map[string]any)
+	if proParams["mode"] != "pro" {
+		t.Fatalf("1080p must map kling motion to pro: %#v", proParams)
+	}
+
+	override, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-motion-control-v3", Prompt: "动作",
+		Images: []MediaReference{{URL: "https://cdn.example/hero.png", Role: "reference_image"}},
+		Videos: []MediaReference{{URL: "https://cdn.example/motion.mp4", Role: "reference_video"}},
+		ProviderOptions: map[string]map[string]any{"lk888-kling-video": {
+			"mode": "pro", "character_orientation": "image", "keep_original_sound": "no",
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrideParams, _ := manifestTestBody(t, override)["params"].(map[string]any)
+	if overrideParams["mode"] != "pro" || overrideParams["character_orientation"] != "image" || overrideParams["keep_original_sound"] != "no" {
+		t.Fatalf("kling motion providerOptions must win: %#v", overrideParams)
+	}
+
+	// 动作控制缺少参考图或参考视频时必须在提交前被拦截。
+	if _, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model:  "kling-motion-control-v3",
+		Images: []MediaReference{{URL: "https://cdn.example/hero.png", Role: "reference_image"}},
+	}}); err == nil {
+		t.Fatal("动作控制缺少参考视频时必须被 validations 拦截")
+	}
+
+	v4, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+		Model: "kling-v4-video", Prompt: "黄昏城市街头的女孩", Duration: 12, AspectRatio: "21:9", Resolution: "1080p",
+		Images: []MediaReference{
+			{URL: "https://cdn.example/look.png", Role: "reference_image", Order: 1},
+			{URL: "https://cdn.example/pose.png", Role: "reference_image", Order: 2},
+		},
+		Videos: []MediaReference{{URL: "https://cdn.example/motion.mp4", Role: "reference_video"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v4Body := manifestTestBody(t, v4)
+	v4Params, _ := v4Body["params"].(map[string]any)
+	images, _ := v4Params["image_url"].([]any)
+	videos, _ := v4Params["video_url"].([]any)
+	if len(images) != 2 || images[0] != "https://cdn.example/look.png" || len(videos) != 1 {
+		t.Fatalf("kling v4 reference arrays = %#v", v4Params)
+	}
+	if v4Params["duration"] != "12" || v4Params["aspect_ratio"] != "21:9" || v4Params["resolution"] != "1080p" {
+		t.Fatalf("kling v4 screen params = %#v", v4Params)
+	}
+	// 动作控制专属参数不能出现在 V4 请求里。
+	for _, unsupported := range []string{"mode", "character_orientation", "keep_original_sound"} {
+		if _, ok := v4Params[unsupported]; ok {
+			t.Fatalf("kling v4 must not send %s: %#v", unsupported, v4Params)
+		}
+	}
+
+	textOnly, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{Model: "kling-v4-video", Prompt: "只写提示词"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	textParams, _ := manifestTestBody(t, textOnly)["params"].(map[string]any)
+	if textParams["duration"] != "5" || textParams["aspect_ratio"] != "16:9" || textParams["resolution"] != "720p" {
+		t.Fatalf("kling v4 defaults = %#v", textParams)
+	}
+	if _, ok := textParams["image_url"]; ok {
+		t.Fatalf("kling v4 must not send empty image_url: %#v", textParams)
+	}
+
+	created, err := adapter.ParseCreate(context.Background(), []byte(`{"code":200,"data":{"task_id":654321},"msg":"任务创建成功"}`))
+	if err != nil || created.TaskID != "654321" {
+		t.Fatalf("lk888 kling create response = %#v, err = %v", created, err)
+	}
+	result, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "654321"}, []byte(`{"task_id":654321,"state":"success","is_final":true,"result_url":"https://cdn.example/out.mp4","result_type":"video"}`))
+	if err != nil || result.Status != StatusSucceeded || result.Result == nil || len(result.Result.Videos) != 1 || result.Result.Videos[0].URL != "https://cdn.example/out.mp4" {
+		t.Fatalf("lk888 kling success = %#v, err = %v", result, err)
+	}
+	failed, err := adapter.ParsePoll(context.Background(), PollContext{TaskID: "654321"}, []byte(`{"task_id":654321,"state":"failed","is_final":true,"error":"视频时长超限"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != StatusFailed || failed.Result != nil || failed.Message != "视频时长超限" {
+		t.Fatalf("lk888 kling failure must stay failed: %#v", failed)
+	}
+}
+
 func TestLK888SeedanceProfile(t *testing.T) {
 	adapter := officialPackageAdapter(t, "lk888-seedance.yingce-plugin", "lk888-seedance")
 	create, err := adapter.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{

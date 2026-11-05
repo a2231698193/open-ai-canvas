@@ -555,14 +555,18 @@ func CapabilitySpecFromModelCapabilityConfig(config *ModelCapabilityConfig, capa
 		addInputConstraint(spec.Inputs, "image", video.References.MinImages, video.References.MaxImages)
 		addInputConstraint(spec.Inputs, "video", 0, video.References.MaxVideos)
 		addInputConstraint(spec.Inputs, "audio", 0, video.References.MaxAudios)
-		if video.Duration.Selection == "enum" {
-			values := make([]any, 0, len(video.Duration.Values))
-			for _, value := range video.Duration.Values {
-				values = append(values, value)
+		// 时长由源视频决定的模型（如可灵动作控制）不声明 videoSeconds：
+		// 声明后前端会把全局时长当成真实请求参数，路由匹配反而会因 0 长度区间失败。
+		if videoDurationSupported(video) {
+			if video.Duration.Selection == "enum" {
+				values := make([]any, 0, len(video.Duration.Values))
+				for _, value := range video.Duration.Values {
+					values = append(values, value)
+				}
+				spec.Options["videoSeconds"] = OptionConstraint{Values: values}
+			} else {
+				spec.Options["videoSeconds"] = numericRange(float64(video.Duration.Min), float64(video.Duration.Max), float64(video.Duration.Step))
 			}
-			spec.Options["videoSeconds"] = OptionConstraint{Values: values}
-		} else {
-			spec.Options["videoSeconds"] = numericRange(float64(video.Duration.Min), float64(video.Duration.Max), float64(video.Duration.Step))
 		}
 		if len(video.Ratios) > 0 {
 			spec.Options["size"] = anyValues(video.Ratios)

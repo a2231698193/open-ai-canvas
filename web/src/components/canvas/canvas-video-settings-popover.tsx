@@ -15,7 +15,7 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, ...popover 
     const parts: string[] = [];
     if (profile?.resolutions.length) parts.push(videoResolutionLabel(resolveVideoResolutionValue(profile, config.vquality)));
     if (profile?.ratios.length) parts.push(videoSizeLabel(resolveVideoRatioValue(profile, config.size)));
-    parts.push(videoSecondsLabel(config.videoSeconds));
+    if (profile?.durationSupported !== false) parts.push(videoSecondsLabel(config.videoSeconds));
     return <CanvasSettingsPopover {...popover} label={t("canvasC.videoSettings.label")} summary={parts.join(" · ")}>
         <VideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} className="space-y-3" />
     </CanvasSettingsPopover>;

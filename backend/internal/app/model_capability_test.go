@@ -186,6 +186,48 @@ func TestLK888VideoCapabilitiesUseModelLimits(t *testing.T) {
 	}
 }
 
+func TestLK888KlingVideoCapabilitiesFollowPluginParameters(t *testing.T) {
+	motion := DefaultModelCapabilityConfigForModel("lk888-kling-video", "kling-motion-control-v3").Video
+	if fmt.Sprint(motion.Operations) != fmt.Sprint([]string{"reference_to_video"}) || motion.DefaultOperation != "reference_to_video" {
+		t.Fatalf("lk888 kling motion operations = %#v", motion)
+	}
+	if motion.References.MinImages != 1 || motion.References.MaxImages != 1 || motion.References.MaxImageBytes != 10*1024*1024 {
+		t.Fatalf("lk888 kling motion image limits = %#v", motion.References)
+	}
+	if motion.References.MaxVideos != 1 || motion.References.MaxVideoBytes != 100*1024*1024 || motion.References.MaxVideoDuration != 30 {
+		t.Fatalf("lk888 kling motion video limits = %#v", motion.References)
+	}
+	if fmt.Sprint(motion.References.ImageRoles) != fmt.Sprint([]string{"reference_image"}) {
+		t.Fatalf("lk888 kling motion image roles = %#v", motion.References.ImageRoles)
+	}
+	if videoDurationSupported(motion) || len(motion.Ratios) != 0 || fmt.Sprint(motion.Resolutions) != fmt.Sprint([]string{"720p", "1080p"}) {
+		t.Fatalf("lk888 kling motion screen spec = %#v", motion)
+	}
+	if !motion.GenerateAudio.Supported || motion.GenerateAudio.Default {
+		t.Fatalf("lk888 kling motion audio = %#v", motion.GenerateAudio)
+	}
+
+	v4 := DefaultModelCapabilityConfigForModel("lk888-kling-video", "kling-v4-video").Video
+	if fmt.Sprint(v4.Operations) != fmt.Sprint([]string{"text_to_video", "image_to_video", "reference_to_video"}) {
+		t.Fatalf("lk888 kling v4 operations = %#v", v4.Operations)
+	}
+	if v4.References.MaxImages != 10 || v4.References.MaxVideos != 5 || v4.References.MaxVideos == 0 || v4.References.MaxVideoDuration != 30 {
+		t.Fatalf("lk888 kling v4 reference limits = %#v", v4.References)
+	}
+	if fmt.Sprint(v4.Ratios) != fmt.Sprint([]string{"16:9", "9:16", "1:1", "21:9"}) || fmt.Sprint(v4.Resolutions) != fmt.Sprint([]string{"720p", "1080p"}) {
+		t.Fatalf("lk888 kling v4 screen spec = %#v", v4)
+	}
+	if v4.Duration.Selection != "range" || v4.Duration.Min != 3 || v4.Duration.Max != 30 {
+		t.Fatalf("lk888 kling v4 duration = %#v", v4.Duration)
+	}
+
+	// 两个模型共用同一 provider，另一个插件（lk888-video）的能力不能被串改。
+	legacy := DefaultModelCapabilityConfigForModel("lk888-video", "kling-v3-video").Video
+	if fmt.Sprint(legacy.Duration.Values) != fmt.Sprint([]int{5, 10, 15}) {
+		t.Fatalf("lk888-video kling capability regressed = %#v", legacy)
+	}
+}
+
 func TestLK888SeedanceCapabilitiesIncludeAdaptiveRatio(t *testing.T) {
 	standard := DefaultModelCapabilityConfigForModel("lk888-seedance", "doubao-seedance-2-0-260128").Video
 	if standard.DefaultRatio != "adaptive" || fmt.Sprint(standard.Ratios) != fmt.Sprint([]string{"adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}) || fmt.Sprint(standard.Resolutions) != fmt.Sprint([]string{"480p", "720p", "1080p", "4k"}) {

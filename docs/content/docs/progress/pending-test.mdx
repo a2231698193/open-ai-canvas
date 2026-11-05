@@ -5,6 +5,15 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 问鼎可灵视频插件：动作控制 V3 与 V4
+
+- 已实现：新增官方声明式插件 `lk888-kling-video`（`POST /v1/media/generate` + `GET /v1/media/status`），覆盖 `kling-motion-control-v3` 与 `kling-v4-video`，与 `lk888-video`（MiniMax / 万相 / video-enhance）分开安装。动作控制固定单图 + 单视频，`character_orientation` 默认 `video`、`mode` 按分辨率档推断（720p → std，1080p → pro），保留原声跟随「生成声音」开关；V4 支持 1～10 图、1～5 视频、3～30 秒、720p/1080p、16:9 / 9:16 / 1:1 / 21:9。动作控制画布不显示时长与画幅；两个模型的能力默认值前后端一致。
+- 本地验证：`go test ./internal/app`、`go test ./internal/protocol`（新增 `TestLK888KlingVideoProfile`，覆盖字符串/数组媒体、枚举覆盖、缺素材拦截与失败状态）、`bun run typecheck`、`bun run test`（新增 `web/test/lk888-video.test.ts` 两个能力断言）。未连接真实问鼎账号，未做浏览器验收。
+- [ ] 后台用问鼎 API Key 新建系统渠道，分别添加 `kling-v4-video` 与 `kling-motion-control-v3` 模型并配置价格档，确认两者出现在视频模型下拉。
+- [ ] 动作控制：视频节点选「全能参考」，连 1 张图 + 1 段视频后生成，上游收到字符串形式的 `image_url` / `video_url` 与 `mode` / `character_orientation` / `keep_original_sound`，成片时长与参考视频一致；缺少图或视频时提交前报错。
+- [ ] V4：文生视频、参考图生视频与参考视频生视频各跑一次，确认 `duration` 为字符串、比例与分辨率正确，21:9 成片不被裁切。
+- [ ] 计时退款：上游返回 `state=failed` 时任务失败原因显示问鼎返回的文本，订单退款。
+
 ## 电商生图：作品已生成，但保存未完成：登记作品失败
 
 - 问题：v1.7.3.5 起，电商页通过 `POST /api/workbench/tasks` 提交的图片任务把电商项目 ID 写入 `tasks.project_id`。作品落库前的 `mediaTaskProject` 只认画布和业务项目，查不到电商项目就返回“任务所属画布或项目已不存在”，并标为不可重试的 `register` 阶段失败。生图本身成功，但作品没有下载入库；请求明细按阶段显示“生成成功 · 文件保存成功 · 登记素材失败”，实际文件并未保存。用户点击「重新保存」也会被同一检查拦下。

@@ -592,6 +592,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
     }
     if (protocol === "lk888-video") applyLK888VideoCapability(video, model);
+    if (protocol === "lk888-kling-video") applyLK888KlingVideoCapability(video, model);
     if (protocol === "lk888-seedance" || protocol === "lk888-seedance-anmiao") applyLK888SeedanceCapability(video, model);
     if (protocol === VOLCENGINE_MEDIAKIT_ENHANCE_VIDEO_PROTOCOL) {
         // 与后端默认值一致：只接收一个源视频，帧率默认保持原片。
@@ -626,6 +627,50 @@ function applyLK888SeedanceCapability(video: VideoCapabilityConfig, model: strin
     video.defaultResolution = "720p";
     video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
     video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
+}
+
+function applyLK888KlingVideoCapability(video: VideoCapabilityConfig, model: string) {
+    switch (model.trim().toLowerCase()) {
+        case "kling-motion-control-v3":
+            video.references.minImages = 1;
+            video.references.maxImages = 1;
+            video.references.maxImageBytes = 10 * 1024 * 1024;
+            video.references.maxVideos = 1;
+            video.references.maxVideoBytes = 100 * 1024 * 1024;
+            video.references.maxVideoDurationSeconds = 30;
+            video.references.maxAudios = 0;
+            video.references.imageRoles = ["reference_image"];
+            // 成片时长由参考视频决定，画布不提供时长输入；分辨率档位映射上游 mode（std/pro）。
+            video.durationSupported = false;
+            video.ratios = [];
+            video.defaultRatio = "";
+            video.resolutions = ["720p", "1080p"];
+            video.defaultResolution = "720p";
+            video.generateAudio = { supported: true, default: false };
+            video.watermark = { supported: false, default: false };
+            video.operations = ["reference_to_video"];
+            video.defaultOperation = "reference_to_video";
+            break;
+        case "kling-v4-video":
+            video.references.maxImages = 10;
+            video.references.maxImageBytes = 30 * 1024 * 1024;
+            video.references.maxVideos = 5;
+            video.references.maxVideoBytes = 200 * 1024 * 1024;
+            video.references.maxVideoDurationSeconds = 30;
+            video.references.maxAudios = 0;
+            // 协议只有一个 image_url 数组，没有首尾帧字段：只开放首帧与参考图。
+            video.references.imageRoles = ["first_frame", "reference_image"];
+            video.duration = { selection: "range", min: 3, max: 30, step: 1, default: 5 };
+            video.ratios = ["16:9", "9:16", "1:1", "21:9"];
+            video.defaultRatio = "16:9";
+            video.resolutions = ["720p", "1080p"];
+            video.defaultResolution = "720p";
+            video.generateAudio = { supported: false, default: false };
+            video.watermark = { supported: false, default: false };
+            video.operations = ["text_to_video", "image_to_video", "reference_to_video"];
+            video.defaultOperation = "text_to_video";
+            break;
+    }
 }
 
 function applyLK888VideoCapability(video: VideoCapabilityConfig, model: string) {
@@ -869,6 +914,7 @@ function normalizeRangeDuration(profile: VideoCapabilityConfig, value: number) {
 }
 
 export function videoDurationOptions(profile: VideoCapabilityConfig) {
+    if (profile.durationSupported === false) return [];
     if (profile.duration.selection === "enum") return profile.duration.values || [];
     const min = profile.duration.min || 1;
     const max = profile.duration.max || min;
@@ -877,6 +923,7 @@ export function videoDurationOptions(profile: VideoCapabilityConfig) {
 }
 
 export function videoDurationAllowed(profile: VideoCapabilityConfig, value: number) {
+    if (profile.durationSupported === false) return true;
     if (profile.duration.selection === "enum") return (profile.duration.values || []).includes(value);
     const min = profile.duration.min || 1;
     const max = profile.duration.max || min;

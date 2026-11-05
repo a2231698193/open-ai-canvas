@@ -618,6 +618,20 @@ SEO 标题、描述、可选关键词会投影到浏览器 metadata、Open Graph
 
 `dashscope-minimax-video` 独立插件接入百炼 `MiniMax/MiniMax-H3`，支持文生视频、首帧、仅尾帧、首尾帧与图像/视频/音频多模态参考。插件校验 4–15 秒、768P/2K、7000 字符提示词及媒体角色和数量，模型能力由渠道配置。任务经统一宿主鉴权、轮询与结果持久化，恢复时查询原任务；真实文生视频创建、轮询与下载已验证，多模态及应用内完整链路仍待验收。配置见[百炼 MiniMax 视频](/docs/backend/bailian-minimax-video)。
 
+## 问鼎可灵视频
+
+`lk888-kling-video` 声明式插件接入问鼎数据的可灵动作控制 V3（`kling-motion-control-v3`）与可灵 V4（`kling-v4-video`），共用 `POST /v1/media/generate` + `GET /v1/media/status` 异步任务协议，与 `lk888-video`（MiniMax / 万相 / video-enhance）分开发布。
+
+动作控制只有「全能参考」一种生成方式：一张参考图决定人物与背景，一段参考视频决定动作，缺任意一项在提交前被拦截。`character_orientation` 默认与视频一致，`mode` 按分辨率档推断（720p → std，1080p → pro），保留原声跟随「生成声音」开关；成片时长由参考视频决定，画布不显示时长与画幅。V4 支持文生视频、图生视频与参考生视频，最多 10 张参考图、5 段参考视频、3～30 秒、720p/1080p，比例 16:9 / 9:16 / 1:1 / 21:9。
+
+能力默认值在前后端同时声明（`backend/internal/app/model_capability_defaults.go`、`web/src/lib/model-capabilities.ts`），`durationSupported: false` 的模型不会在视频设置、创作页和画布视频弹窗里显示时长控件。完整字段合同见 `plugin-packages/lk888-kling-video/docs/interface.md`。
+
+### 相关实现
+
+- `plugin-packages/lk888-kling-video/`：声明式协议源码与打包产物 `lk888-kling-video.yingce-plugin`。
+- `backend/internal/app/model_capability_defaults.go`、`web/src/lib/model-capabilities.ts`：按模型的能力默认值。
+- `web/src/components/video-settings-panel.tsx`：时长控件按 `durationSupported` 隐藏。
+
 ## 可美 KM Seedream 图片
 
 `km-kemei-seedream` 声明式插件接入 Seedream 5.0 Pro / Flash 的文生图与参考图编辑，支持 URL / Base64 响应并由宿主统一保存图片。精确模型 ID 与扩展参数见插件包内 `docs/interface.md`。
