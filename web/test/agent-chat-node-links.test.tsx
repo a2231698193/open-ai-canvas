@@ -1,7 +1,34 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AgentChatMessage, rewriteAgentNodeLinks, type CloudAgentChatMessage } from "@/components/canvas/canvas-cloud-agent-chat-ui";
 import { canvasThemes } from "@/lib/canvas-theme";
+
+// Markdown 渲染器（streamdown）在 useMemo 里直接调用 window.setTimeout，服务端渲染时没有 DOM 会抛
+// "window is not defined"。这里装一个最小 DOM；本地与 CI 的 Bun 对该行为的处理不一致，不能依赖环境。
+const dom = new Window({ url: "https://canvas.example.com/canvas/test" });
+const globals = new Map<string, PropertyDescriptor | undefined>();
+for (const [key, value] of Object.entries({
+    window: dom,
+    document: dom.document,
+    navigator: dom.navigator,
+    location: dom.location,
+    HTMLElement: dom.HTMLElement,
+    Element: dom.Element,
+    Node: dom.Node,
+    ShadowRoot: dom.ShadowRoot,
+    Event: dom.Event,
+})) {
+    globals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+}
+afterAll(() => {
+    dom.happyDOM.abort();
+    for (const [key, value] of globals) {
+        if (value) Object.defineProperty(globalThis, key, value);
+        else Reflect.deleteProperty(globalThis, key);
+    }
+});
 
 const videoReference = {
     id: "video-1790385749473-q4157",
@@ -60,12 +87,7 @@ test("renders an agent node link as a titled inline node card", () => {
 test("renders the image-to-previs user request with the existing canvas node card", () => {
     const imageReference = { ...videoReference, kind: "image" as const, sourceType: "image" as const, label: "道姑", title: "道姑" };
     const html = renderToStaticMarkup(
-        <AgentChatMessage
-            item={{ id: "user-previs", role: "user", text: "根据此图生成 3D 预演台", canvasReferenceNodeId: imageReference.nodeId }}
-            theme={canvasThemes.dark}
-            references={[imageReference]}
-            onFocusNode={() => {}}
-        />,
+        <AgentChatMessage item={{ id: "user-previs", role: "user", text: "根据此图生成 3D 预演台", canvasReferenceNodeId: imageReference.nodeId }} theme={canvasThemes.dark} references={[imageReference]} onFocusNode={() => {}} />,
     );
 
     expect(html).toContain('class="agent-message-node-link"');
