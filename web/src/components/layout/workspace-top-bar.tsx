@@ -20,25 +20,7 @@ import { formatMembershipPrice, useMembershipPlans } from "@/components/membersh
 import { openStoragePurchase } from "@/lib/workspace-storage";
 import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
 import { accountStorageMeter } from "@/lib/account-storage-usage";
-
-const PAGE_TITLE_KEYS: Record<string, string> = {
-    home: "nav.pageTitles.home",
-    workspace: "nav.pageTitles.workspace",
-    membership: "nav.pageTitles.membership",
-    inspirations: "nav.pageTitles.inspirations",
-    create: "nav.pageTitles.home",
-    projects: "nav.pageTitles.projects",
-    canvas: "nav.pageTitles.canvas",
-    tasks: "nav.pageTitles.tasks",
-    assets: "nav.pageTitles.assets",
-    skills: "nav.pageTitles.skills",
-    plugins: "nav.pageTitles.plugins",
-    settings: "nav.pageTitles.settings",
-};
-const TOOLBOX_TITLE_KEYS: Record<string, string> = {
-    image: "nav.pageTitles.toolboxImage",
-    video: "nav.pageTitles.toolboxVideo",
-};
+import { workspacePageTitleKey } from "@/lib/workspace-page-title";
 
 export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
     const [membershipOpen, setMembershipOpen] = useState(false);
@@ -54,10 +36,8 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
     const storageQuery = useAccountFileStorageUsage(Boolean(user));
     const storageMeter = accountStorageMeter(storageQuery.data);
     const { pathname } = useLocation();
-    const [slug, subSlug] = pathname.split("/").filter(Boolean);
-    // /toolbox/image 和 /toolbox/video 共用 toolbox 首段，标题按第二段区分。
-    const sectionKey = slug === "toolbox" ? TOOLBOX_TITLE_KEYS[subSlug ?? ""] : PAGE_TITLE_KEYS[slug ?? ""];
-    const pageTitle = slug ? (sectionKey ? t(sectionKey) : brandName) : t(PAGE_TITLE_KEYS.home);
+    const sectionKey = workspacePageTitleKey(pathname);
+    const pageTitle = sectionKey ? t(sectionKey) : brandName;
     const balance = availableMicrocredits === null ? "--" : (availableMicrocredits / 1_000_000).toLocaleString(currentLocale(), { maximumFractionDigits: 2 });
     const storageLabel = !storageQuery.data ? "--" : storageMeter.state === "read_only" ? t("shell.storageReadOnly") : storageMeter.full ? t("shell.storageFull") : storageMeter.remainingLabel;
     const plans = membershipPlans?.plans;

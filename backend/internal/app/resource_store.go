@@ -177,21 +177,27 @@ func (s *Service) ImportResourceURL(userID string, rawURL string, kind string, w
 	if err != nil {
 		return nil, err
 	}
-	payload.mimeType, err = detectUploadedMimeType(bytes.NewReader(payload.data))
+	return s.storeFetchedResource(userID, existing, uploadKey, payload.fileName, payload.data, width, height, durationMs)
+}
+
+// storeFetchedResource 保存服务端已取得的字节（远程导入、姿势库选用），
+// 与普通上传共用媒体探测、上传幂等键和每日上传额度。
+func (s *Service) storeFetchedResource(userID string, existing *model.Resource, uploadKey *string, fileName string, data []byte, width int, height int, durationMs int64) (*model.Resource, error) {
+	mimeType, err := detectUploadedMimeType(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
-	kind = uploadedResourceKind(payload.mimeType)
+	kind := uploadedResourceKind(mimeType)
 	if kind == "image" && (width <= 0 || height <= 0) {
-		if decodedWidth, decodedHeight := imageDimensions(payload.data); decodedWidth > 0 && decodedHeight > 0 {
+		if decodedWidth, decodedHeight := imageDimensions(data); decodedWidth > 0 && decodedHeight > 0 {
 			width = decodedWidth
 			height = decodedHeight
 		}
 	}
 	if kind == "video" && (width <= 0 || height <= 0 || durationMs <= 0) {
-		// 前端导入会带上浏览器量到的时长和分辨率；CLI / Agent 路径没有浏览器，
+		// 浏览器上传会带上量到的时长和分辨率；CLI / Agent / 远程导入没有浏览器，
 		// 就自己解析一遍容器，别让视频事实永远停在 0。
-		probedWidth, probedHeight, probedDuration := probeMP4Metadata(payload.data)
+		probedWidth, probedHeight, probedDuration := probeMP4Metadata(data)
 		if width <= 0 {
 			width = probedWidth
 		}
@@ -202,15 +208,15 @@ func (s *Service) ImportResourceURL(userID string, rawURL string, kind string, w
 			durationMs = probedDuration
 		}
 	}
-	size := int64(len(payload.data))
+	size := int64(len(data))
 	if existing != nil {
-		return s.retryStoredResource(userID, existing, kind, payload.mimeType, size, bytes.NewReader(payload.data))
+		return s.retryStoredResource(userID, existing, kind, mimeType, size, bytes.NewReader(data))
 	}
 	day, err := s.reserveUserUploadQuota(userID, size)
 	if err != nil {
 		return nil, err
 	}
-	resource, stored, err := s.storeResource(userID, kind, payload.fileName, payload.mimeType, size, width, height, durationMs, bytes.NewReader(payload.data), uploadKey, false)
+	resource, stored, err := s.storeResource(userID, kind, fileName, mimeType, size, width, height, durationMs, bytes.NewReader(data), uploadKey, false)
 	if err != nil {
 		s.releaseUserUploadQuota(userID, day, size)
 	} else if stored {

@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { canGenerateMediaInPlace } from "@/lib/canvas/canvas-generation-layout";
-import { buildGenerationNodeTitle, isGenericCanvasNodeTitle, nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
+import { buildGenerationNodeTitle, isGenericCanvasNodeTitle, manualNodeTitle, nextDefaultCanvasNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { nextCanvasVersionLabel } from "@/lib/canvas/canvas-layout";
 import { buildAudioGenerationMetadata, buildVideoGenerationMetadata, generationReferenceUrls, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer, videoGenerationContextForMode } from "@/lib/canvas/canvas-project-generation";
@@ -48,10 +48,12 @@ export async function executeVideoGeneration({
     const parent = sourceNode?.position || { x: 0, y: 0 };
     const activeGenerationContext = videoGenerationContextForMode(sourceNode, generationContext, generationConfig);
     const videoGenerationMetadata = buildVideoGenerationMetadata(sourceNode, activeGenerationContext, generationConfig);
+    // 原位重新生成优先沿用用户改过的名称（manualTitle），其次是旧画布里已有的非通用名；新建节点按画布序号命名。
+    const keptVideoTitle = reuseSourceNode ? manualNodeTitle(sourceNode) : undefined;
     const videoNode: CanvasNodeData = {
         id: videoId,
         type: CanvasNodeType.Video,
-        title: reuseSourceNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : nextDefaultCanvasNodeTitle(canvasNodes, "video"),
+        title: keptVideoTitle ?? (reuseSourceNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : nextDefaultCanvasNodeTitle(canvasNodes, "video")),
         position: reuseSourceNode ? sourceNode!.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
         width: reuseSourceNode ? sourceNode!.width : spec.width,
         height: reuseSourceNode ? sourceNode!.height : spec.height,
@@ -165,15 +167,18 @@ export async function executeAudioGeneration({
     const isExistingAudioNode = sourceNode?.type === CanvasNodeType.Audio && Boolean(sourceNode.metadata?.content);
     const audioId = reuseSourceNode ? nodeId : nanoid();
     const parent = sourceNode?.position || { x: 0, y: 0 };
+    const keptAudioTitle = reuseSourceNode ? manualNodeTitle(sourceNode) : undefined;
     const audioNode: CanvasNodeData = {
         id: audioId,
         type: CanvasNodeType.Audio,
-        title: !isExistingAudioNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : buildGenerationNodeTitle(effectivePrompt, "Generated Audio"),
+        title: keptAudioTitle ?? (!isExistingAudioNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : buildGenerationNodeTitle(effectivePrompt, "Generated Audio")),
         position: reuseSourceNode ? sourceNode!.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
         width: reuseSourceNode ? sourceNode!.width : spec.width,
         height: reuseSourceNode ? sourceNode!.height : spec.height,
         metadata: {
             ...(reuseSourceNode && isExistingAudioNode ? { ...resetGenerationTaskMetadata(sourceNode?.metadata, NODE_STATUS_LOADING), ...mediaVersionFieldsBeforeReplace(sourceNode) } : {}),
+            // 空音频节点原位生成会重建 metadata，命名标记要跟着保留，下次重新生成仍沿用名称。
+            ...(keptAudioTitle ? { manualTitle: true } : {}),
             ...canvasGenerationPromptMetadata(prompt, effectivePrompt),
             status: NODE_STATUS_LOADING,
             ...buildAudioGenerationMetadata(generationConfig),

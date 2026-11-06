@@ -374,8 +374,9 @@ func (s *Service) cloudAgentInspectImageNode(userID, projectID string, state *cl
 	if !ok || resourceBytes < 0 {
 		return cloudAgentImageInspection{}, BadAuthRequest("图片资源大小信息无效")
 	}
-	if limits.MaxImageBytes > 0 && resourceBytes > limits.MaxImageBytes {
-		return cloudAgentImageInspection{}, BadAuthRequest("参考图片文件超过当前模型大小限制")
+	// 上限以内的图片按渠道单图上限压缩后发送；超过可压缩上限才拒绝，不再按原图硬性拒绝。
+	if textModelImageRejectable(limits.MaxImageBytes) && resourceBytes > textModelImageCompressionMaxInput {
+		return cloudAgentImageInspection{}, BadAuthRequest(textModelImageOversizedMessage())
 	}
 	cacheKey := cloudAgentImageInspectionCacheKey(nodeID, stringValue(reference["storageKey"]), revision)
 	receipt := map[string]any{
@@ -624,8 +625,12 @@ func (s *Service) cloudAgentImageReferences(userID string, req CloudAgentRequest
 				if readErr != nil || resource.Status != "ready" || !strings.HasPrefix(strings.ToLower(resource.MimeType), "image/") {
 					return nil, BadAuthRequest("看图资源不可用、尚未就绪或不属于当前用户")
 				}
-				if resource.Size < 0 || (limits.MaxImageBytes > 0 && resource.Size > limits.MaxImageBytes) {
-					return nil, BadAuthRequest("参考图片文件超过当前模型大小限制")
+				if resource.Size < 0 {
+					return nil, BadAuthRequest("图片资源大小信息无效")
+				}
+				// 模型单图上限在发送时压缩后核（hydration）；这里只拒绝连读入内存都做不到的图。
+				if textModelImageRejectable(limits.MaxImageBytes) && resource.Size > textModelImageCompressionMaxInput {
+					return nil, BadAuthRequest(textModelImageOversizedMessage())
 				}
 				refs = append(refs, providerMedia{StorageKey: key, MimeType: resource.MimeType, Bytes: resource.Size, Width: resource.Width, Height: resource.Height})
 				seen[key] = true

@@ -23,6 +23,8 @@ import { useAssetStore } from "@/stores/use-asset-store";
 import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@/lib/canvas/agent-debug-export";
 import { agentPlanVisible, latestAgentPlanItems, latestAgentPlanTerminal, pendingAgentQuestion } from "@/lib/canvas/cloud-agent-plan";
+import { latestAgentMediaBatch } from "@/lib/canvas/cloud-agent-media-batch";
+import { AgentMediaBatchBar } from "./canvas-cloud-agent-media-batch-bar";
 import { emptyAgentContextUsage, presentAgentContextUsage, reduceAgentContextUsage, type AgentContextUsage } from "@/lib/canvas/agent-context-usage";
 import { nanoid } from "nanoid";
 
@@ -176,6 +178,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
     const references = useGlobalAgentStore((state) => state.canvas?.references ?? EMPTY_REFERENCES);
     const prefillRequest = useGlobalAgentStore((state) => state.canvas?.prefillRequest ?? null);
     const onFocusNode = useGlobalAgentStore((state) => state.canvas?.onFocusNode);
+    const insertAgentMarkdown = useGlobalAgentStore((state) => state.canvas?.insertAgentMarkdown);
     const open = useGlobalAgentStore((state) => state.open);
     const onOpen = useGlobalAgentStore((state) => state.openAgent);
     const onCollapse = useGlobalAgentStore((state) => state.closeAgent);
@@ -284,6 +287,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
     const planItems = useMemo(() => latestAgentPlanItems(messages), [messages]);
     const planTerminal = useMemo(() => latestAgentPlanTerminal(messages), [messages]);
     const planVisible = agentPlanVisible(planItems);
+    const mediaBatch = useMemo(() => latestAgentMediaBatch(messages), [messages]);
     const pendingQuestion = useMemo(() => pendingAgentQuestion(messages), [messages]);
     const [scenePresets, setScenePresets] = useState<SkillPreset[]>([]);
     const [presetApplyingId, setPresetApplyingId] = useState("");
@@ -1725,8 +1729,12 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
         }
     };
 
+    // 审批卡暂时不能提交的原因。卡片据此禁用按钮并说明，不再把它显示成“正在提交”：
+    // 连接断开时没有请求在路上，转圈会让人以为审批卡死了。
+    const approvalBlockedReason = otherAgentRunning ? "画布上有别的 Agent 在运行，它结束后才能确认" : connectionStatus === "disconnected" ? "连接已断开，重新连接后才能确认" : connectionStatus !== "connected" ? "正在连接服务端，连上后即可确认" : undefined;
+
     const submitApproval = async (decision: "approve" | "reject", mediaSettings?: AgentMediaSettings) => {
-        if (!run || !approval || otherAgentRunning || connectionStatus !== "connected" || approvalRequestRef.current === approval.approvalId) return;
+        if (!run || !approval || approvalBlockedReason || approvalRequestRef.current === approval.approvalId) return;
         const runId = run.id;
         const approvalId = approval.approvalId;
         const scope = conversationScope;
@@ -1751,7 +1759,11 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
             }
         } catch (cause) {
             if (!accountIsCurrent() || currentScope.current !== scope) return;
-            if (cause instanceof CanvasSyncPendingError) return;
+            if (cause instanceof CanvasSyncPendingError) {
+                // 画布修改还没存到服务端，审批请求没有发出；卡片保留，告诉用户稍后再点。
+                void appMessage.warning("画布还在保存，审批没有提交；稍后再点一次「同意执行」");
+                return;
+            }
             // A timed-out response is ambiguous: query the durable decision before
             // asking the user to retry. The backend treats identical decisions idempotently.
             try {
@@ -2577,7 +2589,8 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                                         approvalTargetGenerating={approvalTargetGenerating}
                                         nodeCount={canvasId ? nodeCount : null}
                                         installedSkillCount={skillCatalogReady ? installedSkills.length : null}
-                                        approvalSubmitting={otherAgentRunning || approvalSubmitting || connectionStatus !== "connected"}
+                                        approvalSubmitting={approvalSubmitting}
+                                        approvalBlockedReason={approvalBlockedReason}
                                         onChooseSkill={() => setSkillsOpen(true)}
                                         onOpenSkillRecommendations={() => setSkillRecommendationsOpen(true)}
                                         onDraftPrompt={(draft) => setPrompt((current) => (current.trim() ? `${current}\n\n${draft}` : draft))}
@@ -2630,6 +2643,7 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                                             onToggle={() => setPlanMinimized((value) => !value)}
                                         />
                                     ) : null}
+                                    {mediaBatch && mediaBatch.phase !== "approval" ? <AgentMediaBatchBar batch={mediaBatch} theme={theme} onFocusNode={onFocusNode} /> : null}
                                     {historyHydrated && !messages.some((message) => message.role === "user" || message.role === "assistant") && !run ? (
                                         <AgentSceneCapsules
                                             buckets={sceneBuckets}
@@ -2640,7 +2654,15 @@ export const CanvasCloudAgentPanel = memo(function CanvasCloudAgentPanel() {
                                             onPickSkill={(skill) => void applySingleSkill(skill)}
                                         />
                                     ) : null}
-                                    {pendingQuestion ? <AgentQuestionBar question={pendingQuestion} theme={theme} disabled={otherAgentRunning || approvalSubmitting || connectionStatus !== "connected"} onAnswer={(label) => void submit(label)} /> : null}
+                                    {pendingQuestion ? (
+                                        <AgentQuestionBar
+                                            question={pendingQuestion}
+                                            theme={theme}
+                                            disabled={otherAgentRunning || approvalSubmitting || connectionStatus !== "connected"}
+                                            onAnswer={(label) => void submit(label)}
+                                            onRecordDecision={insertAgentMarkdown ? (record) => insertAgentMarkdown(record.markdown, record.title) : undefined}
+                                        />
+                                    ) : null}
                                     {historyHydrated && !pendingHydrated ? (
                                         <div className="flex items-center gap-2 px-5 py-2 text-xs" role="status">
                                             <span>提交记录尚未确认，输入保留；画布可继续编辑。</span>

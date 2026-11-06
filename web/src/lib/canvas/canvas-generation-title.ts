@@ -64,6 +64,15 @@ export function mergeLiveCanvasNodeTitles(persistedNodes: CanvasNodeData[], live
     return changed ? next : persistedNodes;
 }
 
+/** 用户改过名的节点（metadata.manualTitle）在原位重新生成时沿用该名称；返回 undefined 时使用提示词摘要。 */
+export function manualNodeTitle(node: CanvasNodeData | undefined) {
+    return node?.metadata?.manualTitle && node.title.trim() ? node.title : undefined;
+}
+
+/**
+ * 图片结果节点的标题：沿用副本后缀与版本号，多图按序号追加；`preserveCustomTitle` 时优先保留源节点
+ * 里用户自己起的名字（非通用名）。`manualNodeTitle` 是这套规则在 metadata 上的等价入口。
+ */
 export function buildImageGenerationNodeTitle(prompt: string, sourceNode?: CanvasNodeData, outputIndex?: number, outputCount = 1, options?: { preserveCustomTitle?: boolean }) {
     const preservedTitle = options?.preserveCustomTitle && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title.trim() : "";
     let title = preservedTitle || buildGenerationNodeTitle(prompt, "Generated Image");

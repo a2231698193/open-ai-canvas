@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"yingce/backend/internal/kernel"
@@ -12,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 86
+const CurrentSchemaVersion int64 = 91
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -289,6 +290,203 @@ var schemaMigrations = []migration{
 		return tx.AutoMigrate(&model.ArkPortraitSession{}, &model.ArkPortraitGroup{}, &model.ArkPortraitAsset{})
 	}},
 	{version: 86, name: "token_cache_write_price", checksum: "sha256:token-cache-write-price-v86-20261105", apply: migrateTokenCacheWritePrice},
+	// 官方 v83–v87 在本仓库顺延为 v87–v91（本地 v83 电商与 v84–v86 已占用同号）。
+	{version: 87, name: "skill_admin_edits", checksum: "sha256:skill-admin-edits-v87-20261105", apply: migrateSkillAdminEdits},
+	{version: 88, name: "token_price_rules", checksum: "sha256:token-price-rules-v88-20261105", apply: migrateTokenPriceRules},
+	{version: 89, name: "pose_library", checksum: "sha256:pose-library-v89-20261105", apply: func(tx *gorm.DB) error {
+		// 站点级姿势库：来源署名与参考图条目，只建新表；图片文件在数据目录 pose-library/ 下。
+		return tx.AutoMigrate(&model.PoseLibrarySource{}, &model.PoseLibraryItem{})
+	}},
+	{version: 90, name: "ark_asset_groups", checksum: "sha256:ark-asset-groups-v90-20261105", apply: migrateArkAssetGroups},
+	{version: 91, name: "inspiration_feed", checksum: "sha256:inspiration-feed-v91-20261105", apply: func(tx *gorm.DB) error {
+		// 灵感上新：定时同步的上游灵感条目，只建新表；开关与同步记录存 system_settings。
+		return tx.AutoMigrate(&model.InspirationFeedEntry{})
+	}},
+}
+
+// migrateArkAssetGroups 把方舟真人素材库扩展为真人 / 虚拟 / 版权 IP 三类素材组：
+//   - 会话、素材组、素材补列；旧素材组均为用户自建的真人组，旧素材无需审核。
+//   - 新建平台素材组授权表。
+//   - 设置 JSON 的 portraitEnabled 改名为 realEnabled，保留管理员已开放的状态。
+//   - 由旧版「加入素材库」写入的真人素材（metadata.source=ark-portrait）转为方舟认证分类，
+//     并删除已废弃的手动 portraitCertified 标记。
+func migrateArkAssetGroups(tx *gorm.DB) error {
+	for _, target := range []struct {
+		entity  any
+		columns []string
+	}{
+		{&model.ArkPortraitSession{}, []string{"scope", "description", "billing_order_id"}},
+		{&model.ArkPortraitGroup{}, []string{"kind", "scope", "description", "grant_all", "authorized_at", "expires_at", "billing_order_id"}},
+		{&model.ArkPortraitAsset{}, []string{"library_asset_id", "reviewed_by", "reviewed_at"}},
+	} {
+		if !tx.Migrator().HasTable(target.entity) {
+			continue
+		}
+		for _, column := range target.columns {
+			if tx.Migrator().HasColumn(target.entity, column) {
+				continue
+			}
+			if err := tx.Migrator().AddColumn(target.entity, column); err != nil {
+				return fmt.Errorf("补充方舟素材列 %s：%w", column, err)
+			}
+		}
+	}
+	for _, index := range []struct {
+		entity any
+		field  string
+	}{
+		{&model.ArkPortraitGroup{}, "Kind"},
+		{&model.ArkPortraitGroup{}, "Scope"},
+		{&model.ArkPortraitAsset{}, "LibraryAssetID"},
+	} {
+		if !tx.Migrator().HasTable(index.entity) || tx.Migrator().HasIndex(index.entity, index.field) {
+			continue
+		}
+		if err := tx.Migrator().CreateIndex(index.entity, index.field); err != nil {
+			return fmt.Errorf("创建方舟素材索引 %s：%w", index.field, err)
+		}
+	}
+	if err := tx.AutoMigrate(&model.ArkPortraitGroupGrant{}); err != nil {
+		return fmt.Errorf("创建方舟素材组授权表：%w", err)
+	}
+	if err := migrateArkPortraitSettingKey(tx); err != nil {
+		return err
+	}
+	return migrateArkPortraitLibraryAssets(tx)
+}
+
+func migrateArkPortraitSettingKey(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable(&model.SystemSetting{}) {
+		return nil
+	}
+	var setting model.SystemSetting
+	err := tx.Where("key = ?", "ark_private_assets").Limit(1).Find(&setting).Error
+	if err != nil {
+		return fmt.Errorf("读取方舟素材库配置：%w", err)
+	}
+	if setting.Key == "" || strings.TrimSpace(setting.ValueJSON) == "" {
+		return nil
+	}
+	var value map[string]any
+	if err := json.Unmarshal([]byte(setting.ValueJSON), &value); err != nil {
+		return fmt.Errorf("解析方舟素材库配置：%w", err)
+	}
+	legacy, ok := value["portraitEnabled"]
+	if !ok {
+		return nil
+	}
+	if _, exists := value["realEnabled"]; !exists {
+		value["realEnabled"] = legacy
+	}
+	delete(value, "portraitEnabled")
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return tx.Model(&model.SystemSetting{}).Where("key = ?", setting.Key).Update("value_json", string(encoded)).Error
+}
+
+func migrateArkPortraitLibraryAssets(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable(&model.Asset{}) {
+		return nil
+	}
+	var assets []model.Asset
+	if err := tx.Where("payload_json LIKE ?", `%portraitCertified%`).Find(&assets).Error; err != nil {
+		return fmt.Errorf("读取旧人像认证素材：%w", err)
+	}
+	now := time.Now().UTC()
+	for _, asset := range assets {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(asset.PayloadJSON), &payload); err != nil {
+			// 无法解析的历史记录保持原样，交给现有坏数据隔离逻辑。
+			continue
+		}
+		if _, ok := payload["portraitCertified"]; !ok {
+			continue
+		}
+		delete(payload, "portraitCertified")
+		category := asset.Category
+		metadata, _ := payload["metadata"].(map[string]any)
+		arkAssetID, _ := payload["arkAssetId"].(string)
+		if source, _ := metadata["source"].(string); source == "ark-portrait" && strings.TrimSpace(arkAssetID) != "" && asset.Kind == "image" {
+			certifiedAt := asset.UpdatedAt
+			if certifiedAt.IsZero() {
+				certifiedAt = now
+			}
+			certification := map[string]any{"kind": "real", "scope": "user", "certifiedAt": certifiedAt.UTC().Format(time.RFC3339Nano), "previousCategory": string(asset.Category)}
+			if arkGroupID, _ := metadata["arkPortraitGroupId"].(string); arkGroupID != "" {
+				certification["arkGroupId"] = arkGroupID
+			}
+			var portrait model.ArkPortraitAsset
+			if tx.Migrator().HasTable(&model.ArkPortraitAsset{}) {
+				if err := tx.Where("user_id = ? AND ark_asset_id = ?", asset.UserID, strings.TrimSpace(arkAssetID)).Limit(1).Find(&portrait).Error; err != nil {
+					return fmt.Errorf("读取方舟真人素材：%w", err)
+				}
+			}
+			if portrait.ID != "" {
+				certification["portraitAssetId"] = portrait.ID
+				certification["groupId"] = portrait.GroupID
+				if portrait.LibraryAssetID == "" {
+					if err := tx.Model(&model.ArkPortraitAsset{}).Where("id = ?", portrait.ID).Update("library_asset_id", asset.ID).Error; err != nil {
+						return fmt.Errorf("关联方舟真人素材：%w", err)
+					}
+				}
+			}
+			payload["arkCertification"] = certification
+			payload["category"] = string(model.AssetCategoryArk)
+			category = model.AssetCategoryArk
+		}
+		payload["updatedAt"] = now.Format(time.RFC3339Nano)
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Asset{}).Where("id = ? AND user_id = ?", asset.ID, asset.UserID).Updates(map[string]any{"payload_json": string(encoded), "category": category, "updated_at": now}).Error; err != nil {
+			return fmt.Errorf("更新旧人像认证素材：%w", err)
+		}
+	}
+	return nil
+}
+
+// migrateTokenPriceRules 为 Token 价格档增加分时与上下文规则，为订单增加规则快照与命中序号。
+// 旧价格档规则为空且关闭，旧订单快照为空串，结算仍只用基础 Token 单价。
+func migrateTokenPriceRules(tx *gorm.DB) error {
+	for _, target := range []struct {
+		entity  any
+		columns []string
+	}{
+		{&model.ChannelModelPriceTier{}, []string{"token_price_rules_enabled", "token_price_rules"}},
+		{&model.BillingOrder{}, []string{"token_price_rules_json", "token_price_rule"}},
+	} {
+		if !tx.Migrator().HasTable(target.entity) {
+			continue
+		}
+		for _, column := range target.columns {
+			if tx.Migrator().HasColumn(target.entity, column) {
+				continue
+			}
+			if err := tx.Migrator().AddColumn(target.entity, column); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// migrateSkillAdminEdits 为技能增加管理员修改时间。旧技能两列为空，内置技能启动同步和 GitHub 同步行为不变。
+func migrateSkillAdminEdits(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable(&model.Skill{}) {
+		return nil
+	}
+	for _, column := range []string{"admin_info_edited_at", "admin_content_edited_at"} {
+		if tx.Migrator().HasColumn(&model.Skill{}, column) {
+			continue
+		}
+		if err := tx.Migrator().AddColumn(&model.Skill{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // migrateTokenCacheWritePrice 为文本 Token 定价增加缓存写入单价，为调用日志和账单增加缓存写入用量。

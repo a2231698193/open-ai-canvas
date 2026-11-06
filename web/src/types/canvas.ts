@@ -22,6 +22,8 @@ export type ViewportTransform = {
     k: number;
 };
 
+export type CanvasFrameColor = "blue" | "green" | "violet" | "amber" | "rose" | "teal" | "slate";
+
 export enum CanvasNodeType {
     Image = "image",
     Text = "text",
@@ -589,6 +591,8 @@ export type CanvasNodeMetadata = {
     mediaConversion?: MediaConversionNodeState;
     /** 用户手动拉伸过尺寸；图片按真实比例自动适配时避让它。 */
     manualSize?: boolean;
+    /** 用户手动改过节点名称；原位重新生成时保留，不再换成提示词摘要。 */
+    manualTitle?: boolean;
     storyboard?: StoryboardData;
     storyboardShotDuration?: StoryboardShotDuration;
     storyboardShotCount?: StoryboardShotCount;
@@ -608,6 +612,8 @@ export type CanvasNodeMetadata = {
         collapsed: boolean;
         expandedWidth: number;
         expandedHeight: number;
+        /** 语义色名（如 Agent 搭看板时按幕着色），具体颜色由主题样式映射。 */
+        color?: CanvasFrameColor;
     };
     folder?: {
         style: CanvasFolderStyle;

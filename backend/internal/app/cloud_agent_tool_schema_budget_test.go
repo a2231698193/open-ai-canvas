@@ -63,9 +63,22 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 		t.Fatal("启用视觉能力后 canvas_inspect_image 未暴露")
 	}
 
-	// 本地画布工具与官方记忆、技能推荐、短剧工具叠加后，schema 会随双方能力一起增长。
-	// 新增工具或字段时必须重新度量，不要悄悄膨胀。
-	if len(raw) > 42000 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 42000：请压缩描述或显式调整预算", len(raw))
+	// 体积预算：
+	// 之后能力注册表加入角色卡（图片/视频/音频接受 character 输入）到 28,979 字节；再新增
+	// canvas_create_character（角色卡打包创建，设定字段已压成一行描述）后为 25 个工具、29,938
+	// 字节；本轮加入 previs_scene_create 与 previs_apply_patch 后为 27 个工具、34,171 字节，
+	// 因此显式上调到 35,000；视频生成支持 Agent 设置首尾帧（#696）后为 35,050 字节，
+	// 再显式上调到 36,000，保留约2.7%的余量。skill_search 补触发时机与零命中行为
+	// 描述后为 36,072 字节；启用视觉工具后为 29 个工具、36,883 字节，预算显式上调到
+	// 37,500，保留约1.7%的余量。长期记忆改用 memory_update（替换 remember_lesson /
+	// recall_lessons）并新增 skill_market_search、skill_recommend 后为 30 个工具、37,277 字节，
+	// 预算不变。新增 generate_media_batch、media_batch_control、canvas_build_board、
+	// canvas_preflight（描述已压缩，批量参数复用同一份结构）并把 ask_user 放宽到 16 个字段后为
+	// 34 个工具、44,091 字节，预算显式上调到 45,000，保留约2%的余量。本仓库保留的
+	// canvas_inspect_media（官方注册表未包含的素材事实读取工具）叠加后实测 45,939 字节，
+	// 预算显式上调到 46,500，保留约1.2%的余量。新增工具或字段时请重新测量并有意识地
+	// 调整这个数字，而不是让 schema 悄悄膨胀（它每一步都要发、还在前缀最前面）。
+	if len(raw) > 46500 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 46500：请压缩描述或显式调整预算", len(raw))
 	}
 }
