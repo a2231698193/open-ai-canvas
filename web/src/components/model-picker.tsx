@@ -6,7 +6,7 @@ import { usePopoverAnchorAlign } from "@/hooks/use-popover-anchor-align";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { modelCapabilityConfigFor, videoDurationOptions } from "@/lib/model-capabilities";
-import { formatPriceRange, modelQuoteDescription, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection, tokenPriceRuleDescription } from "@/lib/model-pricing";
+import { formatPriceRange, modelQuoteDescription, modelQuoteRequest, normalizeTierResolution, priceTierSummaryLabel, priceTiersForCurrentSelection, referenceVideoBillingLabel, tokenPriceRuleDescription } from "@/lib/model-pricing";
 import { compatibleModelInGroup, configuredModelDisplayName, groupModelsByDisplayName, modelCompatibilityError, resolveCompatibleModel, type ModelRequirements } from "@/lib/model-selection";
 import { isDirectSystemModel, modelChannelLabel } from "@/lib/model-picker-groups";
 import { cn } from "@/lib/utils";
@@ -386,8 +386,10 @@ export function ModelLabel({
     const textReferences = capability === "text" ? modelCapabilityConfigFor(config, model).text?.references : undefined;
     const capabilityTag = referenceCapabilityTag(videoProfile?.references ?? textReferences);
     const modelTags = capabilityTag ? [capabilityTag, ...(logicalCost?.tags || [])] : logicalCost?.tags;
+    // 只给能挂参考视频的视频模型标注；不收参考视频的模型写“参考视频不计费”会误导。
+    const referenceLabel = channel.scope === "system" && (videoProfile?.references?.maxVideos ?? 0) > 0 ? referenceVideoBillingLabel(logicalCost) : "";
     const capabilitySummary = disabledReason || logicalCost?.description?.trim() || (isDirectSystemModel(config, model) ? "" : logicalSpec ? logicalCapabilitySummary(logicalSpec) : videoProfile ? videoSummary : meta.description);
-    const summaryText = [sourceLabel, capabilitySummary].filter(Boolean).join(" · ");
+    const summaryText = [sourceLabel, capabilitySummary, referenceLabel].filter(Boolean).join(" · ");
     return (
         <span className="flex w-full min-w-0 items-center gap-2 overflow-hidden py-0">
             <span className="canvas-model-picker-option-logo grid size-6 shrink-0 place-items-center">
@@ -404,6 +406,7 @@ export function ModelLabel({
                     {showPrice ? (
                         <span className="canvas-model-picker-option-price">
                             <ModelPrice price={modelMenuPrice(config, model, capability, true, requirements)} />
+                            {referenceLabel ? <span className="canvas-model-picker-reference-billing">{referenceLabel}</span> : null}
                         </span>
                     ) : null}
                 </span>

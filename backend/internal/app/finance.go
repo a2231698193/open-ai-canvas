@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -112,7 +113,9 @@ type tokenBillingEstimate struct {
 	InputTokens  int64
 	OutputTokens int64
 	Video        *VideoTokenEstimate
-	Err          error
+	// ReferenceVideos 与计费方式无关地描述参考视频，按秒和 Token 都据此决定是否计入参考视频。
+	ReferenceVideos referenceVideoUsage
+	Err             error
 }
 
 func (s *Service) Wallet(user *model.User, entryType string, page int, limit int) (*WalletSummary, error) {
@@ -492,7 +495,7 @@ func (s *Service) taskBillingOrder(userID string, task *model.Task, input map[st
 	scene := firstNonEmpty(strings.TrimSpace(task.Operation), task.Type)
 	intent := ModelRequestIntentFromTaskInput(input, task.Type, task.Operation)
 	priceTierID, _ := config["priceTierId"].(string)
-	return s.newBillingOrderWithPriceTier(userID, task.ID, "task:"+task.ID+":"+newID(), channelID, modelKey, capability, scene, requestedBillingQuantity(capability, config), estimateTaskBillingTokens(input, capability), strings.TrimSpace(priceTierID), intent)
+	return s.newBillingOrderWithPriceTier(userID, task.ID, "task:"+task.ID+":"+newID(), channelID, modelKey, capability, scene, requestedBillingQuantity(capability, config), s.estimateTaskBilling(userID, input, capability), strings.TrimSpace(priceTierID), intent)
 }
 
 func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, input map[string]any) (*model.BillingOrder, error) {
@@ -516,7 +519,7 @@ func (s *Service) newLogicalModelBillingOrder(userID string, task *model.Task, i
 	if logicalModel.PricePolicy == "channel" {
 		intent := ModelRequestIntentFromTaskInput(input, task.Type, task.Operation)
 		priceTierID, _ := config["priceTierId"].(string)
-		order, priceErr := s.newBillingOrderWithPriceTier(userID, task.ID, "task:"+task.ID+":"+newID(), channelModel.ChannelID, channelModel.ModelKey, capability, firstNonEmpty(strings.TrimSpace(task.Operation), task.Type), requestedBillingQuantity(capability, config), estimateTaskBillingTokens(input, capability), strings.TrimSpace(priceTierID), intent)
+		order, priceErr := s.newBillingOrderWithPriceTier(userID, task.ID, "task:"+task.ID+":"+newID(), channelModel.ChannelID, channelModel.ModelKey, capability, firstNonEmpty(strings.TrimSpace(task.Operation), task.Type), requestedBillingQuantity(capability, config), s.estimateTaskBilling(userID, input, capability), strings.TrimSpace(priceTierID), intent)
 		if priceErr != nil {
 			return nil, priceErr
 		}
@@ -663,6 +666,19 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 	}
 	quantity := int64(1)
 	amount := int64(0)
+	// 视频 Token 的成本用量按上游公式（含参考视频）计算，不受用户侧参考视频计费开关影响；
+	// 按秒成本数量与售价数量一致（见 snapshotCreditCost）。
+	costEstimate := tokenEstimate
+	references := referenceVideoUsage{}
+	if capability == "video" && item.Capability == "video" {
+		references = tokenEstimate.ReferenceVideos
+		tokenEstimate = referenceVideoBillingEstimate(item, capability, tokenEstimate)
+	}
+	referenceBilled := references.Count > 0 && item.ReferenceVideoBilling && (tier.BillingMode == "per_second" || tier.BillingMode == "token")
+	referenceMillis := int64(0)
+	if references.RecordedKnown {
+		referenceMillis = references.RecordedMillis
+	}
 	switch tier.BillingMode {
 	case "fixed_request":
 	case "per_second":
@@ -673,6 +689,18 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 			return nil, BadAuthRequest("生成时长无效，无法按秒计费")
 		}
 		quantity = requestedQuantity
+		if referenceBilled {
+			millis, _, measureErr := references.perSecondMillis()
+			if measureErr != nil {
+				return nil, measureErr
+			}
+			referenceSeconds := (millis + 999) / 1000
+			if referenceSeconds > math.MaxInt64-quantity {
+				return nil, BadAuthRequest("参考视频总时长超出计费范围")
+			}
+			quantity += referenceSeconds
+			referenceMillis = millis
+		}
 	case "token":
 		if tokenEstimate.Err != nil {
 			return nil, tokenEstimate.Err
@@ -707,7 +735,17 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 	if err := access.requireChannel(channelID); err != nil {
 		return nil, err
 	}
-	pricing, prices, err := s.groupTierPrices(access, item, tier, modelKey)
+	pricedTier := tier
+	if referenceBilled {
+		if pricedTier, err = referenceVideoPricedTier(tier); err != nil {
+			return nil, err
+		}
+		// 时长未知时公式按 15 秒上限预估；预估值不写进账单快照，流水只记参考视频个数。
+		if tier.BillingMode == "token" && tokenEstimate.Video != nil && !tokenEstimate.Video.ReferenceDurationEstimated {
+			referenceMillis = int64(math.Round(tokenEstimate.Video.ReferenceSeconds * 1000))
+		}
+	}
+	pricing, prices, err := s.groupTierPrices(access, item, pricedTier, modelKey)
 	if err != nil {
 		return nil, err
 	}
@@ -749,12 +787,15 @@ func (s *Service) newBillingOrderWithPriceTierAt(pricedAt time.Time, userID stri
 		OutputTokenPriceMicrocredits: prices.Output, CachedTokenPriceMicrocredits: prices.Cached, CacheWriteTokenPriceMicrocredits: prices.CacheWrite,
 		UserGroup: pricing.GroupCode, PriceCurrency: pricing.Currency, CurrencyRateMicrocredits: pricing.RateMicrocredits,
 		VideoFormulaTokens: videoFormulaTokens, InputTokens: audioFormulaInputTokens,
-		Status: model.BillingStatusReserved,
+		ReferenceVideoCount:  references.Count,
+		ReferenceVideoMillis: referenceMillis,
+		ReferenceVideoBilled: referenceBilled,
+		Status:               model.BillingStatusReserved,
 	}
 	if order.TokenPriceRulesJSON, err = model.EncodeBillingTokenPriceRules(tokenRules); err != nil {
 		return nil, err
 	}
-	snapshotCreditCost(order, tier, requestedQuantity, tokenEstimate)
+	snapshotCreditCost(order, tier, requestedQuantity, costEstimate)
 	return order, nil
 }
 
@@ -880,7 +921,9 @@ func estimateTaskTokens(input map[string]any) tokenBillingEstimate {
 
 func estimateTaskBillingTokens(input map[string]any, capability string) tokenBillingEstimate {
 	if capability == "video" {
-		return estimateArkVideoTokens(input)
+		estimate := estimateArkVideoTokens(input)
+		estimate.ReferenceVideos = referenceVideoUsageFromInput(input)
+		return estimate
 	}
 	if capability == "audio" {
 		return estimateAudioInputTokens(input)

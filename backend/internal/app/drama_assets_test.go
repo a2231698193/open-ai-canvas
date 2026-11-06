@@ -89,6 +89,45 @@ func TestDramaAssetSchemesRenderWithoutPlaceholders(t *testing.T) {
 	}
 }
 
+func TestDramaAssetPromptsEnforceRatio(t *testing.T) {
+	svc, fake := newDramaTestService(t)
+	// 竖屏作品的画风写着竖屏构图：设定图（16:9）的提示词里不能再出现竖屏要求，其余画风保留。
+	settings := DramaSettings{ReviewMode: DramaReviewAuto, MediaMode: DramaMediaAuto, Concurrency: 16, Models: fakeDramaModels}
+	settings.EpisodeSeconds = 60
+	settings.StylePrompt = "真人实拍质感，9:16 竖屏构图，主体居中"
+	summary, err := svc.CreateDrama("usr-drama", CreateDramaRequest{Name: "画幅", Start: true, Settings: settings, Chapters: []DramaChapterInput{{Title: "第一章", Text: "萧炎……"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID := summary.Project.ID
+	runDramaTicks(t, svc, projectID, 20)
+	seen := map[string]bool{}
+	for _, req := range fake.requests {
+		if req.Type != "canvas_image" {
+			continue
+		}
+		if strings.Contains(req.Prompt, "9:16") || strings.Contains(req.Prompt, "竖屏") {
+			t.Fatalf("conflicting visual rule survived submission: %s", req.Prompt)
+		}
+		if !strings.Contains(req.Prompt, "真人实拍质感") || !strings.Contains(req.Prompt, "主体居中") {
+			t.Fatalf("non-frame style text was dropped: %s", req.Prompt)
+		}
+		if !strings.Contains(req.Prompt, "最终输出画幅必须为 16:9，横版，宽度大于高度") {
+			t.Fatalf("asset ratio missing from submission: %s", req.Prompt)
+		}
+		for kind, marker := range map[string]string{"character": "角色定妆照", "prop": "道具设定图", "scene": "场景概念设定图"} {
+			if strings.Contains(req.Prompt, marker) {
+				seen[kind] = true
+			}
+		}
+	}
+	for _, kind := range []string{"character", "prop", "scene"} {
+		if !seen[kind] {
+			t.Fatalf("no %s image request was submitted", kind)
+		}
+	}
+}
+
 func TestDramaJobDetailKeepsEveryAttempt(t *testing.T) {
 	svc, fake := newDramaTestService(t)
 	fake.fail = func(req CreateTaskRequest) bool { return req.Type == "canvas_video" }

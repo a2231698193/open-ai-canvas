@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 91
+const CurrentSchemaVersion int64 = 93
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -302,6 +302,99 @@ var schemaMigrations = []migration{
 		// 灵感上新：定时同步的上游灵感条目，只建新表；开关与同步记录存 system_settings。
 		return tx.AutoMigrate(&model.InspirationFeedEntry{})
 	}},
+	// 官方 v88–v89 在本仓库顺延为 v92–v93（本地 v88/v89 已被分时定价与姿势库占用）。
+	{version: 92, name: "reference_video_billing", checksum: "sha256:reference-video-billing-v92-20261106", apply: migrateReferenceVideoBilling},
+	{version: 93, name: "reference_video_cost_price", checksum: "sha256:reference-video-cost-price-v93-20261106", apply: migrateReferenceVideoCostPrice},
+}
+
+// migrateReferenceVideoCostPrice 为价格档成本和账单成本快照增加带参考视频的成本价。
+// 新列 NOT NULL DEFAULT 0，旧订单的成本口径不变。版本 88 自动开启参考视频计费的全 Token 视频模型，
+// 挂参考视频的订单从此按带参考视频成本价记成本：这些 Token 档把带参考视频成本价回填为现有成本价，
+// 否则升级后这类订单的成本会记成 0，直到管理员重新保存模型。
+func migrateReferenceVideoCostPrice(tx *gorm.DB) error {
+	columns := []string{"cost_reference_video_unit_price_microcredits", "cost_reference_video_output_token_price_microcredits"}
+	for _, entity := range []any{&model.ChannelModelPriceTier{}, &model.BillingOrder{}} {
+		if !tx.Migrator().HasTable(entity) {
+			continue
+		}
+		for _, column := range columns {
+			if tx.Migrator().HasColumn(entity, column) {
+				continue
+			}
+			if err := tx.Migrator().AddColumn(entity, column); err != nil {
+				return err
+			}
+		}
+	}
+	if !tx.Migrator().HasTable(&model.ChannelModel{}) || !tx.Migrator().HasTable(&model.ChannelModelPriceTier{}) {
+		return nil
+	}
+	enabled := tx.Model(&model.ChannelModel{}).Select("id").Where("capability = ? AND reference_video_billing = ?", "video", true)
+	return tx.Model(&model.ChannelModelPriceTier{}).
+		Where("billing_mode = ? AND channel_model_id IN (?) AND cost_reference_video_output_token_price_microcredits = ?", "token", enabled, 0).
+		Update("cost_reference_video_output_token_price_microcredits", gorm.Expr("cost_output_token_price_microcredits")).Error
+}
+
+// migrateReferenceVideoBilling 增加视频模型的“参考视频计费”开关、价格档的带参考视频价格和账单的参考视频快照。
+// 开关默认关闭；只有已经全部按 Token 计费的视频模型开启开关，并把带参考视频的 Token 价格填成现价，
+// 这些模型原本就把参考视频计入公式用量，迁移后扣费结果不变。含按秒价格档的模型保持关闭，
+// 避免按秒订单因计入参考视频秒数而悄悄涨价。
+func migrateReferenceVideoBilling(tx *gorm.DB) error {
+	for _, target := range []struct {
+		entity  any
+		columns []string
+	}{
+		{&model.ChannelModel{}, []string{"reference_video_billing"}},
+		{&model.ChannelModelPriceTier{}, []string{"reference_video_unit_price_microcredits", "reference_video_output_token_price_microcredits"}},
+		{&model.BillingOrder{}, []string{"reference_video_count", "reference_video_millis", "reference_video_billed"}},
+	} {
+		if !tx.Migrator().HasTable(target.entity) {
+			continue
+		}
+		for _, column := range target.columns {
+			if tx.Migrator().HasColumn(target.entity, column) {
+				continue
+			}
+			if err := tx.Migrator().AddColumn(target.entity, column); err != nil {
+				return err
+			}
+		}
+	}
+	if !tx.Migrator().HasTable(&model.ChannelModel{}) || !tx.Migrator().HasTable(&model.ChannelModelPriceTier{}) {
+		return nil
+	}
+	var tokenModelIDs, perSecondModelIDs []string
+	if err := tx.Model(&model.ChannelModelPriceTier{}).Where("billing_mode = ?", "token").Distinct().Pluck("channel_model_id", &tokenModelIDs).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&model.ChannelModelPriceTier{}).Where("billing_mode = ?", "per_second").Distinct().Pluck("channel_model_id", &perSecondModelIDs).Error; err != nil {
+		return err
+	}
+	excluded := make(map[string]bool, len(perSecondModelIDs))
+	for _, id := range perSecondModelIDs {
+		excluded[id] = true
+	}
+	candidates := make([]string, 0, len(tokenModelIDs))
+	for _, id := range tokenModelIDs {
+		if !excluded[id] {
+			candidates = append(candidates, id)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	var videoModelIDs []string
+	if err := tx.Model(&model.ChannelModel{}).Where("capability = ? AND id IN ?", "video", candidates).Pluck("id", &videoModelIDs).Error; err != nil {
+		return err
+	}
+	if len(videoModelIDs) == 0 {
+		return nil
+	}
+	if err := tx.Model(&model.ChannelModel{}).Where("id IN ?", videoModelIDs).Update("reference_video_billing", true).Error; err != nil {
+		return err
+	}
+	return tx.Model(&model.ChannelModelPriceTier{}).Where("billing_mode = ? AND channel_model_id IN ?", "token", videoModelIDs).
+		Update("reference_video_output_token_price_microcredits", gorm.Expr("output_token_price_microcredits")).Error
 }
 
 // migrateArkAssetGroups 把方舟真人素材库扩展为真人 / 虚拟 / 版权 IP 三类素材组：

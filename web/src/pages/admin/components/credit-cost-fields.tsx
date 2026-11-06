@@ -1,12 +1,28 @@
 import { Form, InputNumber, Switch, type FormInstance } from "antd";
 import type { ChannelModelFormValues } from "./channel-model-editor-form";
 
-export function CreditCostFields({ index, form, billingMode, isVideo, isAudio }: { index: number; form: FormInstance<ChannelModelFormValues>; billingMode: string; isVideo: boolean; isAudio?: boolean }) {
+export function CreditCostFields({
+    index,
+    form,
+    billingMode,
+    isVideo,
+    isAudio,
+    referenceVideoBilling = false,
+}: {
+    index: number;
+    form: FormInstance<ChannelModelFormValues>;
+    billingMode: string;
+    isVideo: boolean;
+    isAudio?: boolean;
+    /** 视频模型开启参考视频计费时，按秒档和视频 Token 档另填一套带参考视频的成本价；按次档不需要。 */
+    referenceVideoBilling?: boolean;
+}) {
     const configured = Form.useWatch(["priceTiers", index, "costConfigured"], form) === true;
+    const referenceVideoCost = isVideo && referenceVideoBilling && (billingMode === "per_second" || billingMode === "token");
     const fields =
         billingMode === "token"
             ? isVideo
-                ? [["costOutputTokenPrice", "积分 / 百万视频 Token"]]
+                ? [["costOutputTokenPrice", "积分 / 百万视频 Token"], ...(referenceVideoCost ? [["costReferenceVideoOutputTokenPrice", "带参考视频 积分 / 百万视频 Token"]] : [])]
                 : isAudio
                   ? [["costInputTokenPrice", "积分 / 百万输入 Token"]]
                   : [
@@ -15,7 +31,7 @@ export function CreditCostFields({ index, form, billingMode, isVideo, isAudio }:
                         ["costCachedTokenPrice", "缓存命中 / 百万 Token"],
                         ["costCacheWriteTokenPrice", "缓存写入 / 百万 Token"],
                     ]
-            : [["costUnitPrice", billingMode === "per_second" ? "积分 / 秒" : "积分 / 次"]];
+            : [["costUnitPrice", billingMode === "per_second" ? "积分 / 秒" : "积分 / 次"], ...(referenceVideoCost ? [["costReferenceVideoUnitPrice", "带参考视频 积分 / 秒"]] : [])];
     return (
         <section className="admin-price-tier-cost-panel" aria-label="积分成本设置">
             <header className="admin-price-tier-cost-header">
@@ -24,7 +40,7 @@ export function CreditCostFields({ index, form, billingMode, isVideo, isAudio }:
                         <span>积分成本</span>
                         <span className="admin-price-tier-cost-badge">仅管理员可见</span>
                     </div>
-                    <p>按当前计费方式填写成本，不影响用户售价。</p>
+                    <p>{referenceVideoCost ? "按当前计费方式填写成本；挂参考视频的请求使用带参考视频成本价。不影响用户售价。" : "按当前计费方式填写成本，不影响用户售价。"}</p>
                 </div>
                 <Form.Item className="admin-price-tier-cost-switch mb-0" name={[index, "costConfigured"]} valuePropName="checked">
                     <Switch aria-label="配置积分成本价" />

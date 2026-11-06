@@ -129,7 +129,8 @@ func dramaVideoFixture() VideoCapabilityConfig {
 	return VideoCapabilityConfig{
 		Duration:   VideoDurationConfig{Selection: "enum", Values: []int{5, 10}, Default: 5},
 		Operations: []string{"text_to_video", "reference_to_video", "image_to_video"}, DefaultOperation: "image_to_video",
-		References:    VideoReferenceConfig{PromptMaxChars: DefaultVideoPromptMaxChars, MaxImages: 6},
+		// 本仓库要求：声明了参考图片上限就必须同时声明图片角色（首帧 / 尾帧 / 全能参考）。
+		References:    VideoReferenceConfig{PromptMaxChars: DefaultVideoPromptMaxChars, MaxImages: 6, ImageRoles: []string{"first_frame", "last_frame", "reference_image"}},
 		GenerateAudio: VideoBooleanConfig{Supported: true, Default: true},
 		Ratios:        []string{"9:16", "16:9"}, DefaultRatio: "9:16",
 	}
