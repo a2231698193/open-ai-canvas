@@ -211,6 +211,7 @@ export function CanvasNodeToolbar({
             const halfToolbar = toolbarWidth / 2;
             const preferredAnchorLeft = Math.min(Math.max(preferredLeft, availableBounds.left + halfToolbar), Math.max(availableBounds.left + halfToolbar, availableBounds.right - halfToolbar));
             const above = nodeTop - 30;
+            // 工具栏固定在节点上方；只在视野顶部夹取，不越到节点下方（下方留给提示面板）。
             const preferredAnchorTop = Math.max(availableBounds.top + toolbarHeight, Math.min(above, availableBounds.bottom));
             // 面板在定位时发布矩形；这里不读取 DOM，可在实时平移和尺寸收敛后继续避让。
             const { left, top } = avoidCanvasNodePanels({ left: preferredAnchorLeft, top: preferredAnchorTop }, { width: toolbarWidth, height: toolbarHeight }, availableBounds, canvasNodePanelBounds(container));

@@ -93,7 +93,11 @@ export function canvasToolbarLayoutLevel(availableWidth: number, measuredWidths:
     return measuredWidths[current] > availableWidth ? Math.min(2, current + 1) : current;
 }
 
-/** Toolbar anchors are their horizontal center and bottom edge. */
+/**
+ * 节点工具栏的避让：只做左右平移，以及在面板挤占时向上抬。
+ * 绝不向下越过面板 —— 工具栏永远在节点上方、提示面板永远在节点下方，
+ * 一旦允许下移，两者会在窄视野里互换位置。
+ */
 export function avoidCanvasNodePanels(anchor: { left: number; top: number }, size: Size, bounds: CanvasOverlayBounds, panels: readonly CanvasOverlayBounds[]) {
     let { left, top } = anchor;
     const halfWidth = size.width / 2;
@@ -102,11 +106,15 @@ export function avoidCanvasNodePanels(anchor: { left: number; top: number }, siz
         if (panel.left - bounds.left >= size.width + 8) left = panel.left - halfWidth - 8;
         else if (bounds.right - panel.right >= size.width + 8) left = panel.right + halfWidth + 8;
         else if (panel.top - bounds.top >= size.height + 8) top = panel.top - 8;
-        else if (bounds.bottom - panel.bottom >= size.height + 8) top = panel.bottom + size.height + 8;
     }
     return { left, top };
 }
 
+/**
+ * 节点提示面板始终锚在节点下方：上方留给节点工具栏。
+ * 视野底部装不下时向下压缩高度（由调用方按 maxHeight 滚动），而不是翻到节点上方 ——
+ * 翻转会让工具栏与提示面板互换位置，用户会以为工具栏跳到了下面。
+ */
 export function placeCanvasNodePanel(node: CanvasNodeData, viewport: ViewportTransform, bounds: CanvasOverlayBounds, size: Size, dragOffset?: Position | null) {
     const width = Math.min(size.width, Math.max(0, bounds.right - bounds.left));
     const height = Math.min(size.height, Math.max(0, bounds.bottom - bounds.top));
@@ -114,11 +122,11 @@ export function placeCanvasNodePanel(node: CanvasNodeData, viewport: ViewportTra
     const nodeTop = viewport.y + (node.position.y + (dragOffset?.y || 0)) * viewport.k;
     const nodeBottom = nodeTop + node.height * viewport.k;
     const below = nodeBottom + 10;
-    const above = nodeTop - height - 10;
-    const placement = below + height > bounds.bottom && above >= bounds.top ? "above" : "below";
     return {
         left: Math.min(Math.max(center - width / 2, bounds.left), bounds.right - width),
-        top: Math.min(Math.max(placement === "above" ? above : below, bounds.top), bounds.bottom - height),
-        placement,
+        // 只向下锚定：不早于节点底部（含 10px 间距）。装不下时由调用方按 maxHeight 压缩滚动，
+        // 不能为了塞进视野而上移 —— 那会越过节点顶部、盖住工具栏。
+        top: Math.max(below, bounds.top),
+        placement: "below" as const,
     };
 }

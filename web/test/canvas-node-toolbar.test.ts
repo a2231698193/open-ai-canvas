@@ -83,6 +83,25 @@ describe("canvas node toolbar model", () => {
         expect(resolveToolbarTools("node-hover", ctx, null).some((tool) => tool.id === "extractAudio")).toBe(false);
     });
 
+    test("image nodes expose exactly one preview entry", () => {
+        // 图片工具栏（imageTools 的 view）与节点注册表（previewMedia）曾各带一个放大按钮，
+        // 两者调同一个 onViewImage，图片节点工具栏上因此出现两个一模一样的图标。
+        const node: CanvasNodeData = { id: "image", type: CanvasNodeType.Image, title: "图片", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "image.png" } };
+        const ctx = createNodeContext(node);
+        const registryPreview = resolveToolbarTools("node-hover", ctx, null).filter((tool) => tool.id === "previewMedia");
+        const imageToolbarViews = buildImageToolbarTools(node, {} as never).filter((tool) => tool.id === "view");
+        expect(registryPreview).toHaveLength(0);
+        expect(imageToolbarViews).toHaveLength(1);
+    });
+
+    test("video and audio nodes keep the registry preview entry", () => {
+        for (const type of [CanvasNodeType.Video, CanvasNodeType.Audio]) {
+            const ctx = createNodeContext({ id: `${type}-node`, type, title: "媒体", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "media.mp4" } });
+            const preview = resolveToolbarTools("node-hover", ctx, null).filter((tool) => tool.id === "previewMedia");
+            expect(preview).toHaveLength(1);
+        }
+    });
+
     test("image menu actions remain lazy and keep the original node", () => {
         const node: CanvasNodeData = { id: "image", type: CanvasNodeType.Image, title: "图片", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "image.png", freeResize: true } };
         const received: CanvasNodeData[] = [];

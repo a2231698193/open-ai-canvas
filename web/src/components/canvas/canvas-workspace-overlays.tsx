@@ -142,7 +142,10 @@ export function CanvasNodePanelOverlay({
             liveViewport = nextViewport;
             const visualNode = resizeMotion?.resolveNode(node) || node;
             const nextWidth = Math.min(resolveNodePanelWidth(visualNode, nextViewport, panelWidth), Math.max(0, availableBounds.right - availableBounds.left));
-            const availableHeight = Math.max(0, availableBounds.bottom - availableBounds.top);
+            // 提示面板固定在节点下方，可用高度只算节点底部到视野底部的这段，
+            // 否则面板会按整块视野撑高、越过底部后被夹回去，露出被裁掉的滚动区。
+            const nodeBottom = nextViewport.y + (visualNode.position.y + (liveDragOffset?.y || 0) + visualNode.height) * nextViewport.k;
+            const availableHeight = Math.max(0, availableBounds.bottom - Math.max(nodeBottom + 10, availableBounds.top));
             panel.style.width = `${nextWidth}px`;
             panel.style.maxHeight = `${availableHeight}px`;
             panel.style.overflowY = measuredHeight > availableHeight || !allowOverflow ? "auto" : "visible";

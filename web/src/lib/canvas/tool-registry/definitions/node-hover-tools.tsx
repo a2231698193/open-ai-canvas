@@ -214,7 +214,9 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         defaultVisible: true,
         defaultOrder: 59,
         nodeToolbar: { group: "utility", order: 19 },
-        applicable: (ctx) => hasImage(ctx) || hasVideo(ctx) || hasAudio(ctx),
+        // 图片节点的预览由图片工具栏（canvas-image-toolbar-tools 的 view）提供，这里只服务视频与音频，
+        // 否则图片节点上会出现两个一模一样的放大按钮。
+        applicable: (ctx) => hasVideo(ctx) || hasAudio(ctx),
         run: (ctx) => ctx.handlers.onNodeViewImage(ctx.node!),
     },
     {

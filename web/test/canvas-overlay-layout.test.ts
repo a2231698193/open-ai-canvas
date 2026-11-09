@@ -43,21 +43,32 @@ describe("canvas floating overlay layout", () => {
         updateCanvasNodePanelBounds(container, panel, null);
     });
 
-    test("bottom-edge image editor stays above the dock and outside the workspace rail", () => {
+    test("bottom-edge image editor stays below the node and inside the viewport", () => {
         const bounds = canvasOverlayBounds({ width: 1024, height: 720 }, { left: 76, top: 64, bottom: 626 });
         const position = placeCanvasNodePanel(image, { x: 0, y: 0, k: 1 }, bounds, { width: 680, height: 238 });
-        expect(position.placement).toBe("above");
+        // 提示面板固定锚在节点下方（节点底部 500+160=660，再加 10 间距），不再翻到节点上方抢占工具栏位置。
+        expect(position.placement).toBe("below");
+        const nodeBottom = image.position.y + image.height + 10;
+        expect(position.top).toBe(nodeBottom);
         expect(position.left).toBeGreaterThanOrEqual(76);
         expect(position.left + 680).toBeLessThanOrEqual(1012);
-        expect(position.top).toBeGreaterThanOrEqual(64);
-        expect(position.top + 238).toBeLessThanOrEqual(626);
     });
 
-    test("oversized editor is anchored to the usable area in a narrow short viewport", () => {
+    test("prompt panel keeps its below-node anchor even when the viewport bottom is tight", () => {
+        const bounds = canvasOverlayBounds({ width: 1024, height: 720 }, { left: 76, top: 64, bottom: 626 });
+        const low = { ...image, position: { x: 20, y: 600 } };
+        const position = placeCanvasNodePanel(low, { x: 0, y: 0, k: 1 }, bounds, { width: 680, height: 238 });
+        expect(position.placement).toBe("below");
+        expect(position.top).toBe(low.position.y + low.height + 10);
+    });
+
+    test("narrow viewport clamps the panel width but keeps the below-node anchor", () => {
         const bounds = canvasOverlayBounds({ width: 320, height: 320 }, { left: 76, top: 64, bottom: 244 });
         const position = placeCanvasNodePanel(image, { x: -200, y: 100, k: 2 }, bounds, { width: 680, height: 540 });
+        // 宽度夹到可用区；纵向仍跟随节点（此例节点在视野下方，面板随之在视野外，由 maxHeight 处理滚动）。
         expect(position.left).toBe(76);
-        expect(position.top).toBe(64);
+        expect(position.top).toBe(100 + image.position.y * 2 + image.height * 2 + 10);
+        expect(position.placement).toBe("below");
         expect(bounds.right - bounds.left).toBe(232);
         expect(bounds.bottom - bounds.top).toBe(180);
     });
