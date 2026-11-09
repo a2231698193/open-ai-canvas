@@ -1,3 +1,4 @@
+import type { TextThinkingConfig } from "./text-thinking";
 import type { ModelProtocol, ModelProtocolWorkflow } from "@/lib/model-protocols";
 import { projectImageParameters, normalizeImageParameters, imageParameterRequest } from "./image-parameters";
 import type { ImageResolutionOption, ImageResolutionTier } from "@/lib/image-resolution-tiers";
@@ -33,6 +34,7 @@ export {
 } from "./model-capabilities-workflow";
 
 export type ModelCapabilityConfig = {
+    mediaTransport?: import("./media-transport").ReferenceMediaTransport;
     version: number;
     text?: TextCapabilityConfig;
     image?: ImageCapabilityConfig;
@@ -42,8 +44,8 @@ export type ModelCapabilityConfig = {
 export type TextCapabilityConfig = {
     /** Whether the upstream text endpoint accepts SSE streaming responses. */
     streaming?: boolean;
-    /** Whether the model exposes a user-selectable reasoning/thinking mode. */
-    thinking?: boolean;
+    /** Thinking levels and upstream wire mapping; omitted means the protocol's legacy on/off behavior. */
+    thinking?: TextThinkingConfig;
     /** Total provider input plus output context window, in tokens. */
     contextWindowTokens: number;
     /** Provider completion/reasoning output ceiling, in tokens. */
@@ -537,6 +539,9 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
     if (protocol === "gemini-veo") {
         video.duration = { selection: "enum", values: [4, 6, 8], default: 6 };
         video.resolutions = ["720p", "1080p"];
+    }
+    if (protocol === "dashscope-wan3-video") {
+        video.generateAudio = { supported: true, default: true };
     }
     if (protocol === "volcengine-ark-video" || protocol === "volcengine-ark-agent-plan-video" || protocol === "newapi-channel-1" || protocol === "newapi-channel-2") {
         video.references.maxVideos = 3;

@@ -17,7 +17,7 @@ import { Live2DAvatar } from "./live2d-avatar";
 import { agentAvatarBundleFileURL, live2DModelURL } from "@/services/api/appearance";
 import { AgentAvatarVideo } from "@/components/canvas/agent-avatar-video";
 import { FluidOrb } from "@/components/ui/fluid-orb";
-import { ArrowDown, ArrowLeft, Check, Clock3, Download, Ellipsis, History, LoaderCircle, Maximize2, MessageSquarePlus, Minus, PanelRight, PictureInPicture2, RefreshCw, Scaling, Settings2, ShieldCheck, Trash2, X, Blocks } from "lucide-react";
+import { ArrowDown, ArrowLeft, Check, ChevronDown, Clock3, Download, Ellipsis, History, LoaderCircle, Maximize2, MessageSquarePlus, Minus, PanelRight, PictureInPicture2, RefreshCw, Scaling, Settings2, ShieldCheck, Trash2, X, Blocks } from "lucide-react";
 import { agentModifierShortcut } from "@/lib/canvas/agent-outbox";
 import { Button, Input, Popover } from "antd";
 import { CanvasAnchoredDropdown as Dropdown } from "./canvas-anchored-dropdown";
@@ -27,13 +27,16 @@ import { AgentChatMessage, AgentOperationFeed, AgentReasoningFeed, AgentWorkingM
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import type { CanvasNodeData } from "@/types/canvas";
 import type { AgentCanvasUndoState, AgentCanvasUndoTarget } from "@/lib/canvas/agent-canvas-undo";
-import type { AgentMediaSettings, AgentPermissionMode } from "@/services/api/agent";
+import type { AgentMediaSettings, AgentPermissionMode, AgentReasoningMode } from "@/services/api/agent";
 import { buildAgentFeedSegments } from "@/lib/canvas/agent-operation-feed";
 import { AgentWelcome } from "./canvas-agent-welcome";
 import { useEffectiveConfig } from "@/stores/use-config-store";
 import { agentPermissionLabel, agentPermissionMenuItems, agentPermissionShortLabel, agentPermissionVisual } from "./canvas-cloud-agent-settings";
 import { Kbd } from "@/components/ui/base/kbd";
 import { ModelPicker } from "@/components/model-picker";
+import { ThinkingLevelSlider } from "@/components/thinking-level-slider";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
+import { LEGACY_TEXT_THINKING_CONFIG, THINKING_LEVEL_LABELS, resolveThinkingLevel, thinkingLevelsFor } from "@/lib/text-thinking";
 import { agentImageApproval, agentVideoApproval } from "@/lib/canvas/agent-media-approval";
 import { agentApprovalPresentation } from "@/lib/canvas/agent-approval-presentation";
 import { CanvasAgentImageApprovalSettings } from "./canvas-agent-image-approval-settings";
@@ -476,7 +479,6 @@ export function AgentContextRing({ view, theme }: { view: AgentContextUsageView;
                 </span>
                 <span className="agent-context-meter-copy">
                     <strong>{meterLabel}</strong>
-                    <small>上下文</small>
                 </span>
             </button>
         </Popover>
@@ -867,6 +869,8 @@ export function ComposerControls({
     skillsOpen,
     onSkillsOpenChange,
     selectedSkillCount,
+    reasoningMode,
+    onReasoningModeChange,
 }: {
     config: ReturnType<typeof useEffectiveConfig>;
     selectedModel: string;
@@ -877,7 +881,14 @@ export function ComposerControls({
     skillsOpen: boolean;
     onSkillsOpenChange: (open: boolean) => void;
     selectedSkillCount: number;
+    reasoningMode: AgentReasoningMode;
+    onReasoningModeChange: (value: AgentReasoningMode) => void;
 }) {
+    const [thinkingOpen, setThinkingOpen] = useState(false);
+    const thinkingAnchor = usePopoverAnchorAlign(thinkingOpen);
+    const thinking = modelCapabilityConfigFor(config, selectedModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG;
+    const levels = thinkingLevelsFor(thinking);
+    const thinkingLabel = reasoningMode === "auto" ? "默认" : reasoningMode === "deep" ? "深入" : THINKING_LEVEL_LABELS[reasoningMode];
     const permissionVisual = agentPermissionVisual(permissionMode);
     const PermissionIcon = permissionVisual.icon;
     return (
@@ -895,6 +906,26 @@ export function ComposerControls({
                 showOptionPrices
                 placeholder="选择文本模型"
             />
+            {levels.length ? (
+                <Popover
+                    ref={thinkingAnchor}
+                    open={thinkingOpen}
+                    onOpenChange={setThinkingOpen}
+                    trigger="click"
+                    placement="top"
+                    arrow={false}
+                    content={
+                        <div className="agent-thinking-popover">
+                            <ThinkingLevelSlider levels={levels} value={reasoningMode} resolvedLevel={resolveThinkingLevel(thinking, reasoningMode)} onChange={onReasoningModeChange} />
+                        </div>
+                    }
+                >
+                    <button type="button" className="agent-thinking-trigger" aria-label={`选择推理强度：${thinkingLabel}`} aria-expanded={thinkingOpen} onPointerDown={(event) => event.stopPropagation()}>
+                        <span>{thinkingLabel}</span>
+                        <ChevronDown className="size-3" aria-hidden="true" />
+                    </button>
+                </Popover>
+            ) : null}
             {/* 权限常显文字：只读 / 审批 / 自动，面板窄时只留图标。图标形状和颜色同时区分三种权限。 */}
             <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: agentPermissionMenuItems(permissionMode, onPermissionChange) }}>
                 <button
@@ -988,6 +1019,11 @@ export function ApprovalCard({
                 <CanvasAgentImageApprovalSettings initial={imageApproval} value={mediaSettings} onChange={setMediaSettings} theme={theme} disabled={submitting} />
             ) : videoApproval ? (
                 <CanvasAgentVideoApprovalSettings initial={videoApproval} value={mediaSettings} onChange={setMediaSettings} theme={theme} disabled={submitting} />
+            ) : null}
+            {(imageApproval || videoApproval) && action.kind === "media_batch" ? (
+                <p className="canvas-agent-approval-description" style={{ color: theme.node.muted }}>
+                    模型与规格修改应用于本批次全部项目；修改视频时长会统一各项时长，提交前会重新校验模型能力与费用。
+                </p>
             ) : null}
             <button type="button" className="canvas-agent-approval-reason-toggle" aria-expanded={showReason} onClick={() => setShowReason((value) => !value)} disabled={submitting}>
                 {showReason ? "收起拒绝理由" : "填写拒绝理由（可选）"}

@@ -211,6 +211,10 @@ export type RegistrationSetting = {
     agreementContent?: string;
     /** 旧服务端未返回时按弹窗处理。 */
     loginMode?: AuthLoginMode;
+    /** 注册必须填写邮箱。 */
+    emailRequired?: boolean;
+    /** 注册必须先通过验证码；关闭后邮箱按未验证保存，用户可在账号设置中验证。 */
+    emailVerificationRequired?: boolean;
     updatedBy?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -352,7 +356,7 @@ export function getAdminRegistrationSetting() {
     return http.get<{ setting: RegistrationSetting }>("/admin/settings/registration");
 }
 
-export function updateAdminRegistrationSetting(input: { enabled: boolean; agreementTitle?: string; agreementContent?: string; loginMode?: AuthLoginMode } | boolean) {
+export function updateAdminRegistrationSetting(input: { enabled: boolean; agreementTitle?: string; agreementContent?: string; loginMode?: AuthLoginMode; emailRequired?: boolean; emailVerificationRequired?: boolean } | boolean) {
     const payload = typeof input === "boolean" ? { enabled: input } : input;
     return http.patch<{ setting: RegistrationSetting }>("/admin/settings/registration", payload);
 }
@@ -443,6 +447,21 @@ export type ChannelModelRepriceInput = {
 
 export function repriceAdminChannelModels(channelId: string, models: ChannelModelRepriceInput[]) {
     return http.post<{ updated: number }>(`/admin/channels/${encodeURIComponent(channelId)}/models/batch-reprice`, { models });
+}
+
+/** 跨渠道统一调价：所选模型可来自不同系统渠道，结构同单渠道调价。 */
+export function repriceAdminAllChannelModels(models: ChannelModelRepriceInput[]) {
+    return http.post<{ updated: number }>("/admin/channel-models/batch-reprice", { models });
+}
+
+/** 跨渠道批量切换调用协议：所选模型可来自不同系统渠道，规则同单渠道批量切换。 */
+export function updateAdminAllChannelModelsProtocol(modelIds: string[], protocol: string) {
+    return http.post<{ updated: number }>("/admin/channel-models/batch-protocol", { modelIds, protocol });
+}
+
+/** 批量切换同一系统渠道内模型的调用协议；能力配置和价格档保留，任一模型不兼容时整批拒绝。 */
+export function updateAdminChannelModelsProtocol(channelId: string, modelIds: string[], protocol: string) {
+    return http.post<{ updated: number }>(`/admin/channels/${encodeURIComponent(channelId)}/models/batch-protocol`, { modelIds, protocol });
 }
 
 export type AdminFinanceListParams = { keyword?: string; status?: string; validity?: string; page?: number; pageSize?: number };

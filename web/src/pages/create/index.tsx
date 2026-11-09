@@ -15,6 +15,7 @@ import { getActiveUserScope } from "@/lib/user-scope";
 import { continueCreationConversationOnCanvas } from "@/services/creation-canvas-conversation";
 import { useAuthEntry } from "@/hooks/use-auth-entry";
 import { useExternalAssetSources } from "@/hooks/use-external-asset-sources";
+import { LEGACY_TEXT_THINKING_CONFIG, isThinkingLevel, resolveThinkingLevel, thinkingLevelsFor, type ThinkingLevel, type ThinkingRequest } from "@/lib/text-thinking";
 import { modelCapabilityConfigFor, normalizeImageValue, normalizeVideoValue, videoDurationAllowed, videoDurationOptions } from "@/lib/model-capabilities";
 import { modelCompatibilityError, modelGroupReferenceLimits, resolveCompatibleModel, mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
 import { videoModeImageRoles, videoModeOperation, type VideoGenerationMode } from "@/lib/video-generation-mode";
@@ -34,11 +35,50 @@ import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
 import { promptOptimizerPlugin, PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins/builtin/prompt-optimizer";
 import { createPluginHostContext } from "@/services/plugin-host";
 import { usePluginStore } from "@/stores/use-plugin-store";
-import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreationAttachmentLimit, reconcileCreationAttachmentLimits, removeCreationReferenceTokens, replaceCreationAttachmentReference, selectedCreationReferences, type CreationReference } from "./creation-references";
-import { activeVideoCreationAttachments, creationAttachmentFromAudio, creationAttachmentFromDocument, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
+import {
+    buildCreationMentionReferences,
+    expandCreationPrompt,
+    reconcileCreationAttachmentLimit,
+    reconcileCreationAttachmentLimits,
+    removeCreationReferenceTokens,
+    replaceCreationAttachmentReference,
+    selectedCreationReferences,
+    type CreationReference,
+} from "./creation-references";
+import {
+    activeVideoCreationAttachments,
+    creationAttachmentFromAudio,
+    creationAttachmentFromDocument,
+    creationAttachmentFromImage,
+    creationAttachmentFromVideo,
+    creationAttachmentKind,
+    creationAudioAsset,
+    creationFileAccepted,
+    creationImageAsset,
+    creationMediaAspectRatio,
+    creationUploadAccept,
+    creationVideoAsset,
+    removeCreationAttachment,
+    splitCreationAttachments,
+    type CreationAttachment,
+} from "./creation-assets";
 import { creationLibraryDisabledReason, creationLibrarySelectionToAttachments } from "./creation-library";
 import { defaultCreationMode, modeLabels, type CreationConversation, type CreationMessage, type CreationMode, type CreationRetryContext, type CreationSettings, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
-import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationMessageNeedsResultSync, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages, type PersistedCreationTask } from "./creation-conversations";
+import {
+    attachCreationTaskContexts,
+    completedCreationGenerationTask,
+    conversationTimestamp,
+    creationMessageNeedsResultSync,
+    creationShotRail,
+    creationVideoShotOrdinal,
+    isImageAttachment,
+    isVideoAttachment,
+    materializeCreationTaskResults,
+    newConversation,
+    newMessage,
+    reconcileCreationTaskMessages,
+    type PersistedCreationTask,
+} from "./creation-conversations";
 import { CreationComposer, CreationEmptySuggest, CreationHistoryDrawer, CreationMessageView, CreationModeCard, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
 import { declaredInspirationSources } from "@/lib/inspirations/catalog";
 import { fillablePrompt } from "@/lib/inspirations/resolve";
@@ -53,7 +93,25 @@ const loadCreationRuntime = () => import("./creation-runtime");
 type CreationRuntime = Awaited<ReturnType<typeof loadCreationRuntime>>;
 
 const TEXT_STREAMING_PREF_KEY = "creation.composer.text-streaming";
-const TEXT_THINKING_PREF_KEY = "creation.composer.text-thinking";
+// 思考档位按模型分别记住：{ [model]: level }。只存小型 UI 偏好。
+const TEXT_THINKING_LEVELS_PREF_KEY = "creation.composer.text-thinking-levels";
+
+function readThinkingLevelPrefs(): Record<string, ThinkingLevel> {
+    try {
+        const parsed = JSON.parse(window.localStorage.getItem(TEXT_THINKING_LEVELS_PREF_KEY) || "{}") as Record<string, unknown>;
+        return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, ThinkingLevel] => isThinkingLevel(entry[1])));
+    } catch {
+        return {};
+    }
+}
+
+function writeThinkingLevelPrefs(value: Record<string, ThinkingLevel>) {
+    try {
+        window.localStorage.setItem(TEXT_THINKING_LEVELS_PREF_KEY, JSON.stringify(value));
+    } catch {
+        // 存储不可用：仅当前会话生效
+    }
+}
 
 function readComposerPref(key: string, fallback: boolean): boolean {
     try {
@@ -108,7 +166,7 @@ export default function CreatePage() {
     const [conversationStorageError, setConversationStorageError] = useState("");
     const [conversationLoadAttempt, setConversationLoadAttempt] = useState(0);
     const inspirationSourcesVisible = useUserStore((state) => state.features.inspirationSourcesVisible);
-    const [conversationScope, setConversationScope] = useState<string | null>(() => initialConversationSnapshot ? activeConversationScope : null);
+    const [conversationScope, setConversationScope] = useState<string | null>(() => (initialConversationSnapshot ? activeConversationScope : null));
     const [mode, setMode] = useState<CreationMode>(() => initialComposerPreferences.mode || defaultCreationMode);
     const [prompt, setPrompt] = useState("");
     const [attachments, setAttachments] = useState<CreationAttachment[]>([]);
@@ -128,7 +186,7 @@ export default function CreatePage() {
     const [videoEndFrameAttachmentId, setVideoEndFrameAttachmentId] = useState<string>();
     const [count, setCount] = useState(String(Math.max(1, Math.min(4, Number(config.count) || 1))));
     const [textStreaming, setTextStreaming] = useState(() => readComposerPref(TEXT_STREAMING_PREF_KEY, true));
-    const [textThinking, setTextThinking] = useState(() => readComposerPref(TEXT_THINKING_PREF_KEY, false));
+    const [textThinkingPrefs, setTextThinkingPrefs] = useState(readThinkingLevelPrefs);
     const [busy, setBusy] = useState(false);
     const [referenceReplacementBusy, setReferenceReplacementBusy] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -157,7 +215,7 @@ export default function CreatePage() {
     promptRef.current = prompt;
     attachmentsRef.current = attachments;
 
-    const activeConversation = useMemo(() => conversationScope === activeConversationScope ? conversations.find((item) => item.id === activeId) || conversations[0] : undefined, [activeConversationScope, activeId, conversationScope, conversations]);
+    const activeConversation = useMemo(() => (conversationScope === activeConversationScope ? conversations.find((item) => item.id === activeId) || conversations[0] : undefined), [activeConversationScope, activeId, conversationScope, conversations]);
     const historyConversations = useMemo(
         () => conversations.filter((conversation) => conversation.id === activeId || conversation.messages.length > 0).sort((left, right) => conversationTimestamp(right.updatedAt) - conversationTimestamp(left.updatedAt)),
         [activeId, conversations],
@@ -188,11 +246,25 @@ export default function CreatePage() {
 				: {},
     }), [activeVideoAttachments, attachments, config, preferredModel, count, hasPrompt, imageResolution, imageParameters, mode, quality, ratio, seconds, videoMode, videoQuality]);
     const selectedModel = resolveCompatibleModel(config, preferredModel, modelRequirements) || preferredModel;
-    const generationConfig = useMemo(() => mode === "video"
-        ? creationVideoConfig(config, selectedModel, { ratio, seconds, videoQuality })
-        : config, [config, mode, ratio, seconds, selectedModel, videoQuality]);
+    const generationConfig = useMemo(() => (mode === "video" ? creationVideoConfig(config, selectedModel, { ratio, seconds, videoQuality }) : config), [config, mode, ratio, seconds, selectedModel, videoQuality]);
     const imageProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).image!, [config, selectedModel]);
     const videoProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).video!, [config, selectedModel]);
+    const textThinkingConfig = useMemo(() => (mode === "text" ? modelCapabilityConfigFor(config, selectedModel).text?.thinking || LEGACY_TEXT_THINKING_CONFIG : undefined), [config, mode, selectedModel]);
+    const textThinkingLevels = useMemo(() => thinkingLevelsFor(textThinkingConfig), [textThinkingConfig]);
+    // 记住的档位已不被模型支持时按后端同一规则就近取档；没记住时用模型默认值。
+    const textThinkingLevel = resolveThinkingLevel(textThinkingConfig, textThinkingPrefs[selectedModel] || "auto");
+    const textThinkingRequest = textThinkingPrefs[selectedModel] || "auto";
+    const setTextThinkingLevel = (level: ThinkingRequest) => {
+        setTextThinkingPrefs((current) => {
+            const next = { ...current };
+            if (isThinkingLevel(level)) next[selectedModel] = level;
+            else delete next[selectedModel];
+            writeThinkingLevelPrefs(next);
+            return next;
+        });
+    };
+    // 同名逻辑模型可能把文生视频、图生视频和全模态参考拆到不同路由。
+    // 入口需要展示整个模型组的引用能力，添加素材后再由兼容路由选择具体模型。
     // 全能参考模式按同名模型组取上限：还没加素材时页面解析到的是能力最弱的线路，
     // 用单个模型的上限会把第一张参考图直接挡在门外。其余三种模式的上限由模式本身决定。
     const videoReferenceLimits = useMemo(() => mode === "video" && videoMode === "reference"
@@ -229,13 +301,14 @@ export default function CreatePage() {
         return ids.length ? `${recoveryEpoch}:${ids.join("|")}` : "";
     }, [pendingTaskIds, recoveryEpoch]);
     const videoShots = useMemo(() => creationShotRail(activeConversation?.messages || []), [activeConversation]);
-    const jumpToShot = (shot: CreationShotRailEntry) => { const id = shot.result?.id; if (id) document.getElementById(`creation-shot-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }); };
-
+    const jumpToShot = (shot: CreationShotRailEntry) => {
+        const id = shot.result?.id;
+        if (id) document.getElementById(`creation-shot-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
 
     useEffect(() => {
         writeComposerPref(TEXT_STREAMING_PREF_KEY, textStreaming);
-        writeComposerPref(TEXT_THINKING_PREF_KEY, textThinking);
-    }, [textStreaming, textThinking]);
+    }, [textStreaming]);
     useEffect(() => {
         if (!composerPreferencesHydrated || composerPreferencesInitialized) return;
         const saved = useCreationPreferencesStore.getState().preferences;
@@ -308,7 +381,7 @@ export default function CreatePage() {
         if (cached?.length) {
             conversationsRef.current = cached;
             setConversations(cached);
-            setActiveId((current) => cached.some((item) => item.id === current) ? current : cached[0].id);
+            setActiveId((current) => (cached.some((item) => item.id === current) ? current : cached[0].id));
             setConversationScope(scope);
             setConversationStorageError("");
             setHydrated(true);
@@ -318,23 +391,27 @@ export default function CreatePage() {
             setConversations([]);
             setActiveId("");
         }
-        void loadCreationConversations<CreationConversation>().then((stored) => {
-            if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
-            const next = cached?.length ? mergeCreationConversationSnapshot(cached, stored || []) : stored?.length ? stored : [newConversation()];
-            conversationsRef.current = next;
-            writeCreationConversationSnapshot(scope, next);
-            setConversations(next);
-            setActiveId((current) => next.some((item) => item.id === current) ? current : next[0].id);
-            setConversationScope(scope);
-            setConversationStorageError("");
-            setConversationStorageReady(true);
-            setHydrated(true);
-        }).catch((error: unknown) => {
-            if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
-            setConversationStorageError(error instanceof Error ? error.message : t("create.page.recordLoadError"));
-            if (!cached?.length) setHydrated(true);
-        });
-        return () => { cancelled = true; };
+        void loadCreationConversations<CreationConversation>()
+            .then((stored) => {
+                if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
+                const next = cached?.length ? mergeCreationConversationSnapshot(cached, stored || []) : stored?.length ? stored : [newConversation()];
+                conversationsRef.current = next;
+                writeCreationConversationSnapshot(scope, next);
+                setConversations(next);
+                setActiveId((current) => (next.some((item) => item.id === current) ? current : next[0].id));
+                setConversationScope(scope);
+                setConversationStorageError("");
+                setConversationStorageReady(true);
+                setHydrated(true);
+            })
+            .catch((error: unknown) => {
+                if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
+                setConversationStorageError(error instanceof Error ? error.message : "读取本地创作记录失败");
+                if (!cached?.length) setHydrated(true);
+            });
+        return () => {
+            cancelled = true;
+        };
     }, [userId, userSessionHydrated, conversationLoadAttempt]);
 
     useEffect(() => () => abortRef.current?.abort(), []);
@@ -378,17 +455,20 @@ export default function CreatePage() {
         return () => window.cancelAnimationFrame(frame);
     }, [activeConversation?.id, activeConversation?.messages, isEmpty]);
 
-    const updateActive = useCallback((updater: (conversation: CreationConversation) => CreationConversation) => {
-        const next = updateCreationConversationSnapshot(conversationsRef.current, activeId, updater);
-        conversationsRef.current = next;
-        setConversations(next);
-    }, [activeId]);
+    const updateActive = useCallback(
+        (updater: (conversation: CreationConversation) => CreationConversation) => {
+            const next = updateCreationConversationSnapshot(conversationsRef.current, activeId, updater);
+            conversationsRef.current = next;
+            setConversations(next);
+        },
+        [activeId],
+    );
 
     const updateConversationMessage = useCallback(async (conversationId: string, id: string, updater: (item: CreationMessage) => CreationMessage) => {
         const next = updateCreationConversationSnapshot(conversationsRef.current, conversationId, (conversation) => ({
             ...conversation,
             updatedAt: new Date().toISOString(),
-            messages: conversation.messages.map((item) => item.id === id ? updater(item) : item),
+            messages: conversation.messages.map((item) => (item.id === id ? updater(item) : item)),
         }));
         conversationsRef.current = next;
         setConversations(next);
@@ -404,28 +484,38 @@ export default function CreatePage() {
             const contextual = attachCreationTaskContexts(tasks, conversationsRef.current);
             const persistedTasks = await materializeCreationTaskResults(runtime, contextual, signal);
             if (signal.aborted) return persistedTasks;
-            const attachable = persistedTasks.filter((task) => task.status === "succeeded" && Boolean(task.clientContext?.conversationId && task.clientContext.messageId) && Boolean(task.creationResultUrls?.length || task.creationResultStorageKeys?.length));
+            const attachable = persistedTasks.filter(
+                (task) => task.status === "succeeded" && Boolean(task.clientContext?.conversationId && task.clientContext.messageId) && Boolean(task.creationResultUrls?.length || task.creationResultStorageKeys?.length),
+            );
             for (const task of attachable) {
                 const conversationId = task.clientContext!.conversationId!;
                 const messageId = task.clientContext!.messageId!;
                 try {
-                    await runtime.consumeGenerationTaskMessage(task, messageId, async ({ effectKey, resultUrls, resultStorageKeys }) => {
-                        if (signal.aborted) return;
-                        await updateConversationMessage(conversationId, messageId, (item) =>
-                            runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({
-                                ...current,
-                                status: "done" as const,
-                                content: current.mode === "video" ? t("create.status.videoGenerated") : t("create.status.imageGenerated"),
-                                error: undefined,
-                                errorKind: undefined,
-                                syncInterrupted: undefined,
-                                mediaRecoverable: undefined,
-                                generationStatus: "succeeded" as const,
-                                ...(resultUrls.length ? { resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) } : {}),
-                                ...(resultStorageKeys.length ? { resultStorageKeys: Array.from(new Set([...(current.resultStorageKeys || []), ...resultStorageKeys])) } : {}),
-                            })).value,
-                        );
-                    }, { signal, materialize: async () => task, materializedUrls: runtime.generationTaskMaterializedUrls, materializedStorageKeys: runtime.generationTaskMaterializedStorageKeys });
+                    await runtime.consumeGenerationTaskMessage(
+                        task,
+                        messageId,
+                        async ({ effectKey, resultUrls, resultStorageKeys }) => {
+                            if (signal.aborted) return;
+                            await updateConversationMessage(
+                                conversationId,
+                                messageId,
+                                (item) =>
+                                    runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({
+                                        ...current,
+                                        status: "done" as const,
+                                        content: current.mode === "video" ? t("create.status.videoGenerated") : t("create.status.imageGenerated"),
+                                        error: undefined,
+                                        errorKind: undefined,
+                                        syncInterrupted: undefined,
+                                        mediaRecoverable: undefined,
+                                        generationStatus: "succeeded" as const,
+                                        ...(resultUrls.length ? { resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) } : {}),
+                                        ...(resultStorageKeys.length ? { resultStorageKeys: Array.from(new Set([...(current.resultStorageKeys || []), ...resultStorageKeys])) } : {}),
+                                    })).value,
+                            );
+                        },
+                        { signal, materialize: async () => task, materializedUrls: runtime.generationTaskMaterializedUrls, materializedStorageKeys: runtime.generationTaskMaterializedStorageKeys },
+                    );
                 } catch (error) {
                     if (signal.aborted) return persistedTasks;
                     console.warn("创作任务结果挂载失败，将使用已物化结果收敛消息状态", error);
@@ -655,11 +745,13 @@ export default function CreatePage() {
     const uploadLibraryAssets = async (files: FileList | File[]) => {
         const next = Array.from(files).filter((file) => creationFileAccepted(mode, file, videoMode));
         if (!next.length) return [];
-        const settled = await Promise.allSettled(next.map(async (file) => {
-            const { asset } = await uploadCreationAsset(file);
-            return asset ? addAsset(asset) : "";
-        }));
-        const assetIds = settled.flatMap((entry) => entry.status === "fulfilled" && entry.value ? [entry.value] : []);
+        const settled = await Promise.allSettled(
+            next.map(async (file) => {
+                const { asset } = await uploadCreationAsset(file);
+                return asset ? addAsset(asset) : "";
+            }),
+        );
+        const assetIds = settled.flatMap((entry) => (entry.status === "fulfilled" && entry.value ? [entry.value] : []));
         const failed = settled.filter((entry) => entry.status === "rejected");
         if (assetIds.length) toast.success(t("create.page.uploadSucceeded", { count: assetIds.length }));
         if (failed.length) toast.error(t("create.page.uploadFailed", { count: failed.length }));
@@ -675,9 +767,7 @@ export default function CreatePage() {
         if (uncachedAssetIds.length) await loadAssetsForUse(uncachedAssetIds);
         setAttachments((current) => {
             const candidates = [...current.filter((item) => !next.some((candidate) => candidate.id === item.id)), ...next];
-            const reconciled = mode === "video" && videoReferenceLimits
-                ? reconcileCreationAttachmentLimits(candidates, [], videoReferenceLimits)
-                : reconcileCreationAttachmentLimit(candidates, [], maxReferences);
+            const reconciled = mode === "video" && videoReferenceLimits ? reconcileCreationAttachmentLimits(candidates, [], videoReferenceLimits) : reconcileCreationAttachmentLimit(candidates, [], maxReferences);
             if (reconciled.attachments.length < candidates.length) toast.warning(t("create.page.referenceLimitExceeded"));
             return reconciled.attachments;
         });
@@ -726,33 +816,39 @@ export default function CreatePage() {
         return true;
     }, []);
 
-    const replaceReferenceFromTrack = useCallback((targetAttachmentId: string, replacement: CreationAttachment) => {
-        try {
-            if (replaceAttachmentReference(targetAttachmentId, replacement)) toast.success(t("create.page.referenceReplaced"));
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("create.page.replaceFailed"));
-        }
-    }, [replaceAttachmentReference, toast]);
+    const replaceReferenceFromTrack = useCallback(
+        (targetAttachmentId: string, replacement: CreationAttachment) => {
+            try {
+                if (replaceAttachmentReference(targetAttachmentId, replacement)) toast.success(t("create.page.referenceReplaced"));
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : t("create.page.replaceFailed"));
+            }
+        },
+        [replaceAttachmentReference, toast],
+    );
 
-    const replaceReferenceFromFiles = useCallback(async (targetAttachmentId: string, files: File[]) => {
-        if (busy || referenceReplacementBusy) return;
-        const file = files.find((item) => item.type.startsWith("image/"));
-        if (!file) {
-            toast.warning(t("create.page.dropImageToReplace"));
-            return;
-        }
-        setReferenceReplacementBusy(true);
-        try {
-            const { asset, attachment } = await uploadCreationAsset(file);
-            if (creationAttachmentKind(attachment) !== "image") throw new Error(t("create.page.uploadNotImage"));
-            if (asset) addAsset(asset);
-            if (replaceAttachmentReference(targetAttachmentId, attachment)) toast.success(t("create.page.referenceReplaced"));
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : t("create.page.uploadReplaceFailed"));
-        } finally {
-            setReferenceReplacementBusy(false);
-        }
-    }, [addAsset, busy, referenceReplacementBusy, replaceAttachmentReference, toast]);
+    const replaceReferenceFromFiles = useCallback(
+        async (targetAttachmentId: string, files: File[]) => {
+            if (busy || referenceReplacementBusy) return;
+            const file = files.find((item) => item.type.startsWith("image/"));
+            if (!file) {
+                toast.warning(t("create.page.dropImageToReplace"));
+                return;
+            }
+            setReferenceReplacementBusy(true);
+            try {
+                const { asset, attachment } = await uploadCreationAsset(file);
+                if (creationAttachmentKind(attachment) !== "image") throw new Error(t("create.page.uploadNotImage"));
+                if (asset) addAsset(asset);
+                if (replaceAttachmentReference(targetAttachmentId, attachment)) toast.success(t("create.page.referenceReplaced"));
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : t("create.page.uploadReplaceFailed"));
+            } finally {
+                setReferenceReplacementBusy(false);
+            }
+        },
+        [addAsset, busy, referenceReplacementBusy, replaceAttachmentReference, toast],
+    );
 
     const submit = async (retryContext?: CreationRetryContext, retryLockKey?: string) => {
         const releaseRetryLock = () => {
@@ -907,11 +1003,12 @@ export default function CreatePage() {
         const controller = new AbortController();
         const requestLifecycle = runtime.beginGenerationConsumer(controller.signal);
         abortRef.current = controller;
-        const normalizedImage = mode === "image"
-            ? imageProfile.parameters
-                ? { size: ratio, quality, imageResolution, imageParameters, count }
-                : normalizeImageValue(imageProfile, { size: ratio, quality, imageResolution, imageParameters, count }, resolveModelRequestConfig(config, selectedModel).interfaceType)
-            : undefined;
+        const normalizedImage =
+            mode === "image"
+                ? imageProfile.parameters
+                    ? { size: ratio, quality, imageResolution, imageParameters, count }
+                    : normalizeImageValue(imageProfile, { size: ratio, quality, imageResolution, imageParameters, count }, resolveModelRequestConfig(config, selectedModel).interfaceType)
+                : undefined;
         const requestConfig = {
             ...generationConfig,
             model: selectedModel,
@@ -920,66 +1017,96 @@ export default function CreatePage() {
             imageParameters: normalizedImage?.imageParameters || imageParameters,
             videoModel: selectedModel,
             textModel: selectedModel,
-            ...(mode === "image"
-                ? { size: normalizedImage?.size || ratio, quality: normalizedImage?.quality || quality, count: normalizedImage?.count || count, videoSeconds: config.videoSeconds }
-                : {}),
+            ...(mode === "image" ? { size: normalizedImage?.size || ratio, quality: normalizedImage?.quality || quality, count: normalizedImage?.count || count, videoSeconds: config.videoSeconds } : {}),
         };
         let handedOverToRecovery = false;
         try {
             if (mode === "text") {
-                const result = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () => runtime.runBackendGenerationTask({
-                    mode: "text",
-                    prompt: expandedPrompt,
-                    config: requestConfig,
-                    referenceImages,
-                    referenceVideos,
-                    referenceAudios,
-                    textHistory: (activeConversation.messages || []).filter((item) => item.content.trim()).map((item) => ({ role: item.role, content: item.content })),
-                    signal: requestLifecycle.signal,
-                    metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, ...referenceMetadata },
-                    onTaskUpdate: bindTask,
-                    streamText: textStreaming,
-                    enableThinking: textThinking,
-                    onTextDelta: textStreaming ? (value) => updateOriginAssistant((item) => ({ ...item, content: value })) : undefined,
-                    ...retryContext,
-                }));
+                const result = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () =>
+                    runtime.runBackendGenerationTask({
+                        mode: "text",
+                        prompt: expandedPrompt,
+                        config: requestConfig,
+                        referenceImages,
+                        referenceVideos,
+                        referenceAudios,
+                        textHistory: (activeConversation.messages || []).filter((item) => item.content.trim()).map((item) => ({ role: item.role, content: item.content })),
+                        signal: requestLifecycle.signal,
+                        metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, ...referenceMetadata },
+                        onTaskUpdate: bindTask,
+                        streamText: textStreaming,
+                        thinkingLevel: textThinkingRequest,
+                        onTextDelta: textStreaming ? (value) => updateOriginAssistant((item) => ({ ...item, content: value })) : undefined,
+                        ...retryContext,
+                    }),
+                );
                 if (!result.text?.trim()) throw new Error(t("create.page.noTextResult"));
                 updateOriginAssistant((item) => ({ ...item, content: result.text || "", reasoning: result.reasoning }));
             } else if (mode === "image") {
                 const taskCount = Math.max(1, Math.min(imageProfile.maxOutputs, Math.floor(Number(count) || 1)));
-                const settled = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () => runtime.runBackendGenerationTaskBatch({
-                    mode: "image",
-                    prompt: expandedPrompt,
-                    config: { ...requestConfig, count: "1" },
-                    referenceImages,
-                    signal: requestLifecycle.signal,
-                    metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, ...referenceMetadata },
-                    onTaskUpdate: bindTask,
-                    count: taskCount,
-                    ...retryContext,
-                }));
+                const settled = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () =>
+                    runtime.runBackendGenerationTaskBatch({
+                        mode: "image",
+                        prompt: expandedPrompt,
+                        config: { ...requestConfig, count: "1" },
+                        referenceImages,
+                        signal: requestLifecycle.signal,
+                        metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, ...referenceMetadata },
+                        onTaskUpdate: bindTask,
+                        count: taskCount,
+                        ...retryContext,
+                    }),
+                );
                 if (requestLifecycle.signal.aborted) throw new DOMException("Aborted", "AbortError");
                 const boundTaskIdList = Array.from(boundTaskIds);
                 const generatedTasks = settled.flatMap((entry, batchIndex) => {
                     if (entry.status !== "fulfilled") return [];
-                    return [{
-                        result: entry.value,
-                        taskId: boundTaskIdsByBatchIndex.get(batchIndex) || boundTaskIdList[batchIndex],
-                        batchIndex,
-                    }];
+                    return [
+                        {
+                            result: entry.value,
+                            taskId: boundTaskIdsByBatchIndex.get(batchIndex) || boundTaskIdList[batchIndex],
+                            batchIndex,
+                        },
+                    ];
                 });
                 const taskFailures = settled.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected");
-                const storedImages = await Promise.allSettled(generatedTasks.map(async ({ result, taskId, batchIndex }) => {
-                    if (!taskId) throw new Error(t("create.page.missingTaskId"));
-                    const task = completedCreationGenerationTask(runtime, { taskId, task: boundTasks.get(taskId), mode: "image", prompt: expandedPrompt, result, conversationId: activeConversation.id, messageId: assistantMessage.id, batchIndex, batchCount: taskCount });
-                    const materialized = await runtime.consumeGenerationTaskMessage(task, assistantMessage.id, async ({ resultUrls, resultStorageKeys, effectKey }) => {
-                        await updateOriginAssistant((item) => runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, status: "done" as const, content: t("create.status.imageGenerated"), ...(resultUrls.length ? { resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) } : {}), ...(resultStorageKeys.length ? { resultStorageKeys: Array.from(new Set([...(current.resultStorageKeys || []), ...resultStorageKeys])) } : {}) })).value);
-                    }, { signal: requestLifecycle.signal });
-                    const urls = runtime.generationTaskMaterializedUrls(materialized);
-                    if (!urls.length) throw new Error(t("create.page.imageResultUnavailable"));
-                    return urls;
-                }));
-                const resultUrls = storedImages.flatMap((entry) => entry.status === "fulfilled" ? entry.value : []);
+                const storedImages = await Promise.allSettled(
+                    generatedTasks.map(async ({ result, taskId, batchIndex }) => {
+                        if (!taskId) throw new Error(t("create.page.missingTaskId"));
+                        const task = completedCreationGenerationTask(runtime, {
+                            taskId,
+                            task: boundTasks.get(taskId),
+                            mode: "image",
+                            prompt: expandedPrompt,
+                            result,
+                            conversationId: activeConversation.id,
+                            messageId: assistantMessage.id,
+                            batchIndex,
+                            batchCount: taskCount,
+                        });
+                        const materialized = await runtime.consumeGenerationTaskMessage(
+                            task,
+                            assistantMessage.id,
+                            async ({ resultUrls, resultStorageKeys, effectKey }) => {
+                                await updateOriginAssistant(
+                                    (item) =>
+                                        runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({
+                                            ...current,
+                                            status: "done" as const,
+                                            content: t("create.status.imageGenerated"),
+                                            ...(resultUrls.length ? { resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) } : {}),
+                                            ...(resultStorageKeys.length ? { resultStorageKeys: Array.from(new Set([...(current.resultStorageKeys || []), ...resultStorageKeys])) } : {}),
+                                        })).value,
+                                );
+                            },
+                            { signal: requestLifecycle.signal },
+                        );
+                        const urls = runtime.generationTaskMaterializedUrls(materialized);
+                        if (!urls.length) throw new Error(t("create.page.imageResultUnavailable"));
+                        return urls;
+                    }),
+                );
+                const resultUrls = storedImages.flatMap((entry) => (entry.status === "fulfilled" ? entry.value : []));
                 const resourceFailures = storedImages.filter((entry): entry is PromiseRejectedResult => entry.status === "rejected");
                 const failedCount = taskFailures.length + resourceFailures.length;
                 if (!resultUrls.length) {
@@ -991,25 +1118,41 @@ export default function CreatePage() {
                 if (failedCount) toast.warning(t("create.page.imagesPartiallyGenerated", { done: resultUrls.length, failed: failedCount }));
                 updateOriginAssistant((item) => ({ ...item, content: failedCount ? t("create.status.imagesPartiallyGenerated", { done: resultUrls.length, failed: failedCount }) : t("create.status.imageGenerated") }));
             } else {
-                const result = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () => runtime.runBackendGenerationTask({
-                    mode: "video",
-                    prompt: expandedPrompt,
-                    config: requestConfig,
-                    referenceImages,
-                    referenceVideos,
-                    referenceAudios,
-                    signal: requestLifecycle.signal,
-                    metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, videoMode, videoEditOperation: videoOperation, videoStartFrameNodeId: activeStartFrameId, videoEndFrameNodeId: activeEndFrameId, ...referenceMetadata },
-                    onTaskUpdate: bindTask,
-                    ...retryContext,
-                }));
+                const result = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () =>
+                    runtime.runBackendGenerationTask({
+                        mode: "video",
+                        prompt: expandedPrompt,
+                        config: requestConfig,
+                        referenceImages,
+                        referenceVideos,
+                        referenceAudios,
+                        signal: requestLifecycle.signal,
+                        metadata: { source: "create-page", conversationId: activeConversation.id, messageId: assistantMessage.id, videoEditOperation: videoOperation, ...referenceMetadata },
+                        onTaskUpdate: bindTask,
+                        ...retryContext,
+                    }),
+                );
                 if (!result.video?.dataUrl) throw new Error(t("create.page.noVideoResult"));
                 const taskId = Array.from(boundTaskIds)[0];
                 if (!taskId) throw new Error(t("create.page.missingTaskId"));
                 const task = completedCreationGenerationTask(runtime, { taskId, task: boundTasks.get(taskId), mode: "video", prompt: expandedPrompt, result, conversationId: activeConversation.id, messageId: assistantMessage.id });
-                const materialized = await runtime.consumeGenerationTaskMessage(task, assistantMessage.id, async ({ resultUrls, resultStorageKeys, effectKey }) => {
-                    await updateOriginAssistant((item) => runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, status: "done" as const, content: t("create.status.videoGenerated"), resultUrls, ...(resultStorageKeys.length ? { resultStorageKeys } : {}) })).value);
-                }, { signal: requestLifecycle.signal });
+                const materialized = await runtime.consumeGenerationTaskMessage(
+                    task,
+                    assistantMessage.id,
+                    async ({ resultUrls, resultStorageKeys, effectKey }) => {
+                        await updateOriginAssistant(
+                            (item) =>
+                                runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({
+                                    ...current,
+                                    status: "done" as const,
+                                    content: t("create.status.videoGenerated"),
+                                    resultUrls,
+                                    ...(resultStorageKeys.length ? { resultStorageKeys } : {}),
+                                })).value,
+                        );
+                    },
+                    { signal: requestLifecycle.signal },
+                );
                 if (!runtime.generationTaskMaterializedUrls(materialized)[0]) throw new Error(t("create.page.videoResultUnavailable"));
             }
             updateOriginAssistant((item) => ({ ...item, status: "done" }));
@@ -1080,14 +1223,16 @@ export default function CreatePage() {
         const source = activeConversation;
         try {
             const assets = useAssetStore.getState().assets;
-            const generatedAssetIds = selectedAssetIds || source.messages.flatMap((item) => {
-                const resultStorageKeys = item.resultStorageKeys || [];
-                const resultUrls = item.resultUrls || [];
-                if (!resultStorageKeys.length && !resultUrls.length) return [];
-                const ids = creationResultAssetIds(assets, { messageId: item.id, taskIds: item.taskIds || [], resultUrls, resultStorageKeys });
-                if (ids.length !== Math.max(resultStorageKeys.length, resultUrls.length)) throw new Error(t("create.page.handoffAssetsPending"));
-                return ids;
-            });
+            const generatedAssetIds =
+                selectedAssetIds ||
+                source.messages.flatMap((item) => {
+                    const resultStorageKeys = item.resultStorageKeys || [];
+                    const resultUrls = item.resultUrls || [];
+                    if (!resultStorageKeys.length && !resultUrls.length) return [];
+                    const ids = creationResultAssetIds(assets, { messageId: item.id, taskIds: item.taskIds || [], resultUrls, resultStorageKeys });
+                    if (ids.length !== Math.max(resultStorageKeys.length, resultUrls.length)) throw new Error(t("create.page.handoffAssetsPending"));
+                    return ids;
+                });
             const referenceKeys = new Set(source.messages.flatMap((item) => (item.attachments || []).map((attachment) => attachment.storageKey).filter(Boolean)));
             const referenceAssetIds = assets.filter((asset) => (asset.kind === "image" || asset.kind === "video") && asset.data.storageKey && referenceKeys.has(asset.data.storageKey)).map((asset) => asset.id);
             const assetIds = [...generatedAssetIds, ...referenceAssetIds];
@@ -1108,7 +1253,10 @@ export default function CreatePage() {
             navigate(`/canvas/${result.id}?${params.toString()}`);
         } catch (cause) {
             if (scope === getActiveUserScope()) toast.error(cause instanceof Error ? cause.message : t("create.page.handoffFailed"));
-        } finally { openingCanvasRef.current = false; setOpeningCanvas(false); }
+        } finally {
+            openingCanvasRef.current = false;
+            setOpeningCanvas(false);
+        }
     };
 
     const selectConversation = (conversation: CreationConversation) => {
@@ -1209,7 +1357,10 @@ export default function CreatePage() {
         try {
             const runtime = await loadCreationRuntime();
             const attemptGroupId = item.attemptGroupId || item.retryOf || retryOf;
-            const context: CreationRetryContext = { ...(await runtime.createGenerationRetryContext(retryOf, attemptGroupId)), ...(item.taskIds && item.taskIds.length > 1 ? { retryContextsByBatchIndex: await runtime.createGenerationBatchRetryContexts(item.taskIds, attemptGroupId) } : {}) };
+            const context: CreationRetryContext = {
+                ...(await runtime.createGenerationRetryContext(retryOf, attemptGroupId)),
+                ...(item.taskIds && item.taskIds.length > 1 ? { retryContextsByBatchIndex: await runtime.createGenerationBatchRetryContexts(item.taskIds, attemptGroupId) } : {}),
+            };
             restoreForRetry();
             pendingRetryRef.current = { context, lockKey: retryOf };
             setRetrySequence((current) => current + 1);
@@ -1268,7 +1419,12 @@ export default function CreatePage() {
             </div>
         );
     }
-    if (!hydrated || !activeConversation) return <div className="grid h-full place-items-center"><Spin /></div>;
+    if (!hydrated || !activeConversation)
+        return (
+            <div className="grid h-full place-items-center">
+                <Spin />
+            </div>
+        );
 
     const handleThreadScroll = () => {
         const container = threadScrollRef.current;
@@ -1284,8 +1440,6 @@ export default function CreatePage() {
             else if (remaining > 24 || container.scrollTop <= 24) setLaunchpadCondensed(false);
         }
     };
-
-
 
     const generationActive = activeConversation.messages.some((message) => message.role === "assistant" && message.status === "pending");
     const startPrompt = (nextMode: CreationMode, nextPrompt: string) => {
@@ -1337,7 +1491,10 @@ export default function CreatePage() {
         imageResolution,
         setImageResolution: setComposerImageResolution,
         imageParameters,
-        setImageParameters: (value: string) => { setImageParameters(value); rememberImageSettings({ model: selectedModel, imageParameters: value }); },
+        setImageParameters: (value: string) => {
+            setImageParameters(value);
+            rememberImageSettings({ model: selectedModel, imageParameters: value });
+        },
         setTransparentBackground: (value: string) => useConfigStore.getState().updateConfig("transparentBackground", value),
         videoQuality,
         setVideoQuality: setComposerVideoQuality,
@@ -1345,8 +1502,10 @@ export default function CreatePage() {
         setCount: setComposerCount,
         textStreaming,
         setTextStreaming,
-        textThinking,
-        setTextThinking,
+        textThinkingLevels,
+        textThinkingLevel,
+        textThinkingRequest,
+        setTextThinkingLevel,
         promptOptimizerProvider,
         composerFocusRef,
         onPromptFocus: loadAddedSkills,

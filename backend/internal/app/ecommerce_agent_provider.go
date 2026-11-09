@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"yingce/backend/internal/ecommerceagent"
+	"yingce/backend/internal/protocol"
 )
 
 type ecommerceProviderConfig struct {
@@ -29,6 +30,7 @@ type ecommerceProviderConfig struct {
 	MaxConcurrent                      int
 	TextProvider                       *providerConfig
 	ImageProvider                      *providerConfig
+	TextThinkingLevel                  string
 }
 
 func ecommerceDuration(name string, fallback int) time.Duration {
@@ -105,7 +107,11 @@ func (s *Service) ecommerceConfiguredText(userID string, cfg ecommerceProviderCo
 	if err != nil {
 		return cfg, err
 	}
-	return s.ecommerceConfiguredTextFor(userID, cfg, setting.planningRef(), "策划")
+	cfg, err = s.ecommerceConfiguredTextFor(userID, cfg, setting.planningRef(), "策划")
+	if err == nil {
+		cfg.TextThinkingLevel = setting.ThinkingLevel
+	}
+	return cfg, err
 }
 
 // ecommerceVisionText resolves the administrator's recognition model, which
@@ -119,7 +125,11 @@ func (s *Service) ecommerceVisionText(userID string, cfg ecommerceProviderConfig
 	if err != nil {
 		return cfg, err
 	}
-	return s.ecommerceConfiguredTextFor(userID, cfg, setting.visionRef(), "识图")
+	cfg, err = s.ecommerceConfiguredTextFor(userID, cfg, setting.visionRef(), "识图")
+	if err == nil {
+		cfg.TextThinkingLevel = setting.VisionThinkingLevel
+	}
+	return cfg, err
 }
 
 func (s *Service) ecommerceConfiguredTextFor(userID string, cfg ecommerceProviderConfig, ref EcommerceAgentModelRef, stage string) (ecommerceProviderConfig, error) {
@@ -243,7 +253,7 @@ func (s *Service) ecommerceChatJSON(ctx context.Context, cfg ecommerceProviderCo
 		defer cancel()
 		provider := *cfg.TextProvider
 		provider.SystemPrompt = system
-		input := canvasGenerationInput{Mode: "text", Prompt: prompt, Config: provider}
+		input := canvasGenerationInput{Mode: "text", Prompt: prompt, Config: provider, TextOptions: canvasTextOptions{ThinkingLevel: cfg.TextThinkingLevel}}
 		for _, imageURL := range images {
 			input.ReferenceImages = append(input.ReferenceImages, providerMedia{DataURL: imageURL})
 		}
@@ -258,14 +268,35 @@ func (s *Service) ecommerceChatJSON(ctx context.Context, cfg ecommerceProviderCo
 		return ecommerceParseJSON(content, out)
 	}
 	var content any = prompt
+	// Anthropic-compatible endpoints reject OpenAI image_url content blocks with
+	// HTTP 422; they require type=image with a base64 or url source. Detect the
+	// wire format from the base URL (native api.anthropic.com or an /anthropic
+	// gateway prefix), matching the community convention for Anthropic gateways.
+	isAnthropic := protocol.AnthropicWireForBaseURL(cfg.TextBaseURL)
 	if len(images) > 0 {
 		parts := []any{map[string]any{"type": "text", "text": prompt}}
 		for _, u := range images {
-			parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]string{"url": u}})
+			if isAnthropic {
+				source := map[string]any{"type": "url", "url": u}
+				if strings.HasPrefix(u, "data:") {
+					if mimeType, data, ok := splitDataURL(u); ok {
+						source = map[string]any{"type": "base64", "media_type": mimeType, "data": data}
+					}
+				}
+				parts = append(parts, map[string]any{"type": "image", "source": source})
+			} else {
+				parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]string{"url": u}})
+			}
 		}
 		content = parts
 	}
-	payload := map[string]any{"model": cfg.TextModel, "messages": []any{map[string]any{"role": "system", "content": system}, map[string]any{"role": "user", "content": content}}}
+	payload := map[string]any{"model": cfg.TextModel, "messages": []any{map[string]any{"role": "user", "content": content}}}
+	if !isAnthropic && system != "" {
+		payload["messages"] = []any{map[string]any{"role": "system", "content": system}, map[string]any{"role": "user", "content": content}}
+	}
+	if isAnthropic && system != "" {
+		payload["system"] = system
+	}
 	switch out.(type) {
 	case *[]ecommerceagent.Page, *[]ecommerceagent.Recommendation:
 	default:
@@ -273,10 +304,41 @@ func (s *Service) ecommerceChatJSON(ctx context.Context, cfg ecommerceProviderCo
 	}
 	body, _ := json.Marshal(payload)
 	start := time.Now()
-	data, _, err := ecommerceRequest(ctx, cfg.TextBaseURL+"/chat/completions", cfg.TextKey, cfg.TextTimeout, body, "application/json", 3)
+	endpoint := cfg.TextBaseURL + "/chat/completions"
+	if isAnthropic {
+		endpoint = cfg.TextBaseURL + "/v1/messages"
+	}
+	data, _, err := ecommerceRequest(ctx, endpoint, cfg.TextKey, cfg.TextTimeout, body, "application/json", 3)
 	if err != nil {
 		slog.Warn("ecommerce agent text failed", "taskId", taskID, "model", cfg.TextModel, "latencyMs", time.Since(start).Milliseconds(), "error", err)
 		return err
+	}
+	if isAnthropic {
+		var anthropicResp struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			Usage struct {
+				Input  int `json:"input_tokens"`
+				Output int `json:"output_tokens"`
+			} `json:"usage"`
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(data, &anthropicResp); err != nil {
+			return err
+		}
+		var text string
+		for _, block := range anthropicResp.Content {
+			if block.Type == "text" {
+				text += block.Text
+			}
+		}
+		if text == "" {
+			return errors.New("文本模型未返回内容")
+		}
+		slog.Info("ecommerce agent text", "taskId", taskID, "model", anthropicResp.Model, "tokens", anthropicResp.Usage.Input+anthropicResp.Usage.Output, "latencyMs", time.Since(start).Milliseconds())
+		return ecommerceParseJSON(text, out)
 	}
 	var response struct {
 		Choices []struct {
