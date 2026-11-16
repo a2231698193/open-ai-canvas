@@ -640,10 +640,10 @@ func newChannelModelTestService(t *testing.T) (*Service, *gorm.DB) {
 		t.Fatal(err)
 	}
 	// 计费倍率让渠道模型发布路径要读 credit_policy，夹具必须带上 system_settings。
-	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.ModelChannel{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}, &model.LogicalModel{}, &model.LogicalModelRevision{}, &model.LogicalModelRoute{}, &model.Task{}, &model.IDSequence{}, &model.User{}, &model.UserGroup{}, &model.UserGroupChannel{}, &model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.ModelChannel{}, &model.ChannelModel{}, &model.ChannelModelPriceTier{}, &model.LogicalModel{}, &model.LogicalModelRevision{}, &model.LogicalModelRoute{}, &model.Task{}, &model.IDSequence{}, &model.User{}, &model.UserGroup{}, &model.UserGroupChannel{}, &model.SystemSetting{}, &model.ChannelWebsite{}, &model.ChannelCatalogSnapshot{}, &model.ChannelProtocolSelection{}); err != nil {
 		t.Fatal(err)
 	}
-	return &Service{repo: repository.New(db)}, db
+	return &Service{repo: repository.New(db), dataDir: channelTestDataDir(t)}, db
 }
 
 func intPtr(value int) *int { return &value }

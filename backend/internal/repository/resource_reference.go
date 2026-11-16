@@ -141,11 +141,23 @@ func (r *Repository) ResourceReferenceSnapshotExcludingAssets(userID string, exc
 		return snapshot, err
 	}
 	snapshot.Direct = append(snapshot.Direct, history...)
+	var links []model.CreationConversationResource
+	if err := r.db.Where("user_id = ? AND resource_id IN ?", userID, resourceIDs).Find(&links).Error; err != nil {
+		return snapshot, err
+	}
+	for _, link := range links {
+		snapshot.Direct = append(snapshot.Direct, ResourceDirectReference{Kind: "创作对话", ID: link.ConversationID, Title: "创作历史中的媒体", ResourceID: link.ResourceID})
+	}
 	dramaReferences, err := r.DramaResourceReferences(userID, resourceIDs)
 	if err != nil {
 		return snapshot, err
 	}
 	snapshot.Direct = append(snapshot.Direct, dramaReferences...)
+	logReferences, err := r.APICallLogResourceReferences(userID, resourceIDs)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.Direct = append(snapshot.Direct, logReferences...)
 	var leases []model.CloudAgentResourceLease
 	if err := r.db.Where("user_id = ? AND resource_id IN ? AND expires_at > ?", userID, resourceIDs, time.Now()).Find(&leases).Error; err != nil {
 		return snapshot, err
@@ -517,6 +529,13 @@ func (r *Repository) DeleteAssetAndResources(userID string, assetID string, reso
 
 func (r *Repository) DeleteAssetsAndResources(userID string, assetIDs []string, resourceIDs []string, deletionJobs []model.ResourceDeletionJob, deleteReferencedResources bool) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		logReferences, err := New(tx).APICallLogResourceReferences(userID, resourceIDs)
+		if err != nil {
+			return err
+		}
+		if len(logReferences) > 0 {
+			return ErrAdminResourceStillReferenced
+		}
 		var ownedAssets []model.Asset
 		query := tx.Where("user_id = ? AND id IN ?", userID, assetIDs).Order("id")
 		if r.Dialect() == "postgres" {

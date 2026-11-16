@@ -1,4 +1,5 @@
 import { modelRequestOptions, resolveVideoOperation, type ModelRequirements } from "@/lib/model-selection";
+import { mediaSettingIssues, resolvedMediaConfig } from "@/lib/media-settings";
 import { videoResolutionComparisonKey } from "@/lib/video-generation-options";
 import { videoModeImageRoles, videoModeOperation } from "@/lib/video-generation-mode";
 import { imagePriceSelector, normalizeImagePriceSelector } from "@/lib/image-pricing";
@@ -54,7 +55,7 @@ export function priceTiersForCurrentSelection(tiers: ModelPriceTier[], capabilit
     return matched;
 }
 
-export function priceTierSummaryLabel(tiers: ModelPriceTier[], capability?: ModelCapability) {
+export function priceTierSummaryLabel(tiers: ModelPriceTier[], capability?: ModelCapability, compactTokenUnit = false) {
     const unitPrices = (billingMode: ModelPriceTier["billingMode"]) =>
         tiers
             .filter((tier) => tier.billingMode === billingMode)
@@ -74,8 +75,17 @@ export function priceTierSummaryLabel(tiers: ModelPriceTier[], capability?: Mode
         [
             fixedRequestValues.length ? formatPriceRange(fixedRequestValues, "积分") : "",
             perSecondValues.length ? formatPriceRange(perSecondValues, "积分/秒") : "",
-tokenValues.length
-                ? `${capability === "video" || capability === "audio" ? "" : "输出 "}${formatPriceRange(tokenValues, capability === "video" ? "积分/百万视频 Token" : capability === "audio" ? "积分/百万输入 Token" : "积分/百万 Token")}${timeBased ? " · 分时" : ""}`
+            tokenValues.length
+                ? `${capability === "video" || capability === "audio" ? "" : "输出 "}${formatPriceRange(
+                      tokenValues,
+                      compactTokenUnit
+                          ? "/M Token"
+                          : capability === "video"
+                            ? "积分/百万视频 Token"
+                            : capability === "audio"
+                              ? "积分/百万输入 Token"
+                              : "积分/百万 Token",
+                  )}${timeBased ? " · 分时" : ""}`
                 : "",
         ]
             .filter(Boolean)
@@ -136,6 +146,8 @@ export function modelQuoteRequest(config: AiConfig, value: string, capability?: 
  */
 export function systemModelQuoteRequest(config: AiConfig, value: string, capability?: ModelCapability, requirements?: ModelRequirements): ModelQuoteRequest | undefined {
     if (!capability || !value) return undefined;
+    config = requestPricingConfig(config, value, capability, requirements);
+    if (mediaSettingIssues(config, capability, value).length) return undefined;
     const channel = resolveModelChannel(config, value);
     if (channel.scope !== "system") return undefined;
     const cost = channel.modelCosts?.find((item) => item.model === modelOptionName(value));
@@ -150,16 +162,33 @@ export function systemModelQuoteRequest(config: AiConfig, value: string, capabil
             audio: input?.audioCount || 0,
         },
         options: {
+            ...(capability === "image" || capability === "video" ? {} : requirements?.options || {}),
             ...modelRequestOptions(config, capability),
-            ...(requirements?.options || {}),
-            ...(requirements?.videoSeconds ? { videoSeconds: Number(requirements.videoSeconds) } : {}),
-            ...(requirements?.imageSize ? { size: requirements.imageSize } : {}),
+            ...(capability === "image" ? { count: 1 } : {}),
         },
         imageRoles: requirements?.videoImageRoles || (requirements?.videoMode ? videoModeImageRoles(requirements.videoMode) : undefined),
     };
     const durations = referenceVideoQuoteDurations(input);
     if (capability === "video" && durations) intent.referenceVideoDurationsMs = durations;
     return cost.logicalModelId ? { logicalModelID: cost.logicalModelId, intent } : { channelId: channel.id, modelKey: modelOptionName(value), intent };
+}
+
+// The local price label and the signed quote use the same adapted request.
+function requestPricingConfig(config: AiConfig, value: string, capability: ModelCapability, requirements?: ModelRequirements) {
+    const requestedOptions = Object.fromEntries(
+        Object.entries(requirements?.options || {})
+            .filter(([key, item]) => ["size", "quality", "imageResolution", "count", "videoSeconds", "vquality", "videoGenerateAudio", "videoWatermark", "transparentBackground"].includes(key) && item !== undefined)
+            .map(([key, item]) => [key, String(item)]),
+    );
+    if (capability === "image" && requirements?.options) {
+        try {
+            const extensions = JSON.parse(config.imageParameters || "{}");
+            if (extensions && typeof extensions === "object" && !Array.isArray(extensions)) config = { ...config, imageParameters: JSON.stringify({ ...extensions, ...requirements.options }) };
+        } catch {
+            // Preserve corrupt state for the shared validation below.
+        }
+    }
+    return resolvedMediaConfig({ ...config, ...requestedOptions, ...(requirements?.imageSize ? { size: requirements.imageSize } : {}), ...(requirements?.videoSeconds ? { videoSeconds: requirements.videoSeconds } : {}) }, capability, value);
 }
 
 // 只有全部参考视频时长都已知时才提交给报价接口；任一未知时交给后端按上限预估并标明。
@@ -201,6 +230,7 @@ function creditAmount(billingMode: "fixed_request" | "per_second", unitPriceMicr
 
 function priceSelectorForRequest(capability: ModelCapability | undefined, config: AiConfig, requirements?: ModelRequirements) {
     const requested: Record<string, string> = {};
+    if (capability) config = requestPricingConfig(config, config.model || (capability === "image" ? config.imageModel : config.videoModel), capability, requirements);
     if (capability === "video") {
         const input = requirements?.input;
         if (input) {
@@ -208,7 +238,7 @@ function priceSelectorForRequest(capability: ModelCapability | undefined, config
             requested.operation = requirements?.videoMode ? videoModeOperation(requirements.videoMode) : input.videoCount > 0 ? "video_to_video" : imageCount > 0 ? "image_to_video" : resolveVideoOperation(input, requirements?.videoOperation);
             if (imageCount > 0) requested.imageCount = String(imageCount);
         } else if (requirements?.videoOperation) requested.operation = requirements.videoOperation;
-        const options: Record<string, unknown> = { ...modelRequestOptions(config, "video"), ...requirements?.options, ...(requirements?.videoSeconds ? { videoSeconds: Number(requirements.videoSeconds) } : {}) };
+        const options = modelRequestOptions(config, "video");
         const resolution = normalizeTierResolution(String(options.vquality ?? ""));
         if (resolution !== "*") requested.vquality = resolution;
         const seconds = Math.max(0, Math.floor(Number(options.videoSeconds) || 0));
@@ -222,7 +252,7 @@ function priceSelectorForRequest(capability: ModelCapability | undefined, config
     }
     if (capability === "image") {
         requested.operation = imagePriceOperation(requirements);
-        const options: Record<string, unknown> = { ...modelRequestOptions(config, "image"), ...requirements?.options, ...(requirements?.imageSize ? { size: requirements.imageSize } : {}) };
+        const options = modelRequestOptions(config, "image");
         const profile = modelCapabilityConfigFor(config, config.model || config.imageModel)?.image;
         if (profile?.parameters) {
             for (const field of profile.parameters) {

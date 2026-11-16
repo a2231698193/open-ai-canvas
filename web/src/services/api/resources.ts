@@ -85,6 +85,8 @@ export type ResourceUploadMeta = {
     durationMs?: number;
     fileName?: string;
     idempotencyKey?: string;
+    expectedUserId?: string;
+    signal?: AbortSignal;
 };
 
 /**
@@ -300,7 +302,7 @@ export async function uploadResourceFile(file: Blob, kind: "image" | "video" | "
         if (meta?.height) formData.append("height", String(Math.round(meta.height)));
         if (meta?.durationMs) formData.append("durationMs", String(Math.round(meta.durationMs)));
         const data = await http.post<{ resource: RemoteResource }>("/resources", formData, {
-            ...uploadRequestConfig(meta?.idempotencyKey, file.size),
+            ...scopedUploadConfig(meta, uploadRequestConfig(meta?.idempotencyKey, file.size)),
             onUploadProgress: onProgress
                 ? ({ loaded, total }) => {
                       if (total && total > 0) onProgress(Math.min(file.size, (file.size * loaded) / total), file.size);
@@ -322,6 +324,7 @@ async function uploadFileInChunks(file: Blob, name: string, kind: "image" | "vid
         try {
             return await runChunkedUpload(file, name, kind, meta, onProgress);
         } catch (error) {
+            if (meta?.signal?.aborted || (meta?.expectedUserId && meta.expectedUserId !== getActiveUserScope())) throw error;
             if (attempt === CHUNK_UPLOAD_RETRIES - 1) throw error;
         }
     }
@@ -332,7 +335,7 @@ async function runChunkedUpload(file: Blob, name: string, kind: "image" | "video
     const session = await http.post<{ uploadId: string; chunkSize: number; chunkCount: number }>(
         "/resources/uploads",
         { fileName: name, kind, size: file.size, width: meta?.width, height: meta?.height, durationMs: meta?.durationMs },
-        uploadRequestConfig(meta?.idempotencyKey),
+        scopedUploadConfig(meta, uploadRequestConfig(meta?.idempotencyKey)),
     );
     for (let index = 0; index < session.chunkCount; index++) {
         const start = index * session.chunkSize;
@@ -340,14 +343,15 @@ async function runChunkedUpload(file: Blob, name: string, kind: "image" | "video
         const blob = file.slice(start, end);
         // raw 二进制直传，与后端按裸 body 逐片落盘对齐。
         await http.put<{ index: number }>(`/resources/uploads/${encodeURIComponent(session.uploadId)}/chunks/${index}`, blob, {
+            ...scopedUploadConfig(meta),
             timeout: uploadTimeoutMs(blob.size),
-            headers: { "Content-Type": "application/octet-stream" },
+            headers: { ...scopedUploadConfig(meta).headers, "Content-Type": "application/octet-stream" },
             onUploadProgress: onProgress ? ({ loaded }) => onProgress(start + Math.min(loaded, blob.size), file.size) : undefined,
         });
         onProgress?.(Math.min(end, file.size), file.size);
     }
     // 合并时后端要把整份文件写入存储（对象存储为同步上传），超时按整份大小计算。
-    const complete = await http.post<{ resource: RemoteResource }>(`/resources/uploads/${encodeURIComponent(session.uploadId)}/complete`, undefined, { timeout: uploadTimeoutMs(file.size) });
+    const complete = await http.post<{ resource: RemoteResource }>(`/resources/uploads/${encodeURIComponent(session.uploadId)}/complete`, undefined, { ...scopedUploadConfig(meta), timeout: uploadTimeoutMs(file.size) });
     return complete.resource;
 }
 
@@ -395,6 +399,11 @@ export function uploadTimeoutMs(bytes = 0) {
 function uploadRequestConfig(idempotencyKey?: string, bytes?: number) {
     const value = idempotencyKey?.trim();
     return { timeout: uploadTimeoutMs(bytes), ...(value ? { headers: { "X-Idempotency-Key": value } } : {}) };
+}
+
+function scopedUploadConfig(meta?: ResourceUploadMeta, config?: ReturnType<typeof uploadRequestConfig>) {
+    if (meta?.signal?.aborted || (meta?.expectedUserId && meta.expectedUserId !== getActiveUserScope())) throw new DOMException("账号已切换", "AbortError");
+    return { ...config, signal: meta?.signal, headers: { ...config?.headers, ...(meta?.expectedUserId ? { "X-Canvas-Expected-User": meta.expectedUserId } : {}) } };
 }
 
 export function getResource(id: string): Promise<RemoteResource> {
@@ -649,7 +658,8 @@ export async function getResourceBlob(storageKey: string, purpose: ResourceAcces
     // session-bound, so a Blob read must include it even when the URL is
     // relative to the platform origin.
     const credentials = access.delivery === "platform-local" || access.delivery === "platform-proxy" ? "include" : "omit";
-    const response = await fetch(resolveResourceAccessURL(access.url), { credentials, mode: "cors", signal: AbortSignal.timeout(60_000) });
+    // 同一签名地址可能已被 <img> 缓存为无 CORS 头的响应，读取原图时跳过 HTTP 缓存。
+    const response = await fetch(resolveResourceAccessURL(access.url), { credentials, mode: "cors", cache: "no-store", signal: AbortSignal.timeout(60_000) });
     if (!response.ok) throw new Error(`资源读取失败（${response.status}）`);
     return response.blob();
 }

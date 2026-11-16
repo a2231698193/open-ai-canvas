@@ -467,14 +467,14 @@ func TestCloudAgentReadTextLoadsOwnedResource(t *testing.T) {
 
 func TestCloudAgentCanvasStateBoundsDefaultBodyProjection(t *testing.T) {
 	body := strings.Repeat("长正文 ", 999) + "长正文"
-	doc := map[string]any{"nodes": []map[string]any{{"id": "markdown", "type": "markdown", "title": "长文档", "metadata": map[string]any{"content": body}}}, "connections": []map[string]any{}}
+	doc := map[string]any{"nodes": []map[string]any{{"id": "markdown", "type": "text", "title": "长文档", "metadata": map[string]any{"content": body, "textFormat": "markdown"}}}, "connections": []map[string]any{}}
 	view, err := cloudAgentCanvasState(nil, "user", "agent-canvas", doc, 0, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	item := view.(map[string]any)["nodes"].([]any)[0].(map[string]any)
 	content := stringValue(item["content"])
-	if len([]rune(content)) > 323 || item["contentTruncated"] != true {
+	if len([]rune(content)) > 323 || item["contentTruncated"] != true || item["textFormat"] != "markdown" {
 		t.Fatalf("default canvas read was not bounded: len=%d item=%v", len([]rune(content)), item)
 	}
 	precise, err := cloudAgentCanvasState(nil, "user", "agent-canvas", doc, 0, []string{"markdown"}, 0)
@@ -482,8 +482,81 @@ func TestCloudAgentCanvasStateBoundsDefaultBodyProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	preciseItem := precise.(map[string]any)["nodes"].([]any)[0].(map[string]any)
-	if stringValue(preciseItem["content"]) != body || preciseItem["contentTruncated"] != nil {
+	if stringValue(preciseItem["content"]) != body || preciseItem["contentTruncated"] != nil || preciseItem["textFormat"] != "markdown" {
 		t.Fatalf("precise canvas read lost full content: got=%d want=%d item=%v", len([]rune(stringValue(preciseItem["content"]))), len([]rune(body)), preciseItem)
+	}
+}
+
+func TestCloudAgentCanvasStatePagesCanvasBeyondThreeHundredNodes(t *testing.T) {
+	nodes := make([]map[string]any, 335)
+	for index := range nodes {
+		nodes[index] = map[string]any{"id": fmt.Sprintf("node-%d", index), "type": "text", "title": fmt.Sprintf("镜头 %d", index)}
+	}
+	doc := map[string]any{"nodes": nodes, "connections": []any{}}
+	firstView, err := cloudAgentCanvasState(nil, "user", "agent-canvas", doc, 0, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstView.(map[string]any)
+	firstNodes := first["nodes"].([]any)
+	if first["totalNodes"] != len(nodes) || len(firstNodes) != 40 || first["hasMore"] != true || first["nextOffset"] != 40 || first["nodeLimit"] != nil {
+		t.Fatalf("canvas page was mistaken for a total node limit: %#v", first)
+	}
+	lastView, err := cloudAgentCanvasState(nil, "user", "agent-canvas", doc, 320, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := lastView.(map[string]any)
+	lastNodes := last["nodes"].([]any)
+	if last["totalNodes"] != len(nodes) || len(lastNodes) != 15 || last["hasMore"] != false || lastNodes[0].(map[string]any)["id"] != "node-320" {
+		t.Fatalf("canvas did not page through the final nodes: %#v", last)
+	}
+}
+
+func TestSaveCloudAgentDocumentAllowsCanvasLargerThanEightMiB(t *testing.T) {
+	s, db, _, _ := creationTestService(t)
+	body := strings.Repeat("x", 9<<10)
+	nodes := make([]map[string]any, 1000)
+	for index := range nodes {
+		nodes[index] = map[string]any{
+			"id": fmt.Sprintf("node-%d", index), "type": "text", "title": fmt.Sprintf("镜头 %d", index),
+			"metadata": map[string]any{"content": body},
+		}
+	}
+	doc := map[string]any{"id": "large-agent-canvas", "title": "大画布", "nodes": nodes, "connections": []any{}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) <= 8<<20 {
+		t.Fatalf("test canvas must exceed the removed limit: %d bytes", len(raw))
+	}
+	project := model.CanvasProject{ID: "large-agent-canvas", UserID: "user", Title: "大画布", PayloadJSON: string(raw)}
+	if err := db.Create(&project).Error; err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := creationDocument(project.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creationMaps(parsed["nodes"])[0]["title"] = "已更新"
+	if err := saveCloudAgentDocument(s.repo, &project, parsed, defaultRuntimePolicy()); err != nil {
+		t.Fatalf("saving a canvas larger than 8 MiB failed: %v", err)
+	}
+	stored, err := s.repo.CanvasProjectForUser("user", project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := creationDocument(stored.PayloadJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedNodes := creationMaps(persisted["nodes"])
+	if len(persistedNodes) != len(nodes) {
+		t.Fatalf("large canvas mutation lost nodes: got=%d want=%d", len(persistedNodes), len(nodes))
+	}
+	if persistedNodes[0]["title"] != "已更新" {
+		t.Fatalf("large canvas mutation was not persisted: first=%#v", persistedNodes[0])
 	}
 }
 

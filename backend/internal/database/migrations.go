@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 96
+const CurrentSchemaVersion int64 = 108
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -338,6 +338,49 @@ var schemaMigrations = []migration{
 		}
 		return nil
 	}},
+	// 官方 v93–v104 在本仓库顺延为 v97–v108（本地 v93 参考视频成本价至 v96 剧情段参考控制已占用同号）。
+	{version: 97, name: "ecommerce_round_history", checksum: "sha256:ecommerce-round-history-v97-20261109", apply: func(tx *gorm.DB) error {
+		// Additive only: a new table plus a nullable pointer column. Existing
+		// projects stay readable and are converted lazily on their next save.
+		if err := tx.AutoMigrate(&model.EcommerceProject{}, &model.EcommerceRound{}); err != nil {
+			return err
+		}
+		return nil
+	}},
+	{version: 98, name: "drama_cast_styles_import", checksum: "sha256:drama-cast-styles-import-v98", apply: migrateDramaCastStylesImport},
+	{version: 99, name: "ark_private_asset_binding_identity", checksum: "sha256:ark-private-asset-binding-identity-v99", apply: migrateArkPrivateAssetBindingIdentity},
+	{version: 100, name: "canvas_unified_text_nodes", checksum: canvasNodeModelChecksum, apply: migrateCanvasNodeModel},
+	{version: 101, name: "channel_websites", checksum: "sha256:channel-websites-v101-20261110", apply: migrateChannelWebsites},
+	{version: 102, name: "api_log_generation_content", checksum: "sha256:api-log-generation-content-v102", apply: migrateAPILogGenerationContent},
+	{version: 103, name: "site_traffic_events", checksum: "sha256:site-traffic-events-v103-20261111", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.SiteTrafficEvent{})
+	}},
+	{version: 104, name: "agent_mcp_connections", checksum: "sha256:agent-mcp-connections-v104", apply: migrateAgentMCP},
+	{version: 105, name: "creation_conversation_history", checksum: "sha256:creation-conversation-history-v105", apply: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.CreationConversation{}, &model.CreationConversationMessage{}, &model.CreationConversationResource{})
+	}},
+	{version: 106, name: "wechat_oauth", checksum: "sha256:wechat-oauth-v106", apply: func(tx *gorm.DB) error {
+		if !tx.Migrator().HasTable(&model.OAuthState{}) {
+			return nil
+		}
+		for _, field := range []string{"Purpose", "ClientID", "ProfileJSON"} {
+			if !tx.Migrator().HasColumn(&model.OAuthState{}, field) {
+				if err := tx.Migrator().AddColumn(&model.OAuthState{}, field); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}},
+	{version: 107, name: "mcp_tenant_boundaries", checksum: "sha256:mcp-tenant-boundaries-v107", apply: migrateMCPTenantBoundaries},
+	{version: 108, name: "agent_storage_limits", checksum: "sha256:agent-storage-limits-v108", apply: migrateAgentStorageLimits},
+}
+
+func migrateAPILogGenerationContent(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable(&model.ApiCallLog{}) || tx.Migrator().HasColumn(&model.ApiCallLog{}, "GenerationContentJSON") {
+		return nil
+	}
+	return tx.Migrator().AddColumn(&model.ApiCallLog{}, "GenerationContentJSON")
 }
 
 // migrateReferenceVideoCostPrice 为价格档成本和账单成本快照增加带参考视频的成本价。

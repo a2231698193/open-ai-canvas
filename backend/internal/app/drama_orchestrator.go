@@ -25,7 +25,7 @@ const (
 	dramaTickInterval      = 3 * time.Second
 	dramaLeaseTTL          = 2 * time.Minute
 	dramaProjectsPerTick   = 20
-	dramaEpisodeWindow     = 6
+	dramaEpisodeWindow     = 12
 	dramaPlanBatchRunes    = 30000
 	dramaPlanBatchChapters = 12
 	dramaBibleSampleRunes  = 40000
@@ -184,7 +184,7 @@ func (r *dramaRun) loadCasts() error {
 
 // syncJobs 读取已派发任务的终态并写回业务对象。
 func (r *dramaRun) syncJobs() error {
-	jobs, err := r.s.repo.DramaJobsByStatus(r.project.ID, model.DramaJobQueued, model.DramaJobRunning)
+	jobs, err := r.s.repo.DramaJobsByStatus(r.project.ID, model.DramaJobQueued, model.DramaJobRunning, model.DramaJobFailed)
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,16 @@ func (r *dramaRun) syncJobs() error {
 	r.running = map[string]int{}
 	for i := range jobs {
 		job := &jobs[i]
+		if job.Status == model.DramaJobFailed {
+			// 暂停后掉出运行中列表的可恢复失败：拉回运行并重新排队下载/保存。
+			if err := r.recoverFailedJobMedia(job); err != nil {
+				var deferred *dramaSyncDeferred
+				if !errors.As(err, &deferred) {
+					return err
+				}
+				slog.Warn("drama recoverable job sync deferred", "project", r.project.ID, "job", job.ID, "error", deferred.err)
+			}
+		}
 		if job.Status == model.DramaJobRunning {
 			if err := r.syncRunningJob(job); err != nil {
 				var deferred *dramaSyncDeferred
@@ -214,6 +224,55 @@ func (r *dramaRun) syncJobs() error {
 			}
 		}
 	}
+	return nil
+}
+
+// dramaTaskMediaRecoveryRetryable 表示失败任务仍有作品恢复检查点且未用尽自动重试窗口。
+func (s *Service) dramaTaskMediaRecoveryRetryable(task *model.Task) bool {
+	if task == nil || task.Status != model.TaskStatusFailed || strings.TrimSpace(task.MediaRecoveryJSON) == "" {
+		return false
+	}
+	checkpoint, err := s.decodeMediaCheckpoint(task)
+	if err != nil {
+		return false
+	}
+	return checkpoint.Attempts < len(mediaRecoveryDelays) && time.Since(checkpoint.StartedAt) < 20*time.Minute
+}
+
+// recoverFailedJobMedia 把“上游已成功、本地保存失败”的作业重新置为运行并排队恢复下载。
+func (r *dramaRun) recoverFailedJobMedia(job *model.DramaJob) error {
+	if strings.TrimSpace(job.TaskID) == "" {
+		return nil
+	}
+	task, err := r.s.repo.Task(job.TaskID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return &dramaSyncDeferred{err: err}
+	}
+	if !r.s.dramaTaskMediaRecoveryRetryable(task) {
+		return nil
+	}
+	if err := r.s.repo.RequeueTaskMediaRecovery(task, task.MediaRecoveryJSON); err != nil {
+		if errors.Is(err, repository.ErrTaskStateConflict) {
+			return nil
+		}
+		return &dramaSyncDeferred{err: err}
+	}
+	job.Status, job.Error, job.FinishedAt = model.DramaJobRunning, "", nil
+	if err := r.s.repo.SaveDramaJob(job); err != nil {
+		return err
+	}
+	switch job.Kind {
+	case model.DramaJobCastImage:
+		_, _ = r.s.repo.UpdateDramaCastIf(job.CastID, []string{model.DramaMediaFailed}, map[string]any{"image_status": model.DramaMediaRunning})
+	case model.DramaJobSegmentVideo:
+		var payload dramaRevisionPayload
+		_ = json.Unmarshal([]byte(job.PayloadJSON), &payload)
+		_, _ = r.s.repo.UpdateDramaSegmentRevision(job.ShotID, payload.Revision, map[string]any{"video_status": model.DramaMediaRunning, "video_error": ""})
+	}
+	r.s.wakeTaskDispatcher()
 	return nil
 }
 
@@ -257,6 +316,18 @@ func (r *dramaRun) syncRunningJob(job *model.DramaJob) error {
 		job.Status, job.FinishedAt, job.Error = model.DramaJobSucceeded, &now, ""
 		return r.s.repo.SaveDramaJob(job)
 	case model.TaskStatusFailed, model.TaskStatusCancelled:
+		// 上游已出结果、仅本地下载/保存失败：若仍有自动重试额度则重新排队恢复，
+		// 不把设定/段标失败，也不因作品暂停而丢掉已付费结果。
+		if task.Status == model.TaskStatusFailed && r.s.dramaTaskMediaRecoveryRetryable(task) {
+			if err := r.s.repo.RequeueTaskMediaRecovery(task, task.MediaRecoveryJSON); err != nil {
+				if !errors.Is(err, repository.ErrTaskStateConflict) {
+					return &dramaSyncDeferred{err: err}
+				}
+			} else {
+				r.s.wakeTaskDispatcher()
+			}
+			return nil
+		}
 		if err := r.settleTaskAttempt(job, task, firstNonEmpty(task.Error, "生成失败")); err != nil {
 			return err
 		}
@@ -391,6 +462,9 @@ func dramaAttemptRecorded(job *model.DramaJob, taskID string) bool {
 }
 
 func (r *dramaRun) enqueue(kind, episodeID, shotID, castID string, priority int, label string, payload any) bool {
+	if r.active == nil {
+		r.active = map[string]bool{}
+	}
 	key := dramaJobKey(kind, episodeID, shotID, castID)
 	if r.active[key] {
 		return false
@@ -443,9 +517,35 @@ func (r *dramaRun) plan() error {
 		cast := &r.casts[i]
 		// "" 表示从未请求，只有放行后才自动生成；queued 是用户明确请求（重做、重试或按集放行）。
 		requested := cast.ImageStatus == model.DramaMediaQueued || (cast.ImageStatus == "" && r.assetsReleased())
-		if requested && !cast.Locked {
-			r.enqueue(model.DramaJobCastImage, "", "", cast.ID, castImagePriority(cast.Position), "参考图："+cast.Name, nil)
+		if !requested || cast.Locked {
+			continue
 		}
+		if !dramaCastHasImageBrief(*cast) {
+			// 没有外貌或外形描述时不凭名字和画风编造参考图，等补全后再生成。
+			continue
+		}
+		// 造型以角色本体参考图为底图：本体失败或已删除时直接落失败，避免每轮重复排队又被取消。
+		if cast.ParentID != "" {
+			base, baseErr := r.s.repo.DramaCast(r.project.ID, cast.ParentID)
+			switch {
+			case errors.Is(baseErr, gorm.ErrRecordNotFound):
+				if err := r.failCastLook(cast, "角色本体已被删除，无法生成造型参考图"); err != nil {
+					return err
+				}
+				continue
+			case baseErr != nil:
+				return baseErr
+			case base.ImageStatus == model.DramaMediaFailed:
+				if err := r.failCastLook(cast, "角色本体参考图生成失败，请先重试本体"); err != nil {
+					return err
+				}
+				continue
+			case base.ImageStatus != model.DramaMediaReady:
+				// 本体排队、生成中或尚未请求：造型先不排队，等本体就绪后的下一轮再排。
+				continue
+			}
+		}
+		r.enqueue(model.DramaJobCastImage, "", "", cast.ID, castImagePriority(cast.Position), "参考图："+cast.Name, nil)
 	}
 	episodes, err := r.s.repo.DramaEpisodes(r.project.ID)
 	if err != nil {
@@ -494,6 +594,24 @@ func (r *dramaRun) plan() error {
 	if allDone {
 		p.Status, p.Stage = model.DramaStatusCompleted, model.DramaStageDone
 	}
+	return nil
+}
+
+// failCastLook 把等待本体的造型落为失败，并写一条失败作业供「待处理」展示原因；
+// 按造型版本号更新，同一次失败只落一条记录。
+func (r *dramaRun) failCastLook(cast *model.DramaCast, reason string) error {
+	applied, err := r.s.repo.UpdateDramaCastRevision(cast.ID, cast.Revision, map[string]any{"image_status": model.DramaMediaFailed})
+	if err != nil || !applied {
+		return err
+	}
+	cast.ImageStatus = model.DramaMediaFailed
+	now := time.Now()
+	job := model.DramaJob{
+		ID: newID(), ProjectID: r.project.ID, Status: model.DramaJobFailed, Kind: model.DramaJobCastImage, CastID: cast.ID,
+		Priority: castImagePriority(cast.Position), Label: truncateRunes("参考图："+cast.Name, 200), Error: truncateRunes(reason, 500),
+		CreatedAt: now, UpdatedAt: now, FinishedAt: &now,
+	}
+	r.newJobs = append(r.newJobs, job)
 	return nil
 }
 
@@ -630,7 +748,7 @@ func (r *dramaRun) enqueueSegmentVideos(e *model.DramaEpisode, segments []model.
 			}
 			shots = loaded
 		}
-		if dramaVideoWaitReason(r.settings, r.production, e, segments, i, shots, r.castLookup) == "" {
+		if dramaVideoWaitReason(r.settings, r.production, e, segments, i, shots, r.castLookup, r.episodeCastExtractPending(e.ID)) == "" {
 			r.enqueue(model.DramaJobSegmentVideo, e.ID, seg.ID, "", segmentPriority(dramaRankVideo, e.Number, seg.SegmentIndex), fmt.Sprintf("第 %d 集 第 %d 段视频", e.Number, seg.SegmentIndex+1), nil)
 		}
 		return false, nil
@@ -659,7 +777,7 @@ func (r *dramaRun) enqueueParallelSegmentVideos(e *model.DramaEpisode, segments 
 			}
 			shots = loaded
 		}
-		if dramaVideoWaitReason(r.settings, r.production, e, segments, i, shots, r.castLookup) == "" {
+		if dramaVideoWaitReason(r.settings, r.production, e, segments, i, shots, r.castLookup, r.episodeCastExtractPending(e.ID)) == "" {
 			r.enqueue(model.DramaJobSegmentVideo, e.ID, seg.ID, "", segmentPriority(dramaRankVideo, e.Number, seg.SegmentIndex), fmt.Sprintf("第 %d 集 第 %d 段视频", e.Number, seg.SegmentIndex+1), nil)
 		}
 	}
@@ -765,7 +883,7 @@ func (r *dramaRun) markRunning(job *model.DramaJob) error {
 		_ = json.Unmarshal([]byte(job.PayloadJSON), &payload)
 		_, err = r.s.repo.UpdateDramaSegmentRevision(job.ShotID, payload.Revision, map[string]any{"prompt_status": model.DramaMediaRunning})
 	case model.DramaJobCastImage:
-		_, err = r.s.repo.UpdateDramaCastIf(job.CastID, []string{"", model.DramaMediaQueued}, map[string]any{"image_status": model.DramaMediaRunning})
+		_, err = r.s.repo.UpdateDramaCastIf(job.CastID, []string{"", model.DramaMediaDraft, model.DramaMediaQueued}, map[string]any{"image_status": model.DramaMediaRunning})
 	case model.DramaJobSegmentVideo:
 		var payload dramaRevisionPayload
 		_ = json.Unmarshal([]byte(job.PayloadJSON), &payload)
@@ -786,6 +904,8 @@ func (r *dramaRun) applyJob(job *model.DramaJob, task *model.Task) error {
 		return r.applyScript(job, task)
 	case model.DramaJobCastImage:
 		return r.applyCastImage(job, task)
+	case model.DramaJobCastExtract:
+		return r.applyCastExtract(job, task)
 	case model.DramaJobSegmentVideo:
 		return r.applySegmentVideo(job, task)
 	case model.DramaJobRender:
@@ -819,27 +939,74 @@ func (r *dramaRun) applyBible(task *model.Task) error {
 	if err != nil {
 		return err
 	}
-	if len(existing) == 0 {
-		now := time.Now()
-		casts := make([]model.DramaCast, 0, len(bible.Characters)+len(bible.Props)+len(bible.Scenes))
-		for index, character := range bible.Characters {
-			instructions := strings.TrimSpace(strings.Join(nonEmpty(character.Gender, character.Age, character.Voice), "，"))
-			characterID := newID()
-			casts = append(casts, model.DramaCast{ID: characterID, ProjectID: r.project.ID, Kind: "character", Name: truncateRunes(character.Name, 60), AliasesJSON: encodeStringList(character.Aliases), Role: truncateRunes(character.Role, 60), Description: truncateRunes(character.Description, 1000), Appearance: truncateRunes(strings.Join(nonEmpty(character.Gender, character.Age, character.Appearance), "，"), 1000), VoiceInstructions: truncateRunes(instructions, 500), Importance: len(bible.Characters) - index, Position: index, CreatedAt: now, UpdatedAt: now})
-			// 造型是角色的子行：承载这套造型的名称、外观与默认适用章节，名称/别名/声音沿用所属角色。
-			for lookIndex, look := range character.Looks {
-				casts = append(casts, model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "character", ParentID: characterID, Name: truncateRunes(character.Name, 60), LookName: truncateRunes(look.Name, 60), Appearance: truncateRunes(look.Appearance, 1000), LookFromChapter: int(look.FromChapter), LookToChapter: int(look.ToChapter), Position: index*100 + lookIndex + 1, CreatedAt: now, UpdatedAt: now})
+	// 提前手动创建或跨季导入的设定不能阻止本季提取其余素材；同类型同名只补缺失项。
+	// 重名角色存在歧义时保留现状，不把模型提取的造型挂到任意一条角色上。
+	byName := map[string][]model.DramaCast{}
+	lookNames, lookCounts := map[string]map[string]bool{}, map[string]int{}
+	positions := map[string]int{}
+	for _, cast := range existing {
+		if cast.ParentID == "" {
+			key := cast.Kind + "|" + production.NormalizeName(cast.Name)
+			byName[key] = append(byName[key], cast)
+			positions[cast.Kind] = max(positions[cast.Kind], cast.Position+1)
+		} else {
+			if lookNames[cast.ParentID] == nil {
+				lookNames[cast.ParentID] = map[string]bool{}
 			}
+			lookNames[cast.ParentID][production.NormalizeName(cast.LookName)] = true
+			lookCounts[cast.ParentID]++
 		}
-		for index, prop := range bible.Props {
-			casts = append(casts, model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "prop", Name: truncateRunes(prop.Name, 60), AliasesJSON: "[]", Description: truncateRunes(prop.Description, 1000), Appearance: truncateRunes(prop.Appearance, 1000), Position: index, CreatedAt: now, UpdatedAt: now})
+	}
+	now := time.Now()
+	casts := make([]model.DramaCast, 0, len(bible.Characters)+len(bible.Props)+len(bible.Scenes))
+	addBase := func(cast model.DramaCast) model.DramaCast {
+		cast.Position = positions[cast.Kind]
+		positions[cast.Kind]++
+		casts = append(casts, cast)
+		key := cast.Kind + "|" + production.NormalizeName(cast.Name)
+		byName[key] = append(byName[key], cast)
+		return cast
+	}
+	for index, character := range bible.Characters {
+		name := truncateRunes(character.Name, 60)
+		matches := byName["character|"+production.NormalizeName(name)]
+		if len(matches) > 1 {
+			continue
 		}
-		for index, scene := range bible.Scenes {
-			casts = append(casts, model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "scene", Name: truncateRunes(scene.Name, 60), AliasesJSON: "[]", Description: truncateRunes(scene.Description, 1000), Appearance: truncateRunes(scene.Appearance, 1000), Position: index, CreatedAt: now, UpdatedAt: now})
+		var base model.DramaCast
+		if len(matches) == 1 {
+			base = matches[0]
+		} else {
+			instructions := strings.TrimSpace(strings.Join(nonEmpty(character.Gender, character.Age, character.Voice), "，"))
+			base = addBase(model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "character", Name: name, AliasesJSON: encodeStringList(character.Aliases), Role: truncateRunes(character.Role, 60), Description: truncateRunes(character.Description, 1000), Appearance: truncateRunes(strings.Join(nonEmpty(character.Gender, character.Age, character.Appearance), "，"), 1000), VoiceInstructions: truncateRunes(instructions, 500), Importance: len(bible.Characters) - index, CreatedAt: now, UpdatedAt: now})
 		}
-		if err := r.s.repo.CreateDramaCasts(casts); err != nil {
-			return err
+		if lookNames[base.ID] == nil {
+			lookNames[base.ID] = map[string]bool{}
 		}
+		for _, look := range character.Looks {
+			key := production.NormalizeName(look.Name)
+			if lookNames[base.ID][key] || lookCounts[base.ID] >= production.MaxCharacterLooks {
+				continue
+			}
+			lookCounts[base.ID]++
+			lookNames[base.ID][key] = true
+			casts = append(casts, model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "character", ParentID: base.ID, Name: base.Name, LookName: truncateRunes(look.Name, 60), Appearance: truncateRunes(look.Appearance, 1000), LookFromChapter: int(look.FromChapter), LookToChapter: int(look.ToChapter), Position: base.Position*100 + lookCounts[base.ID], CreatedAt: now, UpdatedAt: now})
+		}
+	}
+	for _, prop := range bible.Props {
+		name := truncateRunes(prop.Name, 60)
+		if len(byName["prop|"+production.NormalizeName(name)]) == 0 {
+			addBase(model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "prop", Name: name, AliasesJSON: "[]", Description: truncateRunes(prop.Description, 1000), Appearance: truncateRunes(prop.Appearance, 1000), CreatedAt: now, UpdatedAt: now})
+		}
+	}
+	for _, scene := range bible.Scenes {
+		name := truncateRunes(scene.Name, 60)
+		if len(byName["scene|"+production.NormalizeName(name)]) == 0 {
+			addBase(model.DramaCast{ID: newID(), ProjectID: r.project.ID, Kind: "scene", Name: name, AliasesJSON: "[]", Description: truncateRunes(scene.Description, 1000), Appearance: truncateRunes(scene.Appearance, 1000), CreatedAt: now, UpdatedAt: now})
+		}
+	}
+	if err := r.s.repo.CreateDramaCasts(casts); err != nil {
+		return err
 	}
 	meta, _ := json.Marshal(dramaBibleMeta{Logline: bible.Logline, Tone: bible.Tone, VisualRules: bible.VisualRules})
 	r.production.BibleJSON = string(meta)
@@ -1035,7 +1202,7 @@ func (r *dramaRun) applyScriptShots(episode *model.DramaEpisode, scripted []prod
 			return id
 		}
 		name := strings.TrimSpace(chosen)
-		if name == "" || production.IsBaseLookName(name) {
+		if name == "" || production.IsBaseLookName(name) || len(existing) >= production.MaxCharacterLooks {
 			return ""
 		}
 		hint, ok := lookHints[dramaLookHintKey(casts, characterID)+"|"+production.NormalizeName(name)]
@@ -1102,6 +1269,7 @@ func (r *dramaRun) applyScriptShots(episode *model.DramaEpisode, scripted []prod
 	if err := r.s.repo.CreateDramaCasts(created); err != nil {
 		return err
 	}
+	r.enqueueLateAssetExtract(episode, created)
 	fields := map[string]any{"shot_count": len(shots), "duration_ms": total, "stage": model.DramaEpisodePrompts, "error": "", "approved": false}
 	if strings.TrimSpace(episode.Synopsis) == "" && info.Synopsis != "" {
 		fields["synopsis"], fields["hook"], fields["cliffhanger"] = truncateRunes(info.Synopsis, 1000), truncateRunes(info.Hook, 300), truncateRunes(info.Cliffhanger, 300)
@@ -1259,6 +1427,8 @@ func (r *dramaRun) submit(job *model.DramaJob) (*model.Task, bool, error) {
 		}
 		job.PayloadJSON = encodeDramaRevision(cast.Revision)
 		return r.submitCastImage(job)
+	case model.DramaJobCastExtract:
+		return r.submitCastExtract(job)
 	case model.DramaJobSegmentVideo:
 		return r.submitSegmentVideo(job)
 	case model.DramaJobRender:
@@ -1620,13 +1790,21 @@ func (r *dramaRun) submitScript(job *model.DramaJob) (*model.Task, bool, error) 
 
 func (r *dramaRun) submitCastImage(job *model.DramaJob) (*model.Task, bool, error) {
 	cast, err := r.s.repo.DramaCast(r.project.ID, job.CastID)
-	// 槽位处于 running 可能是本工作的上一轮尝试，只有已就绪或锁定时才不再需要。
-	if err != nil || cast.Locked || cast.ImageStatus == model.DramaMediaReady || cast.ImageStatus == model.DramaMediaDraft {
+	// 槽位处于 running 可能是本工作的上一轮尝试，只有已就绪、已失败（终态）或锁定时才不再需要。
+	if err != nil || cast.Locked || cast.ImageStatus == model.DramaMediaReady || cast.ImageStatus == model.DramaMediaDraft || cast.ImageStatus == model.DramaMediaFailed {
 		return nil, true, nil
 	}
-	appearance := firstNonEmpty(cast.Appearance, cast.Description, cast.Role)
+	if !dramaCastHasImageBrief(*cast) {
+		// 没有外貌或外形描述时不凭名字和画风编造参考图，等补全后再生成。
+		if cast.ImageStatus == model.DramaMediaQueued {
+			if _, err := r.s.repo.UpdateDramaCastIf(cast.ID, []string{model.DramaMediaQueued}, map[string]any{"image_status": ""}); err != nil {
+				return nil, false, err
+			}
+		}
+		return nil, true, nil
+	}
 	assets := r.settings.Assets
-	// 造型行：以所属角色的参考图为底图做图生图，保持五官、脸型一致，只换服装、发型与妆容。
+	// 造型以所属角色参考图识别身份，年龄、体态和服装按本次造型，仍使用作品的参考图方案。
 	var baseImage *model.DramaCast
 	operation := "text_to_image"
 	if cast.ParentID != "" {
@@ -1641,19 +1819,11 @@ func (r *dramaRun) submitCastImage(job *model.DramaJob) (*model.Task, bool, erro
 		baseImage = base
 		operation = "image_to_image"
 	}
-	// 画风与画面规则写的是成片画幅，设定图有自己的画幅：带入前去掉其中的画幅与横竖构图要求，
-	// 设定和方案模板的文字不动。
-	stylePrompt := production.StripFrameDirectives(r.settings.StylePrompt)
-	visualRules := production.StripFrameDirectives(r.meta.VisualRules)
-	prompt := production.CastImagePrompt(assets, cast.Kind, cast.Name, appearance, stylePrompt, visualRules)
-	if baseImage != nil {
-		prompt = "参考图1是角色" + cast.Name + "的既有形象。保持五官、脸型、体态与参考图1完全一致。" + firstNonEmpty(strings.TrimSpace(cast.ImagePrompt), "只把造型改为："+appearance+"。"+stylePrompt)
-	}
+	prompt := buildDramaCastImagePrompt(r.settings, r.meta, *cast)
 	// 资产参考图统一横版 16:9，与作品画幅无关：场景要容纳完整空间，道具要留足展示余量。
 	// 角色按参考图方案的画幅（内置方案均为 16:9，自定义方案可改）。画幅通过尺寸参数约束，
 	// 不只靠提示词；模型给不出接近的尺寸时直接失败并说明原因，不退回模型默认的方图。
 	ratio := r.castImageRatio(cast.Kind)
-	prompt = production.WithAssetRatio(prompt, ratio)
 	request := r.imageRequest(cast.Kind)
 	if request.Issue != "" {
 		return nil, false, errors.New(request.Issue)
@@ -1707,8 +1877,10 @@ func dramaRenderSize(aspect string) (int, int) {
 	return 1080, 1920
 }
 
-// buildDramaTimeline 把一集镜头装配为时间线：视频轨静音，配音轨按镜头起点对齐，字幕单独输出。
-func buildDramaTimeline(segments []model.DramaSegment, aspect string) (renderProject, error) {
+// buildDramaTimeline 把一集镜头装配为时间线：按各段视频文件实测时长首尾相接。
+// sourceDurationMs 优先（resource.DurationMs）；没有探测时长时回退到入库的 video_seconds。
+// 故意裁切留给画布「到画布精剪」多轨时间线，自动成片不再按设定秒 trim/tpad。
+func buildDramaTimeline(segments []model.DramaSegment, aspect string, sourceDurationMs map[string]int64) (renderProject, error) {
 	width, height := dramaRenderSize(aspect)
 	visible := true
 	timeline := renderProject{Version: 2, Width: width, Height: height, Tracks: []renderTrack{{ID: "video", Kind: "video", Visible: &visible}}}
@@ -1716,10 +1888,19 @@ func buildDramaTimeline(segments []model.DramaSegment, aspect string) (renderPro
 		return timeline, errors.New("没有可合成的剧情段")
 	}
 	for _, seg := range segments {
-		if seg.VideoStatus != model.DramaMediaReady || seg.VideoResourceID == "" || seg.VideoSeconds <= 0 {
+		if seg.VideoStatus != model.DramaMediaReady || seg.VideoResourceID == "" {
 			return timeline, errors.New("所有剧情段视频就绪后才能合成")
 		}
-		duration := int64(seg.VideoSeconds) * 1000
+		duration := int64(0)
+		if sourceDurationMs != nil {
+			duration = sourceDurationMs[seg.VideoResourceID]
+		}
+		if duration <= 0 {
+			duration = int64(seg.VideoSeconds) * 1000
+		}
+		if duration <= 0 {
+			return timeline, errors.New("所有剧情段视频就绪后才能合成")
+		}
 		clip := renderClip{ID: "v-" + seg.ID, Kind: "video", TrackID: "video", StartMs: timeline.DurationMs, DurationMs: duration, SourceDurationMs: duration, Volume: 1}
 		clip.DirectMedia = &struct {
 			ID         string `json:"id"`
@@ -1730,6 +1911,37 @@ func buildDramaTimeline(segments []model.DramaSegment, aspect string) (renderPro
 		timeline.DurationMs += duration
 	}
 	return timeline, nil
+}
+
+// dramaSegmentSourceDurations 读取段视频资源的实测时长（毫秒），供自动成片按文件长度拼接。
+func dramaSegmentSourceDurations(repo *repository.Repository, segments []model.DramaSegment) map[string]int64 {
+	ids := make([]string, 0, len(segments))
+	seen := map[string]struct{}{}
+	for _, seg := range segments {
+		id := strings.TrimSpace(seg.VideoResourceID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	out := map[string]int64{}
+	if len(ids) == 0 {
+		return out
+	}
+	resources, err := repo.ResourcesByIDs(ids)
+	if err != nil {
+		return out
+	}
+	for _, res := range resources {
+		if res.DurationMs > 0 {
+			out[res.ID] = res.DurationMs
+		}
+	}
+	return out
 }
 
 func (r *dramaRun) submitRender(job *model.DramaJob) (*model.Task, bool, error) {
@@ -1743,7 +1955,7 @@ func (r *dramaRun) submitRender(job *model.DramaJob) (*model.Task, bool, error) 
 	if err != nil {
 		return nil, false, err
 	}
-	timeline, err := buildDramaTimeline(segments, r.settings.AspectRatio)
+	timeline, err := buildDramaTimeline(segments, r.settings.AspectRatio, dramaSegmentSourceDurations(r.s.repo, segments))
 	if err != nil {
 		return nil, false, err
 	}

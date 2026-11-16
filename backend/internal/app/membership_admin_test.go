@@ -17,7 +17,10 @@ func newMembershipAdminDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.Task{}, &model.ApiCallLog{}, &model.UserDailyUploadUsage{}, &model.Resource{}, &model.Asset{}, &model.CanvasProject{}, &model.TaskLog{}, &model.Result{}, &model.TaskTextDelta{}, &model.UserStorageGrant{}, &model.UserStorageState{}); err != nil {
+	// 用户详情会一并读取 Agent 与 MCP 的持久数据账本，夹具必须建出这两组表。
+	if err := db.AutoMigrate(&model.MembershipPlan{}, &model.UserMembership{}, &model.CreditAccount{}, &model.CreditLedgerEntry{}, &model.User{}, &model.SystemSetting{}, &model.AdminAuditEvent{}, &model.Task{}, &model.ApiCallLog{}, &model.UserDailyUploadUsage{}, &model.Resource{}, &model.Asset{}, &model.CanvasProject{}, &model.TaskLog{}, &model.Result{}, &model.TaskTextDelta{}, &model.UserStorageGrant{}, &model.UserStorageState{},
+		&model.AgentStorageUsage{}, &model.CloudAgentExecution{}, &model.CloudAgentEventRecord{}, &model.CloudAgentMessageRecord{}, &model.CloudAgentPiSession{}, &model.CloudAgentCanvasMutation{},
+		&model.MCPStorageUsage{}, &model.MCPConnection{}, &model.MCPToolExecution{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_memberships_active_user ON user_memberships(user_id) WHERE status = 'active'").Error; err != nil {

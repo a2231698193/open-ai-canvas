@@ -114,7 +114,7 @@ export function capabilitySpecFromChannelModel(item?: ChannelModel): CapabilityS
                 inputs: compactInputs({ image: { min: 0, max: image.references.maxImages }, mask: { min: 0, max: image.references.maskSupported ? 1 : 0 } }),
                 imageParameters: image.parameters.map(({ binding: _binding, models: _models, encoding: _encoding, ...p }) => p),
                 options: imageParameterConstraints(image.parameters),
-                imageSize: image.size.parameter === "none" ? undefined : { parameter: image.size.parameter, allowCustom: image.size.allowCustom, presets: imageSizePresets(image) },
+                imageSize: image.size.parameter === "none" ? undefined : { parameter: image.size.parameter, allowCustom: image.size.allowCustom, presets: imageSizePresets(image), defaultTier: image.size.defaultTier },
             };
         return {
             version: 1,
@@ -228,6 +228,7 @@ function mergeImageSize(specs: CapabilitySpec[]): CapabilityImageSize | undefine
     return {
         parameter: parameters.includes("aspect_ratio") ? "aspect_ratio" : parameters[0],
         allowCustom: parts.some((item) => item.allowCustom),
+        defaultTier: parts.every((item) => item.defaultTier === parts[0].defaultTier) ? parts[0].defaultTier : undefined,
         presets,
     };
 }

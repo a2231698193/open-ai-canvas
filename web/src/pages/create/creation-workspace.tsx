@@ -34,7 +34,9 @@ import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { ASSET_CATEGORY_LABELS } from "@/lib/asset-category";
 import { formatShotOrdinal } from "@/lib/shot-label";
 import { buildImageResolutionOptions, formatImageResolutionSize, supportsImageResolutionPresets } from "@/lib/image-resolution-tiers";
-import { modelCapabilityConfigFor, normalizeVideoValue, videoDurationOptions, type ImageCapabilityConfig, type VideoCapabilityConfig } from "@/lib/model-capabilities";
+import { modelCapabilityConfigFor, videoDurationOptions, type ImageCapabilityConfig, type VideoCapabilityConfig } from "@/lib/model-capabilities";
+import { mediaSettingIssues, preserveVideoSettings as normalizeVideoValue } from "@/lib/media-settings";
+import { MediaSettingsNotice } from "@/components/media-settings-notice";
 import { mergedImageCapabilityConfig, type ModelRequirements } from "@/lib/model-selection";
 import { imageQualityLabel } from "@/lib/image-quality";
 import { modelQuoteDescription, modelQuoteRequest } from "@/lib/model-pricing";
@@ -42,6 +44,7 @@ import { quoteModel, type LogicalModelQuote } from "@/services/api/logical-model
 import { modelOptionName, resolveModelChannel, type AiConfig } from "@/stores/use-config-store";
 import { VIDEO_GENERATION_MODE_OPTIONS, supportedVideoGenerationModes, type VideoGenerationMode, type VideoModeCapabilityLike } from "@/lib/video-generation-mode";
 import { useUserStore } from "@/stores/use-user-store";
+import { useGenerationBatchLimit, batchQuoteTotal } from "@/lib/generation-batch-limit";
 import type { PromptOptimizerProvider } from "@/lib/plugins/plugin-types";
 import { type CreationReference, type CreationReferenceLimits } from "./creation-references";
 import { creationAttachmentKind, type CreationAttachment, type CreationMode } from "./creation-assets";
@@ -236,9 +239,16 @@ export function CreationComposer(props: ComposerProps) {
     const [trackState, setTrackState] = useState({ canScrollLeft: false, canScrollRight: false, isExpanded: true, isDragging: false });
     const previousAttachmentCountRef = useRef(0);
     const interactionBusy = props.busy || props.referenceReplacementBusy;
-    const canSubmit = Boolean(props.prompt.trim()) && !interactionBusy;
+    // 创作页张数等于拆单数，上限按账号同时任务数，硬上限仍为 15。
+    const imageBatchLimit = Math.min(15, useGenerationBatchLimit());
+    const settingsError = mediaSettingIssues(props.config, props.mode, props.model)
+        .map((item) => item.message)
+        .join("；");
+    const canSubmit = Boolean(props.prompt.trim()) && !interactionBusy && !settingsError;
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const priceChannel = resolveModelChannel(props.config, props.model);
+    // 实际提交单数与 index.tsx 的 taskCount 同样 clamp。
+    const imageTaskCount = Math.max(1, Math.min(imageBatchLimit, Math.floor(Number(props.count)) || 1));
     const [routeQuote, setRouteQuote] = useState<LogicalModelQuote | null>(null);
     const canOptimizePrompt = Boolean(props.promptOptimizerProvider) && (props.mode === "image" || props.mode === "video");
     const optimizerReferences = props.references.filter((reference) => reference.active && reference.kind !== "skill");
@@ -259,7 +269,7 @@ export function CreationComposer(props: ComposerProps) {
         channelMode: priceChannel.scope === "system" ? "remote" : "local",
         modelCosts: priceChannel.modelCosts,
         model: modelOptionName(props.model),
-        count: props.mode === "image" ? props.count : 1,
+        count: props.mode === "image" ? imageTaskCount : 1,
         seconds: props.mode === "video" ? props.seconds : 1,
         capability: pricingCapability,
         config: pricingConfig,
@@ -279,7 +289,7 @@ export function CreationComposer(props: ComposerProps) {
             });
         return () => controller.abort();
     }, [creditsEnabled, quoteRequest]);
-    const generationCredits = routeQuote ? routeQuote.amountMicrocredits / 1_000_000 : configuredCredits;
+    const generationCredits = routeQuote ? batchQuoteTotal(routeQuote.amountMicrocredits, props.mode === "image" ? imageTaskCount : 1) : configuredCredits;
     const showCost = creditsEnabled && generationCredits !== null && generationCredits !== undefined;
     const formattedCredits = generationCredits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
     const actionLabel = props.referenceReplacementBusy ? "正在替换参考图" : interactionBusy || (props.generationActive && !canSubmit) ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，发送` : "发送";
@@ -324,7 +334,7 @@ export function CreationComposer(props: ComposerProps) {
     const visibleAttachments = useMemo(() => referenceFilter === "all"
         ? props.attachments
         : props.attachments.filter((attachment) => creationAttachmentKind(attachment) === referenceFilter), [props.attachments, referenceFilter]);
-    const imageSettingsSupported = props.imageProfile.size.parameter !== "none" || props.imageProfile.quality.supported || props.imageProfile.maxOutputs > 1;
+    const imageSettingsSupported = props.imageProfile.size.parameter !== "none" || props.imageProfile.quality.supported || imageBatchLimit > 1;
     const updateTrackScrollState = useCallback(() => {
         const track = attachmentTrackRef.current;
         if (!track) return;
@@ -725,6 +735,8 @@ function GenerationSettingsMenu(props: ComposerProps) {
     const mjOptions = useLk888MjOptionsStore((state) => state.options);
     const apimartMjOptions = useApimartMjOptionsStore((state) => state.options);
     const tt25Options = useLk888ImageOptionsStore((state) => state.options);
+    // 张数上限与发送时的实际单数保持一致；账号同时任务数会限制一次提交的张数。
+    const imageBatchLimit = Math.min(15, useGenerationBatchLimit());
     const activeQualityOptions = props.imageProfile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: imageQualityLabel(value), description: "模型支持的质量/分辨率" });
     const qualityLabel = activeQualityOptions.find((item) => item.value === props.quality)?.label || qualityOptions.find((item) => item.value === props.quality)?.label || props.quality || "自动";
     // 尺寸/比例/分辨率选项取同显示名分组内全部模型的并集，路由模型只决定发送参数。
@@ -749,28 +761,139 @@ function GenerationSettingsMenu(props: ComposerProps) {
     const imageSummary = [
         ...(mergedProfile.size.parameter !== "none" ? [referenceImageSizeSelected ? referenceImageSizeLabel : usesImageResolutionPicker ? formatImageResolutionSize(props.ratio, imageResolutionOptions) : props.ratio] : []),
         ...(props.imageProfile.quality.supported ? [qualityLabel] : []),
-        ...(props.imageProfile.maxOutputs > 1 ? [props.count] : []),
+        ...(imageBatchLimit > 1 ? [props.count] : []),
     ].join(" · ");
     const videoRatioSupported = props.mode === "video" && ratios.length > 0;
     const summary = props.mode === "video" ? [...(videoRatioSupported ? [props.ratio] : []), ...(videoResolutionSupported ? [videoResolutionLabel(props.videoQuality)] : [])].join(" · ") : [imageSummary, showMjOptions ? lk888MjSummary(mjOptions) : "", showApimartMjOptions ? apimartMjSummary(apimartMjOptions) : "", showTt25Options ? lk888Image25Summary(tt25Options) : ""].filter(Boolean).join(" · ");
-    const panel = props.mode === "image" && props.imageProfile.parameters ? <div className="creation-parameter-menu max-h-[65vh] overflow-y-auto"><ImageParameterFields profile={props.imageProfile} config={{ ...props.config, model: props.model, size: props.ratio, quality: props.quality, imageResolution: props.imageResolution, imageParameters: props.imageParameters, count: props.count }} onChange={(key, value) => {
-        const setters = { size: props.setRatio, quality: props.setQuality, imageResolution: props.setImageResolution, imageParameters: props.setImageParameters, count: props.setCount, transparentBackground: props.setTransparentBackground };
-        setters[key](value);
-    }} /></div> : <div className="creation-parameter-menu">
-        {props.mode === "image" ? <ImageSizePicker profile={mergedProfile} size={props.ratio} quality={props.quality} imageResolution={props.imageResolution} onChange={(size, quality, resolution) => { props.setRatio(size); if (quality) props.setQuality(quality); if (resolution) props.setImageResolution(resolution); }} /> : videoRatioSupported ? <SettingSection title="画幅" value={props.ratio}><div className="creation-choice-grid is-ratio">{ratios.map((value) => <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}><span className="creation-ratio-preview"><span style={ratioPreviewStyle(value)} /></span><span>{value}</span></button>)}</div></SettingSection> : null}
-        {showMjOptions ? <Lk888MjOptionsPanel /> : null}
-        {showApimartMjOptions ? <ApimartMjOptionsPanel /> : null}
-        {showTt25Options ? <Lk888Image25OptionsPanel /> : null}
-        {props.mode === "image" && referenceImageSizeValue ? <button type="button" className="creation-custom-trigger" onClick={selectReferenceImageSize}>使用参考图尺寸 · {referenceImageSizeLabel}</button> : null}
-        {props.mode === "video" ? (videoResolutionSupported ? <SettingSection title="清晰度" value={videoResolutionLabel(props.videoQuality)}><div className="creation-choice-grid is-resolution">{resolutions.map((option) => <button key={option.value} type="button" aria-pressed={option.value === props.videoQuality} className={option.value === props.videoQuality ? "is-selected" : ""} onClick={() => props.setVideoQuality(option.value)}>{option.label}</button>)}</div></SettingSection> : null) : <>
-
-            {props.imageProfile.quality.supported && !imageResolutionUsesQuality(mergedProfile) ? <SettingSection title={activeQualityOptions.some((item) => item.value === "1k" || item.value === "2k") ? "分辨率" : "图片质量"} value={qualityLabel}><div className="creation-choice-grid is-quality">{activeQualityOptions.map((option) => <button key={option.value} type="button" aria-pressed={option.value === props.quality} className={option.value === props.quality ? "is-selected" : ""} onClick={() => props.setQuality(option.value)}><span>{option.label}</span><small>{option.description}</small></button>)}</div></SettingSection> : null}
-            {props.imageProfile.maxOutputs > 1 ? <SettingSection title="生成张数" value={`${props.count} 张`}><div className="creation-parameter-content"><div className="creation-choice-grid is-count">{countOptions.filter((option) => Number(option) <= props.imageProfile.maxOutputs).map((option) => <button key={option} type="button" aria-pressed={option === props.count} className={option === props.count ? "is-selected" : ""} onClick={() => props.setCount(option)}>{option}</button>)}</div><label className="creation-custom-value"><span>自定义</span><input inputMode="numeric" pattern="[0-9]*" value={props.count} onChange={(event) => props.setCount(String(Math.max(1, Math.min(props.imageProfile.maxOutputs, Number(event.target.value) || 1))))} aria-label={`生成张数，范围 1 到 ${props.imageProfile.maxOutputs}`} /><em>张</em></label></div></SettingSection> : null}
-        </>}
-    </div>;
-    return <Popover open={open} onOpenChange={setOpen} trigger="click" placement="bottom" arrow={false} classNames={{ root: "creation-control-popover", container: "creation-control-popover-surface", content: "creation-control-popover-content" }} content={panel}>
-        <button type="button" className="creation-chat-control" aria-label={`生成设置：${summary}`}><SlidersHorizontal /><span>{summary}</span><ChevronDown className={open ? "is-open" : ""} /></button>
-    </Popover>;
+    const panel =
+        props.mode === "image" && props.imageProfile.parameters ? (
+            <div className="creation-parameter-menu max-h-[65vh] overflow-y-auto">
+                <ImageParameterFields
+                    profile={props.imageProfile}
+                    countLimit={imageBatchLimit}
+                    config={{ ...props.config, model: props.model, size: props.ratio, quality: props.quality, imageResolution: props.imageResolution, imageParameters: props.imageParameters, count: props.count }}
+                    onChange={(key, value) => {
+                        const setters = {
+                            size: props.setRatio,
+                            quality: props.setQuality,
+                            imageResolution: props.setImageResolution,
+                            imageParameters: props.setImageParameters,
+                            count: props.setCount,
+                            transparentBackground: props.setTransparentBackground,
+                        };
+                        setters[key](value);
+                    }}
+                />
+            </div>
+        ) : (
+            <div className="creation-parameter-menu">
+                {props.mode === "image" ? (
+                    <ImageSizePicker
+                        profile={mergedProfile}
+                        size={props.ratio}
+                        quality={props.quality}
+                        imageResolution={props.imageResolution}
+                        onChange={(size, quality, resolution) => {
+                            props.setRatio(size);
+                            if (quality) props.setQuality(quality);
+                            if (resolution) props.setImageResolution(resolution);
+                        }}
+                    />
+                ) : videoRatioSupported ? (
+                    <SettingSection title="画幅" value={props.ratio}>
+                        <div className="creation-choice-grid is-ratio">
+                            {ratios.map((value) => (
+                                <button key={value} type="button" aria-pressed={value === props.ratio} className={value === props.ratio ? "is-selected" : ""} onClick={() => props.setRatio(value)}>
+                                    <span className="creation-ratio-preview">
+                                        <span style={ratioPreviewStyle(value)} />
+                                    </span>
+                                    <span>{value}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </SettingSection>
+                ) : null}
+                {showMjOptions ? <Lk888MjOptionsPanel /> : null}
+                {showApimartMjOptions ? <ApimartMjOptionsPanel /> : null}
+                {showTt25Options ? <Lk888Image25OptionsPanel /> : null}
+                {props.mode === "image" && referenceImageSizeValue ? (
+                    <button type="button" className="creation-custom-trigger" onClick={selectReferenceImageSize}>
+                        使用参考图尺寸 · {referenceImageSizeLabel}
+                    </button>
+                ) : null}
+                {props.mode === "video" ? (
+                    videoResolutionSupported ? (
+                        <SettingSection title="清晰度" value={videoResolutionLabel(props.videoQuality)}>
+                            <div className="creation-choice-grid is-resolution">
+                                {resolutions.map((option) => (
+                                    <button key={option.value} type="button" aria-pressed={option.value === props.videoQuality} className={option.value === props.videoQuality ? "is-selected" : ""} onClick={() => props.setVideoQuality(option.value)}>
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </SettingSection>
+                    ) : null
+                ) : (
+                    <>
+                        {props.imageProfile.quality.supported && !imageResolutionUsesQuality(mergedProfile) ? (
+                            <SettingSection title={activeQualityOptions.some((item) => item.value === "1k" || item.value === "2k") ? "分辨率" : "图片质量"} value={qualityLabel}>
+                                <div className="creation-choice-grid is-quality">
+                                    {activeQualityOptions.map((option) => (
+                                        <button key={option.value} type="button" aria-pressed={option.value === props.quality} className={option.value === props.quality ? "is-selected" : ""} onClick={() => props.setQuality(option.value)}>
+                                            <span>{option.label}</span>
+                                            <small>{option.description}</small>
+                                        </button>
+                                    ))}
+                                </div>
+                            </SettingSection>
+                        ) : null}
+                        {imageBatchLimit > 1 ? (
+                            <SettingSection title="生成张数" value={`${props.count} 张`}>
+                                <div className="creation-parameter-content">
+                                    <div className="creation-choice-grid is-count">
+                                        {countOptions
+                                            .filter((option) => Number(option) <= imageBatchLimit)
+                                            .map((option) => (
+                                                <button key={option} type="button" aria-pressed={option === props.count} className={option === props.count ? "is-selected" : ""} onClick={() => props.setCount(option)}>
+                                                    {option}
+                                                </button>
+                                            ))}
+                                    </div>
+                                    <label className="creation-custom-value">
+                                        <span>自定义</span>
+                                        <input
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            value={props.count}
+                                            onChange={(event) => props.setCount(String(Math.max(1, Math.min(imageBatchLimit, Number(event.target.value) || 1))))}
+                                            aria-label={`生成张数，范围 1 到 ${imageBatchLimit}`}
+                                        />
+                                        <em>张</em>
+                                    </label>
+                                </div>
+                            </SettingSection>
+                        ) : null}
+                    </>
+                )}
+            </div>
+        );
+    return (
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger="click"
+            placement="bottom"
+            arrow={false}
+            classNames={{ root: "creation-control-popover", container: "creation-control-popover-surface", content: "creation-control-popover-content" }}
+            content={panel}
+        >
+            <button type="button" className="creation-chat-control" aria-label={`生成设置：${summary}`}>
+                <SlidersHorizontal />
+                <span>{summary}</span>
+                <ChevronDown className={open ? "is-open" : ""} />
+            </button>
+        </Popover>
+    );
 }
 
 function SettingSection({ title, value, children }: { title: string; value?: string; children: ReactNode }) {
@@ -795,9 +918,9 @@ function ThinkingControl({ levels, value, resolvedLevel, onChange, disabled }: {
     );
 }
 
-function DurationMenu({ profile, seconds, onChange }: { profile: VideoCapabilityConfig; seconds: string; onChange: (value: string) => void }) {
+function DurationMenu({ profile, seconds, onChange, protocol }: { profile: VideoCapabilityConfig; seconds: string; onChange: (value: string) => void; protocol?: string }) {
     const [open, setOpen] = useState(false);
-    const value = Number(normalizeVideoValue(profile, { seconds }).seconds);
+    const value = Number(normalizeVideoValue(profile, { seconds }, protocol).seconds);
     const presets = profile.duration.selection === "enum" ? videoDurationOptions(profile) : [];
     const fallbackPreset = presets.length ? presets : [profile.duration.default];
     const min = profile.duration.selection === "range" ? profile.duration.min || 1 : Math.min(...fallbackPreset);

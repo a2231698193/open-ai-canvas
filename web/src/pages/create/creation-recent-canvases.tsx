@@ -10,10 +10,11 @@ import { createBlankCanvasProject } from "@/lib/canvas/create-canvas-project";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { loadCanvasProjectPage } from "@/lib/workspace-route-modules";
 import { listRemoteCanvasProjectsPage, type CanvasLibrarySummary } from "@/services/api/user-data";
-import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { canvasDraftNavigationState, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { RelativeTime } from "@/components/ui/product/relative-time";
 import { cn } from "@/lib/utils";
+import { trackSiteTrafficAction } from "@/services/site-traffic";
 
 const RECENT_COUNT = 4;
 
@@ -53,13 +54,16 @@ export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_C
             return;
         }
         if (!canvasHydrated || creatingRef.current) return;
+        trackSiteTrafficAction("new_canvas");
         const scope = getActiveUserScope();
         creatingRef.current = true;
         setCreating(true);
         try {
+            // 本地的空白画布创建会等服务端落库并给出同步失败提示；上游改成了纯本地草稿。
             const { id, syncError } = await createBlankCanvasProject();
+            if (getActiveUserScope() !== scope || useUserStore.getState().user?.id !== userId) return;
             if (syncError) message.warning(t("create.recent.syncPending"));
-            navigate(`/canvas/${id}`);
+            navigate(`/canvas/${id}`, { state: canvasDraftNavigationState(id) });
         } catch (error) {
             if (getActiveUserScope() === scope) message.error(error instanceof Error ? error.message : t("create.recent.createFailed"));
         } finally {

@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/mail"
@@ -31,26 +33,31 @@ var usernameInvalidChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 type AuthError = kernel.AppError
 
 type RegisterRequest struct {
-	LoginContext  LoginContext `json:"-"`
-	Username      string       `json:"username"`
-	Email         string       `json:"email"`
-	EmailCode     string       `json:"emailCode"`
-	Phone         string       `json:"phone"`
-	SMSCode       string       `json:"smsCode"`
-	Ticket        string       `json:"ticket"`
-	DisplayName   string       `json:"displayName"`
-	Password      string       `json:"password"`
-	AcceptedTerms bool         `json:"acceptedTerms"`
-	ReferralCode  string       `json:"referralCode"`
+	wechatRegistration *model.OAuthState
+	Context            context.Context `json:"-"`
+	LoginContext       LoginContext    `json:"-"`
+	Username           string          `json:"username"`
+	Email              string          `json:"email"`
+	EmailCode          string          `json:"emailCode"`
+	Phone              string          `json:"phone"`
+	SMSCode            string          `json:"smsCode"`
+	Ticket             string          `json:"ticket"`
+	DisplayName        string          `json:"displayName"`
+	Password           string          `json:"password"`
+	AcceptedTerms      bool            `json:"acceptedTerms"`
+	ReferralCode       string          `json:"referralCode"`
+	TurnstileToken     string          `json:"turnstileToken"`
 }
 
 type LoginRequest struct {
-	LoginContext LoginContext `json:"-"`
-	Username     string       `json:"username"`
-	Password     string       `json:"password"`
+	Context      context.Context `json:"-"`
+	LoginContext LoginContext    `json:"-"`
+	Username     string          `json:"username"`
+	Password     string          `json:"password"`
 	// AutoRegister 由登录注册一体表单提交：账号不存在且允许注册时返回 account_not_registered，
 	// 客户端据此在同一表单补齐注册信息，不再提示“密码不正确”。
-	AutoRegister bool `json:"autoRegister"`
+	AutoRegister   bool   `json:"autoRegister"`
+	TurnstileToken string `json:"turnstileToken"`
 }
 
 type PublicAuthSettings struct {
@@ -60,6 +67,8 @@ type PublicAuthSettings struct {
 	FirstUser             bool `json:"firstUser"`
 	RegistrationEnabled   bool `json:"registrationEnabled"`
 	LinuxDOEnabled        bool `json:"linuxdoEnabled"`
+	WechatEnabled         bool `json:"wechatEnabled"`
+	OIDCEnabled           bool `json:"oidcEnabled"`
 	EmailEnabled          bool `json:"emailEnabled"`
 	EmailCodeRequired     bool `json:"emailCodeRequired"`
 	// EmailRequired：注册必须填写邮箱；EmailVerificationRequired：注册必须先通过验证码。
@@ -68,7 +77,9 @@ type PublicAuthSettings struct {
 	AgreementTitle            string `json:"agreementTitle,omitempty"`
 	AgreementContent          string `json:"agreementContent,omitempty"`
 	// LoginMode 决定前台登录入口：modal 弹窗，page 跳转独立页面。
-	LoginMode string `json:"loginMode"`
+	LoginMode        string `json:"loginMode"`
+	TurnstileEnabled bool   `json:"turnstileEnabled"`
+	TurnstileSiteKey string `json:"turnstileSiteKey,omitempty"`
 }
 
 type AuthSessionResult struct {
@@ -90,6 +101,10 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	turnstile, err := s.publicTurnstileSetting()
+	if err != nil {
+		return nil, err
+	}
 	if count == 0 {
 		// 首个管理员同样要看到服务协议，不能因为跳过注册校验就丢失协议字段。
 		agreementTitle, agreementContent := s.RegistrationAgreement()
@@ -98,7 +113,7 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 		if _, registration, err := s.readRegistrationSetting(); err == nil {
 			loginMode = normalizeLoginMode(registration.LoginMode)
 		}
-		return &PublicAuthSettings{FirstUser: true, RegistrationEnabled: true, LinuxDOEnabled: false, AgreementTitle: agreementTitle, AgreementContent: agreementContent, LoginMode: loginMode}, nil
+		return &PublicAuthSettings{FirstUser: true, RegistrationEnabled: true, LinuxDOEnabled: false, AgreementTitle: agreementTitle, AgreementContent: agreementContent, LoginMode: loginMode, TurnstileEnabled: turnstile.Enabled, TurnstileSiteKey: turnstile.SiteKey}, nil
 	}
 	_, registration, err := s.readRegistrationSetting()
 	if err != nil {
@@ -137,6 +152,8 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 		FirstUser:                 false,
 		RegistrationEnabled:       registration.Enabled,
 		LinuxDOEnabled:            s.LinuxDOEnabled(),
+		WechatEnabled:             s.WechatEnabled(),
+		OIDCEnabled:               readOIDCConfig().enabled(),
 		EmailEnabled:              emailEnabled,
 		EmailCodeRequired:         registration.verificationRequired() && (p.EmailRegistration || p.SMSAndEmailRegistration),
 		EmailRequired:             registration.emailRequired(),
@@ -144,10 +161,15 @@ func (s *Service) PublicAuthSettings() (*PublicAuthSettings, error) {
 		AgreementTitle:            agreementTitle,
 		AgreementContent:          agreementContent,
 		LoginMode:                 normalizeLoginMode(registration.LoginMode),
+		TurnstileEnabled:          turnstile.Enabled,
+		TurnstileSiteKey:          turnstile.SiteKey,
 	}, nil
 }
 
 func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
+	if err := s.VerifyTurnstile(req.Context, req.TurnstileToken, req.LoginContext.IP); err != nil {
+		return nil, err
+	}
 	if !req.AcceptedTerms {
 		return nil, kernel.BadAuthRequest("请先同意" + s.AgreementTitleForMessage())
 	}
@@ -160,8 +182,10 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 			return nil, err
 		}
 	}
-	if err := ValidatePassword(req.Password); err != nil {
-		return nil, err
+	if req.wechatRegistration == nil || req.Password != "" {
+		if err := ValidatePassword(req.Password); err != nil {
+			return nil, err
+		}
 	}
 	if email != "" {
 		if err := ValidateEmail(email); err != nil {
@@ -239,9 +263,12 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 			return nil, err
 		}
 	}
-	passwordHash, err := HashPassword(req.Password)
-	if err != nil {
-		return nil, err
+	passwordHash := ""
+	if req.Password != "" {
+		passwordHash, err = HashPassword(req.Password)
+		if err != nil {
+			return nil, err
+		}
 	}
 	now := time.Now()
 	user := model.User{
@@ -256,28 +283,56 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if count == 0 {
+	if count == 0 && req.wechatRegistration == nil {
 		user.Role = model.UserRoleAdmin
 	}
-	if verification != nil {
-		if verification.Email != "" {
-			user.EmailVerifiedAt = &now
-		}
-		if phone != "" {
-			user.PhoneVerifiedAt = &now
-		}
-		if err := s.repo.CreateUserWithVerification(&user, verification.ID); err != nil {
-			if errors.Is(err, repository.ErrVerificationInvalid) {
-				return nil, invalidVerification()
+	createUser := func(repo *repository.Repository) error {
+		if verification != nil {
+			if verification.Email != "" {
+				user.EmailVerifiedAt = &now
 			}
-			return nil, err
+			if phone != "" {
+				user.PhoneVerifiedAt = &now
+			}
+			if err := repo.CreateUserWithVerification(&user, verification.ID); err != nil {
+				if errors.Is(err, repository.ErrVerificationInvalid) {
+					return invalidVerification()
+				}
+				return err
+			}
+			return nil
 		}
-	} else if verifiedCode != nil {
-		user.EmailVerifiedAt = &now
-		if err := s.repo.CreateUserWithEmailVerification(&user, verifiedCode.ID, time.Now()); err != nil {
-			return nil, err
+		if verifiedCode != nil {
+			user.EmailVerifiedAt = &now
+			return repo.CreateUserWithEmailVerification(&user, verifiedCode.ID, time.Now())
 		}
-	} else if err := s.repo.CreateRegisteredUser(&user); err != nil {
+		return repo.CreateRegisteredUser(&user)
+	}
+	if pending := req.wechatRegistration; pending != nil {
+		if count == 0 {
+			return nil, kernel.Forbidden("请先创建本地管理员账号")
+		}
+		err = s.repo.Transaction(func(repo *repository.Repository) error {
+			state, err := repo.ConsumeOAuthState(wechatRegistrationProvider, pending.StateHash)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return kernel.BadAuthRequest("微信注册已过期或已完成，请重新登录")
+			}
+			if err != nil {
+				return err
+			}
+			var profile wechatProfile
+			if state.ID != pending.ID || json.Unmarshal([]byte(state.ProfileJSON), &profile) != nil || profile.Subject == "" {
+				return kernel.BadAuthRequest("微信注册身份无效")
+			}
+			if err := createUser(repo); err != nil {
+				return err
+			}
+			return repo.CreateUserIdentity(&model.UserIdentity{ID: kernel.NewID(), UserID: user.ID, Provider: "wechat", Subject: profile.Subject, ProviderUsername: profile.Name, AvatarURL: profile.AvatarURL})
+		})
+	} else {
+		err = createUser(s.repo)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if err := s.host.EnsureSignupBonus(user.ID); err != nil {
@@ -286,7 +341,11 @@ func (s *Service) Register(req RegisterRequest) (*AuthSessionResult, error) {
 	if count > 0 {
 		s.host.BindReferral(user.ID, req.ReferralCode)
 	}
-	event := NewLoginLog("password", "registration", req.LoginContext)
+	method := "password"
+	if req.wechatRegistration != nil {
+		method = "wechat"
+	}
+	event := NewLoginLog(method, "registration", req.LoginContext)
 	result, err := s.createAuthSession(&user, event)
 	if err != nil {
 		return nil, s.recordLoginFailure(event, err)
@@ -315,6 +374,9 @@ func (s *Service) Login(req LoginRequest) (result *AuthSessionResult, err error)
 			err = s.recordLoginFailure(event, err)
 		}
 	}()
+	if err := s.VerifyTurnstile(req.Context, req.TurnstileToken, req.LoginContext.IP); err != nil {
+		return nil, err
+	}
 	account := strings.TrimSpace(req.Username)
 	user, err := s.repo.UserByAccount(account)
 	if err != nil {
@@ -396,7 +458,11 @@ func (s *Service) usernameFromEmail(email string) (string, error) {
 	return "", kernel.NewAppError(409, "无法生成可用的用户名，请改用用户名注册")
 }
 
-func (s *Service) Logout(cookieValue string, contexts ...LoginContext) (err error) {
+func (s *Service) Logout(cookieValue string, contexts ...LoginContext) error {
+	return s.LogoutForExpectedUser(cookieValue, "", contexts...)
+}
+
+func (s *Service) LogoutForExpectedUser(cookieValue, expectedUserID string, contexts ...LoginContext) (err error) {
 	sessionID, token := parseSessionCookie(cookieValue)
 	if sessionID == "" || token == "" {
 		return nil
@@ -413,7 +479,11 @@ func (s *Service) Logout(cookieValue string, contexts ...LoginContext) (err erro
 			err = s.recordLoginFailure(event, err)
 		}
 	}()
-	return s.repo.RevokeAuthSessionWithLog(sessionID, HashToken(token), event)
+	err = s.repo.RevokeAuthSessionWithLog(sessionID, HashToken(token), event, expectedUserID)
+	if errors.Is(err, repository.ErrAuthSessionUserMismatch) {
+		return kernel.Forbidden("账号已切换，请重新加载后重试")
+	}
+	return err
 }
 
 func (s *Service) CurrentUser(cookieValue string) (*model.User, error) {
@@ -428,7 +498,10 @@ func (s *Service) CurrentUser(cookieValue string) (*model.User, error) {
 		}
 		return nil, err
 	}
-	if time.Now().After(session.ExpiresAt) || session.TokenHash != HashToken(token) {
+	if session.TokenHash != HashToken(token) {
+		return nil, kernel.Unauthorized("登录状态已失效")
+	}
+	if time.Now().After(session.ExpiresAt) {
 		if cleanupErr := s.repo.DeleteAuthSession(sessionID); cleanupErr != nil {
 			log.Printf("expired auth session cleanup failed: session_id=%s error=%v", sessionID, cleanupErr)
 		}
@@ -452,7 +525,10 @@ func (s *Service) PublicAuthUser(user *model.User) (AuthUser, error) {
 	}
 	identity, err := s.repo.UserIdentityForUser(user.ID, "linuxdo")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return result, nil
+		identity, err = s.repo.UserIdentityForUser(user.ID, "wechat")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return result, nil
+		}
 	}
 	if err != nil {
 		return AuthUser{}, err

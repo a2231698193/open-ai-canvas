@@ -22,13 +22,16 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
     if (node.type === CanvasNodeType.Text && !content) return null;
     if (isMedia && !content && !storageKey) return null;
     if (!isMedia && node.type !== CanvasNodeType.Text) return null;
-    const title = (!isGenericCanvasNodeTitle(node.title) && node.title.trim()) || node.metadata?.prompt?.slice(0, 24) || node.title || canvasAssetFallbackTitle(node.type);
+    // 用户改过名就用当前标题；没改过时回落到上传原名，再回落到提示词与类型兜底。
+    const customTitle = !isGenericCanvasNodeTitle(node.title) && node.title.trim() ? node.title : "";
+    const title = customTitle || node.metadata?.originalFileName || node.metadata?.prompt?.slice(0, 24) || node.title || canvasAssetFallbackTitle(node.type);
     const metadata = {
         source: options.source,
         canvasId: options.canvasId,
         nodeId: node.id,
         taskId: options.taskId || node.metadata?.taskId,
         prompt: node.metadata?.prompt,
+        originalFileName: node.metadata?.originalFileName,
         resourceKey: storageKey,
     };
     const base = {

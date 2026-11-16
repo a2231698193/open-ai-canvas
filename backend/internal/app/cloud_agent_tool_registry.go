@@ -13,6 +13,8 @@ import (
 type cloudAgentReadHandler func(*repository.Repository, string, *cloudAgentRuntime, cloudAgentCall, ...*Service) (any, error)
 type cloudAgentWriteHandler func(*repository.Repository, string, string, cloudAgentCall, RuntimePolicySetting, ...cloudAgentMutationRecorder) (any, error)
 type cloudAgentPreviewHandler func(*repository.Repository, string, string, cloudAgentCall) (cloudAgentApprovalPreview, error)
+type cloudAgentPageWriteHandler func(*repository.Repository, string, *CloudAgentPageContext, cloudAgentCall, *Service) (any, error)
+type cloudAgentPagePreviewHandler func(*repository.Repository, string, *CloudAgentPageContext, cloudAgentCall, *Service) (cloudAgentApprovalPreview, error)
 
 type cloudAgentToolPipeline uint8
 
@@ -23,10 +25,12 @@ const (
 )
 
 type cloudAgentToolHandler struct {
-	Read     cloudAgentReadHandler
-	Write    cloudAgentWriteHandler
-	Preview  cloudAgentPreviewHandler
-	Pipeline cloudAgentToolPipeline
+	Read        cloudAgentReadHandler
+	Write       cloudAgentWriteHandler
+	Preview     cloudAgentPreviewHandler
+	PageWrite   cloudAgentPageWriteHandler
+	PagePreview cloudAgentPagePreviewHandler
+	Pipeline    cloudAgentToolPipeline
 }
 
 var cloudAgentRegistryCache struct {
@@ -77,8 +81,9 @@ func cloudAgentToolScope(req CloudAgentRequest, profile bool) agenttool.Scope {
 	return agenttool.Scope{
 		Canvas: len(req.ContextScope) > 0, Skills: req.SkillsEnabled,
 		Vision: req.VisionEnabled, ReadOnly: req.PermissionMode == "read_only", IncludeProfile: profile,
-		AutoPermission: req.PermissionMode == "auto",
-		Drama:          req.DramaLinked && len(req.ContextScope) > 0,
-		Memory:         req.MemoryMode == model.AgentMemoryDocumentModeAuto || req.MemoryMode == model.AgentMemoryDocumentModeReview,
+		AutoPermission:   req.PermissionMode == "auto",
+		Drama:            req.DramaLinked && len(req.ContextScope) > 0,
+		DramaPageContext: req.CanvasID == "" && req.PageContext != nil && validateCloudAgentPageContextShape(*req.PageContext) == nil,
+		Memory:           req.MemoryMode == model.AgentMemoryDocumentModeAuto || req.MemoryMode == model.AgentMemoryDocumentModeReview,
 	}
 }

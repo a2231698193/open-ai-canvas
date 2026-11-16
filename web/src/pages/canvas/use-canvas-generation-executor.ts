@@ -14,6 +14,7 @@ import { resolveCanvasBatchInputContext } from "@/lib/canvas/canvas-batch-input-
 import { buildTextRewritePrompt } from "@/lib/prompts";
 import { resolveCanvasStyleExecution } from "@/lib/canvas/canvas-style-execution";
 import { generationErrorMessage, generationFailureMetadata } from "@/lib/generation-error";
+import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { modelCompatibilityError, modelGroupReferenceLimits, modelPromptLengthError, modelRequestOptions, type ModelRequirements } from "@/lib/model-selection";
 import { navigateToSettings } from "@/lib/settings-navigation";
 import type { Skill } from "@/services/api/skills";
@@ -246,6 +247,19 @@ export function useCanvasGenerationExecutor({
                     }
                     const hydratedContext = { ...rawGenerationContext, prompt: effectivePrompt };
                     const generationContext = mode === "video" && !usesWorkflowProvider ? videoGenerationContextForMode(sourceNode, hydratedContext, generationConfig) : hydratedContext;
+                    // 图生视频模型（references.minImages > 0）没有连线参考图时提前拦截：
+                    // 否则任务进入队列后才被上游拒绝，积分冻结再退回，用户只看到笼统报错。
+                    // 判断放在按模式换算之后：首尾帧模式会替换参考图，未换算会误判。
+                    if (mode === "video") {
+                        const minReferenceImages = modelCapabilityConfigFor(generationConfig, generationConfig.model).video?.references.minImages ?? 0;
+                        const referenceImageCount = generationContext.referenceImages?.length ?? 0;
+                        if (referenceImageCount < minReferenceImages) {
+                            message.error(translate("canvasPage.generation.videoRequiresReferenceImages", { count: minReferenceImages }));
+                            finishGenerationRequest(nodeId, preparationController);
+                            setRunningNodeId(null);
+                            return;
+                        }
+                    }
                     if (mode === "audio" && generationContext.characterReferences.length) {
                         if (generationContext.characterReferences.length !== 1) {
                             message.error(translate("canvasPage.generation.voiceOneCharacter"));

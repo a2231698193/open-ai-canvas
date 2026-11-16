@@ -215,7 +215,7 @@ func (s DramaSettings) normalized() DramaSettings {
 	switch s.ReviewMode {
 	case DramaReviewSample, DramaReviewEvery, DramaReviewAuto:
 	default:
-		s.ReviewMode = DramaReviewSample
+		s.ReviewMode = DramaReviewEvery
 	}
 	if s.MediaMode != DramaMediaManual {
 		// 早于该设置创建的作品一直是全自动，保持原行为；新建作品由 CreateDrama 默认 manual。
@@ -379,6 +379,13 @@ type AdoptDramaSegmentVideoRequest struct {
 	ExpectedRevision *int64 `json:"expectedRevision"`
 }
 
+// RestoreDramaSegmentTakeRequest 把本段已有的视频版本设为当前播放版本；不新建版本记录，也不级联后续段。
+type RestoreDramaSegmentTakeRequest struct {
+	TakeID string `json:"takeId"`
+	// ExpectedRevision 是客户端看到的剧情段版本；版本已变时拒绝，避免覆盖刚发生的修改。
+	ExpectedRevision *int64 `json:"expectedRevision"`
+}
+
 // DramaCanvasAssetsRequest 为投送到画布的短剧媒体登记素材记录：画布媒体节点必须由当前用户的素材引用资源。
 type DramaCanvasAssetsRequest struct {
 	Resources []DramaCanvasAssetInput `json:"resources"`
@@ -403,6 +410,8 @@ type DramaTakeView struct {
 	Source     string `json:"source"`
 	Current    bool   `json:"current"`
 	CreatedAt  string `json:"createdAt"`
+	// Model 是产出该版本的任务模型标识（若能关联到任务）；仅用于展示。
+	Model string `json:"model,omitempty"`
 }
 
 // DramaDialogueCheck 是原文台词与镜头台词的逐句核对结果；Missing 是被删掉或改写的原文台词（最多展示 30 句）。
@@ -557,7 +566,10 @@ type DramaSummary struct {
 	Episodes   []DramaEpisodeRow   `json:"episodes"`
 	JobCounts  map[string]int64    `json:"jobCounts"`
 	Inbox      []DramaInboxItem    `json:"inbox"`
-	CastCount  int                 `json:"castCount"`
+	// InboxCount 是待处理条目的真实总数（含未列入列表的失败剧情段）；InboxFailureCount 是其中的失败项总数。
+	InboxCount        int `json:"inboxCount"`
+	InboxFailureCount int `json:"inboxFailureCount"`
+	CastCount         int `json:"castCount"`
 }
 
 type DramaChapterRef struct {
@@ -713,21 +725,60 @@ type SetDramaCastVoiceRequest struct {
 // DramaCastLookRequest 新增或修改一套角色造型：LookName 造型名，Appearance 这套造型的外观，
 // FromChapter / ToChapter 默认适用的原著章节号（从 1 起，0 或 nil 表示该端不限）。
 type DramaCastLookRequest struct {
-	LookName        string  `json:"lookName"`
-	Appearance      string  `json:"appearance"`
-	ImagePrompt     *string `json:"imagePrompt"`
-	FromChapter     *int    `json:"fromChapter"`
-	ToChapter       *int    `json:"toChapter"`
-	RestyleSegments bool    `json:"restyleSegments"`
+	LookName         string  `json:"lookName"`
+	Appearance       string  `json:"appearance"`
+	ImagePrompt      *string `json:"imagePrompt"`
+	ImageStyleID     *string `json:"imageStyleId"`
+	ImageStyleName   *string `json:"imageStyleName"`
+	ImageStylePrompt *string `json:"imageStylePrompt"`
+	FromChapter      *int    `json:"fromChapter"`
+	ToChapter        *int    `json:"toChapter"`
+	RestyleSegments  bool    `json:"restyleSegments"`
 }
 
 type UpdateDramaCastRequest struct {
 	Name              *string   `json:"name"`
 	Aliases           *[]string `json:"aliases"`
 	Appearance        *string   `json:"appearance"`
+	ImagePrompt       *string   `json:"imagePrompt"`
+	ImageStyleID      *string   `json:"imageStyleId"`
+	ImageStyleName    *string   `json:"imageStyleName"`
+	ImageStylePrompt  *string   `json:"imageStylePrompt"`
 	Description       *string   `json:"description"`
 	VoiceInstructions *string   `json:"voiceInstructions"`
 	Locked            *bool     `json:"locked"`
+}
+
+type CreateDramaCastRequest struct {
+	Kind             string `json:"kind"`
+	Name             string `json:"name"`
+	Appearance       string `json:"appearance"`
+	Description      string `json:"description"`
+	ImagePrompt      string `json:"imagePrompt"`
+	ImageStyleID     string `json:"imageStyleId"`
+	ImageStyleName   string `json:"imageStyleName"`
+	ImageStylePrompt string `json:"imageStylePrompt"`
+}
+
+// 只编排当前表单的提示词，不调用模型、不保存，也不嵌入已有自定义提示词。
+type DramaCastImagePromptRequest struct {
+	Appearance       *string `json:"appearance"`
+	ImageStyleID     *string `json:"imageStyleId"`
+	ImageStyleName   *string `json:"imageStyleName"`
+	ImageStylePrompt *string `json:"imageStylePrompt"`
+}
+
+type ImportDramaCastRequest struct {
+	SourceProjectID string   `json:"sourceProjectId"`
+	CastIDs         []string `json:"castIds"`
+	MatchByName     bool     `json:"matchByName"`
+	ReplaceExisting bool     `json:"replaceExisting"`
+}
+
+type ImportDramaCastResult struct {
+	Imported int               `json:"imported"`
+	Skipped  int               `json:"skipped"`
+	Cast     []model.DramaCast `json:"cast"`
 }
 
 type DramaListItem struct {

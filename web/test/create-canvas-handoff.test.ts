@@ -14,7 +14,7 @@ test("Create exposes one accessible copy action beside each displayed user promp
 
 test("Create submit button does not forward the browser click event as retry context", async () => {
     const source = await Bun.file(new URL("../src/pages/create/index.tsx", import.meta.url)).text();
-    expect(source).toContain("onSubmit: () => void submit()");
+    expect(source).toMatch(/onSubmit:\s*\(\)\s*=>\s*\{[^}]*\bvoid submit\(\);\s*\}/);
     expect(source).not.toContain("onSubmit: submit,");
 });
 
@@ -361,6 +361,8 @@ test("Create forwards owned result assets through one new canvas and the project
     expect(workspace).toContain("onContinueCanvas(resultAssetIds)");
     expect(createPage).toContain("continueCreationConversationOnCanvas(source)");
     expect(createPage).toContain("if (ids.length !== Math.max(resultStorageKeys.length, resultUrls.length)) throw new Error");
+    // 本仓库尚未合入官方 v1.8.5 的跨设备对话同步，画布投送仍走本地会话存储；
+    // 不变的约定是「先持久化，再跳转画布」。
     expect(createPage).toContain("await saveCreationConversations(next)");
     expect(createPage.indexOf("await saveCreationConversations(next)")).toBeLessThan(createPage.indexOf("navigate(`/canvas/${result.id}?${params.toString()}`)"));
     expect(canvasIndex).toContain('const handoffMode = mode === "handoff"');

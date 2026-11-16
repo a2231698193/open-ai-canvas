@@ -207,8 +207,14 @@ export type DramaSummary = {
     episodes: DramaEpisodeRow[];
     jobCounts: Partial<Record<"queued" | "running" | "succeeded" | "failed" | "canceled", number>>;
     inbox: DramaInboxItem[];
+    inboxCount: number;
+    inboxFailureCount: number;
     castCount: number;
 };
+
+export function formatDramaInboxCount(n: number): string {
+    return n > 99 ? "99+" : String(n);
+}
 
 export type DramaShot = {
     id: string;
@@ -258,7 +264,7 @@ export type DramaEpisode = {
 
 export type DramaJob = {
     id: string;
-    kind: "bible" | "plan" | "cast_image" | "script" | "segment_prompt" | "segment_video" | "render";
+    kind: "bible" | "plan" | "cast_image" | "cast_extract" | "script" | "segment_prompt" | "segment_video" | "render";
     status: "queued" | "running" | "succeeded" | "failed" | "canceled";
     label: string;
     error?: string;
@@ -408,6 +414,11 @@ export type DramaCast = {
     description: string;
     appearance: string;
     imagePrompt?: string;
+    imageStyleId?: string;
+    imageStyleName?: string;
+    imageStylePrompt?: string;
+    sourceProjectId?: string;
+    sourceCastId?: string;
     voiceInstructions: string;
     importance: number;
     imageResourceId?: string;
@@ -644,6 +655,11 @@ export function rescriptDramaEpisode(projectId: string, episodeId: string) {
     return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/rescript`);
 }
 
+/** 手动重新合成本集成片：各段视频就绪后按实测时长拼接；合成中可重复点，幂等。 */
+export function composeDramaEpisode(projectId: string, episodeId: string) {
+    return http.post<DramaEpisodeDetail>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/compose`);
+}
+
 export type DramaShotPatch = Partial<Pick<DramaShot, "speaker" | "dialogue" | "action" | "shotSize" | "camera" | "imagePrompt" | "videoPrompt">> & { transition?: DramaTransition; durationSeconds?: number };
 
 /** 让文本模型（重新）撰写指定剧情段的完整视频提示词。 */
@@ -669,7 +685,23 @@ export function listDramaCast(projectId: string, signal?: AbortSignal) {
     return http.get<{ cast: DramaCast[] }>(`${base(projectId)}/cast`, { signal });
 }
 
-export type DramaCastPatch = Partial<Pick<DramaCast, "name" | "appearance" | "description" | "voiceInstructions" | "locked">> & { aliases?: string[] };
+export type DramaCastImageStyle = Pick<DramaCast, "imageStyleId" | "imageStyleName" | "imageStylePrompt">;
+export type CreateDramaCastInput = DramaCastImageStyle & { kind: DramaCastKind; name: string; appearance: string; description?: string; imagePrompt?: string };
+
+export function createDramaCast(projectId: string, input: CreateDramaCastInput) {
+    return http.post<{ cast: DramaCast }>(`${base(projectId)}/cast`, input);
+}
+
+export function importDramaCast(projectId: string, input: { sourceProjectId: string; castIds: string[]; matchByName: boolean; replaceExisting: boolean }) {
+    return http.post<{ imported: number; skipped: number; cast: DramaCast[] }>(`${base(projectId)}/cast/import`, input);
+}
+
+/** 按外观、独立风格和参考图方案编排提示词；不保存，也不调用模型。 */
+export function rebuildDramaCastImagePrompt(projectId: string, castId: string, input: DramaCastImageStyle & { appearance?: string }) {
+    return http.post<{ imagePrompt: string }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}/image-prompt`, input);
+}
+
+export type DramaCastPatch = Partial<Pick<DramaCast, "name" | "appearance" | "description" | "voiceInstructions" | "locked" | "imagePrompt">> & DramaCastImageStyle & { aliases?: string[] };
 
 export function updateDramaCast(projectId: string, castId: string, patch: DramaCastPatch) {
     return http.patch<{ cast: DramaCast }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}`, patch);
@@ -697,11 +729,11 @@ export function clearDramaCastVoice(projectId: string, castId: string, restyleSe
 }
 
 /** 保存造型草稿，不自动生图；imagePrompt 留空按外观描述生成，章节从 1 起，0 不限。 */
-export function addDramaCastLook(projectId: string, castId: string, input: { lookName: string; appearance: string; imagePrompt?: string; fromChapter?: number; toChapter?: number }) {
+export function addDramaCastLook(projectId: string, castId: string, input: DramaCastImageStyle & { lookName: string; appearance: string; imagePrompt?: string; fromChapter?: number; toChapter?: number }) {
     return http.post<{ look: DramaCast }>(`${base(projectId)}/cast/${encodeURIComponent(castId)}/looks`, input);
 }
 
-export function updateDramaCastLook(projectId: string, lookId: string, input: { lookName?: string; appearance?: string; imagePrompt?: string; fromChapter?: number; toChapter?: number; restyleSegments?: boolean }) {
+export function updateDramaCastLook(projectId: string, lookId: string, input: DramaCastImageStyle & { lookName?: string; appearance?: string; imagePrompt?: string; fromChapter?: number; toChapter?: number; restyleSegments?: boolean }) {
     return http.patch<{ look: DramaCast; affectedSegments: number }>(`${base(projectId)}/looks/${encodeURIComponent(lookId)}`, input);
 }
 
@@ -758,10 +790,14 @@ export type DramaTake = {
     source: DramaTakeSource;
     current: boolean;
     createdAt: string;
+    /** 产出该版本的任务模型标识（若能关联到任务）。 */
+    model?: string;
 };
 
 export type DramaSegmentAdoptResult = {
     adopted: boolean;
+    /** 把历史版本设为当前时为 true；采用画布视频时仍用 adopted。 */
+    restored?: boolean;
     unchanged?: boolean;
     /** cascade 时重新排队的后续段数量。 */
     requeued: number;
@@ -792,4 +828,9 @@ export function listDramaTakes(projectId: string, ownerId: string, kind: DramaTa
 /** 把画布视频采用为剧情段当前视频；默认只换本段，cascade 时后续已生成的段重新排队生成。 */
 export function adoptDramaSegmentVideo(projectId: string, episodeId: string, segmentIndex: number, input: { resourceId: string; taskId?: string; cascade: boolean; expectedRevision?: number }) {
     return http.put<DramaSegmentAdoptResult>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/segments/${segmentIndex}/video`, input, { timeout: 300_000 });
+}
+
+/** 把本段已有的视频版本设为当前播放版本；不新建版本、不级联后续段、不重新生成。 */
+export function restoreDramaSegmentTake(projectId: string, episodeId: string, segmentIndex: number, input: { takeId: string; expectedRevision?: number }) {
+    return http.put<DramaSegmentAdoptResult>(`${base(projectId)}/episodes/${encodeURIComponent(episodeId)}/segments/${segmentIndex}/current-take`, input, { timeout: 300_000 });
 }

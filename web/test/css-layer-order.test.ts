@@ -14,19 +14,16 @@ test("HTML 在任何外部样式或脚本之前固定 CSS 层顺序", () => {
     expect(firstLoad).toBeGreaterThan(html.indexOf(layerOrder));
 });
 
-test("入口层顺序与 Tailwind 一致，不依赖插件和全局 CSS 的加载先后", async () => {
-    const tailwind = await Bun.file(new URL("../node_modules/tailwindcss/index.css", import.meta.url)).text();
-    const editor = await Bun.file(new URL("../src/lib/plugins/builtin/editor/editor-shell.css", import.meta.url)).text();
+// 手工剪辑插件已随官方 v1.8.4 退场，不再有 editor-shell.css 参与层顺序；
+// 这里改为校验全站全局样式本身声明的层顺序与 index.html 固定的一致。
+test("入口层顺序与全局样式的 @layer 声明一致", async () => {
+    const globals = await Bun.file(new URL("../src/styles/globals.css", import.meta.url)).text();
     const firstStyle = html.match(/<style\b[^>]*>([\s\S]*?)<\/style>/i)![1];
-    expect(tailwind.trimStart().startsWith(tailwindLayerOrder)).toBe(true);
-    expect(editor).toContain("@layer utilities {");
-
-    // CSS layers retain their first declared order, even when a later chunk repeats them.
     const layersIn = (css: string) => [...new Set([...css.matchAll(/@layer\s+([^;{]+)[;{]/g)].flatMap((match) => match[1].split(",").map((name) => name.trim())))];
-    expect(layersIn(editor + tailwind).indexOf("utilities")).toBeLessThan(layersIn(editor + tailwind).indexOf("base"));
-    for (const chunks of [editor + tailwind, tailwind + editor]) {
-        expect(layersIn(firstStyle + chunks)).toEqual(["properties", "theme", "base", "components", "utilities"]);
-    }
+    // 全局样式只用到 base 与 utilities，不自己重排层顺序；完整顺序由 index.html 的第一段样式固定。
+    const layers = layersIn(globals);
+    expect(layers.every((name) => ["base", "utilities", "components", "theme", "properties"].includes(name))).toBe(true);
+    expect(layersIn(firstStyle)).toEqual(["properties", "theme", "base", "components", "utilities"]);
 });
 
 test("Ant Design reset stays in the base layer", async () => {

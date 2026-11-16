@@ -86,6 +86,7 @@ import { CreationRecentCanvases } from "./creation-recent-canvases";
 import { CreationAgentEntry } from "./creation-agent-entry";
 import { createCreationSubmitGate } from "./creation-submit-gate";
 import { creationVideoConfig } from "./creation-generation-config";
+import { trackSiteTrafficAction } from "@/services/site-traffic";
 
 const AssetLibraryPickerModal = lazy(() => import("@/components/assets/asset-library-picker-modal").then((module) => ({ default: module.AssetLibraryPickerModal })));
 const InspirationHall = lazy(() => import("@/pages/inspirations"));
@@ -742,7 +743,20 @@ export default function CreatePage() {
             attachment: creationAttachmentFromImage(file, uploaded),
         };
     };
+    /** 游客点开素材库、上传或确认选择时先登录：未提交的提示词留在本页内存，不能用跳转登录页。 */
+    const requireCreationLogin = useCallback(() => {
+        if (useUserStore.getState().user) return true;
+        setLibraryOpen(false);
+        openAuth({ preferDialog: true });
+        return false;
+    }, [openAuth]);
+    const openReferenceLibrary = () => {
+        if (!requireCreationLogin()) return;
+        setLibraryOpen(true);
+    };
+
     const uploadLibraryAssets = async (files: FileList | File[]) => {
+        if (!requireCreationLogin()) return [];
         const next = Array.from(files).filter((file) => creationFileAccepted(mode, file, videoMode));
         if (!next.length) return [];
         const settled = await Promise.allSettled(
@@ -759,6 +773,7 @@ export default function CreatePage() {
     };
 
     const handleLibrarySelect = async (selectedIds: string[], pickedItems = libraryItems) => {
+        if (!requireCreationLogin()) return;
         const next = creationLibrarySelectionToAttachments(selectedIds, pickedItems, mode, videoReferenceLimits);
         if (!next.length) return;
         const selected = new Set(selectedIds);
@@ -829,6 +844,8 @@ export default function CreatePage() {
 
     const replaceReferenceFromFiles = useCallback(
         async (targetAttachmentId: string, files: File[]) => {
+            // 鉴权先于一切副作用：游客拖入替换也必须先登录。
+            if (!requireCreationLogin()) return;
             if (busy || referenceReplacementBusy) return;
             const file = files.find((item) => item.type.startsWith("image/"));
             if (!file) {
@@ -847,7 +864,7 @@ export default function CreatePage() {
                 setReferenceReplacementBusy(false);
             }
         },
-        [addAsset, busy, referenceReplacementBusy, replaceAttachmentReference, toast],
+        [addAsset, busy, referenceReplacementBusy, replaceAttachmentReference, requireCreationLogin, toast],
     );
 
     const submit = async (retryContext?: CreationRetryContext, retryLockKey?: string) => {
@@ -1468,7 +1485,7 @@ export default function CreatePage() {
         onReorderAttachments: reorderAttachments,
         onReplaceAttachment: replaceReferenceFromTrack,
         onReplaceReferenceFiles: replaceReferenceFromFiles,
-        onOpenLibrary: () => setLibraryOpen(true),
+        onOpenLibrary: openReferenceLibrary,
         onModeChange: selectMode,
         model: selectedModel,
         modelRequirements,
@@ -1509,7 +1526,10 @@ export default function CreatePage() {
         promptOptimizerProvider,
         composerFocusRef,
         onPromptFocus: loadAddedSkills,
-        onSubmit: () => void submit(),
+        onSubmit: () => {
+            if (prompt.trim() && !busy && !referenceReplacementBusy) trackSiteTrafficAction(mode === "text" ? "creation_submit_text" : mode === "image" ? "creation_submit_image" : "creation_submit_video");
+            void submit();
+        },
     };
 
 
@@ -1546,7 +1566,7 @@ export default function CreatePage() {
                     </div>
                     <CreationEmptySuggest
                         onStartPrompt={startPrompt}
-                        onOpenLibrary={() => { setAgentMode(false); selectMode("image"); setLibraryOpen(true); }}
+                        onOpenLibrary={() => { if (!requireCreationLogin()) return; setAgentMode(false); selectMode("image"); setLibraryOpen(true); }}
                     />
                 </section>
                 <CreationRecentCanvases onRequireLogin={() => openAuth()} />

@@ -1,7 +1,5 @@
-import { rmSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 import { Agent, setGlobalDispatcher } from "undici";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
@@ -87,17 +85,17 @@ async function run() {
     throw new Error("Agent runtime is missing its bridge, session, or model configuration");
   }
 
-  // 每次运行使用独立的空配置目录：SDK 的 auth.json / models.json / 锁文件都落在这里，
-  // 不读取宿主 ~/.pi，也不会执行预置 auth.json 里的 !command。运行结束即删除。
-  // 会话文件和工作目录同样放在这里：它们只是本轮的工作副本，真实来源是服务端
-  // 数据库里的会话快照（请求带 sessionJSONL，运行中回传）。不使用服务端的路径：
-  // 独立容器里没有服务端的数据目录；空工作目录也不会被发现任何项目级配置或技能。
-  const isolatedDir = await mkdtemp(join(tmpdir(), "agent-runtime-"));
+  // 父进程拥有目录生命周期，SIGKILL/OOM 后也能回收。路径只来自受控环境，
+  // 不接受请求里的路径；SDK 不读取宿主 HOME 或项目配置。
+  const runDir = process.env.YINGCE_AGENT_RUN_DIR;
+  if (!runDir || !isAbsolute(runDir)) throw new Error("Agent runtime requires a parent-owned temporary directory");
+  const directoryInfo = await lstat(runDir);
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink() || (directoryInfo.mode & 0o077) || (process.getuid && directoryInfo.uid !== process.getuid())) {
+    throw new Error("Agent runtime temporary directory is not private or is a symbolic link");
+  }
+  const isolatedDir = await realpath(runDir);
   process.env.HOME = isolatedDir;
   process.env.PI_CODING_AGENT_DIR = isolatedDir;
-  process.on("exit", () => {
-    try { rmSync(isolatedDir, { recursive: true, force: true }); } catch {}
-  });
   const agentDir = isolatedDir;
   const workDir = join(isolatedDir, "work");
   const sessionDir = join(isolatedDir, "sessions");
@@ -273,11 +271,13 @@ async function run() {
   // 技能由服务端的读取工具提供，这里不再按路径加载；projectTrusted=false 让 SDK
   // 不读取 <cwd>/.pi 设置，也不向上层目录收集 .agents/skills。
   // 同一个设置管理器也交给 createAgentSession，否则 SDK 会另建一个读文件的实例。
-  const settingsManager = SettingsManager.inMemory({}, { projectTrusted: false });
+  const settingsManager = SettingsManager.inMemory({ cacheWarming: "off" }, { projectTrusted: false });
   const resourceLoader = new DefaultResourceLoader({
     cwd: workDir,
     agentDir,
     noExtensions: true,
+    // Platform connections are governed by the Go bridge; never discover host MCP servers.
+    disabledBuiltinExtensions: ["mcp", "codemode", "tool-search"],
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
@@ -328,7 +328,6 @@ async function run() {
 
   const compactionConfig = request.compaction || {
     enabled: true,
-    strategy: "balanced",
     reserveTokens: Math.max(1024, Math.ceil(contextWindow * 0.2)),
     keepRecentTokens: Math.min(20000, Math.max(1024, Math.floor(contextWindow * 0.2))),
   };
@@ -407,6 +406,9 @@ async function run() {
         runtimeError = new Error(message.errorMessage || "Agent assistant message failed");
         return;
       }
+      // Pi may compact and retry a context-overflow error within this prompt.
+      // A later successful response settles that recovered error.
+      runtimeError = null;
       enqueueEvent({
         type: "message_end",
         message,

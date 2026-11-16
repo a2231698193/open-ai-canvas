@@ -130,7 +130,7 @@ function CanvasNodeListThumbnail({ node }: { node: CanvasNodeData }) {
     }
 
     const textPreview = node.metadata?.previewContent || node.metadata?.composerContent || node.metadata?.prompt || node.metadata?.content;
-    if (textPreview && (node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Markdown || node.type === CanvasNodeType.Script)) {
+    if (textPreview && (node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Script)) {
         return (
             <span aria-hidden="true" className="line-clamp-3 h-9 w-11 overflow-hidden rounded-[var(--r-sm)] border px-1 py-0.5 text-[7px] leading-[10px] text-foreground/55" style={commonStyle}>
                 {textPreview}

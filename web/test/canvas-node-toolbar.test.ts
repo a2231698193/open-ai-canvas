@@ -28,8 +28,8 @@ function createNodeContext(node: CanvasNodeData): ToolContext {
 }
 
 describe("canvas node toolbar model", () => {
-    test("Markdown exposes the shared editor without enabling text generation controls", () => {
-        const node: CanvasNodeData = { id: "markdown", type: CanvasNodeType.Markdown, title: "文档", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "# 标题" } };
+    test("text node exposes the shared editor without enabling text generation controls", () => {
+        const node: CanvasNodeData = { id: "markdown", type: CanvasNodeType.Text, title: "文档", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "# 标题", textFormat: "markdown" } };
         const ctx = createNodeContext(node);
         const received: CanvasNodeData[] = [];
         ctx.handlers.onNodeEditText = (value) => { received.push(value); };
@@ -39,7 +39,8 @@ describe("canvas node toolbar model", () => {
         expect(resolveNodeToolbarPlacement(edit, ctx).group).toBe("primary");
         edit.run?.(ctx);
         expect(received).toEqual([node]);
-        expect(tools.some((tool) => tool.id === "edit")).toBe(false);
+        // 统一节点模型后文本节点同时提供「生成设置」入口，但它不带文本生成专用控件。
+        expect(tools.find((tool) => tool.id === "edit")?.displayLabel).not.toBe("文本生成");
     });
 
     test("edit copy delegates the selected image once and refuses unavailable sources", () => {
@@ -54,7 +55,10 @@ describe("canvas node toolbar model", () => {
         expect(tool.disabled?.(ctx)).toBe(false);
         tool.run(ctx);
         expect(received).toEqual([node]);
-        for (const metadata of [{ ...node.metadata, locked: true }, { ...node.metadata, status: "loading" as const }]) {
+        for (const metadata of [
+            { ...node.metadata, locked: true },
+            { ...node.metadata, status: "loading" as const },
+        ]) {
             const withExistingMedia = createNodeContext({ ...node, metadata });
             withExistingMedia.handlers = ctx.handlers;
             expect(tool.disabled?.(withExistingMedia)).toBe(false);
@@ -117,11 +121,13 @@ describe("canvas node toolbar model", () => {
         const tools = resolveToolbarTools("node-hover", ctx, null);
         const groups = new Map(tools.map((tool) => [tool.id, resolveNodeToolbarPlacement(tool, ctx).group]));
 
-        expect([...groups].filter(([, group]) => group === "primary").map(([id]) => id)).toEqual(["trimRegenerate", "subtitles"]);
+        expect([...groups].filter(([, group]) => group === "primary").map(([id]) => id)).toEqual(["trimRegenerate"]);
         expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio", "videoEnhance"]);
         expect(groups.get("videoEnhance")).toBe("process");
         expect(groups.get("download")).toBe("utility");
-        expect(groups.get("timeline")).toBe("workspace");
+        expect(groups.has("timeline")).toBe(false);
+        expect(groups.has("subtitles")).toBe(false);
+        expect(groups.has("downloadSubtitles")).toBe(false);
         expect(groups.get("uploadVideo")).toBe("more");
         expect(groups.get("delete")).toBe("more");
         expect(groups.get("node-lock")).toBe("more");
@@ -135,11 +141,27 @@ describe("canvas node toolbar model", () => {
             return typeof value === "function" ? value(ctx) : value;
         };
 
-        expect(displayLabel("subtitles")).toBe("字幕");
-        expect(displayLabel("timeline")).toBe("进入剪辑");
+        expect(displayLabel("subtitles")).toBeUndefined();
+        expect(displayLabel("timeline")).toBeUndefined();
         expect(displayLabel("extractFrames")).toBe("提取画面");
         expect(displayLabel("extractAudio")).toBe("提取音频");
         expect(displayLabel("videoEnhance")).toBe("高清");
+    });
+
+    test("preserves delivery of existing subtitles without an editing entry", () => {
+        const node: CanvasNodeData = { id: "video", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { subtitleEntries: [{ index: 1, startMs: 0, endMs: 1200, text: "保留字幕" }] } };
+        const ctx = createNodeContext(node);
+        const received: CanvasNodeData[] = [];
+        ctx.handlers.onNodeDownloadSubtitles = (target) => {
+            received.push(target);
+        };
+        const tool = resolveToolbarTools("node-hover", ctx, null).find((item) => item.id === "downloadSubtitles")!;
+        expect(tool).toBeDefined();
+        expect(resolveNodeToolbarPlacement(tool, ctx).group).toBe("more");
+        tool.run(ctx);
+        expect(received).toEqual([node]);
+        ctx.nodeMetadata = { subtitleEntries: [] };
+        expect(resolveToolbarTools("node-hover", ctx, null).some((item) => item.id === "downloadSubtitles")).toBe(false);
     });
 
     test("image-only tools carry presentation metadata instead of relying on component ID lists", () => {
