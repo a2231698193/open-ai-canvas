@@ -5,6 +5,26 @@ import { authDialogLanding, authPageURL, authViewFromPath, resolveLoginMode, saf
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
 
+describe("登录弹窗不依赖路由上下文", () => {
+    test("弹窗子树不导入 react-router，路由能力一律由外层注入", () => {
+        // AuthDialogHost 与 RouterProvider 平级渲染；弹窗里调用任何路由 hook
+        // 都会在打开时抛 "useLocation() may be used only in the context of a <Router> component"。
+        for (const file of [
+            "components/auth/auth-dialog-host.tsx",
+            "components/auth/auth-dialog.tsx",
+            "components/auth/auth-panel.tsx",
+            "components/auth/auth-login-form.tsx",
+            "components/auth/auth-recovery-form.tsx",
+            "components/auth/wechat-registration-form.tsx",
+            "components/auth/auth-form-parts.tsx",
+            "components/auth/verification-fields.tsx",
+            "components/auth/turnstile-widget.tsx",
+        ]) {
+            expect(source(file), file).not.toContain('from "react-router"');
+        }
+    });
+});
+
 describe("登录入口打开方式", () => {
     test("后台未配置或旧服务端未返回时默认弹窗", () => {
         expect(resolveLoginMode(undefined)).toBe("modal");

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { AppModal } from "@/components/ui/product/app-modal";
+import type { AuthNavigate } from "@/lib/auth-entry";
 import { useAuthDialogStore } from "@/stores/use-auth-dialog-store";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -24,7 +25,7 @@ function currentPath() {
  * 登录弹窗：左侧品牌舞台，右侧与独立登录页相同的登录面板。
  * 渲染在路由之外，导航由 AuthDialogHost 传入的 navigate 完成。
  */
-export default function AuthDialog({ navigate }: { navigate: (to: string) => void }) {
+export default function AuthDialog({ navigate }: { navigate: AuthNavigate }) {
     const { t } = useTranslation();
     const open = useAuthDialogStore((state) => state.open);
     const view = useAuthDialogStore((state) => state.view);
@@ -56,7 +57,7 @@ export default function AuthDialog({ navigate }: { navigate: (to: string) => voi
                 <AuthDialogStage />
                 <div className="auth-dialog-form">
                     <div className="auth-dialog-form-inner">
-                        <AuthPanel variant="dialog" view={view} onViewChange={setView} next={next ?? currentPath()} onAuthenticated={finish} />
+                        <AuthPanel variant="dialog" view={view} onViewChange={setView} next={next ?? currentPath()} onAuthenticated={finish} wechatRegistration={false} navigate={navigate} />
                     </div>
                 </div>
             </div>

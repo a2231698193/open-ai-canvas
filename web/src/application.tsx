@@ -9,11 +9,12 @@ import { RouterProvider } from "react-router";
 
 import { AuthDialogHost } from "@/components/auth/auth-dialog-host";
 import { AppProviders } from "@/components/layout/app-providers";
+import type { AuthNavigate } from "@/lib/auth-entry";
 import { router } from "@/router";
 import { installSiteTrafficCollector } from "@/services/site-traffic";
 
 // 登录弹窗渲染在路由之外（分享页等路由也要能打开），导航直接交给 router。
-const navigateFromAuthDialog = (to: string) => void router.navigate(to);
+const navigateFromAuthDialog: AuthNavigate = (to, options) => void router.navigate(to, options);
 
 document.body.style.fontFamily = '"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
 

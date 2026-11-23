@@ -27,5 +27,15 @@ export function AuthRoutePanel({ view }: { view: AuthView }) {
         if (oauthError) message.error(oauthError);
     }, [message, params]);
 
-    return <AuthPanel variant="page" view={view} next={next} onViewChange={(target) => navigate(authPageURL(target, next))} onAuthenticated={() => navigate(next, { replace: true })} />;
+    return (
+        <AuthPanel
+            variant="page"
+            view={view}
+            next={next}
+            wechatRegistration={params.get("wechat_register") === "1"}
+            navigate={navigate}
+            onViewChange={(target) => navigate(authPageURL(target, next))}
+            onAuthenticated={() => navigate(next, { replace: true })}
+        />
+    );
 }

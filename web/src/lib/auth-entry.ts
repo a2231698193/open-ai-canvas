@@ -4,6 +4,9 @@ import type { AuthLoginMode, AuthSettings } from "@/services/api/auth";
 /** 登录、注册、找回密码三个视图；独立页面与弹窗共用同一组视图。 */
 export type AuthView = "login" | "register" | "recovery";
 
+/** 登录组件不直接依赖路由上下文：页面传 useNavigate，弹窗传入口的 router.navigate。 */
+export type AuthNavigate = (to: string, options?: { replace?: boolean }) => void;
+
 const AUTH_VIEW_PATHS: Record<AuthView, string> = {
     login: "/login",
     register: "/register",

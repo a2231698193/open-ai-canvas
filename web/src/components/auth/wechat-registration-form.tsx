@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Checkbox, Input, Skeleton } from "antd";
 import { Info, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
-import { authPageURL, clearReferralCode, readReferralCode, safeAuthNext } from "@/lib/auth-entry";
+import { authPageURL, clearReferralCode, readReferralCode, safeAuthNext, type AuthNavigate } from "@/lib/auth-entry";
 import { applyUserSession } from "@/lib/user-session";
 import { getAuthSession, type AuthSettings } from "@/services/api/auth";
 import { cancelWechatRegistration, completeWechatRegistration, getWechatRegistration, type WechatRegistrationInfo } from "@/services/api/wechat";
@@ -12,9 +11,8 @@ import { VerificationFields } from "./verification-fields";
 import { TurnstileWidget } from "./turnstile-widget";
 import { AuthAgreementDialog, AuthNotice, AuthTabs, useAuthAgreement } from "./auth-form-parts";
 
-export function WechatRegistrationForm({ settings, settingsFailed, onReloadSettings, next }: { settings: AuthSettings | null; settingsFailed: boolean; onReloadSettings: () => void; next: string }) {
+export function WechatRegistrationForm({ settings, settingsFailed, onReloadSettings, next, navigate }: { settings: AuthSettings | null; settingsFailed: boolean; onReloadSettings: () => void; next: string; navigate: AuthNavigate }) {
     const { t } = useTranslation();
-    const navigate = useNavigate();
     const agreement = useAuthAgreement(settings);
     const [info, setInfo] = useState<WechatRegistrationInfo | null>(null);
     const [loading, setLoading] = useState(true);
