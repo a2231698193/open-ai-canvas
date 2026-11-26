@@ -1,4 +1,4 @@
-import { defaultImageCapabilityConfig, modelCapabilityConfigFor, STANDARD_IMAGE_SIZE_VALUES, videoDurationAllowed, type ImageCapabilityConfig } from "@/lib/model-capabilities";
+import { defaultImageCapabilityConfig, modelCapabilityConfigFor, STANDARD_IMAGE_SIZE_VALUES, videoDurationAllowed, videoProfileForOperation, type ImageCapabilityConfig } from "@/lib/model-capabilities";
 import { preserveImageSettings, preserveVideoSettings, preserveVideoBoolean, resolvedMediaConfig } from "@/lib/media-settings";
 import { videoResolutionComparisonKey } from "@/lib/video-generation-options";
 import { imageParameterRequest, imageParameterDefaults, imageParameterAccepts } from "./image-parameters";
@@ -46,7 +46,8 @@ export type ModelReferenceLimits = {
  * 或 1 张参考图片，两者不能同时使用。
  */
 export function audioReferenceCapacity(config: AiConfig, model: string) {
-    return audioProtocol(config, model) === "doubao-streaming-tts" ? 3 : 0;
+    const protocol = audioProtocol(config, model);
+    return protocol === "doubao-streaming-tts" || protocol === "evolink-seed-audio" ? 3 : 0;
 }
 
 export function isDoubaoAudioModel(config: AiConfig, model: string) {
@@ -60,7 +61,7 @@ export function audioModelForConnection(config: AiConfig, explicit = "") {
     const selected = String(explicit || "").trim();
     if (selected) return selected;
     if (String(config.audioModel || "").trim()) return config.audioModel;
-    return (config.audioModels || []).find((item) => isDoubaoAudioModel(config, item)) || "";
+    return (config.audioModels || []).find((item) => audioReferenceCapacity(config, item) > 0 || isDoubaoAudioModel(config, item)) || "";
 }
 
 /**
@@ -123,6 +124,16 @@ export function modelCompatibilityError(config: AiConfig, model: string, require
     const visualInputCount = input ? input.imageCount + input.characterCount : 0;
     const channel = resolveModelChannel(config, model);
     const logicalCost = channel.modelCosts?.find((item) => item.model === modelOptionName(model));
+    if (capability === "video" && requirements.videoOperation) {
+        const video = modelCapabilityConfigFor(config, model).video;
+        const limit = video?.modeLimits?.[requirements.videoOperation];
+        if (video && limit) {
+            const profile = videoProfileForOperation(video, requirements.videoOperation);
+            if (visualInputCount > profile.references.maxImages) return `${videoOperationLabel(requirements.videoOperation)}最多支持 ${profile.references.maxImages} 张图片`;
+            const ratio = requirements.options?.size;
+            if (typeof ratio === "string" && ratio && limit.ratios.length && !profile.ratios.includes(ratio)) return `${videoOperationLabel(requirements.videoOperation)}不支持 ${ratio} 画幅`;
+        }
+    }
     const logicalSpecs = logicalCost?.logicalCapabilityProfiles?.length ? logicalCost.logicalCapabilityProfiles : logicalCost?.logicalCapabilitySpec ? [logicalCost.logicalCapabilitySpec] : [];
     if (logicalSpecs.length) {
         const publicOptionNames = logicalCost?.logicalCapabilitySpec?.options || {};
@@ -222,6 +233,7 @@ export function modelRequestOptions(config: AiConfig, capability: ModelCapabilit
         }
         case "audio":
             return {
+                audioMode: config.audioMode,
                 audioVoice: config.audioVoice,
                 audioFormat: config.audioFormat,
                 audioSpeed: Number(config.audioSpeed),
@@ -497,6 +509,7 @@ export function inferVideoOperation(input: ModelInputSummary) {
 }
 
 export function resolveVideoOperation(input: ModelInputSummary, storedOperation?: string) {
+    if (storedOperation === "reference_to_video" && input.imageCount + input.characterCount > 0) return storedOperation;
     if (storedOperation && !["text_to_video", "image_to_video", "audio_to_video", "extend", "reference_to_video"].includes(storedOperation)) return storedOperation;
     return inferVideoOperation(input);
 }

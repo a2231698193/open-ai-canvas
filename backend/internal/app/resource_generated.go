@@ -96,6 +96,14 @@ func (s *Service) persistGeneratedMediaValueMode(userID string, value interface{
 						durationMs = probedDuration
 					}
 				}
+				duration := durationMs
+				if kind == "audio" {
+					// Keep display metadata when measuring fails. Billing verifies the original independently.
+					if measured, err := measureAudioReader(bytes.NewReader(data), int64(len(data))); err == nil && measured > 0 {
+						duration = measured
+						item["durationMs"] = duration
+					}
+				}
 				quotaDay := ""
 				if enforceQuota {
 					quotaDay, err = s.reserveGeneratedResourceQuota(userID, int64(len(data)))
@@ -103,7 +111,7 @@ func (s *Service) persistGeneratedMediaValueMode(userID string, value interface{
 						return nil, err
 					}
 				}
-				resource, _, err := s.storeResource(userID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, int64(len(data)), width, height, durationMs, bytes.NewReader(data), nil, false)
+				resource, _, err := s.storeResource(userID, kind, "generated."+extensionFromMimeType(mimeType), mimeType, int64(len(data)), width, height, duration, bytes.NewReader(data), nil, false)
 				if err != nil {
 					if enforceQuota {
 						s.releaseUserUploadQuota(userID, quotaDay, int64(len(data)))

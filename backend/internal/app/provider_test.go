@@ -165,7 +165,7 @@ func TestRunVideoTaskUsesDeclarativeAgnesJSONProtocol(t *testing.T) {
 	if !ok {
 		t.Fatal("declarative Agnes adapter is missing")
 	}
-	if metadata := adapter.Metadata(); metadata.Version != "2.0.0" || metadata.Execution != "declarative" || !metadata.RequiresPublicMediaURLs {
+	if metadata := adapter.Metadata(); metadata.Version != "2.0.1" || metadata.Execution != "declarative" || !metadata.RequiresPublicMediaURLs {
 		t.Fatalf("Agnes runtime metadata = %#v", metadata)
 	}
 
@@ -542,7 +542,7 @@ func TestCanonicalAgentBodiesPreserveAssistantToolCalls(t *testing.T) {
 		t.Fatalf("responses input = %#v", responseInput)
 	}
 	functionCall, _ := responseInput[2].(map[string]interface{})
-	if functionCall["type"] != "function_call" || functionCall["name"] != "canvas_get_state" || functionCall["id"] != "fc-5" || functionCall["item_reference"] != "fc-5" {
+	if functionCall["type"] != "function_call" || functionCall["name"] != "canvas_get_state" || functionCall["id"] != "fc-5" || functionCall["item_reference"] != nil {
 		t.Fatalf("responses function call = %#v", functionCall)
 	}
 }

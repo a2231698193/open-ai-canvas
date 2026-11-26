@@ -10,7 +10,6 @@ describe("登录弹窗不依赖路由上下文", () => {
         // AuthDialogHost 与 RouterProvider 平级渲染；弹窗里调用任何路由 hook
         // 都会在打开时抛 "useLocation() may be used only in the context of a <Router> component"。
         for (const file of [
-            "components/auth/auth-dialog-host.tsx",
             "components/auth/auth-dialog.tsx",
             "components/auth/auth-panel.tsx",
             "components/auth/auth-login-form.tsx",
@@ -73,7 +72,15 @@ describe("登录入口打开方式", () => {
         }
         // 首页创作输入框的未发送内容只在内存里，两种模式都必须用弹窗。
         expect(source("pages/create/index.tsx")).toContain("openAuth({ preferDialog: true })");
-        expect(source("application.tsx")).toContain("<AuthDialogHost navigate={navigateFromAuthDialog} />");
+        expect(source("application.tsx")).not.toContain("AuthDialogHost");
+        expect(source("components/auth/auth-dialog-host.tsx")).toContain("useNavigate()");
+    });
+
+    test("全局登录弹窗挂在根路由内，表单可以读取路由上下文", () => {
+        const router = source("router.tsx");
+        expect(router).toContain("<Outlet />");
+        expect(router).toContain("<AuthDialogHost />");
+        expect(router).toMatch(/createBrowserRouter\(\[\s*\{\s*element: <RootLayout \/>,\s*children: routes\b/);
     });
 
     test("后台登录与注册页提供打开方式选择并保留原有分区", () => {

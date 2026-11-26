@@ -36,7 +36,7 @@ type CloudAgentRequest struct {
 	ChannelID       string                 `json:"channelId,omitempty"`
 	ChannelModelKey string                 `json:"channelModelKey,omitempty"`
 	PermissionMode  string                 `json:"permissionMode"`
-	// PinnedSkillIDs 是用户为对话固定或在本条消息里点名的技能；其他已安装技能由 Agent 按目录自动发现。
+	// PinnedSkillIDs 是用户为对话固定或在本条消息里点名的技能；其他已安装技能可按需检索。
 	PinnedSkillIDs        []string `json:"pinnedSkillIds,omitempty"`
 	ContextScope          []string `json:"contextScope"`
 	FocusNodeIDs          []string `json:"focusNodeIds,omitempty"`
@@ -138,9 +138,10 @@ type CloudAgentRun struct {
 // CloudAgentRunViewOptions 是运行详情的读取选项：SinceSeq 只取该序号之后的增量，
 // EventLimit 覆盖默认页大小。零值即默认视图（尾部一窗）。
 type CloudAgentRunViewOptions struct {
-	SinceSeq   int
-	EventLimit int
-	FromStart  bool
+	EventStream bool // A subscribed cursor must never skip unread events.
+	SinceSeq    int
+	EventLimit  int
+	FromStart   bool
 }
 
 func validateCloudAgentRequest(req *CloudAgentRequest) error {
@@ -363,7 +364,7 @@ func (s *Service) CloudAgentRun(userID, id string, options ...CloudAgentRunViewO
 	// runtime blob was compacted or damaged; the output path has a deliberately
 	// read-only, minimal fallback for that case. The ensure path is only for a
 	// legacy root task whose execution row has not been created yet.
-	if _, lookupErr := s.repo.CloudAgent(userID, id); errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+	if _, lookupErr := s.repo.CloudAgentRevision(userID, id); errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		if err := s.ensureCloudAgentExecution(task, state); err != nil {
 			if agentStorageCapacityError(err) {
 				if cleanupErr := s.repo.FailCloudAgentReservation(userID, id, err.Error()); cleanupErr != nil {
@@ -399,11 +400,11 @@ func (s *Service) CloudAgentRunIfChanged(userID, id string, revision int64, opti
 // is deterministic per user/key. Competing requests may race, but task creation
 // and credit reservation share a transaction: only one can commit.
 func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, parentID string) (*CloudAgentRun, error) {
-	if err := validateCloudAgentRequest(&req); err != nil {
+	if err := s.RequireSkillAccess(userID); err != nil {
 		return nil, err
 	}
-	if userID == "" {
-		return nil, kernel.Unauthorized("请先登录")
+	if err := validateCloudAgentRequest(&req); err != nil {
+		return nil, err
 	}
 	// 调用方仍可复用其请求对象；复制页面身份后，本轮后续检查只使用冻结值。
 	if req.PageContext != nil {
@@ -549,9 +550,7 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 	} else {
 		creativeAnchor = cloudAgentCreativeAnchor{Version: 2, UserPrompt: req.Prompt}
 	}
-	// 技能范围（已安装且允许自动使用 + 本轮固定）与记忆快照都在建 run 时冻结：目录进 system，
-	// 固定技能提示和记忆作为有来源的数据消息在每次模型请求前重新插入。
-	skillPool, err := s.cloudAgentBuildSkillPool(userID, req.Prompt, req.PinnedSkillIDs, s.cloudAgentContextBudgetForRequest(req))
+	skillPool, err := s.cloudAgentBuildSkillPool(userID, req.Prompt, req.PinnedSkillIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +577,7 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 	if err != nil {
 		return nil, err
 	}
-	system, policy, err := compileCloudAgentPolicies(req, appearance.Canvas.AgentName, &skillPool.Catalog, "", profile, creativeAnchor)
+	system, policy, err := compileCloudAgentPolicies(req, appearance.Canvas.AgentName, "", profile, creativeAnchor)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +607,11 @@ func (s *Service) CreateCloudAgentRun(userID string, req CloudAgentRequest, pare
 		"config":        map[string]any{"channelId": req.ChannelID, "channelModelKey": req.ChannelModelKey, "model": firstNonEmpty(req.ChannelModelKey, req.Model), "systemPrompt": system}}
 	input["piSessionJSONL"] = ""
 	if parentID != "" {
-		if session, sessionErr := s.repo.CloudAgentPiSession(userID, parentID); sessionErr == nil {
+		session, sessionErr := s.repo.CloudAgentPiSession(userID, parentID)
+		if sessionErr != nil && !errors.Is(sessionErr, gorm.ErrRecordNotFound) {
+			return nil, sessionErr
+		}
+		if sessionErr == nil && session != nil {
 			inherited := cloudAgentInheritablePiSession(parentStatus, session.SessionJSONL)
 			if inherited == "" && session.SessionJSONL != "" {
 				slog.Info("agent continuation starts a fresh runtime session", "parent", parentID, "parentStatus", parentStatus)
@@ -657,6 +660,9 @@ func (s *Service) replayCloudAgentRequest(userID string, req CloudAgentRequest, 
 			return nil, false, nil
 		}
 		return nil, false, err
+	}
+	if err := s.RequireSkillAccess(userID); err != nil {
+		return nil, true, err
 	}
 	if state.Fingerprint == "" || state.Fingerprint != cloudAgentFingerprint(req, parentID) {
 		return nil, true, kernel.NewAppError(409, "幂等键已用于不同请求，请使用新的幂等键")

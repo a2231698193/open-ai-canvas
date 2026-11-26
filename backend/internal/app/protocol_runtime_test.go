@@ -29,6 +29,9 @@ func TestPluginViewIncludesDocumentationForEveryOfficialProtocol(t *testing.T) {
 	for _, plugin := range plugins {
 		pluginsByID[plugin.Manifest.ID] = plugin
 	}
+	if manifest := pluginsByID["kling-v4-official"].Manifest; manifest.APIVersion != "yingce.plugin/v2" || manifest.Version != "1.2.1" {
+		t.Fatalf("Kling manifest schema=%q release=%q", manifest.APIVersion, manifest.Version)
+	}
 	packages, err := filepath.Glob(filepath.Join("..", "..", "..", "plugin-packages", "*.yingce-plugin"))
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +150,41 @@ func TestPluginRuntimeRefreshesExistingOfficialPackageDocumentation(t *testing.T
 	t.Fatal("refreshed OpenAI Images plugin is missing")
 }
 
+func TestSeedanceUpgradeRetainsInstalledRelease(t *testing.T) {
+	const id = "seedance-videos-compatible"
+	const deployedDigest = "8d61bc8635c3becf7fdd59e38dd763e2ee160a2287f0bded4494135aeb626e4d"
+	for _, test := range []struct{ fixture, digest, status string }{
+		{"seedance-2.0.1", "1d875310d9ccffdbe7272a452761d3f5e268c3719cdff643298cc24146c5ac91", "disabled"},
+		{"seedance-2.0.1-v1.8.7.2", "a95060565059b023c3d0d413bb746bc777f2056b4cc3b7b2a14e953bdcc8baa3", "enabled"},
+	} {
+		t.Run(test.fixture, func(t *testing.T) {
+			dataDir := t.TempDir()
+			t.Setenv("CANVAS_OFFICIAL_PLUGIN_DIR", filepath.Join("testdata", test.fixture))
+			previous, err := newPluginRuntime(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := previous.setEnabled(id, test.status == "enabled"); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("CANVAS_OFFICIAL_PLUGIN_DIR", filepath.Join("..", "..", "..", "plugin-packages"))
+			for range 2 {
+				current, err := newPluginRuntime(dataDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				installed := current.plugins[id]
+				if installed.Status != test.status || installed.Metadata.Version != "2.0.2" || installed.SHA256 != deployedDigest {
+					t.Fatalf("installed %s@%s (%s), status %q", id, installed.Metadata.Version, installed.SHA256, installed.Status)
+				}
+				if _, err := current.verifiedRequestManifest(id, requestPackageVersion{Version: "2.0.1", SHA256: test.digest}, test.status == "enabled"); err != nil {
+					t.Fatalf("resolve original release: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestBundledWorkflowPluginsControlAvailability(t *testing.T) {
 	center, err := newPluginRuntime(t.TempDir())
 	if err != nil {
@@ -238,12 +276,21 @@ func TestPluginRuntimeIsTheProtocolSourceOfTruth(t *testing.T) {
 		t.Fatal("bare JSON manifest was accepted by the upload runtime")
 	}
 	manifest := []byte(`{"apiVersion":"yingce.plugin/v1","id":"uploaded-runtime","version":"1.0.0","name":"Uploaded Runtime","author":"Test","documentation":"# Uploaded Runtime","contributes":{"providers":[{"id":"uploaded-runtime","label":"Uploaded Runtime","capabilities":["video"],"scopes":["canvas"],"create":{"method":"POST","path":"/tasks","fields":{"prompt":"request.prompt"}},"response":{"statusPaths":["status"]}}]}}`)
-	plugin, err := center.install(testPluginPackage(t, manifest), "uploaded-runtime.yingce-plugin")
+	archive := testPluginPackage(t, manifest)
+	plugin, err := center.install(archive, "uploaded-runtime.yingce-plugin")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plugin.Status != "enabled" || !center.registrySnapshot().IsCapability("uploaded-runtime", protocol.CapabilityVideo) {
 		t.Fatalf("installed plugin was not activated: %#v", plugin)
+	}
+	repeated, err := center.install(archive, "same-package.yingce-plugin")
+	if err != nil || repeated.SHA256 != plugin.SHA256 || !repeated.UpdatedAt.Equal(plugin.UpdatedAt) {
+		t.Fatalf("reinstall changed release: %#v err=%v", repeated, err)
+	}
+	changed := testPluginPackage(t, bytes.ReplaceAll(manifest, []byte("/tasks"), []byte("/other")))
+	if _, err := center.install(changed, "changed-package.yingce-plugin"); err == nil || !strings.Contains(err.Error(), "摘要不同") {
+		t.Fatalf("same version replacement: %v", err)
 	}
 	updatedManifest := []byte(`{"apiVersion":"yingce.plugin/v1","id":"uploaded-runtime","version":"2.0.0","name":"Uploaded Runtime v2","author":"Test","documentation":"# Uploaded Runtime v2","contributes":{"providers":[{"id":"uploaded-runtime","label":"Uploaded Runtime v2","capabilities":["video"],"scopes":["canvas"],"create":{"method":"POST","path":"/tasks","fields":{"prompt":"request.prompt"}},"response":{"statusPaths":["status"]}}]}}`)
 	updated, err := center.install(testPluginPackage(t, updatedManifest), "uploaded-runtime-v2.yingce-plugin")

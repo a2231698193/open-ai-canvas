@@ -21,6 +21,8 @@ export function videoWaitLabel(wait: string) {
 
 /** 剧情段当前处于哪一步，以及用户下一步该做什么。detail 是需要悬停查看的完整原因。 */
 export function segmentState(segment: DramaSegment): { tone: SegmentTone; label: string; detail?: string } {
+    if (segment.promptStatus === "review") return { tone: "blocked", label: "AI 新稿待采用", detail: segment.promptError };
+    if (segment.promptStatus === "conflict") return { tone: "blocked", label: "提示词待核对", detail: segment.promptError };
     const writing = segment.promptStatus === "queued" || segment.promptStatus === "running";
     if (segment.promptStatus === "failed") return { tone: "failed", label: "提示词撰写失败" };
     // 视频已入库但尾帧等后处理失败：视频本身可看，重试只重新处理已有视频。
@@ -45,7 +47,7 @@ export function segmentState(segment: DramaSegment): { tone: SegmentTone; label:
 }
 
 export function promptReady(segment: DramaSegment) {
-    return segment.custom || segment.promptStatus === "ready";
+    return segment.promptStatus === "ready" || (segment.promptStatus === "stale" && segment.custom);
 }
 
 export function SegmentStatus({ segment }: { segment: DramaSegment }) {
@@ -104,17 +106,18 @@ export function referenceMissingReason(segment: DramaSegment, cast: DramaCast | 
 export function SegmentInputs({ segment, castById, compact = false, frameOnly = false, onOpenCast }: { segment: DramaSegment; castById: Map<string, DramaCast>; compact?: boolean; frameOnly?: boolean; onOpenCast?: (id: string) => void }) {
     const { request } = segment;
     const first = segment.index === 0 && !request.firstFrameResourceId && !request.firstFramePending;
+    const frameLabel = request.tailFrameAsReference ? "开场参考" : "首帧";
     return (
         <div className={`drama-sg-inputs ${compact ? "is-compact" : ""}`}>
-            <Tooltip title={`首帧：${first ? "开场段，按提示词与参考图生成" : request.firstFrameResourceId ? `第 ${segment.index} 段视频最后一帧` : `等第 ${segment.index} 段视频生成后取最后一帧`}`} mouseEnterDelay={0.3}>
+            <Tooltip title={`${frameLabel}：${first ? "开场段，按提示词与参考图生成" : request.firstFrameResourceId ? `第 ${segment.index} 段视频最后一帧` : `等第 ${segment.index} 段视频生成后取最后一帧`}`} mouseEnterDelay={0.3}>
                 <div className="drama-sg-input is-frame">
                     <span className="drama-sg-thumb is-frame">
                         {request.firstFrameResourceId ? <MediaThumb resourceId={request.firstFrameResourceId} alt="上一段最后一帧" /> : <span className="drama-sg-thumb-empty">{first ? "开场" : "等待"}</span>}
-                        <em>首帧</em>
+                        <em>{frameLabel}</em>
                     </span>
                     {compact ? null : (
                         <span className="drama-sg-input-text">
-                            <b>首帧</b>
+                            <b>{frameLabel}</b>
                             <small>{first ? "开场段，按提示词生成" : request.firstFrameResourceId ? `第 ${segment.index} 段最后一帧` : `等第 ${segment.index} 段视频生成`}</small>
                         </span>
                     )}

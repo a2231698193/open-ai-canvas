@@ -1,3 +1,4 @@
+import { workspacePath } from "@/lib/workspace-routes";
 import { useTranslation } from "react-i18next";
 import { useMemo, useRef, useState } from "react";
 import { App } from "antd";
@@ -46,7 +47,7 @@ export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_C
     );
     const loading = !sessionHydrated || !canvasHydrated || Boolean(userId && recentQuery.isPending);
     const preload = () => {
-        void loadCanvasProjectPage();
+        void loadCanvasProjectPage().catch(() => undefined);
     };
     const createCanvas = async () => {
         if (!userId) {
@@ -62,8 +63,7 @@ export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_C
             // 本地的空白画布创建会等服务端落库并给出同步失败提示；上游改成了纯本地草稿。
             const { id, syncError } = await createBlankCanvasProject();
             if (getActiveUserScope() !== scope || useUserStore.getState().user?.id !== userId) return;
-            if (syncError) message.warning(t("create.recent.syncPending"));
-            navigate(`/canvas/${id}`, { state: canvasDraftNavigationState(id) });
+            navigate(workspacePath(`/canvas/${id}`), { state: canvasDraftNavigationState(id) });
         } catch (error) {
             if (getActiveUserScope() === scope) message.error(error instanceof Error ? error.message : t("create.recent.createFailed"));
         } finally {
@@ -142,7 +142,7 @@ export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_C
                     <Clock3 aria-hidden="true" />
                     {heading}
                 </h2>
-                <Link to="/canvas" className="creation-section-link">
+                <Link to={workspacePath("/canvas")} className="creation-section-link">
                     {t("create.recent.viewAll")}
                     <ArrowUpRight aria-hidden="true" />
                 </Link>
@@ -174,7 +174,7 @@ export function CreationRecentCanvases({ onRequireLogin, title, limit = RECENT_C
                 ) : recentProjects.length ? (
                     recentProjects.map((project) => (
                         <div className="creation-canvas-strip-item" role="listitem" key={project.id}>
-                            <Link to={`/canvas/${project.id}`} className="creation-canvas-tile" onPointerEnter={preload} onFocus={preload} title={project.title}>
+                            <Link to={workspacePath(`/canvas/${project.id}`)} className="creation-canvas-tile" onPointerEnter={preload} onFocus={preload} title={project.title}>
                                 <span className="creation-canvas-thumbnail" aria-hidden="true">
                                     <ProjectPreview project={{ id: project.id, nodes: project.previewNodes }} preferLatestImage />
                                 </span>

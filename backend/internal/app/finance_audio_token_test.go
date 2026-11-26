@@ -48,6 +48,8 @@ func TestAudioTokenOrderBillsInputCharacters(t *testing.T) {
 		t.Fatal("audio order without synthesizable text was accepted")
 	}
 	request.PriceTiers[0].OutputTokenPriceMicrocredits = 1
+	request.ExpectedUpdatedAt = saved.UpdatedAt
+	request.ExpectedPriceVersion = saved.PriceVersion
 	if _, err := svc.SaveAdminChannelModel(admin, channel.ID, saved.ID, request); err == nil || !strings.Contains(err.Error(), "音频") {
 		t.Fatalf("audio output price was accepted: %v", err)
 	}

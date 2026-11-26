@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildImageToolbarTools } from "@/components/canvas/canvas-image-toolbar-tools";
+import { buildImageToolbarTools, getNineGridMenuItems } from "@/components/canvas/canvas-image-toolbar-tools";
 import { resolveNodeToolbarPlacement, resolveToolbarTools, type ToolContext, type ToolbarHandlers } from "@/lib/canvas/tool-registry";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
@@ -32,7 +32,9 @@ describe("canvas node toolbar model", () => {
         const node: CanvasNodeData = { id: "markdown", type: CanvasNodeType.Text, title: "文档", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "# 标题", textFormat: "markdown" } };
         const ctx = createNodeContext(node);
         const received: CanvasNodeData[] = [];
-        ctx.handlers.onNodeEditText = (value) => { received.push(value); };
+        ctx.handlers.onNodeEditText = (value) => {
+            received.push(value);
+        };
         const tools = resolveToolbarTools("node-hover", ctx, null);
         const edit = tools.find((tool) => tool.id === "editText")!;
         expect(edit).toBeDefined();
@@ -41,6 +43,26 @@ describe("canvas node toolbar model", () => {
         expect(received).toEqual([node]);
         // 统一节点模型后文本节点同时提供「生成设置」入口，但它不带文本生成专用控件。
         expect(tools.find((tool) => tool.id === "edit")?.displayLabel).not.toBe("文本生成");
+    });
+
+    test("relative depth is offered only for available, non-loading videos and runs lazily", () => {
+        const node: CanvasNodeData = { id: "video", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 720, height: 405, metadata: { storageKey: "resource:video" } };
+        const ctx = createNodeContext(node);
+        expect(resolveToolbarTools("node-hover", ctx, null).some((tool) => tool.id === "depthVideo")).toBe(false);
+        const received: CanvasNodeData[] = [];
+        ctx.handlers.onNodeDepthVideo = (source) => received.push(source);
+        const tool = resolveToolbarTools("node-hover", ctx, null).find((tool) => tool.id === "depthVideo")!;
+        expect(tool).toBeDefined();
+        expect(received).toEqual([]);
+        tool.run(ctx);
+        expect(received).toEqual([node]);
+        for (const unavailable of [
+            { ...ctx, nodeMetadata: { status: "loading" as const } },
+            { ...ctx, nodeMetadata: {} },
+            { ...ctx, workspaceMode: "simple" as const },
+        ]) {
+            expect(resolveToolbarTools("node-hover", unavailable, null).some((tool) => tool.id === "depthVideo")).toBe(false);
+        }
     });
 
     test("edit copy delegates the selected image once and refuses unavailable sources", () => {
@@ -70,7 +92,6 @@ describe("canvas node toolbar model", () => {
         expect(resolveToolbarTools("node-hover", empty, null).some((item) => item.id === "createEditCopy")).toBe(false);
         const video = createNodeContext({ ...node, type: CanvasNodeType.Video });
         expect(resolveToolbarTools("node-hover", video, null).some((item) => item.id === "createEditCopy")).toBe(false);
-
     });
 
     test("preserves empty, simple and busy video states", () => {
@@ -78,7 +99,12 @@ describe("canvas node toolbar model", () => {
         const emptyTools = resolveToolbarTools("node-hover", ctx, null);
         expect(emptyTools.some((tool) => tool.id === "extractAudio")).toBe(false);
         expect(emptyTools.some((tool) => tool.id === "videoEnhance")).toBe(false);
-        expect(resolveNodeToolbarPlacement(emptyTools.find((tool) => tool.id === "uploadVideo")!, ctx).group).toBe("primary");
+        expect(
+            resolveNodeToolbarPlacement(
+                emptyTools.find((tool) => tool.id === "uploadVideo")!,
+                ctx,
+            ).group,
+        ).toBe("primary");
         ctx.nodeMetadata = { content: "video.mp4" };
         ctx.extractingAudio = true;
         const audio = resolveToolbarTools("node-hover", ctx, null).find((tool) => tool.id === "extractAudio")!;
@@ -118,10 +144,17 @@ describe("canvas node toolbar model", () => {
 
     test("keeps video primary actions compact and moves secondary processing into a menu", () => {
         const ctx = createNodeContext({ id: "video", type: CanvasNodeType.Video, title: "视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { content: "video.mp4" } });
+        const received: CanvasNodeData[] = [];
+        ctx.handlers.onNodeRemakeVideo = (node) => received.push(node);
         const tools = resolveToolbarTools("node-hover", ctx, null);
         const groups = new Map(tools.map((tool) => [tool.id, resolveNodeToolbarPlacement(tool, ctx).group]));
 
-        expect([...groups].filter(([, group]) => group === "primary").map(([id]) => id)).toEqual(["trimRegenerate"]);
+        const primary = tools.filter((tool) => groups.get(tool.id) === "primary").sort((left, right) => resolveNodeToolbarPlacement(left, ctx).order - resolveNodeToolbarPlacement(right, ctx).order);
+        expect(primary.map((tool) => tool.id)).toEqual(["remakeVideo", "trimRegenerate"]);
+        expect(primary[0].displayLabel).toBe("视频复刻");
+        expect(received).toEqual([]);
+        primary[0].run(ctx);
+        expect(received).toEqual([ctx.node!]);
         expect([...groups].filter(([, group]) => group === "process").map(([id]) => id)).toEqual(["extractFrames", "extractAudio", "videoEnhance"]);
         expect(groups.get("videoEnhance")).toBe("process");
         expect(groups.get("download")).toBe("utility");
@@ -131,6 +164,18 @@ describe("canvas node toolbar model", () => {
         expect(groups.get("uploadVideo")).toBe("more");
         expect(groups.get("delete")).toBe("more");
         expect(groups.get("node-lock")).toBe("more");
+    });
+
+    test("remake requires writable canvas and actual video media, not a preview or pending upload", () => {
+        const ctx = createNodeContext({ id: "upload", type: CanvasNodeType.Video, title: "上传视频", position: { x: 0, y: 0 }, width: 320, height: 180, metadata: { storageKey: "resource:original" } });
+        const hasRemake = (context: ToolContext) => resolveToolbarTools("node-hover", context, null).some((tool) => tool.id === "remakeVideo");
+        expect(hasRemake(ctx)).toBe(false);
+        ctx.handlers.onNodeRemakeVideo = () => {};
+        expect(hasRemake(ctx)).toBe(true);
+        expect(hasRemake({ ...ctx, workspaceMode: "simple" })).toBe(false);
+        for (const nodeMetadata of [{}, { previewContent: "poster.jpg" }, { storageKey: "resource:old", fileUpload: "uploading" }, { content: "old.mp4", status: "loading" }] as const) {
+            expect(hasRemake({ ...ctx, node: { ...ctx.node!, metadata: nodeMetadata }, nodeMetadata })).toBe(false);
+        }
     });
 
     test("uses the redesigned video terminology from the registry", () => {
@@ -172,9 +217,10 @@ describe("canvas node toolbar model", () => {
         expect(tools.find((tool) => tool.id === "regionEdit")?.group).toBe("primary");
         expect(tools.some((tool) => tool.id === "superResolve")).toBe(false);
         expect(tools.find((tool) => tool.id === "emotion")?.group).toBe("adjust");
-        expect(tools.find((tool) => tool.id === "cinematic_light_correction")?.group).toBe("adjust");
-        expect(tools.find((tool) => tool.id === "image_projection_after_3s")?.group).toBe("camera");
-        expect(tools.find((tool) => tool.id === "character_three_view_generation")?.section).toBe("设定图");
+        const presets = getNineGridMenuItems();
+        expect(presets.find((tool) => tool.id === "cinematic_light_correction")?.section).toBe("机位与光影");
+        expect(presets.find((tool) => tool.id === "image_projection_after_3s")?.section).toBe("画面推演");
+        expect(presets.filter((tool) => tool.section === "设定图").map((tool) => tool.id)).toEqual(["character_four_view", "character_three_view_generation", "character_face_three_view", "product_three_view"]);
         expect(tools.find((tool) => tool.id === "upscale")?.description).toContain("不是 AI 超分");
         expect(tools.find((tool) => tool.id === "crop")?.section).toBe("构图与尺寸");
         expect(tools.find((tool) => tool.id === "resize")?.active).toBe(true);
@@ -193,7 +239,9 @@ describe("canvas node toolbar model", () => {
         expect(readOnlyTools.some((tool) => tool.id === "depthCapture")).toBe(false);
 
         const ctx = createNodeContext(video);
-        ctx.handlers.onNodeDepthCapture = (node) => { received.push(node); };
+        ctx.handlers.onNodeDepthCapture = (node) => {
+            received.push(node);
+        };
         const tools = resolveToolbarTools("node-hover", ctx, null);
         const depth = tools.find((tool) => tool.id === "depthCapture")!;
         expect(depth).toBeDefined();

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
+import type { ReactNode } from "react";
 import type { PrevisCanvasExport, PrevisScene } from "@/types/previs";
 import type { PrevisViewportHandle } from "@/components/canvas/previs/previs-viewport";
 
@@ -60,6 +61,7 @@ mock.module("@/components/canvas/previs/previs-inspectors", () => ({
     ObjectInspector: () => null,
     LightInspector: () => null,
     ShotInspector: () => null,
+    InspectorGroup: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 mock.module("@/components/canvas/previs/previs-canvas-dock", () => ({ PrevisCanvasDock: () => null }));
 mock.module("@/components/canvas/previs/previs-add-dialog", () => ({ PrevisAddDialog: () => null }));

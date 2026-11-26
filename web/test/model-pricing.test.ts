@@ -16,7 +16,7 @@ import type { DramaSegmentRequest } from "../src/services/api/drama";
 function systemConfig(input: {
     capability?: "image" | "video";
     logicalModelId?: string;
-    tiers: Array<{ selector: Record<string, string>; billingMode: "fixed_request" | "per_second" | "token"; unitPriceMicrocredits: number; outputTokenPriceMicrocredits?: number }>;
+    tiers: Array<{ selector: Record<string, string>; billingMode: "fixed_request" | "per_second" | "token" | "image_usage"; unitPriceMicrocredits: number; outputTokenPriceMicrocredits?: number }>;
 }) {
     const capability = input.capability || "video";
     const model = capability === "video" ? "agnes-video-2.5" : "image-model";
@@ -72,6 +72,13 @@ const textVideoRequirements: ModelRequirements = {
 };
 
 describe("model request pricing", () => {
+    test("image usage uses the server quote and never displays a zero fixed price", () => {
+        const config = systemConfig({ capability: "image", tiers: [{ selector: {}, billingMode: "image_usage", unitPriceMicrocredits: 0 }] });
+        const quote = modelQuoteRequest(config, config.imageModel, "image", { capability: "image", input: { textCount: 1, imageCount: 3, videoCount: 0, audioCount: 0, characterCount: 0 } });
+        expect(quote?.channelId).toBe("system-channel");
+        expect(quote?.intent.inputs?.image).toBe(3);
+        expect(requestCreditCost({ channelMode: "remote", modelCosts: config.channels[0].modelCosts, model: "image-model", capability: "image", config })).toBeNull();
+    });
     test("quotes a drama segment with its own duration, screen and audio instead of canvas defaults", () => {
         const config = systemConfig({
             tiers: [{ selector: { videoSeconds: "12", vquality: "768p", videoGenerateAudio: "true" }, billingMode: "per_second", unitPriceMicrocredits: 2_000_000 }],
@@ -91,6 +98,9 @@ describe("model request pricing", () => {
             header: "",
         };
         const requirements = dramaSegmentVideoRequirements(request, undefined, false);
+        expect(
+            dramaSegmentVideoRequirements(request, { choice: { channelId: "system-channel", modelKey: "video" }, capability: "video", label: "视频", priceLabel: "", videoResolutions: ["720p"], defaultVideoResolution: "720p", generateAudio: true }, true),
+        ).toBeUndefined();
         const cost = resolveModelChannel(config, config.model).modelCosts![0];
         const capabilityConfig = defaultModelCapabilityConfig("agnes-video", "agnes-video-2.5");
         Object.assign(capabilityConfig.video!, { resolutions: ["720p", "768p"], defaultResolution: "720p", duration: { selection: "range", min: 5, max: 15, step: 1, default: 5 }, generateAudio: { supported: true, default: false } });

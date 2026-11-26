@@ -1,4 +1,5 @@
-import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
+import { getNodeSpec } from "@/constant/canvas";
+import { CanvasNodeType, isBuiltinCanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import { canvasPromptSummaryText } from "./canvas-resource-references";
 
 const COPY_SUFFIX = /(_copy\d+|\s+Copy)$/i;
@@ -31,24 +32,12 @@ export function nextDefaultCanvasNodeTitles(nodes: CanvasNodeData[], type: "imag
     return Array.from({ length: Math.max(0, count) }, (_, index) => `${prefix}${start + index}`);
 }
 
-const GENERIC_NODE_TITLES = new Set([
-    "图片",
-    "生成图片",
-    "Generated Image",
-    "New Generation",
-    "视频",
-    "生成视频",
-    "Generated Video",
-    "Video",
-    "音频",
-    "生成音频",
-    "Generated Audio",
-    "Audio",
-]);
+const GENERIC_NODE_TITLES = new Set(["图片", "生成图片", "Generated Image", "New Generation", "视频", "生成视频", "Generated Video", "Video", "音频", "生成音频", "Generated Audio", "Audio"]);
 
 export function isGenericCanvasNodeTitle(title?: string) {
     const value = title?.trim() || "";
-    return !value || GENERIC_NODE_TITLES.has(value);
+    // 新建节点自动分配的「图片节点N / 视频节点N / 音频节点N」不是用户命名，生成时应改用提示词。
+    return !value || GENERIC_NODE_TITLES.has(value) || /^(?:图片节点|视频节点|音频节点)\d+$/.test(value);
 }
 
 export function mergeLiveCanvasNodeTitles(persistedNodes: CanvasNodeData[], liveNodes: CanvasNodeData[]) {
@@ -66,7 +55,11 @@ export function mergeLiveCanvasNodeTitles(persistedNodes: CanvasNodeData[], live
 
 /** 用户改过名的节点（metadata.manualTitle）在原位重新生成时沿用该名称；返回 undefined 时使用提示词摘要。 */
 export function manualNodeTitle(node: CanvasNodeData | undefined) {
-    return node?.metadata?.manualTitle && node.title.trim() ? node.title : undefined;
+    if (!node?.title.trim()) return undefined;
+    const metadata = node.metadata;
+    if (metadata?.manualTitle !== undefined) return metadata.manualTitle ? node.title : undefined;
+    if (metadata?.content || metadata?.storageKey || metadata?.taskId || metadata?.copiedFromNodeId || metadata?.versionOfNodeId) return undefined;
+    return isBuiltinCanvasNodeType(node.type) && node.title !== getNodeSpec(node.type).title ? node.title : undefined;
 }
 
 /**

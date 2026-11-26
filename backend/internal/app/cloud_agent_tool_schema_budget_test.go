@@ -70,7 +70,7 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 	// 因此显式上调到 35,000；视频生成支持 Agent 设置首尾帧（#696）后为 35,050 字节，
 	// 再显式上调到 36,000，保留约2.7%的余量。skill_search 补触发时机与零命中行为
 	// 描述后为 36,072 字节；启用视觉工具后为 29 个工具、36,883 字节，预算显式上调到
-	// 37,500，保留约1.7%的余量。长期记忆改用 memory_update（替换 remember_lesson /
+	// 37,500，保留约1.7%的余量。技能检索改为按需查询且零命中返回空结果；长期记忆改用 memory_update（替换 remember_lesson /
 	// recall_lessons）并新增 skill_market_search、skill_recommend 后为 30 个工具、37,277 字节，
 	// 预算不变。新增 generate_media_batch、media_batch_control、canvas_build_board、
 	// canvas_preflight（描述已压缩，批量参数复用同一份结构）并把 ask_user 放宽到 16 个字段后为
@@ -79,9 +79,10 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 	// 预算显式上调到 46,500，保留约1.2%的余量。合入官方 cloud-agent-tools/v12 后新增
 	// memory_search、mcp_list_tools、mcp_call_tool 与 drama_shot_read/drama_shot_update，
 	// 并压缩了 canvas_get_state 与 canvas_apply_ops 的描述，叠加 canvas_inspect_media 后
-	// 实测 46,733 字节，预算显式上调到 47,500，保留约1.6%的余量。新增工具或字段时请重新
-	// 测量并有意识地调整这个数字，而不是让 schema 悄悄膨胀（它每一步都要发、还在前缀最前面）。
-	if len(raw) > 47500 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 47500：请压缩描述或显式调整预算", len(raw))
+	// 实测 46,733 字节，预算显式上调到 47,500，保留约1.6%的余量。本次再合入世界引擎扩展
+	// 与主分支批量工具后，预算显式上调到 50,500。新增工具或字段时请重新测量并有意识地
+	// 调整这个数字，而不是让 schema 悄悄膨胀（它每一步都要发、还在前缀最前面）。
+	if len(raw) > 50500 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 50500：请压缩描述或显式调整预算", len(raw))
 	}
 }

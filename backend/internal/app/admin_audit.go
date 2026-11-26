@@ -95,6 +95,7 @@ func (s *Service) AdminUserDetail(actor *model.User, userID string) (*AdminUserD
 	if err != nil {
 		return nil, err
 	}
+	usage.AgentLimitBytes = policy.Resource.AgentHistoryMB << 20
 	// 配额展示与执行点同源：会员等级覆盖后的存储/日上传限制。
 	quota, err := applyMembershipResourceLimits(s.repo, user.ID, policy.Resource)
 	if err != nil {

@@ -15,6 +15,8 @@ import { producedModelCandidateForGeneration } from "@/lib/canvas/produced-model
 import { ensureMediaNodeMinimumSize } from "@/lib/canvas/canvas-node-size";
 import { interruptFileUpload } from "@/lib/canvas/canvas-file-upload";
 import { isCanvasWorkflowProvider, resolveCanvasWorkflowProvider } from "@/lib/canvas/canvas-workflow";
+import { canvasVideoOperation, canvasVideoReferenceMode, usesProjectedVideoReferences } from "./canvas-video-reference-mode";
+import { videoRemakeInputIssue } from "./canvas-video-regeneration";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasImageGenerationType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasVideoEditOperation } from "@/types/canvas";
 import type { ReferenceImage } from "@/types/image";
@@ -71,21 +73,7 @@ export async function runBackendCanvasGenerationTask(
             referenceAudios,
             mask,
             signal,
-            metadata: {
-                nodeId,
-                ...(mode === "video" && !metadata?.videoEditOperation
-                    ? {
-                          videoEditOperation: videoModeOperation(videoGenerationModeFromMetadata(metadata, {
-                              textCount: prompt.trim() ? 1 : 0,
-                              imageCount: referenceImages.length,
-                              videoCount: referenceVideos.length,
-                              audioCount: referenceAudios.length,
-                              characterCount: 0,
-                          })),
-                      }
-                    : {}),
-                ...metadata,
-            },
+            metadata: { nodeId, ...metadata },
             onTaskUpdate: onTaskCreated,
             clientOperationId,
             retryOf,
@@ -271,6 +259,7 @@ export function buildAudioGenerationMetadata(config: AiConfig): CanvasNodeMetada
         ...generationWorkflowMetadata(config),
         model: config.model,
         producedModelCandidate: producedModelCandidateForGeneration(config),
+        audioMode: config.audioMode,
         audioVoice: config.audioVoice,
         audioFormat: config.audioFormat,
         audioSpeed: config.audioSpeed,
@@ -362,8 +351,7 @@ export function videoGenerationContextForMode<T extends VideoGenerationContext>(
         if (!startFrame) throw new Error(mode === "keyframes" ? "首尾帧参考需要连接两张不同的图片" : "图生视频需要连接一张首帧图片");
         referenceImages = [startFrame];
         if (mode === "keyframes") {
-            const endFrame = context.referenceImages.find((image) => image.id === node?.metadata?.videoEndFrameNodeId && image.id !== startFrame.id)
-                || context.referenceImages.find((image) => image.id !== startFrame.id);
+            const endFrame = context.referenceImages.find((image) => image.id === node?.metadata?.videoEndFrameNodeId && image.id !== startFrame.id) || context.referenceImages.find((image) => image.id !== startFrame.id);
             if (!endFrame) throw new Error("首尾帧参考需要连接两张不同的图片");
             referenceImages.push(endFrame);
         }
@@ -396,9 +384,6 @@ function resolveVideoEditOperation(
         referenceAudios: ReferenceAudio[];
     },
 ): CanvasVideoEditOperation {
-    const mode = videoGenerationModeFromMetadata(node?.metadata);
-    if (node?.metadata?.videoMode) return videoModeOperation(mode) as CanvasVideoEditOperation;
-    const storedOperation = node?.metadata?.videoEditOperation;
     const input = {
         textCount: 0,
         imageCount: context?.referenceImages.length || 0,
@@ -406,7 +391,7 @@ function resolveVideoEditOperation(
         audioCount: context?.referenceAudios.length || 0,
         characterCount: 0,
     };
-    return resolveVideoOperation(input, storedOperation) as CanvasVideoEditOperation;
+    return resolveVideoOperation(input, canvasVideoOperation(node, input)) as CanvasVideoEditOperation;
 }
 
 export function buildVideoGenerationMetadata(
@@ -420,22 +405,21 @@ export function buildVideoGenerationMetadata(
 ): CanvasNodeMetadata {
     const metadata = node?.metadata;
     const referenceImageIds = new Set((context?.referenceImages || []).map((image) => image.id));
-    // 工作流视频把已连接媒体交给字段映射处理，不再把历史首尾帧选择当成硬约束。
+    const remakeIssue = videoRemakeInputIssue(
+        metadata,
+        context?.referenceImages.length || 0,
+        (context?.referenceVideos || []).map((video) => video.durationMs ?? 0),
+        config,
+    );
+    if (remakeIssue) throw new Error(remakeIssue);
     const workflowVideo = node?.type === CanvasNodeType.Config && (config?.taskWorkflowProvider === "runninghub" || isCanvasWorkflowProvider(metadata));
-    const mode = videoGenerationModeFromMetadata(metadata, {
-        textCount: 0,
-        imageCount: context?.referenceImages.length || 0,
-        videoCount: context?.referenceVideos.length || 0,
-        audioCount: context?.referenceAudios.length || 0,
-        characterCount: 0,
-    });
-    const startFrameCandidate = metadata?.videoStartFrameNodeId || ((mode === "image" || mode === "keyframes") ? context?.referenceImages[0]?.id : undefined);
-    const endFrameCandidate = metadata?.videoEndFrameNodeId || (mode === "keyframes" ? context?.referenceImages[1]?.id : undefined);
-    const startFrame = workflowVideo || mode === "text" || mode === "reference" ? undefined : requireConnectedVideoFrame(startFrameCandidate, "首帧", referenceImageIds);
-    const endFrame = workflowVideo || mode !== "keyframes" ? undefined : requireConnectedVideoFrame(endFrameCandidate, "尾帧", referenceImageIds);
+    const videoMode = canvasVideoReferenceMode(node, referenceImageIds.size > 0);
+    const useFrames = !workflowVideo && (videoMode === undefined || videoMode === "frames" || usesProjectedVideoReferences(node));
+    const startFrame = useFrames ? requireConnectedVideoFrame(metadata?.videoStartFrameNodeId, "首帧", referenceImageIds) : undefined;
+    const endFrame = useFrames ? requireConnectedVideoFrame(metadata?.videoEndFrameNodeId, "尾帧", referenceImageIds) : undefined;
     return {
         ...(config ? generationWorkflowMetadata(config) : {}),
-        videoMode: workflowVideo ? metadata?.videoMode : mode,
+        videoMode: metadata?.videoMode,
         videoEditOperation: resolveVideoEditOperation(node, context),
         videoCameraMoveId: metadata?.videoCameraMoveId,
         videoCameraMovePrompt: metadata?.videoCameraMovePrompt,
@@ -557,6 +541,7 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         videoGenerateAudio: node?.metadata?.generateAudio ?? config.videoGenerateAudio ?? defaultConfig.videoGenerateAudio,
         videoWatermark: node?.metadata?.watermark ?? config.videoWatermark ?? defaultConfig.videoWatermark,
         videoArkPrivateAssetUpload: node?.metadata?.arkPrivateAssetUpload ?? config.videoArkPrivateAssetUpload ?? defaultConfig.videoArkPrivateAssetUpload,
+        audioMode: node?.metadata?.audioMode ?? config.audioMode ?? defaultConfig.audioMode,
         audioVoice: node?.metadata?.audioVoice ?? config.audioVoice ?? defaultConfig.audioVoice,
         audioFormat: node?.metadata?.audioFormat ?? config.audioFormat ?? defaultConfig.audioFormat,
         audioSpeed: node?.metadata?.audioSpeed ?? config.audioSpeed ?? defaultConfig.audioSpeed,

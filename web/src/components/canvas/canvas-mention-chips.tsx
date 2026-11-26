@@ -7,8 +7,10 @@ import {
     Camera,
     Clapperboard,
     Clock,
+    ContactRound,
     Contrast,
     FastForward,
+    Film,
     Globe2,
     Grid2x2,
     Grid3x3,
@@ -41,8 +43,10 @@ export const TOOL_ICON_MAP: Record<string, React.ComponentType<{ className?: str
     Camera,
     Clapperboard,
     Clock,
+    ContactRound,
     Contrast,
     FastForward,
+    Film,
     Globe2,
     Grid2x2,
     Grid3x3,
@@ -73,7 +77,7 @@ function syncInlineMentionPresentation(chip: HTMLElement, reference: CanvasResou
     else delete chip.dataset.assetKind;
     chip.setAttribute("aria-label", reference.title || reference.displayLabel || reference.label);
     const label = chip.querySelector(".canvas-resource-inline-label");
-    const displayLabel = reference.displayLabel || reference.label;
+    const displayLabel = reference.displayLabel || reference.title || reference.label;
     if (label && label.textContent !== displayLabel) label.textContent = displayLabel;
     let kind = chip.querySelector<HTMLElement>(".canvas-resource-inline-kind");
     if (reference.assetKindLabel) {

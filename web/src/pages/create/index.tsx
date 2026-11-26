@@ -1,3 +1,5 @@
+import { workspacePath, workspaceTeamId } from "@/lib/workspace-routes";
+import { captureSkillLibraryAccess, hasSkillLibraryAccess, isSkillLibraryAccessCurrent, useSkillLibraryAccess } from "@/lib/skill-access";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Spin } from "antd";
 import { Tooltip } from "@/components/ui/base/tooltip";
@@ -7,10 +9,13 @@ import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 
 import type { AssetLibraryPickerItem } from "@/components/assets/asset-library-picker-modal";
+import { PersonalSpaceCreditOverview } from "@/components/layout/team-space-directory";
 import { generationErrorCode, generationErrorMessage } from "@/lib/generation-error";
 import { isGenerationCostUncertainError } from "@/lib/canvas/canvas-generation-batch";
 import { imageParameterRequest, normalizeImageParameters } from "@/lib/image-parameters";
-import { creationResultAssetIds } from "@/lib/canvas/canvas-asset-handoff";
+import { creationResultAssetIds, creationResultStorageKeysForMessage } from "@/lib/canvas/canvas-asset-handoff";
+import { creationMessageMayHaveExternalVideoResult } from "@/lib/creation-message-recovery";
+import { useGenerationBatchLimit } from "@/lib/generation-batch-limit";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { continueCreationConversationOnCanvas } from "@/services/creation-canvas-conversation";
 import { useAuthEntry } from "@/hooks/use-auth-entry";
@@ -22,11 +27,16 @@ import { videoModeImageRoles, videoModeOperation, type VideoGenerationMode } fro
 import type { BackendGenerationResult } from "@/services/api/generation-task";
 import type { Skill } from "@/services/api/skills";
 import type { GenerationTask } from "@/services/api/task-center";
-import { loadCreationConversations, pendingCreationTaskIds, removeCreationConversationSnapshot, saveCreationConversations, updateCreationConversationSnapshot } from "@/services/creation-conversation-store";
-import { clearCreationConversationSnapshot, mergeCreationConversationSnapshot, readCreationConversationSnapshot, writeCreationConversationSnapshot } from "@/services/creation-conversation-snapshot";
+import { loadCreationConversations, pendingCreationTaskIds, removeCreationConversationSnapshot, updateCreationConversationSnapshot } from "@/services/creation-conversation-store";
+import { clearCreationConversationSnapshot, readCreationConversationSnapshot, writeCreationConversationSnapshot } from "@/services/creation-conversation-snapshot";
+import { localForageStorageForScope } from "@/lib/localforage-storage";
+import { creationHistoryAPI } from "@/services/api/creation-history";
+import { CreationHistorySync, CREATION_HISTORY_SYNC_KEY, type HistorySyncStatus } from "@/services/creation-history-sync";
+import { creationHistoryMedia, restoreHistoryMedia } from "@/services/creation-history-media";
+import { CreationHistoryConflicts } from "./creation-history-conflicts";
 import { resolveModelChannel, resolveModelRequestConfig, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { useCreationPreferencesStore } from "@/stores/use-creation-preferences-store";
-import { useAssetStore, type Asset } from "@/stores/use-asset-store";
+import { useAssetStore } from "@/stores/use-asset-store";
 import { loadAssetsForUse, saveRemoteUserDataNow } from "@/services/user-data-sync";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
 import { cn } from "@/lib/utils";
@@ -80,6 +90,7 @@ import {
     type PersistedCreationTask,
 } from "./creation-conversations";
 import { CreationComposer, CreationEmptySuggest, CreationHistoryDrawer, CreationMessageView, CreationModeCard, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
+import { appendCreationReference, creationAttachmentFromResult, type CreationReferenceDrop } from "./creation-reference-drop";
 import { declaredInspirationSources } from "@/lib/inspirations/catalog";
 import { fillablePrompt } from "@/lib/inspirations/resolve";
 import { CreationRecentCanvases } from "./creation-recent-canvases";
@@ -166,14 +177,19 @@ export default function CreatePage() {
     const [conversationStorageReady, setConversationStorageReady] = useState(false);
     const [conversationStorageError, setConversationStorageError] = useState("");
     const [conversationLoadAttempt, setConversationLoadAttempt] = useState(0);
+    const historySessionRef = useRef<CreationHistorySync | null>(null);
+    const historyTimerRef = useRef<number | null>(null);
+    const remoteHistorySnapshots = useRef(new WeakSet<CreationConversation[]>());
+    const [historySync, setHistorySync] = useState<HistorySyncStatus>({ phase: "local" });
     const inspirationSourcesVisible = useUserStore((state) => state.features.inspirationSourcesVisible);
     const [conversationScope, setConversationScope] = useState<string | null>(() => (initialConversationSnapshot ? activeConversationScope : null));
-    const [mode, setMode] = useState<CreationMode>(() => initialComposerPreferences.mode || defaultCreationMode);
+    const [mode, setMode] = useState<CreationMode>(() => (workspaceTeamId ? "text" : initialComposerPreferences.mode || defaultCreationMode));
     const [prompt, setPrompt] = useState("");
     const [attachments, setAttachments] = useState<CreationAttachment[]>([]);
     const promptRef = useRef(prompt);
     const attachmentsRef = useRef(attachments);
     const [draftReferences, setDraftReferences] = useState<CreationReference[]>([]);
+    const canUseSkills = useSkillLibraryAccess();
     const [addedSkills, setAddedSkills] = useState<Skill[]>([]);
     const addedSkillsRequestedRef = useRef(false);
     const [ratio, setRatio] = useState("16:9");
@@ -190,10 +206,22 @@ export default function CreatePage() {
     const [textThinkingPrefs, setTextThinkingPrefs] = useState(readThinkingLevelPrefs);
     const [busy, setBusy] = useState(false);
     const [referenceReplacementBusy, setReferenceReplacementBusy] = useState(false);
+    const [referenceDropBusy, setReferenceDropBusy] = useState(false);
+    const referenceDropLock = useRef(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const { openAuth } = useAuthEntry();
     const [libraryOpen, setLibraryOpen] = useState(false);
-    const externalAssetSources = useExternalAssetSources(libraryOpen);
+    const requireCreationLogin = useCallback(() => {
+        if (useUserStore.getState().user) return true;
+        setLibraryOpen(false);
+        openAuth({ preferDialog: true });
+        return false;
+    }, [openAuth]);
+    const openReferenceLibrary = () => {
+        if (!requireCreationLogin()) return;
+        setLibraryOpen(true);
+    };
+    const externalAssetSources = useExternalAssetSources(libraryOpen && !workspaceTeamId);
     const abortRef = useRef<AbortController | null>(null);
     const composerFocusRef = useRef<HTMLTextAreaElement>(null);
     const threadScrollRef = useRef<HTMLElement>(null);
@@ -223,29 +251,36 @@ export default function CreatePage() {
     );
     const preferredModel = mode === "text" ? config.textModel : mode === "image" ? config.imageModel : config.videoModel;
     const hasPrompt = Boolean(prompt.trim());
-    const activeVideoAttachments = useMemo(
-        () => activeVideoCreationAttachments(attachments, videoMode, videoStartFrameAttachmentId, videoEndFrameAttachmentId),
-        [attachments, videoEndFrameAttachmentId, videoMode, videoStartFrameAttachmentId],
+    const activeVideoAttachments = useMemo(() => activeVideoCreationAttachments(attachments, videoMode, videoStartFrameAttachmentId, videoEndFrameAttachmentId), [attachments, videoEndFrameAttachmentId, videoMode, videoStartFrameAttachmentId]);
+    const modelRequirements = useMemo<ModelRequirements>(
+        () => ({
+            capability: mode,
+            input: {
+                textCount: hasPrompt ? 1 : 0,
+                imageCount: mode === "video" ? activeVideoAttachments.referenceImages.length : attachments.filter(isImageAttachment).length,
+                videoCount: mode === "video" ? activeVideoAttachments.referenceVideos.length : attachments.filter(isVideoAttachment).length,
+                audioCount: mode === "video" ? activeVideoAttachments.referenceAudios.length : attachments.filter((attachment) => creationAttachmentKind(attachment) === "audio").length,
+                characterCount: 0,
+            },
+            videoMode: mode === "video" ? videoMode : undefined,
+            videoImageRoles: mode === "video" ? videoModeImageRoles(videoMode).filter((role) => role !== "reference_image" || activeVideoAttachments.referenceImages.length > 0) : undefined,
+            videoSeconds: mode === "video" ? seconds : undefined,
+            imageSize: mode === "image" ? ratio : undefined,
+            options:
+                mode === "image"
+                    ? (imageParameterRequest(modelCapabilityConfigFor(config, preferredModel).image!, { ...config, size: ratio, imageResolution, quality, count, imageParameters }) ?? {
+                          size: ratio,
+                          imageResolution,
+                          quality,
+                          count: Number(count),
+                          transparentBackground: config.transparentBackground === "true",
+                      })
+                    : mode === "video"
+                      ? { size: ratio, videoSeconds: Number(seconds), vquality: videoQuality }
+                      : {},
+        }),
+        [activeVideoAttachments, attachments, config, preferredModel, count, hasPrompt, imageResolution, imageParameters, mode, quality, ratio, seconds, videoMode, videoQuality],
     );
-    const modelRequirements = useMemo<ModelRequirements>(() => ({
-        capability: mode,
-        input: {
-            textCount: hasPrompt ? 1 : 0,
-            imageCount: mode === "video" ? activeVideoAttachments.referenceImages.length : attachments.filter(isImageAttachment).length,
-            videoCount: mode === "video" ? activeVideoAttachments.referenceVideos.length : attachments.filter(isVideoAttachment).length,
-            audioCount: mode === "video" ? activeVideoAttachments.referenceAudios.length : attachments.filter((attachment) => creationAttachmentKind(attachment) === "audio").length,
-            characterCount: 0,
-        },
-        videoMode: mode === "video" ? videoMode : undefined,
-        videoImageRoles: mode === "video" ? videoModeImageRoles(videoMode).filter((role) => role !== "reference_image" || activeVideoAttachments.referenceImages.length > 0) : undefined,
-        videoSeconds: mode === "video" ? seconds : undefined,
-        imageSize: mode === "image" ? ratio : undefined,
-		options: mode === "image"
-            ? imageParameterRequest(modelCapabilityConfigFor(config, preferredModel).image!, { ...config, size: ratio, imageResolution, quality, count, imageParameters }) ?? { size: ratio, imageResolution, quality, count: Number(count), transparentBackground: config.transparentBackground === "true" }
-			: mode === "video"
-				? { size: ratio, videoSeconds: Number(seconds), vquality: videoQuality }
-				: {},
-    }), [activeVideoAttachments, attachments, config, preferredModel, count, hasPrompt, imageResolution, imageParameters, mode, quality, ratio, seconds, videoMode, videoQuality]);
     const selectedModel = resolveCompatibleModel(config, preferredModel, modelRequirements) || preferredModel;
     const generationConfig = useMemo(() => (mode === "video" ? creationVideoConfig(config, selectedModel, { ratio, seconds, videoQuality }) : config), [config, mode, ratio, seconds, selectedModel, videoQuality]);
     const imageProfile = useMemo(() => modelCapabilityConfigFor(config, selectedModel).image!, [config, selectedModel]);
@@ -268,16 +303,26 @@ export default function CreatePage() {
     // 入口需要展示整个模型组的引用能力，添加素材后再由兼容路由选择具体模型。
     // 全能参考模式按同名模型组取上限：还没加素材时页面解析到的是能力最弱的线路，
     // 用单个模型的上限会把第一张参考图直接挡在门外。其余三种模式的上限由模式本身决定。
-    const videoReferenceLimits = useMemo(() => mode === "video" && videoMode === "reference"
-        ? modelGroupReferenceLimits(config, preferredModel || selectedModel, "video")
-        : undefined, [config, mode, preferredModel, selectedModel, videoMode]);
-    const videoReferenceMaximum = useCallback((kind: "image" | "video" | "audio") => {
-        const references = videoReferenceLimits ?? videoProfile.references;
-        return kind === "image" ? references.maxImages : kind === "video" ? references.maxVideos : references.maxAudios;
-    }, [videoProfile.references, videoReferenceLimits]);
-    const maxReferences = mode === "video"
-        ? videoMode === "text" ? 0 : videoMode === "image" ? 1 : videoMode === "keyframes" ? 2 : videoReferenceMaximum("image") + videoReferenceMaximum("video") + videoReferenceMaximum("audio")
-        : mode === "image" ? imageProfile.references.maxImages : 6;
+    const videoReferenceLimits = useMemo(() => (mode === "video" && videoMode === "reference" ? modelGroupReferenceLimits(config, preferredModel || selectedModel, "video") : undefined), [config, mode, preferredModel, selectedModel, videoMode]);
+    const videoReferenceMaximum = useCallback(
+        (kind: "image" | "video" | "audio") => {
+            const references = videoReferenceLimits ?? videoProfile.references;
+            return kind === "image" ? references.maxImages : kind === "video" ? references.maxVideos : references.maxAudios;
+        },
+        [videoProfile.references, videoReferenceLimits],
+    );
+    const maxReferences =
+        mode === "video"
+            ? videoMode === "text"
+                ? 0
+                : videoMode === "image"
+                  ? 1
+                  : videoMode === "keyframes"
+                    ? 2
+                    : videoReferenceMaximum("image") + videoReferenceMaximum("video") + videoReferenceMaximum("audio")
+            : mode === "image"
+              ? imageProfile.references.maxImages
+              : 6;
     const referenceImageSize = useMemo(() => {
         const imageAttachments = attachments.filter(isImageAttachment);
         if (imageAttachments.length !== 1) return undefined;
@@ -285,7 +330,15 @@ export default function CreatePage() {
         if (typeof width !== "number" || typeof height !== "number" || width <= 0 || height <= 0) return undefined;
         return { width, height };
     }, [attachments]);
-    const mentionReferences = useMemo(() => buildCreationMentionReferences(addedSkills, attachments, draftReferences), [addedSkills, attachments, draftReferences]);
+    const mentionReferences = useMemo(
+        () =>
+            buildCreationMentionReferences(
+                canUseSkills ? addedSkills : [],
+                attachments,
+                draftReferences.filter((reference) => canUseSkills || (reference.kind !== "skill" && !reference.skill)),
+            ),
+        [addedSkills, attachments, draftReferences, canUseSkills],
+    );
     const isEmpty = !activeConversation?.messages.length;
 
     // 空首页从顶部开始；有消息的对话由跟随消息逻辑管理滚动。
@@ -313,7 +366,7 @@ export default function CreatePage() {
     useEffect(() => {
         if (!composerPreferencesHydrated || composerPreferencesInitialized) return;
         const saved = useCreationPreferencesStore.getState().preferences;
-        const nextMode = saved.mode || defaultCreationMode;
+        const nextMode = workspaceTeamId ? "text" : saved.mode || defaultCreationMode;
         setMode(nextMode);
         if (nextMode === "image" && saved.image) {
             if (saved.image.ratio) setRatio(saved.image.ratio);
@@ -364,9 +417,7 @@ export default function CreatePage() {
     useEffect(() => {
         // 文生、图生和首尾帧模式的素材在切换模式时保留，只按模式固定数量约束入口。
         if (mode === "video" && videoMode !== "reference") return;
-        const reconciled = videoReferenceLimits
-            ? reconcileCreationAttachmentLimits(attachments, mentionReferences, videoReferenceLimits)
-            : reconcileCreationAttachmentLimit(attachments, mentionReferences, maxReferences);
+        const reconciled = videoReferenceLimits ? reconcileCreationAttachmentLimits(attachments, mentionReferences, videoReferenceLimits) : reconcileCreationAttachmentLimit(attachments, mentionReferences, maxReferences);
         if (reconciled.attachments === attachments) return;
         setAttachments(reconciled.attachments);
         if (reconciled.removedReferences.length) setPrompt((current) => removeCreationReferenceTokens(current, reconciled.removedReferences));
@@ -374,46 +425,82 @@ export default function CreatePage() {
 
     useEffect(() => {
         if (!userSessionHydrated) return;
-        let cancelled = false;
         const scope = getActiveUserScope();
-        const cached = readCreationConversationSnapshot<CreationConversation>(scope);
+        const controller = new AbortController();
+        const active = () => !controller.signal.aborted && getActiveUserScope() === scope && (useUserStore.getState().user?.id || null) === userId;
+        const storage = localForageStorageForScope(scope);
         setConversationStorageReady(false);
         setConversationStorageError("");
-        if (cached?.length) {
-            conversationsRef.current = cached;
-            setConversations(cached);
-            setActiveId((current) => (cached.some((item) => item.id === current) ? current : cached[0].id));
+        setHydrated(false);
+        const display = (items: CreationConversation[]) => {
+            if (!active()) return;
+            const next = items.length ? items.map((item) => ({ ...item, messages: item.messages.map(restoreHistoryMedia) })) : [newConversation()];
+            remoteHistorySnapshots.current.add(next);
+            conversationsRef.current = next;
+            writeCreationConversationSnapshot(scope, next);
+            setConversations(next);
+            setActiveId((current) => (next.some((item) => item.id === current) ? current : next[0].id));
             setConversationScope(scope);
-            setConversationStorageError("");
-            setHydrated(true);
-        } else {
-            setHydrated(false);
-            setConversationScope(null);
-            setConversations([]);
-            setActiveId("");
-        }
-        void loadCreationConversations<CreationConversation>()
-            .then((stored) => {
-                if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
-                const next = cached?.length ? mergeCreationConversationSnapshot(cached, stored || []) : stored?.length ? stored : [newConversation()];
-                conversationsRef.current = next;
-                writeCreationConversationSnapshot(scope, next);
-                setConversations(next);
-                setActiveId((current) => (next.some((item) => item.id === current) ? current : next[0].id));
-                setConversationScope(scope);
-                setConversationStorageError("");
+        };
+        const session = new CreationHistorySync({
+            read: async () => await storage.getItem(CREATION_HISTORY_SYNC_KEY),
+            readLegacy: () => loadCreationConversations<CreationConversation>(scope),
+            write: async (value) => {
+                await storage.setItem(CREATION_HISTORY_SYNC_KEY, value);
+            },
+            api: creationHistoryAPI(scope, controller.signal),
+            prepare: creationHistoryMedia(scope, controller.signal, active),
+            cloud: Boolean(userId),
+            active,
+            onChange: display,
+            onStatus: (status) => {
+                if (active()) setHistorySync(status);
+            },
+        });
+        historySessionRef.current = session;
+        void session
+            .load()
+            .then((items) => {
+                if (!active()) return;
+                display(items);
                 setConversationStorageReady(true);
                 setHydrated(true);
+                void session.sync();
             })
             .catch((error: unknown) => {
-                if (cancelled || getActiveUserScope() !== scope || (useUserStore.getState().user?.id || null) !== userId) return;
-                setConversationStorageError(error instanceof Error ? error.message : "读取本地创作记录失败");
-                if (!cached?.length) setHydrated(true);
+                if (active()) setConversationStorageError(error instanceof Error ? error.message : "读取本地创作记录失败");
             });
+        const refresh = () => {
+            if (active() && document.visibilityState !== "hidden") void session.sync();
+        };
+        window.addEventListener("online", refresh);
+        window.addEventListener("focus", refresh);
+        document.addEventListener("visibilitychange", refresh);
+        const poll = window.setInterval(refresh, 15000);
         return () => {
-            cancelled = true;
+            controller.abort();
+            session.dispose();
+            if (historySessionRef.current === session) historySessionRef.current = null;
+            if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
+            historyTimerRef.current = null;
+            window.clearInterval(poll);
+            window.removeEventListener("online", refresh);
+            window.removeEventListener("focus", refresh);
+            document.removeEventListener("visibilitychange", refresh);
         };
     }, [userId, userSessionHydrated, conversationLoadAttempt]);
+
+    const saveConversationHistory = useCallback(async (items: CreationConversation[]) => {
+        const session = historySessionRef.current;
+        if (!session) throw new Error("创作历史尚未就绪");
+        await session.save(items);
+        if (session !== historySessionRef.current) return;
+        if (!historyTimerRef.current)
+            historyTimerRef.current = window.setTimeout(() => {
+                historyTimerRef.current = null;
+                if (session === historySessionRef.current) void session.sync();
+            }, 700);
+    }, []);
 
     useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -425,10 +512,11 @@ export default function CreatePage() {
         conversationsRef.current = conversations;
         if (!userSessionHydrated || !hydrated || !conversationStorageReady || conversationScope !== getActiveUserScope()) return;
         writeCreationConversationSnapshot(conversationScope, conversations);
-        void saveCreationConversations(conversations).catch((error) => {
-            console.warn("创作会话持久化失败；当前会话仍保留在内存快照", error);
+        if (remoteHistorySnapshots.current.has(conversations)) return;
+        void saveConversationHistory(conversations).catch((error) => {
+            setHistorySync({ phase: "error", message: error instanceof Error ? error.message : "本地缓存写入失败" });
         });
-    }, [conversations, conversationScope, hydrated, userSessionHydrated]);
+    }, [conversations, conversationScope, hydrated, userSessionHydrated, saveConversationHistory]);
 
     useEffect(
         () => () => {
@@ -438,12 +526,19 @@ export default function CreatePage() {
         [],
     );
 
+    useEffect(() => {
+        setAddedSkills([]);
+        addedSkillsRequestedRef.current = false;
+    }, [canUseSkills, userId]);
     const loadAddedSkills = useCallback(() => {
-        if (addedSkillsRequestedRef.current) return;
+        const access = captureSkillLibraryAccess();
+        if (!access || addedSkillsRequestedRef.current) return;
         addedSkillsRequestedRef.current = true;
         void import("@/services/api/skills")
             .then(({ listAddedSkills }) => listAddedSkills())
-            .then(({ skills }) => setAddedSkills(skills))
+            .then(({ skills }) => {
+                if (isSkillLibraryAccessCurrent(access)) setAddedSkills(skills);
+            })
             .catch(() => setAddedSkills([]));
     }, []);
 
@@ -473,7 +568,7 @@ export default function CreatePage() {
         }));
         conversationsRef.current = next;
         setConversations(next);
-        await saveCreationConversations(next);
+        await saveConversationHistory(next);
     }, []);
 
     /**
@@ -482,13 +577,22 @@ export default function CreatePage() {
      */
     const applyCreationTaskSnapshots = useCallback(
         async (runtime: CreationRuntime, tasks: GenerationTask[], signal: AbortSignal): Promise<PersistedCreationTask[]> => {
+            const session = historySessionRef.current;
+            const scope = getActiveUserScope();
+            const active = () => !signal.aborted && session === historySessionRef.current && scope === getActiveUserScope();
             const contextual = attachCreationTaskContexts(tasks, conversationsRef.current);
             const persistedTasks = await materializeCreationTaskResults(runtime, contextual, signal);
-            if (signal.aborted) return persistedTasks;
-            const attachable = persistedTasks.filter(
-                (task) => task.status === "succeeded" && Boolean(task.clientContext?.conversationId && task.clientContext.messageId) && Boolean(task.creationResultUrls?.length || task.creationResultStorageKeys?.length),
-            );
-            for (const task of attachable) {
+            if (!active()) return persistedTasks;
+            const assetsAlreadyInLibrary = useAssetStore.getState().assets;
+            const recoveredTasks = persistedTasks.map((task) => {
+                const messageId = task.clientContext?.messageId;
+                if (task.status !== "succeeded" || !messageId || task.creationResultStorageKeys?.length || task.creationResultUrls?.length) return task;
+                const existingStorageKeys = creationResultStorageKeysForMessage(assetsAlreadyInLibrary, { messageId, taskIds: [task.id] });
+                return existingStorageKeys.length ? { ...task, creationResultStorageKeys: existingStorageKeys } : task;
+            });
+            for (const task of recoveredTasks.filter(
+                (candidate) => candidate.status === "succeeded" && Boolean(candidate.clientContext?.conversationId && candidate.clientContext.messageId) && Boolean(candidate.creationResultUrls?.length || candidate.creationResultStorageKeys?.length),
+            )) {
                 const conversationId = task.clientContext!.conversationId!;
                 const messageId = task.clientContext!.messageId!;
                 try {
@@ -522,7 +626,7 @@ export default function CreatePage() {
                     console.warn("创作任务结果挂载失败，将使用已物化结果收敛消息状态", error);
                 }
             }
-            return persistedTasks;
+            return recoveredTasks;
         },
         [updateConversationMessage],
     );
@@ -568,6 +672,20 @@ export default function CreatePage() {
             unsubscribe();
         };
     }, [applyCreationTaskSnapshots, hydrated, recoveryTaskKey, toast]);
+
+    useEffect(() => {
+        const remountRecovery = () => {
+            if (document.visibilityState === "hidden") return;
+            const hasExternallyRecoverableTask = conversationsRef.current.some((conversation) => conversation.messages.some((message) => creationMessageMayHaveExternalVideoResult(message)));
+            if (hasExternallyRecoverableTask) setRecoveryEpoch((value) => value + 1);
+        };
+        window.addEventListener("focus", remountRecovery);
+        document.addEventListener("visibilitychange", remountRecovery);
+        return () => {
+            window.removeEventListener("focus", remountRecovery);
+            document.removeEventListener("visibilitychange", remountRecovery);
+        };
+    }, []);
 
     const beginResultRefresh = (messageId: string) => {
         if (resultRefreshIdsRef.current.has(messageId)) return null;
@@ -642,6 +760,7 @@ export default function CreatePage() {
     };
 
     const selectMode = (next: CreationMode) => {
+        if (workspaceTeamId && next !== "text") return;
         setMode(next);
         rememberMode(next);
         const nextModels = selectableModelsByCapability(config, next);
@@ -682,41 +801,52 @@ export default function CreatePage() {
     };
 
     const attachmentCounts = useMemo(() => splitCreationAttachments(attachments), [attachments]);
-    const videoAssetDisabledReason = useCallback((kind: "image" | "video" | "audio") => {
-        if (mode !== "video") return undefined;
-        if (videoMode === "text") return "文生视频不使用参考素材";
-        if (videoMode !== "reference") return kind === "image" ? undefined : "当前视频模式仅支持图片";
-        const current = kind === "image" ? attachmentCounts.referenceImages.length : kind === "video" ? attachmentCounts.referenceVideos.length : attachmentCounts.referenceAudios.length;
-        const limit = videoReferenceMaximum(kind);
-        return current >= limit ? `当前模型最多支持 ${limit} ${kind === "image" ? "张图片" : kind === "video" ? "个视频" : "个音频"}` : undefined;
-    }, [attachmentCounts.referenceAudios.length, attachmentCounts.referenceImages.length, attachmentCounts.referenceVideos.length, mode, videoMode, videoReferenceMaximum]);
+    const videoAssetDisabledReason = useCallback(
+        (kind: "image" | "video" | "audio") => {
+            if (mode !== "video") return undefined;
+            if (videoMode === "text") return "文生视频不使用参考素材";
+            if (videoMode !== "reference") return kind === "image" ? undefined : "当前视频模式仅支持图片";
+            const current = kind === "image" ? attachmentCounts.referenceImages.length : kind === "video" ? attachmentCounts.referenceVideos.length : attachmentCounts.referenceAudios.length;
+            const limit = videoReferenceMaximum(kind);
+            return current >= limit ? `当前模型最多支持 ${limit} ${kind === "image" ? "张图片" : kind === "video" ? "个视频" : "个音频"}` : undefined;
+        },
+        [attachmentCounts.referenceAudios.length, attachmentCounts.referenceImages.length, attachmentCounts.referenceVideos.length, mode, videoMode, videoReferenceMaximum],
+    );
     const externalLibraryItems = useMemo<AssetLibraryPickerItem[]>(
-        () => externalAssetSources.items.map((item) => ({
-            ...item,
-            disabledReason: mode === "image" && item.external?.item.kind !== "image"
-                ? "图片创作仅支持参考图"
-                : item.external?.item.kind === "image" || item.external?.item.kind === "video" || item.external?.item.kind === "audio"
-                    ? videoAssetDisabledReason(item.external.item.kind)
-                    : undefined,
-        })),
+        () =>
+            externalAssetSources.items.map((item) => ({
+                ...item,
+                disabledReason:
+                    mode === "image" && item.external?.item.kind !== "image"
+                        ? "图片创作仅支持参考图"
+                        : item.external?.item.kind === "image" || item.external?.item.kind === "video" || item.external?.item.kind === "audio"
+                          ? videoAssetDisabledReason(item.external.item.kind)
+                          : undefined,
+            })),
         [externalAssetSources.items, mode, videoAssetDisabledReason],
     );
-    const libraryItems = useMemo<AssetLibraryPickerItem[]>(() => [
-        ...assets
-            .filter((asset): asset is Extract<Asset, { kind: "image" | "video" | "audio" }> => asset.kind === "image" || asset.kind === "video" || asset.kind === "audio")
-            .map((asset) => ({
-                id: asset.id,
-                title: asset.title,
-                category: asset.category || "other",
-                kindLabel: asset.kind === "video" ? t("create.kind.video") : asset.kind === "audio" ? t("create.kind.audio") : t("create.kind.image"),
-                asset,
-                searchText: (asset.tags || []).join(" "),
-                disabledReason: mode === "image" && asset.kind !== "image"
-                    ? "图片创作仅支持参考图"
-                    : videoAssetDisabledReason(asset.kind),
-            })),
-        ...externalLibraryItems,
-    ], [assets, externalLibraryItems, mode, videoAssetDisabledReason]);
+    const libraryItems = useMemo<AssetLibraryPickerItem[]>(
+        () => [
+            ...assets
+                .filter((asset) => (workspaceTeamId ? asset.kind === "text" : asset.kind === "image" || asset.kind === "video" || asset.kind === "audio"))
+                .map((asset) => ({
+                    id: asset.id,
+                    title: asset.title,
+                    category: asset.category || "other",
+                    kindLabel: asset.kind === "text" ? t("library.picker.kind.text") : asset.kind === "video" ? t("create.kind.video") : asset.kind === "audio" ? t("create.kind.audio") : t("create.kind.image"),
+                    archived: asset.status === "archived",
+                    asset,
+                    searchText: (asset.tags || []).join(" "),
+                    disabledReason: workspaceTeamId
+                        ? creationLibraryDisabledReason(mode, asset.kind, videoReferenceLimits, true)
+                        : asset.kind === "image" || asset.kind === "video" || asset.kind === "audio"
+                          ? videoAssetDisabledReason(asset.kind)
+                          : creationLibraryDisabledReason(mode, asset.kind, videoReferenceLimits),
+                })),
+            ...externalLibraryItems,
+        ],
+        [assets, externalLibraryItems, mode, videoAssetDisabledReason, videoReferenceLimits],
+    );
     const uploadCreationAsset = async (file: File) => {
         const { uploadImage, uploadMediaFile } = await loadCreationRuntime();
         if (file.type.startsWith("video/")) {
@@ -744,16 +874,6 @@ export default function CreatePage() {
         };
     };
     /** 游客点开素材库、上传或确认选择时先登录：未提交的提示词留在本页内存，不能用跳转登录页。 */
-    const requireCreationLogin = useCallback(() => {
-        if (useUserStore.getState().user) return true;
-        setLibraryOpen(false);
-        openAuth({ preferDialog: true });
-        return false;
-    }, [openAuth]);
-    const openReferenceLibrary = () => {
-        if (!requireCreationLogin()) return;
-        setLibraryOpen(true);
-    };
 
     const uploadLibraryAssets = async (files: FileList | File[]) => {
         if (!requireCreationLogin()) return [];
@@ -774,6 +894,18 @@ export default function CreatePage() {
 
     const handleLibrarySelect = async (selectedIds: string[], pickedItems = libraryItems) => {
         if (!requireCreationLogin()) return;
+        if (workspaceTeamId) {
+            await loadAssetsForUse(selectedIds, { refresh: true });
+            const byId = new Map(useAssetStore.getState().assets.map((asset) => [asset.id, asset]));
+            const passages = selectedIds.map((id) => {
+                const asset = byId.get(id);
+                if (asset?.kind !== "text" || asset.status === "archived") throw new Error("请选择当前空间中未归档的文本素材");
+                return asset.data.content;
+            });
+            setPrompt((current) => [current, ...passages].filter(Boolean).join("\n\n"));
+            setLibraryOpen(false);
+            return;
+        }
         const next = creationLibrarySelectionToAttachments(selectedIds, pickedItems, mode, videoReferenceLimits);
         if (!next.length) return;
         const selected = new Set(selectedIds);
@@ -787,6 +919,60 @@ export default function CreatePage() {
             return reconciled.attachments;
         });
         setLibraryOpen(false);
+    };
+
+    const addDroppedReferences = async (drop: CreationReferenceDrop) => {
+        if (!requireCreationLogin() || busy || referenceReplacementBusy || referenceDropLock.current) return;
+        const maxImages = mode === "video" ? videoReferenceLimits?.maxImages || 0 : maxReferences;
+        const maxAttachments = mode === "video" ? Infinity : maxReferences;
+        if (maxImages <= 0) {
+            toast.warning("当前模型或模式不支持参考图");
+            return;
+        }
+        const scope = getActiveUserScope();
+        const conversationId = activeId;
+        const active = () => scope === getActiveUserScope() && conversationId === activeIdRef.current;
+        referenceDropLock.current = true;
+        setReferenceDropBusy(true);
+        try {
+            if (drop.kind === "result") {
+                const attachment = await creationAttachmentFromResult(
+                    drop.image,
+                    conversationsRef.current.flatMap((conversation) => conversation.messages),
+                    useAssetStore.getState().assets,
+                );
+                if (!active()) return;
+                const next = appendCreationReference(attachmentsRef.current, attachment, maxImages, maxAttachments);
+                attachmentsRef.current = next;
+                setAttachments(next);
+                return;
+            }
+            const files = drop.files.filter((file) => file.type.startsWith("image/"));
+            if (files.length !== drop.files.length) toast.warning("这里只能拖入图片文件");
+            // 逐张上传，先检查容量；多文件保留原始顺序，失败不阻止后续合法图片。
+            for (const file of files) {
+                if (!active()) break;
+                if (attachmentsRef.current.length >= maxAttachments || attachmentsRef.current.filter((item) => item.type.startsWith("image/")).length >= maxImages) {
+                    toast.warning(t("create.page.referenceLimitExceeded"));
+                    break;
+                }
+                try {
+                    const { asset, attachment } = await uploadCreationAsset(file);
+                    if (!active()) break;
+                    if (asset) addAsset(asset);
+                    const next = appendCreationReference(attachmentsRef.current, attachment, maxImages, maxAttachments);
+                    attachmentsRef.current = next;
+                    setAttachments(next);
+                } catch (error) {
+                    if (active()) toast.error(error instanceof Error ? error.message : "参考图上传失败");
+                }
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "添加参考图失败");
+        } finally {
+            referenceDropLock.current = false;
+            setReferenceDropBusy(false);
+        }
     };
 
     const removeAttachment = (id: string) => {
@@ -880,7 +1066,7 @@ export default function CreatePage() {
         }
         const releaseSubmitGate = () => submitGateRef.current.release(submitToken);
         const text = prompt.trim();
-        if (!text || busy || !activeConversation) {
+        if (!text || busy || referenceReplacementBusy || referenceDropLock.current || !activeConversation) {
             releaseRetryLock();
             releaseSubmitGate();
             return;
@@ -929,11 +1115,13 @@ export default function CreatePage() {
             releaseSubmitGate();
             return;
         }
-        if (mode === "video" && videoMode === "reference" && (
-            activeVideoAttachments.referenceImages.length > videoReferenceMaximum("image")
-            || activeVideoAttachments.referenceVideos.length > videoReferenceMaximum("video")
-            || activeVideoAttachments.referenceAudios.length > videoReferenceMaximum("audio")
-        )) {
+        if (
+            mode === "video" &&
+            videoMode === "reference" &&
+            (activeVideoAttachments.referenceImages.length > videoReferenceMaximum("image") ||
+                activeVideoAttachments.referenceVideos.length > videoReferenceMaximum("video") ||
+                activeVideoAttachments.referenceAudios.length > videoReferenceMaximum("audio"))
+        ) {
             toast.warning("全能参考素材数量超过当前模型上限，请减少后重试");
             releaseRetryLock();
             releaseSubmitGate();
@@ -946,7 +1134,7 @@ export default function CreatePage() {
         // 后端对图片和视频使用不同的参考字段；这里先拆分，避免媒体类型在写入任务时被误判。
         const { referenceImages, referenceVideos, referenceAudios } = mode === "video" ? activeVideoAttachments : splitCreationAttachments(attachments);
         const videoOperation = videoModeOperation(videoMode);
-        const skillReferences = references.flatMap((reference) => (reference.skill ? [reference.skill] : []));
+        const skillReferences = hasSkillLibraryAccess() ? references.flatMap((reference) => (reference.skill ? [reference.skill] : [])) : [];
         let runtime: CreationRuntime;
         try {
             runtime = await loadCreationRuntime();
@@ -1259,7 +1447,7 @@ export default function CreatePage() {
             const next = updateCreationConversationSnapshot(conversationsRef.current, source.id, (item) => ({ ...item, canvasId: result.id }));
             conversationsRef.current = next;
             setConversations(next);
-            await saveCreationConversations(next);
+            await saveConversationHistory(next);
             if (scope !== getActiveUserScope()) return;
             if (result.syncError) toast.warning(t("create.page.handoffSyncPending"));
             const params = new URLSearchParams({ conversation: result.sessionId });
@@ -1267,7 +1455,7 @@ export default function CreatePage() {
                 params.set("mode", "handoff");
                 [...new Set(assetIds)].forEach((id) => params.append("asset", id));
             }
-            navigate(`/canvas/${result.id}?${params.toString()}`);
+            navigate(workspacePath(`/canvas/${result.id}?${params.toString()}`));
         } catch (cause) {
             if (scope === getActiveUserScope()) toast.error(cause instanceof Error ? cause.message : t("create.page.handoffFailed"));
         } finally {
@@ -1301,7 +1489,7 @@ export default function CreatePage() {
                     const sortedRemaining = [...remaining].sort((left, right) => conversationTimestamp(right.updatedAt) - conversationTimestamp(left.updatedAt));
                     const fallback = sortedRemaining.find((item) => item.messages.length > 0) || sortedRemaining[0] || newConversation();
                     const next = remaining.length ? remaining : [fallback];
-                    await saveCreationConversations(next);
+                    await saveConversationHistory(next);
                     conversationsRef.current = next;
                     setConversations(next);
                     if (activeIdRef.current === conversation.id) {
@@ -1327,7 +1515,7 @@ export default function CreatePage() {
         const next = updateCreationConversationSnapshot(conversationsRef.current, conversation.id, (item) => ({ ...item, title: nextTitle }));
         conversationsRef.current = next;
         setConversations(next);
-        void saveCreationConversations(next).catch((error) => toast.error(error instanceof Error ? error.message : t("create.page.renameFailed")));
+        void saveConversationHistory(next).catch((error) => toast.error(error instanceof Error ? error.message : t("create.page.renameFailed")));
     };
 
     const restoreMessageDraft = (item: CreationMessage) => {
@@ -1430,8 +1618,17 @@ export default function CreatePage() {
         return (
             <div className="grid h-full place-items-center">
                 <div className="text-center">
-                    <p role="alert" className="mb-3 text-sm text-foreground/65">{t("create.page.recordLoadFailed", { reason: conversationStorageError })}</p>
-                    <Button onClick={() => { setConversationStorageError(""); setConversationLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</Button>
+                    <p role="alert" className="mb-3 text-sm text-foreground/65">
+                        {t("create.page.recordLoadFailed", { reason: conversationStorageError })}
+                    </p>
+                    <Button
+                        onClick={() => {
+                            setConversationStorageError("");
+                            setConversationLoadAttempt((attempt) => attempt + 1);
+                        }}
+                    >
+                        {t("common.retry")}
+                    </Button>
                 </div>
             </div>
         );
@@ -1474,6 +1671,8 @@ export default function CreatePage() {
         busy,
         generationActive,
         referenceReplacementBusy,
+        referenceDropBusy,
+        onReferenceDrop: addDroppedReferences,
         attachments,
         referenceImageSize,
         maxReferences,
@@ -1532,98 +1731,226 @@ export default function CreatePage() {
         },
     };
 
-
-    return <>
-        <div className="creation-home relative flex h-full min-h-0 flex-col overflow-hidden">
-            {conversationStorageError ? <p role="status" className="mx-auto mb-3 max-w-3xl px-4 text-xs text-foreground/55">{t("create.page.recordLoadFailedInline", { reason: conversationStorageError })} <button type="button" className="underline underline-offset-2" onClick={() => { setConversationStorageError(""); setConversationLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button></p> : null}
-            {isEmpty ? <>
-                <AnimatePresence>
-                    {launchpadCondensed && !agentMode ? <motion.div className="creation-floating-prompt" key="floating-prompt"
-                        style={{ x: "-50%" }}
-                        initial={{ opacity: 0, y: -12, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .98 }}
-                        transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 32, mass: .8 }}>
-                        <PenLine aria-hidden="true" />
-                        <input aria-label={t("create.page.quickEditLabel")} placeholder={t("create.page.quickEditPlaceholder")} value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
-                        <Tooltip title={t("create.page.expandComposer")}><button type="button" aria-label={t("create.page.expandComposer")} onClick={() => {
-                            threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
-                            composerFocusRef.current?.focus({ preventScroll: true });
-                        }}><Maximize2 /></button></Tooltip>
-                    </motion.div> : null}
-                </AnimatePresence>
-                <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-home-scroll creation-scrollbar">
-                <section ref={launchpadRef} className="creation-launchpad" aria-label={t("create.page.launchpadLabel")}>
-                    <header className="creation-start-heading">
-                        <div>
-                            <h1>{t("create.page.heading", { brand: brandName })}</h1>
-                            <p>{t("create.page.subheading")}</p>
-                        </div>
-                        <button type="button" className="creation-history-entry" aria-label={t("create.page.viewHistory")} aria-expanded={historyOpen} onClick={() => setHistoryOpen(true)}><History aria-hidden="true" /><span>{t("create.history.title")}</span></button>
-                    </header>
-                    <div className={cn("creation-composer-stage is-home-mode", agentMode && "is-agent-mode")}>
-                        <CreationModeCard mode={mode} agentActive={agentMode} onAgentSelect={() => setAgentMode(true)} onModeChange={(next) => { setAgentMode(false); selectMode(next); }}>
-                            {agentMode ? <CreationAgentEntry /> : <div className="creation-empty-composer"><CreationComposer {...composerProps} variant="empty" /></div>}
-                        </CreationModeCard>
+    return (
+        <>
+            <div className="creation-home relative flex h-full min-h-0 flex-col overflow-hidden">
+                <p role="status" aria-live="polite" className="mx-auto px-4 py-1 text-xs text-foreground/55">
+                    <span title={historySync.message}>{t(`create.historySync.${historySync.phase}`)}</span>
+                    {historySync.message ? <span> · {historySync.message}</span> : null}
+                    {historySync.phase === "error" ? (
+                        <button type="button" className="ml-2 underline" onClick={() => void historySessionRef.current?.sync()}>
+                            {t("create.historySync.retry")}
+                        </button>
+                    ) : null}
+                    <CreationHistoryConflicts key={activeConversationScope} session={historySessionRef.current} status={historySync} busy={busy} />
+                </p>
+                {conversationStorageError ? (
+                    <p role="status" className="mx-auto mb-3 max-w-3xl px-4 text-xs text-foreground/55">
+                        本地历史读取失败，当前会话仍保留。 {conversationStorageError}{" "}
+                        <button
+                            type="button"
+                            className="underline underline-offset-2"
+                            onClick={() => {
+                                setConversationStorageError("");
+                                setConversationLoadAttempt((attempt) => attempt + 1);
+                            }}
+                        >
+                            重试
+                        </button>
+                    </p>
+                ) : null}
+                {isEmpty ? (
+                    <>
+                        <AnimatePresence>
+                            {launchpadCondensed && !agentMode ? (
+                                <motion.div
+                                    className="creation-floating-prompt"
+                                    key="floating-prompt"
+                                    style={{ x: "-50%" }}
+                                    initial={{ opacity: 0, y: -12, scale: 0.97 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                                    transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 32, mass: 0.8 }}
+                                >
+                                    <PenLine aria-hidden="true" />
+                                    <input aria-label={t("create.page.quickEditLabel")} placeholder={t("create.page.quickEditPlaceholder")} value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
+                                    <Tooltip title={t("create.page.expandComposer")}>
+                                        <button
+                                            type="button"
+                                            aria-label={t("create.page.expandComposer")}
+                                            onClick={() => {
+                                                threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+                                                composerFocusRef.current?.focus({ preventScroll: true });
+                                            }}
+                                        >
+                                            <Maximize2 />
+                                        </button>
+                                    </Tooltip>
+                                </motion.div>
+                            ) : null}
+                        </AnimatePresence>
+                        <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-home-scroll creation-scrollbar">
+                            <section ref={launchpadRef} className="creation-launchpad" aria-label={t("create.page.launchpadLabel")}>
+                                <header className="creation-start-heading">
+                                    <div>
+                                        <h1>{t("create.page.heading", { brand: brandName })}</h1>
+                                        <p>{t("create.page.subheading")}</p>
+                                    </div>
+                                    <button type="button" className="creation-history-entry" aria-label={t("create.page.viewHistory")} aria-expanded={historyOpen} onClick={() => setHistoryOpen(true)}>
+                                        <History aria-hidden="true" />
+                                        <span>{t("create.history.title")}</span>
+                                    </button>
+                                </header>
+                                <div className={cn("creation-composer-stage is-home-mode", agentMode && "is-agent-mode")}>
+                                    <CreationModeCard
+                                        mode={mode}
+                                        agentActive={agentMode}
+                                        onAgentSelect={() => setAgentMode(true)}
+                                        onModeChange={(next) => {
+                                            setAgentMode(false);
+                                            selectMode(next);
+                                        }}
+                                    >
+                                        {agentMode ? (
+                                            <CreationAgentEntry />
+                                        ) : (
+                                            <div className="creation-empty-composer">
+                                                <CreationComposer {...composerProps} variant="empty" />
+                                            </div>
+                                        )}
+                                    </CreationModeCard>
+                                </div>
+                                {!workspaceTeamId && (
+                                    <CreationEmptySuggest
+                                        onStartPrompt={startPrompt}
+                                        onOpenLibrary={() => {
+                                            if (!requireCreationLogin()) return;
+                                            setAgentMode(false);
+                                            selectMode("image");
+                                            setLibraryOpen(true);
+                                        }}
+                                    />
+                                )}
+                            </section>
+                            {!workspaceTeamId && <PersonalSpaceCreditOverview />}
+                            <CreationRecentCanvases onRequireLogin={() => openAuth()} />
+                            <Suspense
+                                fallback={
+                                    <div className="creation-hall-loading" role="status">
+                                        {t("create.page.hallLoading")}
+                                    </div>
+                                }
+                            >
+                                {!workspaceTeamId && <InspirationHall onUse={(item) => startPrompt(item.mode, fillablePrompt(item))} />}
+                            </Suspense>
+                            {inspirationSourcesVisible ? (
+                                <div className="creation-source-notice">
+                                    <details>
+                                        <summary>{t("create.page.sourcesSummary")}</summary>
+                                        {declaredInspirationSources().map((source) => (
+                                            <p key={source.name ?? source.label}>
+                                                {source.notice}
+                                                {source.repository ? (
+                                                    <>
+                                                        {" "}
+                                                        <a href={source.repository} target="_blank" rel="noreferrer">
+                                                            {source.name} · {source.license}
+                                                        </a>
+                                                    </>
+                                                ) : null}
+                                            </p>
+                                        ))}
+                                    </details>
+                                </div>
+                            ) : null}
+                        </main>
+                    </>
+                ) : (
+                    <div className="creation-thread-workbench">
+                        <CreationWorkspaceToolbar
+                            onNewConversation={startNewConversation}
+                            onOpenHistory={() => setHistoryOpen(true)}
+                            shots={videoShots}
+                            onJumpToShot={jumpToShot}
+                            onContinueCanvas={() => void continueOnCanvas()}
+                            openingCanvas={openingCanvas}
+                        />
+                        <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-thread-scroll creation-scrollbar">
+                            <section className="creation-thread-stage">
+                                <div className="creation-results">
+                                    {activeConversation.messages.map((item, index) => (
+                                        <div key={item.id} id={`creation-shot-${item.id}`} className="creation-thread-message">
+                                            <CreationMessageView
+                                                item={item}
+                                                shotNumber={creationVideoShotOrdinal(videoShots, item)}
+                                                onRetryFailure={() => regenerateMessage(item, index)}
+                                                onRefreshResult={() => void refreshMessageResult(item)}
+                                                onRecoverMedia={() => void recoverMessageMedia(item)}
+                                                refreshingResult={resultRefreshIds.has(item.id)}
+                                                onCreateVariant={() => createVariant(item, index)}
+                                                onContinueCanvas={(ids) => void continueOnCanvas(ids)}
+                                                openingCanvas={openingCanvas}
+                                                onEditUserMessage={(text) => {
+                                                    setPrompt(text);
+                                                    window.requestAnimationFrame(() => composerFocusRef.current?.focus());
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        </main>
+                        <section className="creation-thread-composer">
+                            <CreationComposer {...composerProps} variant="thread" />
+                        </section>
                     </div>
-                    <CreationEmptySuggest
-                        onStartPrompt={startPrompt}
-                        onOpenLibrary={() => { if (!requireCreationLogin()) return; setAgentMode(false); selectMode("image"); setLibraryOpen(true); }}
+                )}
+            </div>
+            <CreationHistoryDrawer
+                open={historyOpen}
+                conversations={historyConversations}
+                activeId={activeConversation.id}
+                onNew={startNewConversation}
+                onClose={() => setHistoryOpen(false)}
+                onSelect={selectConversation}
+                onDelete={confirmDeleteConversation}
+                onRename={renameConversationTitle}
+            />
+            {libraryOpen ? (
+                <Suspense fallback={null}>
+                    <AssetLibraryPickerModal
+                        remoteLibrary
+                        remoteKind={workspaceTeamId ? "text" : undefined}
+                        confirmLabel={workspaceTeamId ? (count) => `插入文本（${count}）` : undefined}
+                        acceptRemoteItems
+                        remoteItemDisabledReason={(asset) => creationLibraryDisabledReason(mode, asset.kind, videoReferenceLimits, Boolean(workspaceTeamId))}
+                        open={libraryOpen}
+                        items={libraryItems}
+                        categoryLabels={{ ...creationAssetCategoryLabels, ...externalAssetSources.categoryLabels }}
+                        folders={externalAssetSources.folders}
+                        initialSelectedIds={attachments.flatMap((item) => (item.id.startsWith("asset:") ? [item.id.slice(6)] : item.id.startsWith("external:") ? [item.id] : []))}
+                        upload={
+                            workspaceTeamId
+                                ? undefined
+                                : {
+                                      accept: creationUploadAccept(mode),
+                                      description: mode === "text" ? t("create.page.uploadHintText") : mode === "video" ? t("create.page.uploadHintVideo") : t("create.page.uploadHintImage"),
+                                      onUpload: uploadLibraryAssets,
+                                      external: {
+                                          accept: "image/*",
+                                          description: t("create.page.uploadHintEagle"),
+                                          onUpload: (files, folderId) => {
+                                              if (!requireCreationLogin()) return Promise.resolve([]);
+                                              return externalAssetSources.uploadExternalFiles(files, folderId);
+                                          },
+                                      },
+                                  }
+                        }
+                        onClose={() => setLibraryOpen(false)}
+                        onConfirm={handleLibrarySelect}
                     />
-                </section>
-                <CreationRecentCanvases onRequireLogin={() => openAuth()} />
-                <Suspense fallback={<div className="creation-hall-loading" role="status">{t("create.page.hallLoading")}</div>}>
-                    <InspirationHall onUse={(item) => startPrompt(item.mode, fillablePrompt(item))} />
                 </Suspense>
-                {inspirationSourcesVisible ? <div className="creation-source-notice">
-                    <details>
-                        <summary>{t("create.page.sourcesSummary")}</summary>
-                        {declaredInspirationSources().map((source) => (
-                            <p key={source.name ?? source.label}>
-                                {source.notice}
-                                {source.repository ? (
-                                    <>
-                                        {" "}
-                                        <a href={source.repository} target="_blank" rel="noreferrer">
-                                            {source.name} · {source.license}
-                                        </a>
-                                    </>
-                                ) : null}
-                            </p>
-                        ))}
-                    </details>
-                </div> : null}
-                </main>
-            </> : <div className="creation-thread-workbench">
-                <CreationWorkspaceToolbar onNewConversation={startNewConversation} onOpenHistory={() => setHistoryOpen(true)} shots={videoShots} onJumpToShot={jumpToShot} onContinueCanvas={() => void continueOnCanvas()} openingCanvas={openingCanvas} />
-                <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-thread-scroll creation-scrollbar">
-                    <section className="creation-thread-stage"><div className="creation-results">{activeConversation.messages.map((item, index) => <div key={item.id} id={`creation-shot-${item.id}`} className="creation-thread-message"><CreationMessageView
-                        item={item}
-                        shotNumber={creationVideoShotOrdinal(videoShots, item)}
-                        onRetryFailure={() => regenerateMessage(item, index)}
-                        onRefreshResult={() => void refreshMessageResult(item)}
-                        onRecoverMedia={() => void recoverMessageMedia(item)}
-                        refreshingResult={resultRefreshIds.has(item.id)}
-                        onCreateVariant={() => createVariant(item, index)}
-                        onContinueCanvas={(ids) => void continueOnCanvas(ids)}
-                        openingCanvas={openingCanvas}
-                        onEditUserMessage={(text) => { setPrompt(text); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
-                    /></div>)}</div></section>
-                </main>
-                <section className="creation-thread-composer"><CreationComposer {...composerProps} variant="thread" /></section>
-            </div>}
-        </div>
-        <CreationHistoryDrawer open={historyOpen} conversations={historyConversations} activeId={activeConversation.id} onNew={startNewConversation} onClose={() => setHistoryOpen(false)} onSelect={selectConversation} onDelete={confirmDeleteConversation} onRename={renameConversationTitle} />
-        {libraryOpen ? <Suspense fallback={null}><AssetLibraryPickerModal
-            remoteLibrary
-            acceptRemoteItems
-            remoteItemDisabledReason={(asset) => creationLibraryDisabledReason(mode, asset.kind, videoReferenceLimits)}
-            open={libraryOpen}
-            items={libraryItems}
-            categoryLabels={{ ...creationAssetCategoryLabels, ...externalAssetSources.categoryLabels }}
-            folders={externalAssetSources.folders}
-            initialSelectedIds={attachments.flatMap((item) => item.id.startsWith("asset:") ? [item.id.slice(6)] : item.id.startsWith("external:") ? [item.id] : [])}
-            upload={{ accept: creationUploadAccept(mode, videoMode), description: mode === "text" ? t("create.page.uploadHintText") : mode === "video" && videoMode === "reference" ? t("create.page.uploadHintVideo") : t("create.page.uploadHintImage"), onUpload: uploadLibraryAssets, external: { accept: "image/*", description: t("create.page.uploadHintEagle"), onUpload: (files, folderId) => externalAssetSources.uploadExternalFiles(files, folderId) } }}
-            onClose={() => setLibraryOpen(false)}
-            onConfirm={handleLibrarySelect}
-        /></Suspense> : null}
-    </>;
+            ) : null}
+        </>
+    );
 }

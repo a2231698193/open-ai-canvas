@@ -1,4 +1,4 @@
-import { Crown, HardDrive, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Coins, Crown, HardDrive, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -7,7 +7,6 @@ import { currentLocale } from "@/i18n";
 import { TopbarFeedbackButton } from "@/components/feedback/topbar-feedback-button";
 import { SystemAnnouncementCenter } from "@/components/layout/system-announcement-center";
 import { WorkspaceAccountMenu } from "@/components/layout/workspace-account-menu";
-import { WorkspaceCreditGiftMark } from "@/components/layout/workspace-credit-gift-mark";
 import { WorkspaceTopBarExtensionSlot } from "@/components/layout/workspace-top-bar-extension";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { LanguageMenu } from "@/components/layout/language-menu";
@@ -21,6 +20,7 @@ import { openStoragePurchase } from "@/lib/workspace-storage";
 import { useAccountFileStorageUsage } from "@/hooks/use-account-file-storage-usage";
 import { accountStorageMeter } from "@/lib/account-storage-usage";
 import { workspacePageTitleKey } from "@/lib/workspace-page-title";
+import { useThemePack } from "@/themes/use-theme-pack";
 
 export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen: boolean; onToggleSidebar: () => void }) {
     const [membershipOpen, setMembershipOpen] = useState(false);
@@ -28,6 +28,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     const { t } = useTranslation();
     const theme = useThemeStore((state) => state.theme);
+    const BalanceMark = useThemePack()?.creditMark ?? Coins;
     const setTheme = useThemeStore((state) => state.setTheme);
     const user = useUserStore((state) => state.user);
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
@@ -91,7 +92,7 @@ export function WorkspaceTopBar({ sidebarOpen, onToggleSidebar }: { sidebarOpen:
                             {membershipPriceFen > 0 ? <small className="app-workspace-topbar-credit-price">{t("shell.priceFrom", { price: formatMembershipPrice(membershipPriceFen) })}</small> : null}
                         </button>
                         <button type="button" className="app-workspace-topbar-credit-pill" aria-label={t("shell.openWallet", { balance })} onClick={() => navigate("/membership")}>
-                            <WorkspaceCreditGiftMark />
+                            <BalanceMark aria-hidden className="size-4" />
                             <span>{t("shell.credits")}</span>
                             <strong>{balance}</strong>
                         </button>

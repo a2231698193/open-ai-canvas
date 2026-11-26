@@ -261,12 +261,12 @@ test("视频能力模板：引用卡片独立滚动区与数量、大小、时�
         for (const [label, value] of [
             ["最大图片引用", "1"],
             ["单张图片上限 MB", "10"],
-            ["最大视频引用", "2"],
+            ["参考视频最多段数", "2"],
             ["单个视频上限 MB", "25"],
-            ["单个视频最长秒数", "8"],
-            ["最大音频引用", "1"],
+            ["参考视频总时长上限", "8"],
+            ["参考音频最多段数", "1"],
             ["单个音频上限 MB", "12"],
-            ["单个音频最长秒数", "9"],
+            ["参考音频总时长上限", "9"],
         ]) {
             const field = [...content.querySelectorAll("label.admin-capability-number-field")].find((node) => node.textContent?.includes(label))!;
             expect(field).toBeTruthy();
@@ -276,7 +276,7 @@ test("视频能力模板：引用卡片独立滚动区与数量、大小、时�
         }
         await click("保存");
         const saved = readCapabilityTemplates("template-test")[0].config.capabilityConfig!.video!.references;
-        expect(saved).toMatchObject({ maxImages: 1, maxImageBytes: 10 * 1024 * 1024, maxVideos: 2, maxVideoBytes: 25 * 1024 * 1024, maxVideoDurationSeconds: 8, maxAudios: 1, maxAudioBytes: 12 * 1024 * 1024, maxAudioDurationSeconds: 9 });
+        expect(saved).toMatchObject({ maxImages: 1, maxImageBytes: 10 * 1024 * 1024, maxVideos: 2, maxVideoBytes: 25 * 1024 * 1024, maxTotalVideoDurationSeconds: 8, maxAudios: 1, maxAudioBytes: 12 * 1024 * 1024, maxTotalAudioDurationSeconds: 9 });
         await click("应用能力模板");
         expect(fixture.form.getFieldValue(["capabilityConfig", "video", "references"])).toEqual(saved);
         expect(fixture.form.getFieldValue("protocol")).toBe("agnes-video");
@@ -808,12 +808,13 @@ test("完整模型编辑器：迟到的协议建议保留已应用模板能力�
     }
 });
 
-test("完整模型编辑器：先应用或撤销模板再发起协议建议也保留能力", async () => {
-    const values = draft();
-    values.capabilityConfig!.image!.references.maxImageBytes = 7 * 1024 * 1024;
-    saveCapabilityTemplate("template-test", "先设能力", values);
-    for (const loading of [false, true]) {
-        for (const undo of [false, true]) {
+// 每个组合独立计时、清理，避免四次完整编辑流程共用一个测试时限。
+for (const loading of [false, true]) {
+    for (const undo of [false, true]) {
+        test(`完整模型编辑器：先应用或撤销模板再发起协议建议也保留能力（加载中 ${loading}，撤销 ${undo}）`, async () => {
+            const values = draft();
+            values.capabilityConfig!.image!.references.maxImageBytes = 7 * 1024 * 1024;
+            saveCapabilityTemplate("template-test", "先设能力", values);
             const initial = { ...draft(), protocol: "", modelKey: "", providerModelKey: "" };
             initial.capabilityConfig!.image!.references.maxImageBytes = 11 * 1024 * 1024;
             const fixture = await mountEditor(null, protocols, initial, loading);
@@ -837,7 +838,138 @@ test("完整模型编辑器：先应用或撤销模板再发起协议建议也�
             } finally {
                 await fixture.close();
             }
+        });
+    }
+}
+
+test("图片模型的分辨率默认值、画布预览与保存使用同一份能力草稿", async () => {
+    const fresh = initialChannelModelValues({ ...savedModel(), capabilityConfig: undefined }, protocols).capabilityConfig!.image!;
+    expect(fresh.resolution.default).toBe("1k");
+    expect(fresh.size.values).toContain("16:9");
+    expect(fresh.size.values.some((value) => /^\d+x\d+$/.test(value))).toBe(false);
+    expect(fresh.size.presets?.some((preset) => preset.tier === "1k" && preset.ratio === "1:1")).toBe(true);
+    const { applyCapabilityTemplate } = await import("../../src/pages/admin/components/channel-model-templates");
+    const editing = savedModel(applyCapabilityTemplate("gpt-image-openai-v1", draft()));
+    const fixture = await mountEditor(editing);
+    try {
+        expect(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("能力与参数");
+        const preview = document.querySelector('aside[aria-label="画布节点预览"]')!;
+        const selected = () => Array.from(preview.querySelectorAll('button[aria-pressed="true"]'), (option) => option.textContent);
+        expect(selected()).toContain("1K");
+        await click("设分辨率 2K 为默认");
+        expect(selected()).toContain("2K");
+        await click("分辨率支持 2K");
+        expect(selected()).not.toContain("2K");
+        expect(document.querySelector('[aria-label="设分辨率 2K 为默认"]')).toBeNull();
+        await click("设分辨率 4K 为默认");
+        const sections = document.querySelector('[aria-label="图片能力分组"]')!;
+        for (const name of ["输入素材", "能力模板", "生成参数"]) {
+            const label = Array.from(sections.querySelectorAll("label")).find((element) => element.textContent === name)!;
+            await act(async () => label.querySelector("input")!.click());
+            expect(Boolean(preview.closest("[hidden]"))).toBe(name !== "生成参数");
         }
+        expect(selected()).toContain("4K");
+        expect(fixture.saves).toHaveLength(0);
+        await click("保存修改");
+        expect(fixture.saves).toHaveLength(1);
+        expect(fixture.saves[0]).toMatchObject({ protocol: editing.protocol, priceTiers: [{ unitPriceMicrocredits: 17_000_000 }], capabilityConfig: { image: { resolution: { values: ["auto", "1k", "4k"], default: "4k" } } } });
+        expect(fixture.saves[0].capabilityConfig.image.parameters.find((field: { name: string }) => field.name === "imageResolution").default).toBe("4k");
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("视频编辑从生成参数打开，预览跟随草稿，切换素材与模板不丢参数或价格", async () => {
+    const model = "wan3.0-video";
+    const protocol = "dashscope-wan3-video";
+    const editing = savedModel({ ...draft(), modelKey: model, providerModelKey: model, capability: "video", protocol, capabilityConfig: defaultModelCapabilityConfig(protocol, model) });
+    const fixture = await mountEditor(editing, [{ ...protocols[0], capability: "video", value: protocol, version: "2.1.0", imageParameters: undefined }]);
+    try {
+        expect(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("能力与参数");
+        const panel = document.getElementById(document.querySelector('[role="tab"][aria-selected="true"]')!.getAttribute("aria-controls")!)!;
+        const switchView = async (label: string) => {
+            const option = Array.from(panel.querySelectorAll("label")).find((element) => element.textContent === label);
+            expect(option).toBeDefined();
+            await act(async () => option!.querySelector("input")!.click());
+        };
+        const preview = panel.querySelector('aside[aria-label="画布节点预览"]')!;
+        expect(preview.closest("[hidden]")).toBeNull();
+        expect(panel.querySelector(".admin-model-editor-references")!.closest("[hidden]")).not.toBeNull();
+        await click("设 支持比例 9:16 为默认");
+        expect(Array.from(preview.querySelectorAll('button[aria-pressed="true"]'), (button) => button.textContent)).toContain("9:16");
+        await switchView("输入素材");
+        expect(panel.querySelector(".admin-model-editor-references")!.closest("[hidden]")).toBeNull();
+        await switchView("能力模板");
+        expect(preview.closest("[hidden]")).not.toBeNull();
+        await switchView("生成参数");
+        expect(button("设 支持比例 9:16 为默认").getAttribute("aria-pressed")).toBe("true");
+        expect(fixture.saves).toHaveLength(0);
+        await click("保存修改");
+        expect(fixture.saves).toHaveLength(1);
+        expect(fixture.saves[0]).toMatchObject({ protocol, providerModelKey: model, priceCurrency: "USD", capabilityConfig: { video: { defaultRatio: "9:16" } }, priceTiers: [{ unitPriceMicrocredits: 17_000_000 }] });
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("Flash 的模式、分辨率和预设使用模型绑定的发行版，切换版本保留草稿直到显式应用", async () => {
+    const bundle = await Bun.file(new URL("../../../plugin-packages/kling-v4-official/manifest.json", import.meta.url)).json();
+    const provider = bundle.contributes.providers[0];
+    const model = "kling-4.0-flash";
+    const current = { pluginId: bundle.id, version: bundle.version, sha256: "b".repeat(64), current: true, create: provider.create.path, videoModes: provider.videoModes, videoOutputs: provider.videoOutputs };
+    const older = { ...current, version: "fixture", sha256: "a".repeat(64), current: false, videoModes: { [model]: { text_to_video: provider.videoModes[model].text_to_video } } };
+    const editing = savedModel({ ...draft(), modelKey: model, providerModelKey: model, protocol: provider.id, protocolRelease: current.sha256, capability: "video", capabilityConfig: defaultModelCapabilityConfig(provider.id, model) });
+    const fixture = await mountEditor(editing, [{ ...protocols[0], value: provider.id, capability: "video", releases: [current, older], version: current.version }]);
+    try {
+        const modes = () => [...document.querySelectorAll("fieldset")].find((fieldset) => fieldset.querySelector("legend")?.textContent === "支持模式")!;
+        expect(modes().querySelectorAll('input[type="checkbox"]')).toHaveLength(3);
+        expect(document.querySelector('[aria-label="添加 输出分辨率 4k"], [aria-label="新增输出分辨率"]')).toBeNull();
+        expect(document.querySelector('[aria-label="设 输出分辨率 720p 为默认"]')).toBeTruthy();
+        await tab("基本信息");
+        await choose("插件发行版本", "vfixture · aaaaaaaaaaaa");
+        await tab("能力与参数");
+        expect(modes().textContent).toContain("图生视频（当前版本不支持）");
+        await click(`应用 ${model} 视频预设`);
+        expect(modes().querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+        await click("保存修改");
+        expect(fixture.saves[0]).toMatchObject({ protocolRelease: older.sha256, capabilityConfig: { video: { operations: ["text_to_video"], resolutions: ["720p"] } } });
+    } finally {
+        await fixture.close();
+    }
+});
+
+test("视频支持模式平铺多选，默认模式只能取已勾选值，最后一项不能移除", async () => {
+    const protocol = "video-test";
+    const editing = savedModel({ ...draft(), capability: "video", protocol, capabilityConfig: defaultModelCapabilityConfig(protocol) });
+    const fixture = await mountEditor(editing, [{ ...protocols[0], capability: "video", value: protocol, imageParameters: undefined }]);
+    try {
+        const modes = Array.from(document.querySelectorAll("fieldset")).find((element) => element.querySelector("legend")?.textContent === "支持模式")!;
+        const checkbox = (name: string) =>
+            Array.from(modes.querySelectorAll("label"))
+                .find((element) => element.textContent === name)!
+                .querySelector("input")!;
+        const toggle = (name: string) => act(async () => checkbox(name).click());
+        const preview = document.querySelector('aside[aria-label="画布节点预览"]')!;
+        expect(modes.querySelector('[role="combobox"]')).toBeNull();
+        expect(checkbox("文生视频").checked).toBe(true);
+        expect(checkbox("图生视频").checked).toBe(true);
+        expect(checkbox("视频续写").checked).toBe(false);
+        await toggle("视频续写");
+        await click("设视频续写为默认模式");
+        expect(preview.textContent).toContain("默认模式 · 视频续写");
+        await toggle("视频续写");
+        expect(button("设文生视频为默认模式").getAttribute("aria-pressed")).toBe("true");
+        expect(modes.querySelector('[aria-label="设视频续写为默认模式"]')).toBeNull();
+        await toggle("文生视频");
+        expect(checkbox("图生视频").disabled).toBe(true);
+        expect(button("设图生视频为默认模式").getAttribute("aria-pressed")).toBe("true");
+        await toggle("全模态参考");
+        expect(checkbox("图生视频").disabled).toBe(false);
+        expect(fixture.saves).toHaveLength(0);
+        await click("保存修改");
+        expect(fixture.saves[0]).toMatchObject({ protocol, capabilityConfig: { video: { operations: ["image_to_video", "reference_to_video"], defaultOperation: "image_to_video" } } });
+    } finally {
+        await fixture.close();
     }
 });
 
@@ -858,9 +990,9 @@ test("完整模型编辑器：未操作保存保留参考视频计价及独立�
     }
 });
 
-test("完整模型编辑器：复制预填与模板操作不记录协议选择，主动改协议才记录", async () => {
-    const catalog = [...protocols, { ...protocols[0], value: "other-image", label: "另一图片协议" }];
-    for (const action of ["unchanged", "manual", "template", "undo"] as const) {
+for (const action of ["unchanged", "manual", "template", "undo"] as const) {
+    test(`完整模型编辑器：复制预填与模板操作不记录协议选择，主动改协议才记录（${action}）`, async () => {
+        const catalog = [...protocols, { ...protocols[0], value: "other-image", label: "另一图片协议" }];
         const copied = duplicateChannelModelValues(savedModel(), catalog);
         const fixture = await mountEditor(null, catalog, copied);
         try {
@@ -880,8 +1012,8 @@ test("完整模型编辑器：复制预填与模板操作不记录协议选择�
         } finally {
             await fixture.close();
         }
-    }
-});
+    });
+}
 
 test("完整模型编辑器：已有模型改协议再改回原值，保存不刷新协议记忆", async () => {
     const catalog = [...protocols, { ...protocols[0], value: "other-image", label: "另一图片协议" }];

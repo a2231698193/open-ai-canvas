@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,10 +12,6 @@ import (
 )
 
 const DefaultAgentMaxRunsPerUser = 5
-
-// The quota covers Agent payloads, including native sessions, receipts and undo
-// snapshots. Ordinary task data continues to use the configurable task quota.
-const AgentStoredDataLimit int64 = 256 << 20
 
 // Release a carrier whose first checkpoint could not fit. A concurrent successful
 // initializer wins: its execution/ready marker prevents this terminal update.
@@ -41,18 +38,8 @@ func enforceAgentRunLimit(tx *gorm.DB, task *model.Task, configured []int) error
 	if task.UserID == "" || limit < 1 || limit > 64 {
 		return gorm.ErrInvalidData
 	}
-	// Acquire before observing the parent/canvas or count, including on SQLite.
-	switch tx.Dialector.Name() {
-	case "postgres":
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", "agent-runs:"+task.UserID).Error; err != nil {
-			return err
-		}
-	case "sqlite":
-		if err := tx.Exec("UPDATE tasks SET progress = progress WHERE 1 = 0").Error; err != nil {
-			return err
-		}
-	default:
-		return gorm.ErrInvalidData
+	if err := lockAgentRunAdmissions(tx, task.UserID); err != nil {
+		return err
 	}
 	var count int64
 	err := tx.Raw(`SELECT COUNT(*) FROM tasks t
@@ -70,6 +57,28 @@ func enforceAgentRunLimit(tx *gorm.DB, task *model.Task, configured []int) error
 	return nil
 }
 
+func lockAgentRunAdmissions(tx *gorm.DB, userID string) error {
+	switch tx.Dialector.Name() {
+	case "postgres":
+		return tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", "agent-runs:"+userID).Error
+	case "sqlite":
+		return tx.Exec("UPDATE tasks SET progress = progress WHERE 1 = 0").Error
+	default:
+		return gorm.ErrInvalidData
+	}
+}
+
+func lockAgentStoragePool(tx *gorm.DB) error {
+	switch tx.Dialector.Name() {
+	case "postgres":
+		return tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", "agent-storage:global").Error
+	case "sqlite":
+		return tx.Exec("UPDATE agent_storage_usages SET stored_bytes = stored_bytes WHERE 1 = 0").Error
+	default:
+		return gorm.ErrInvalidData
+	}
+}
+
 // beginAgentStorageWrite must run inside the write transaction, before changing
 // payloads. PostgreSQL locks across backend instances; SQLite obtains its write
 // lock before taking a read snapshot. Nested writes reuse the transaction lock.
@@ -79,6 +88,9 @@ func (r *Repository) beginAgentStorageWrite(userID string) error {
 	}
 	switch r.Dialect() {
 	case "postgres":
+		if err := lockAgentStoragePool(r.db); err != nil {
+			return err
+		}
 		if err := r.db.Exec("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", "agent-storage:"+userID).Error; err != nil {
 			return err
 		}
@@ -89,6 +101,10 @@ func (r *Repository) beginAgentStorageWrite(userID string) error {
 	default:
 		return gorm.ErrInvalidData
 	}
+	return r.ensureAgentStorageUsage(userID)
+}
+
+func (r *Repository) ensureAgentStorageUsage(userID string) error {
 	var usage model.AgentStorageUsage
 	err := r.db.First(&usage, "user_id = ?", userID).Error
 	if err == nil {
@@ -109,8 +125,14 @@ func (r *Repository) changeAgentStoredBytes(userID string, delta int64) error {
 		return nil
 	}
 	q := r.db.Model(&model.AgentStorageUsage{}).Where("user_id = ?", userID)
+	var limit int64
 	if delta > 0 {
-		q = q.Where("stored_bytes <= ?", AgentStoredDataLimit-delta)
+		var err error
+		limit, err = r.agentHistoryLimitBytes()
+		if err != nil {
+			return err
+		}
+		q = q.Where("stored_bytes <= ?", limit-delta)
 	} else {
 		q = q.Where("stored_bytes >= ?", -delta)
 	}
@@ -122,9 +144,80 @@ func (r *Repository) changeAgentStoredBytes(userID string, delta int64) error {
 		if delta < 0 {
 			return fmt.Errorf("Agent storage accounting is inconsistent")
 		}
-		return kernel.StorageCapacityExceeded("账号 Agent 会话、事件和撤销历史已达到 256MiB 上限，请联系管理员清理历史数据")
+		// Make room from old terminal runs before rejecting a new write. The
+		// current run is excluded by the age cutoff, so its checkpoint transaction
+		// cannot compact its own rows while they are still being assembled.
+		if _, compactErr := r.compactOldestCloudAgentHistoryLocked(userID, time.Now().Add(-time.Minute), delta); compactErr != nil {
+			return compactErr
+		} else {
+			result = q.Updates(map[string]any{"stored_bytes": gorm.Expr("stored_bytes + ?", delta), "updated_at": time.Now()})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 1 {
+				return r.enforceGlobalAgentStorageLimit()
+			}
+		}
+		return &kernel.AppError{Status: kernel.CodeForbidden, Code: kernel.CodeQuotaExceeded, Reason: kernel.ReasonAgentHistoryCapacityExceeded,
+			Message: fmt.Sprintf("本次写入将超过账号 Agent 历史的 %d MiB 上限。请联系管理员调高 Agent 历史额度或清理历史；购买文件空间不会增加此额度。", limit>>20)}
+	}
+	if delta > 0 {
+		return r.enforceGlobalAgentStorageLimit()
 	}
 	return nil
+}
+
+func (r *Repository) enforceGlobalAgentStorageLimit() error {
+	globalLimit, err := r.agentHistoryGlobalLimitBytes()
+	if err != nil {
+		return err
+	}
+	var total int64
+	if err := r.db.Model(&model.AgentStorageUsage{}).Select("COALESCE(SUM(stored_bytes), 0)").Scan(&total).Error; err != nil {
+		return err
+	}
+	if total <= globalLimit {
+		return nil
+	}
+	if _, err := r.compactOldestCloudAgentHistoryGlobalLocked(time.Now().Add(-time.Minute), total-globalLimit); err != nil {
+		return err
+	}
+	if err := r.db.Model(&model.AgentStorageUsage{}).Select("COALESCE(SUM(stored_bytes), 0)").Scan(&total).Error; err != nil {
+		return err
+	}
+	if total <= globalLimit {
+		return nil
+	}
+	return &kernel.AppError{Status: kernel.CodeForbidden, Code: kernel.CodeQuotaExceeded, Reason: kernel.ReasonAgentHistoryCapacityExceeded,
+		Message: fmt.Sprintf("平台 Agent 热历史池已达到 %d MiB 上限，请整理或删除历史", globalLimit>>20)}
+}
+
+func (r *Repository) agentHistoryLimitBytes() (int64, error) {
+	quota, err := r.storedAgentHistoryQuota()
+	if err != nil {
+		return 0, err
+	}
+	return quota.LimitBytes()
+}
+
+func (r *Repository) agentHistoryGlobalLimitBytes() (int64, error) {
+	quota, err := r.storedAgentHistoryQuota()
+	if err != nil {
+		return 0, err
+	}
+	return quota.GlobalLimitBytes()
+}
+
+func (r *Repository) storedAgentHistoryQuota() (model.AgentHistoryQuota, error) {
+	policy := struct{ Resource model.AgentHistoryQuota }{Resource: model.AgentHistoryQuota{AgentHistoryMB: model.DefaultAgentHistoryMB}}
+	setting, err := r.SystemSettingOptional(model.RuntimePolicySettingKey)
+	if err != nil || setting == nil {
+		return policy.Resource, err
+	}
+	if err := json.Unmarshal([]byte(setting.ValueJSON), &policy); err != nil {
+		return model.AgentHistoryQuota{}, fmt.Errorf("读取 Agent 历史额度失败: %w", err)
+	}
+	return policy.Resource, nil
 }
 
 // AgentStoredBytes reads the ledger once initialized, including pre-upgrade

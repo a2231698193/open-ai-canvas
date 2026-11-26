@@ -7,6 +7,36 @@ import (
 	"testing"
 )
 
+func TestKlingFlashReleaseRejectsExpandedCapabilityAtSave(t *testing.T) {
+	const provider, modelName = "kling-v4-official", "kling-4.0-flash"
+	registry := loadOfficialFallbackRegistry()
+	for _, test := range []struct {
+		name   string
+		mutate func(*VideoCapabilityConfig)
+	}{
+		{"mode", func(video *VideoCapabilityConfig) { video.Operations = append(video.Operations, "extend") }},
+		{"resolution", func(video *VideoCapabilityConfig) { video.Resolutions = append(video.Resolutions, "1080p") }},
+		{"duration", func(video *VideoCapabilityConfig) { video.Duration.Max = 21 }},
+		{"fixed duration", func(video *VideoCapabilityConfig) {
+			video.Duration = VideoDurationConfig{Selection: "enum", Values: []int{2}, Default: 2}
+		}},
+		{"ratio", func(video *VideoCapabilityConfig) { video.Ratios = append(video.Ratios, "2:1") }},
+		{"audio reference", func(video *VideoCapabilityConfig) { video.References.MaxAudios = 1 }},
+		{"audio toggle", func(video *VideoCapabilityConfig) { video.GenerateAudio.Supported = true }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profile := DefaultModelCapabilityConfigForModel(provider, modelName)
+			if _, err := NormalizeModelCapabilityConfigForModel("video", provider, modelName, profile, registry); err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(profile.Video)
+			if _, err := NormalizeModelCapabilityConfigForModel("video", provider, modelName, profile, registry); err == nil {
+				t.Fatal("accepted out-of-contract configuration")
+			}
+		})
+	}
+}
+
 func TestValidateImageTaskRejectsOversizedGrokPromptByUTF8Bytes(t *testing.T) {
 	prompt := strings.Repeat("中", 4001)
 	input := canvasGenerationInput{
@@ -53,6 +83,132 @@ func TestValidateVideoTaskRejectsPromptAboveCapabilityLimit(t *testing.T) {
 	}
 }
 
+func TestValidateTaskCapabilityChecksReferenceVideoCountAndTotalDuration(t *testing.T) {
+	const protocol = "newapi-channel-2"
+	const modelName = "custom-video"
+	profile := DefaultModelCapabilityConfigForModel(protocol, modelName)
+	profile.Video.References.MaxVideos = 2
+	totalLimit, unlimited, invalid := 15, 0, -1
+	for _, tc := range []struct {
+		name      string
+		maxTotal  *int
+		durations []int64
+		wantError string
+	}{
+		{"equal to limit", &totalLimit, []int64{7000, 8000}, ""},
+		{"one millisecond over total", &totalLimit, []int64{7500, 7501}, "参考视频总时长不能超过 15 秒"},
+		{"single clip at total limit", &totalLimit, []int64{15000}, ""},
+		{"single clip over total limit", &totalLimit, []int64{16021}, "参考视频总时长不能超过 15 秒"},
+		{"too many clips under the total limit", &totalLimit, []int64{3000, 3000, 3000}, "参考视频最多支持 2 段"},
+		{"explicitly disabled", &unlimited, []int64{8064, 8064}, ""},
+		{"no total limit configured", nil, []int64{8064, 8064}, ""},
+		{"negative total limit", &invalid, []int64{7000, 8000}, "参考视频总时长上限无效"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profile.Video.References.MaxTotalVideoDuration = tc.maxTotal
+			videos := make([]providerMedia, 0, len(tc.durations))
+			for _, duration := range tc.durations {
+				videos = append(videos, providerMedia{DurationMs: duration})
+			}
+			input := map[string]any{
+				"mode": "video", "prompt": "combine the clips",
+				"config":          map[string]any{"interfaceType": protocol, "model": modelName, "videoSeconds": "6", "capabilityConfig": profile},
+				"referenceVideos": videos,
+			}
+			err := (&Service{}).ValidateTaskCapability(input)
+			if tc.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateTaskCapability() error = %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tc.wantError {
+				t.Fatalf("ValidateTaskCapability() error = %v, want %q", err, tc.wantError)
+			}
+			if tc.maxTotal != &invalid {
+				wantIssue := "unsupported_value"
+				if len(tc.durations) > profile.Video.References.MaxVideos {
+					wantIssue = "item_count"
+				}
+				var capabilityErr *modelCapabilityArgumentError
+				if !errors.As(err, &capabilityErr) || capabilityErr.Field != "referenceNodeIds" || capabilityErr.Issue != wantIssue {
+					t.Fatalf("unexpected capability error: %#v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateTaskCapabilityChecksReferenceAudioCountAndTotalDuration(t *testing.T) {
+	const protocol = "newapi-channel-2"
+	const modelName = "custom-video"
+	profile := DefaultModelCapabilityConfigForModel(protocol, modelName)
+	profile.Video.References.MaxAudios = 2
+	profile.Video.References.MaxTotalAudioDuration = ptr(15)
+	profile.Video.References.MaxTotalVideoDuration = ptr(15)
+	for _, tc := range []struct {
+		name      string
+		durations []int64
+		wantError string
+	}{
+		{"at total", []int64{7000, 8000}, ""},
+		{"one millisecond over total", []int64{7500, 7501}, "参考音频总时长不能超过 15 秒"},
+		{"too many under total", []int64{3000, 3000, 3000}, "参考音频最多支持 2 段"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			audios := make([]providerMedia, 0, len(tc.durations))
+			for _, duration := range tc.durations {
+				audios = append(audios, providerMedia{DurationMs: duration})
+			}
+			input := map[string]any{
+				"mode": "video", "prompt": "combine the references",
+				"config":          map[string]any{"interfaceType": protocol, "model": modelName, "videoSeconds": "6", "capabilityConfig": profile},
+				"referenceVideos": []providerMedia{{DurationMs: 15000}},
+				"referenceAudios": audios,
+			}
+			err := (&Service{}).ValidateTaskCapability(input)
+			if tc.wantError == "" {
+				if err != nil {
+					t.Fatalf("ValidateTaskCapability() error = %v", err)
+				}
+			} else if err == nil || err.Error() != tc.wantError {
+				t.Fatalf("ValidateTaskCapability() error = %v, want %q", err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestNormalizeVideoCapabilityInheritsTotalReferenceDurationsFromPreset(t *testing.T) {
+	for _, tc := range []struct {
+		protocol     string
+		model        string
+		seconds      int
+		audioSeconds int
+	}{
+		{"dashscope-wan3-video", "wan3.0-video", 15, 15},
+		{"volcengine-ark-video", "doubao-seedance-2-0-mini-260615", 15, 15},
+		{"volcengine-ark-seedance-25", "doubao-seedance-2-5-260628", 30, 30},
+		{"kling-v4-official", "kling-4.0-flash", 20, 0},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			profile := DefaultModelCapabilityConfigForModel(tc.protocol, tc.model)
+			profile.Video.References.MaxTotalVideoDuration = nil
+			profile.Video.References.MaxTotalAudioDuration = nil
+			normalized, err := NormalizeModelCapabilityConfigForModel("video", tc.protocol, tc.model, profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if limit := normalized.Video.References.MaxTotalVideoDuration; limit == nil || *limit != tc.seconds {
+				t.Fatalf("total reference video duration = %v, want %d seconds", limit, tc.seconds)
+			}
+			limit := normalized.Video.References.MaxTotalAudioDuration
+			if tc.audioSeconds == 0 && limit != nil || tc.audioSeconds > 0 && (limit == nil || *limit != tc.audioSeconds) {
+				t.Fatalf("total reference audio duration = %v, want %d seconds or nil for zero", limit, tc.audioSeconds)
+			}
+		})
+	}
+}
+
 // 视频提示词由输入框文本、连线内容和技能上下文合成，默认上限必须留出足够余量，
 // 否则画布工作流会连同线内容一起被拦在本地。这里锁定默认值与边界行为。
 func TestDefaultVideoPromptMaxCharsAllowsComposedCanvasPrompt(t *testing.T) {
@@ -96,6 +252,13 @@ func TestValidateTaskCapabilityRejectsWorkflowPromptAboveConfiguredLimit(t *test
 	err := (&Service{}).ValidateTaskCapability(input)
 	if err == nil || !strings.Contains(err.Error(), "完整提示词为 10001 个字符") {
 		t.Fatalf("ValidateTaskCapability() error = %v", err)
+	}
+}
+
+func TestValidateTaskCapabilityRejectsMalformedMediaInput(t *testing.T) {
+	input := map[string]any{"mode": "image", "referenceImages": "invalid"}
+	if err := (&Service{}).ValidateTaskCapability(input); err == nil {
+		t.Fatal("accepted an image task with malformed references")
 	}
 }
 
@@ -335,10 +498,8 @@ func TestDefaultVolcengineArkVideoCapabilitySupportsFullModalReference(t *testin
 	if profile == nil || profile.Video == nil {
 		t.Fatal("Volcengine Ark video profile = nil")
 	}
-	for _, operation := range []string{"reference_to_video", "audio_to_video"} {
-		if !containsCapabilityString(profile.Video.Operations, operation) {
-			t.Fatalf("operations = %v, want %s", profile.Video.Operations, operation)
-		}
+	if !containsCapabilityString(profile.Video.Operations, "reference_to_video") || containsCapabilityString(profile.Video.Operations, "audio_to_video") {
+		t.Fatalf("2.0 supports mixed references but not audio alone: %v", profile.Video.Operations)
 	}
 	if profile.Video.References.MaxImages != 9 || profile.Video.References.MaxVideos != 3 || profile.Video.References.MaxAudios != 3 {
 		t.Fatalf("reference limits = %#v", profile.Video.References)
@@ -370,13 +531,66 @@ func TestValidateVideoReferenceModeRequiresDistinctSupportedKeyframes(t *testing
 	}
 }
 
+func TestDefaultVolcengineArkSeedance25CapabilityUsesOfficialLimits(t *testing.T) {
+	profile := DefaultModelCapabilityConfigForModel("volcengine-ark-seedance-25", "doubao-seedance-2-5-260628")
+	if profile == nil || profile.Video == nil {
+		t.Fatal("Seedance 2.5 profile = nil")
+	}
+	if profile.Video.References.MaxImages != 30 || profile.Video.References.MaxVideos != 10 || profile.Video.References.MaxAudios != 10 {
+		t.Fatalf("reference limits = %#v", profile.Video.References)
+	}
+	if profile.Video.Duration.Min != 4 || profile.Video.Duration.Max != 30 || profile.Video.DefaultRatio != "adaptive" || len(profile.Video.Resolutions) != 3 {
+		t.Fatalf("output defaults = %#v", profile.Video)
+	}
+	if !profile.Video.GenerateAudio.Supported || !profile.Video.Watermark.Supported {
+		t.Fatalf("audio/watermark support = %#v %#v", profile.Video.GenerateAudio, profile.Video.Watermark)
+	}
+}
+
+func TestOfficialVideoModelPresetsAreModelSpecific(t *testing.T) {
+	for _, tc := range []struct {
+		provider, name                   string
+		images, videos, audios, duration int
+		audioSwitch                      bool
+	}{
+		{"volcengine-ark-seedance-25", "doubao-seedance-2-5-flash-261115", 10, 5, 5, 30, true},
+		{"dashscope-wan3-video", "wan3.0-video-prime", 10, 5, 5, 30, true},
+		{"kling-v4-official", "kling-4.0", 10, 5, 0, 30, false},
+		{"kling-v4-official", "kling-4.0-flash", 10, 5, 0, 20, false},
+	} {
+		profile := DefaultModelCapabilityConfigForModel(tc.provider, tc.name)
+		video := profile.Video
+		if video.References.MaxImages != tc.images || video.References.MaxVideos != tc.videos || video.References.MaxAudios != tc.audios || video.Duration.Max != tc.duration || video.GenerateAudio.Supported != tc.audioSwitch {
+			t.Fatalf("%s: %+v", tc.name, video)
+		}
+		if _, err := NormalizeModelCapabilityConfigForModel("video", tc.provider, tc.name, profile); err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+		}
+	}
+}
+
+func TestDefaultWeNewH3VideoCapabilityUsesDocumentedLimits(t *testing.T) {
+	profile := DefaultModelCapabilityConfigForModel("wenew-h3-video", "MiniMax-H3")
+	if profile == nil || profile.Video == nil {
+		t.Fatal("WeNew H3 profile = nil")
+	}
+	if profile.Video.References.MaxImages != 9 || profile.Video.References.MaxAudios != 3 || profile.Video.References.MaxVideos != 0 {
+		t.Fatalf("reference limits = %#v", profile.Video.References)
+	}
+	if profile.Video.Duration.Min != 4 || profile.Video.Duration.Max != 15 || profile.Video.DefaultResolution != "768p" {
+		t.Fatalf("output defaults = %#v", profile.Video)
+	}
+	if profile.Video.GenerateAudio.Supported || profile.Video.Watermark.Supported || containsCapabilityString(profile.Video.Operations, "audio_to_video") {
+		t.Fatalf("unsupported WeNew capabilities = %#v", profile.Video)
+	}
+}
 func TestValidateVolcengineArkFullModalReferenceRejectsTextAndAudioOnly(t *testing.T) {
 	profile := DefaultModelCapabilityConfigForModel("volcengine-ark-video", "doubao-seedance-2-0-260128").Video
 	input := canvasGenerationInput{
 		Prompt:          "follow the soundtrack",
 		Config:          providerConfig{InterfaceType: "volcengine-ark-video", VideoSeconds: "6", Size: "16:9", VQuality: "720p"},
 		ReferenceAudios: []providerMedia{{URL: "https://example.com/music.mp3"}},
-		Metadata:        map[string]interface{}{"videoEditOperation": "audio_to_video"},
+		Metadata:        map[string]interface{}{"videoEditOperation": "reference_to_video"},
 	}
 	err := validateVideoTask(profile, input)
 	if err == nil || !strings.Contains(err.Error(), "文本+音频") {
@@ -386,6 +600,10 @@ func TestValidateVolcengineArkFullModalReferenceRejectsTextAndAudioOnly(t *testi
 	input.ReferenceImages = []providerMedia{{URL: "https://example.com/subject.png"}}
 	if err := validateVideoTask(profile, input); err != nil {
 		t.Fatalf("validateVideoTask(full modal) error = %v", err)
+	}
+	input.Metadata["videoEditOperation"] = "audio_to_video"
+	if err := validateVideoTask(profile, input); err == nil {
+		t.Fatal("accepted an undeclared audio-to-video operation")
 	}
 }
 

@@ -1,6 +1,9 @@
 package app
 
-import "yingce/backend/internal/model"
+import (
+	"yingce/backend/internal/imagebilling"
+	"yingce/backend/internal/model"
+)
 
 const maxChannelModelTokenPriceMicrocredits = int64(1_000_000) * CreditScale
 
@@ -40,7 +43,7 @@ func ValidateChannelModelPrice(billingMode string, capability string, protocol m
 			// validateTokenPrices 里收紧，0 价表示免费。
 			return true
 		}
-		if capability != "" && capability != "text" {
+		if capability != "" && capability != "text" && !(capability == "audio" && protocol == model.ChannelInterfaceEvoLinkQwenAudioTTS) {
 			return false
 		}
 		// 文本模型：所有 Token 价格为 0 时表示免费。
@@ -54,6 +57,9 @@ func ValidateChannelModelPrice(billingMode string, capability string, protocol m
 func ValidatePriceTierPrice(tier *model.ChannelModelPriceTier, capability string, protocol model.ChannelInterfaceType) bool {
 	if tier == nil {
 		return false
+	}
+	if tier.BillingMode == imagebilling.Mode {
+		return capability == "image" && imagebilling.Validate(tier.ImagePricing) == nil
 	}
 	return ValidateChannelModelPrice(tier.BillingMode, capability, protocol, tier.UnitPriceMicrocredits, tier.InputTokenPriceMicrocredits, tier.OutputTokenPriceMicrocredits, tier.CachedTokenPriceMicrocredits, tier.CacheWriteTokenPriceMicrocredits)
 }
@@ -69,7 +75,7 @@ func ComputeTierPriceConfigured(tier *model.ChannelModelPriceTier, capability st
 	if tier == nil {
 		return false
 	}
-	return ComputePriceConfigured(tier.BillingMode, capability, protocol, tier.UnitPriceMicrocredits, tier.InputTokenPriceMicrocredits, tier.OutputTokenPriceMicrocredits, tier.CachedTokenPriceMicrocredits, tier.CacheWriteTokenPriceMicrocredits)
+	return ValidatePriceTierPrice(tier, capability, protocol)
 }
 
 // HasValidPrice 检查渠道模型是否有有效价格

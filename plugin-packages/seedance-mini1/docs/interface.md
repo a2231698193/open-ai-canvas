@@ -78,7 +78,7 @@ zip -X -q ../seedance-mini1.yingce-plugin manifest.json README.md docs/interface
   "apiVersion": "yingce.plugin/v2",
   "id": "seedance-mini1",
   "name": "SeedanceMINI1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "影策",
   "description": "SeedanceMINI1 视频生成插件，支持参考图、清晰度增强与异步任务。",
   "permissions": [
@@ -99,6 +99,10 @@ zip -X -q ../seedance-mini1.yingce-plugin manifest.json README.md docs/interface
     "providers": [
       {
         "id": "seedance-mini1",
+        "videoReferences": {
+          "layout": "reference-images",
+          "token": "@Image{n}"
+        },
         "label": "SeedanceMINI1",
         "capabilities": [
           "video"

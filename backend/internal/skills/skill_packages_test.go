@@ -340,8 +340,18 @@ func TestSkillPackageSizeLimits(t *testing.T) {
 	}), ""); err == nil || !strings.Contains(err.Error(), "单个文件") {
 		t.Fatalf("expected single-file limit error, got %v", err)
 	}
-	svc := New(nil, t.TempDir(), nil)
-	if _, err := svc.InstallSkillUpload("user", "zip", &multipart.FileHeader{Size: (100 << 20) + 1}, SkillInstallRequest{}); err == nil || !strings.Contains(err.Error(), "100MB") {
+	db, err := gorm.Open(sqlite.Open("file:"+kernel.NewID()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{ID: "admin", Username: "admin", Role: model.UserRoleAdmin, Status: model.UserStatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := New(repository.New(db), t.TempDir(), nil)
+	if _, err := svc.InstallSkillUpload("admin", "zip", &multipart.FileHeader{Size: (100 << 20) + 1}, SkillInstallRequest{}); err == nil || !strings.Contains(err.Error(), "100MB") {
 		t.Fatalf("expected upload limit error, got %v", err)
 	}
 }

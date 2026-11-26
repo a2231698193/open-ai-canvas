@@ -197,7 +197,11 @@ func (s *Service) failPiRunner(runID, userID string, cause error) {
 			if decodeErr == nil {
 				state.LastError = cause.Error()
 				cloudAgentDropInterjections(runID, "本轮已结束："+truncateRunes(cause.Error(), 120), &state)
-				state.event(runID, "run_failed", map[string]any{"error": cause.Error()})
+				payload := map[string]any{"text": cause.Error()}
+				if agentModelErrorReason(cause) == agentModelFailureSubmission {
+					payload["reason"], payload["taskId"] = string(agentModelFailureSubmission), state.ActiveTaskID
+				}
+				state.event(runID, "run_failed", payload)
 				return cloudAgentSave(current, &state)
 			}
 			return nil
@@ -291,6 +295,10 @@ func (s *Service) runCloudAgentPiSession(ctx context.Context, userID, runID stri
 		return fmt.Errorf("decode state: %w", err)
 	}
 
+	if err := s.RequireSkillAccess(userID); err != nil {
+		return err
+	}
+
 	// 已批准的调用还没执行：只能由审批收尾执行一次，执行后它会带着结果恢复运行。
 	// 这里开一轮模型会用原始提示词重跑用户请求，并和收尾争写检查点（见
 	// cloud_agent_approval_followup.go）。决定请求还在处理时只退出，否则接手收尾。
@@ -325,6 +333,10 @@ func (s *Service) runCloudAgentPiSession(ctx context.Context, userID, runID stri
 		ownSession = true
 	} else if sessionErr != nil && !errors.Is(sessionErr, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("load session: %w", sessionErr)
+	}
+
+	if err := s.RequireSkillAccess(userID); err != nil {
+		return err
 	}
 
 	// 崩溃恢复：最后答案已写进会话快照、运行却没来得及标记完成。这一回合已经结束，

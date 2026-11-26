@@ -1,4 +1,12 @@
 # CHANGELOG
+## 官方 v1.8.6–v1.8.7.2 合入（本地 Schema 114）
+
+- 合入内容：官方 v1.8.6 / v1.8.7 / v1.8.7.1 / v1.8.7.2 及其后 9 个未发版提交，覆盖官方素材库与音频参考、团队空间、视频参考模式、可灵 4.0 与万相 3 等官方协议、创作历史跨设备同步、Agent 热历史归档、世界引擎 3D 预演与请求协议管理。
+- 迁移顺延：官方 v105–v110 在本仓库顺延为 **v109–v114**（image_usage_billing、team_workspaces、company_workgroups、shared_workspace_content、model_protocol_releases、cloud_agent_history_archives）。`credit_accounts` 主键迁移到 `id`（`personal:` 前缀），迁移保留本仓库的会员积分池列；旧库没有会员列时按 0 补齐。
+- 保留本仓库实现：积分弹窗仍为会员卡 + 充值 + 兑换 + 流水（未合入官方收支分组弹窗）、画布工作区仍为左侧 rail + 内嵌面板（未合入官方 corner 重排）、模型选择器保持单层列表。画布视频节点改用官方视频参考模式，并兼容旧草稿的 `videoMode`。
+- Agent 合同：工具 schema 随官方更新，`approval_canvas` golden 已重生成；审批暂停、技能读取和音频 Token 计费按合入后的合同校正。
+- 验证：`go build ./...`、`go vet ./...`、`go test ./...`、`bun run typecheck`、`bun run lint`、`bun test` 通过；`bun run build`、浏览器端真机与真实支付验收未执行。
+
 ## 官方 v1.8.4–v1.8.5 合入（本地 Schema 108）
 
 - 合入内容：官方 v1.8.4 / v1.8.4.1 / v1.8.5 及其后 17 个未发版提交，覆盖 OIDC 与微信网站应用登录、短剧素材草稿与跨作品导入、分镜全屏审稿、画布统一文本节点、主题包、MCP 连接、云端 Agent 配额与跨会话记忆、渠道网站分组与批量模板、视频请求日志与访问统计。

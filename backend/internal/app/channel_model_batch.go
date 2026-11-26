@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm"
 	"yingce/backend/internal/model"
+	"yingce/backend/internal/protocol"
 	"yingce/backend/internal/repository"
 )
 
@@ -169,7 +170,7 @@ func (c BatchChannelModelChanges) fields() []string {
 	for _, field := range []struct {
 		name string
 		set  bool
-	}{{"capability", c.Capability != nil}, {"protocol", c.Protocol != nil}, {"displayName", c.DisplayName != nil}, {"description", c.Description != nil}, {"enabled", c.Enabled != nil}, {"pricingEnabled", c.PricingEnabled != nil}, {"capabilityTemplate", c.CapabilityTemplate != nil}, {"pricingTemplate", c.PricingTemplate != nil}} {
+	}{{"capability", c.Capability != nil}, {"protocol", c.Protocol != nil}, {"protocolRelease", c.ProtocolRelease != nil}, {"displayName", c.DisplayName != nil}, {"description", c.Description != nil}, {"enabled", c.Enabled != nil}, {"pricingEnabled", c.PricingEnabled != nil}, {"capabilityTemplate", c.CapabilityTemplate != nil}, {"pricingTemplate", c.PricingTemplate != nil}} {
 		if field.set {
 			result = append(result, field.name)
 		}
@@ -286,7 +287,7 @@ func (s *Service) prepareBatchModelUpdate(repo *repository.Repository, channel *
 }
 
 func (c BatchChannelModelChanges) requiresModelContract() bool {
-	return c.Capability != nil || c.Protocol != nil || c.CapabilityTemplate != nil || c.PricingTemplate != nil ||
+	return c.Capability != nil || c.Protocol != nil || c.ProtocolRelease != nil || c.CapabilityTemplate != nil || c.PricingTemplate != nil ||
 		(c.Enabled != nil && *c.Enabled) || (c.PricingEnabled != nil && *c.PricingEnabled)
 }
 
@@ -315,7 +316,20 @@ func (s *Service) prepareBatchModelContract(channel *model.ModelChannel, before 
 			return nil, "", BadAuthRequest("能力模板不能为空")
 		}
 	}
-	_, upstream, capability, protocol, err := s.normalizeChannelModelContract(channel, ChannelModelRequest{ModelKey: after.ModelKey, ProviderModelKey: after.ProviderModelKey, Capability: after.Capability, Protocol: protocolID})
+	var release protocol.ProviderRelease
+	var err error
+	if changes.ProtocolRelease != nil {
+		if protocolID == "" {
+			return nil, "", BadAuthRequest("请选择有效的模型请求协议")
+		}
+		release, err = selectModelRelease(s.protocolRegistry(), protocolID, strings.TrimSpace(*changes.ProtocolRelease), true)
+	} else {
+		release, err = selectEditedModelRelease(s.protocolRegistry(), &before, protocolID, "")
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	_, upstream, capability, protocol, err := normalizeChannelModelContractWithRegistry(release.Registry, channel, ChannelModelRequest{ModelKey: after.ModelKey, ProviderModelKey: after.ProviderModelKey, Capability: after.Capability, Protocol: protocolID})
 	if err != nil {
 		return nil, "", err
 	}
@@ -331,22 +345,23 @@ func (s *Service) prepareBatchModelContract(channel *model.ModelChannel, before 
 		}
 	}
 	if capability == "text" || capability == "image" || capability == "video" {
-		config, err = NormalizeModelCapabilityConfigForModel(capability, string(protocol), upstream, config, s.protocolRegistry())
+		config, err = NormalizeModelCapabilityConfigForModel(capability, string(protocol), upstream, config, release.Registry)
 		if err != nil {
 			return nil, "", err
 		}
 	}
 	after.Capability, after.Protocol = capability, protocol
-	if changes.Capability != nil || changes.Protocol != nil || changes.CapabilityTemplate != nil {
+	if changes.Capability != nil || changes.Protocol != nil || changes.ProtocolRelease != nil || changes.CapabilityTemplate != nil {
 		encoded, err := json.Marshal(config)
 		if err != nil {
 			return nil, "", err
 		}
 		after.CapabilityConfigJSON = string(encoded)
-		if after.Capability != before.Capability || after.Protocol != before.Protocol || after.CapabilityConfigJSON != before.CapabilityConfigJSON {
+		if after.Capability != before.Capability || after.Protocol != before.Protocol || after.CapabilityConfigJSON != before.CapabilityConfigJSON || before.ProtocolRelease != release.SHA256 {
 			after.CapabilityVersion++
 		}
 		columns["capability"], columns["protocol"] = after.Capability, after.Protocol
+		after.ProtocolRelease, columns["protocol_release"] = release.SHA256, release.SHA256
 		columns["capability_config_json"], columns["capability_version"] = after.CapabilityConfigJSON, after.CapabilityVersion
 	}
 	return config, upstream, nil

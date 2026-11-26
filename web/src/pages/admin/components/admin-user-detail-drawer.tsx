@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
 import { App, Button, Descriptions, Form, Input, Modal, Progress, Select, Skeleton, Tabs } from "antd";
 import { AdminDrawer } from "@/pages/admin/ui/overlays";
-import { ChevronLeft, ChevronRight, Crown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crown, Trash2 } from "lucide-react";
 
 import { formatCredits } from "@/constant/credits";
 import { IconButton } from "@/pages/admin/ui/controls";
 import { cancelAdminMembership, grantAdminMembership, listAdminMembershipPlans, upgradeAdminMembership, type MembershipPlan } from "@/services/api/membership";
 import { AdminDataTable, AdminEmpty, AdminStatusBadge, AdminTableEmpty, PaginationBar, type AdminStatusTone } from "./admin-ui";
 import { AdminUserStoragePanel } from "./admin-user-storage-panel";
-import { getAdminUserDetail, listAdminUserAuditEvents, listAdminUserLedger, listAdminUserTasks, type AdminAuditEvent, type AdminUserDetail, type AdminUserTask } from "@/services/api/auth";
+import { clearAdminUserAgentHistory, getAdminUserDetail, listAdminUserAuditEvents, listAdminUserLedger, listAdminUserTasks, type AdminAuditEvent, type AdminUserDetail, type AdminUserTask } from "@/services/api/auth";
 import type { CreditLedgerEntry } from "@/services/api/wallet";
 
 export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUserId, onNavigate }: { userId: string | null; onClose: () => void; previousUserId?: string; nextUserId?: string; onNavigate?: (userId: string) => void }) {
-    const { message } = App.useApp();
+    const { message, modal } = App.useApp();
+    const [historyRevision, setHistoryRevision] = useState(0);
     const [detail, setDetail] = useState<AdminUserDetail | null>(null);
     const [ledger, setLedger] = useState<CreditLedgerEntry[]>([]);
     const [tasks, setTasks] = useState<AdminUserTask[]>([]);
@@ -42,7 +43,7 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
         return () => {
             active = false;
         };
-    }, [message, userId]);
+    }, [historyRevision, message, userId]);
 
     useEffect(() => {
         if (!userId) return;
@@ -88,7 +89,27 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
         return () => {
             active = false;
         };
-    }, [auditPage, message, userId]);
+    }, [auditPage, historyRevision, message, userId]);
+
+    function confirmClearHistory(target: AdminUserDetail) {
+        modal.confirm({
+            title: `清理 @${target.user.username} 的全部 Agent 历史？`,
+            content: "所有 Agent 会话、消息、事件和撤销快照都将永久删除。已有画布、素材、任务和账务记录保留。若要保留历史，请改为调高运行时策略中的 Agent 历史容量。",
+            okText: "永久清理",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            onOk: async () => {
+                try {
+                    const { freedBytes } = await clearAdminUserAgentHistory(target.user.id);
+                    message.success(`已清理 @${target.user.username} 的 Agent 历史，释放 ${(freedBytes / 1024 ** 2).toFixed(2)} MiB`);
+                    setHistoryRevision((revision) => revision + 1);
+                } catch (error) {
+                    message.error(error instanceof Error ? error.message : "清理 Agent 历史失败");
+                    throw error;
+                }
+            },
+        });
+    }
 
     return (
         <AdminDrawer
@@ -126,7 +147,11 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
                                             { key: "role", label: "角色", children: detail.user.role === "admin" ? "管理员" : "普通用户" },
                                             { key: "status", label: "状态", children: <AdminStatusBadge label={detail.user.status === "active" ? "启用" : "停用"} tone={detail.user.status === "active" ? "success" : "neutral"} /> },
                                             { key: "available", label: "可用积分", children: formatCredits(detail.account.availableMicrocredits) },
-                                            { key: "membership-pool", label: "会员积分", children: `${formatCredits(detail.account.membershipMicrocredits)}${detail.account.membershipExpiresAt ? `（${new Date(detail.account.membershipExpiresAt).toLocaleDateString("zh-CN")} 前有效）` : ""}` },
+                                            {
+                                                key: "membership-pool",
+                                                label: "会员积分",
+                                                children: `${formatCredits(detail.account.membershipMicrocredits)}${detail.account.membershipExpiresAt ? `（${new Date(detail.account.membershipExpiresAt).toLocaleDateString("zh-CN")} 前有效）` : ""}`,
+                                            },
                                             { key: "recharge", label: "累计充值积分", children: formatCredits(detail.counts.rechargeMicrocredits) },
                                             { key: "checkin", label: "累计签到积分", children: formatCredits(detail.counts.checkinMicrocredits) },
                                             { key: "reserved", label: "冻结积分", children: formatCredits(detail.account.reservedMicrocredits) },
@@ -153,6 +178,11 @@ export function AdminUserDetailDrawer({ userId, onClose, previousUserId, nextUse
                                                         <span className="shrink-0 tabular-nums text-foreground/75">{item.display}</span>
                                                     </div>
                                                     <Progress percent={Math.min(100, item.limit > 0 ? Math.round((item.value / item.limit) * 100) : 0)} size="small" showInfo={false} status={item.value >= item.limit ? "exception" : "normal"} />
+                                                    {item.agentHistory && item.value > 0 ? (
+                                                        <Button danger size="small" icon={<Trash2 size={14} />} onClick={() => confirmClearHistory(detail)}>
+                                                            清理 Agent 历史
+                                                        </Button>
+                                                    ) : null}
                                                 </div>
                                             ))}
                                         </div>
@@ -314,9 +344,15 @@ function UserMembershipSection({ detail, onUpdated }: { detail: AdminUserDetail;
                     会员
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button size="small" onClick={() => void openAction("grant")}>{membership ? "续费" : "开通"}</Button>
-                    <Button size="small" disabled={!membership} onClick={() => void openAction("upgrade")}>升级</Button>
-                    <Button size="small" danger disabled={!membership} loading={submitting} onClick={() => void cancel()}>作废</Button>
+                    <Button size="small" onClick={() => void openAction("grant")}>
+                        {membership ? "续费" : "开通"}
+                    </Button>
+                    <Button size="small" disabled={!membership} onClick={() => void openAction("upgrade")}>
+                        升级
+                    </Button>
+                    <Button size="small" danger disabled={!membership} loading={submitting} onClick={() => void cancel()}>
+                        作废
+                    </Button>
                 </div>
             </div>
             {membership ? (
@@ -340,9 +376,7 @@ function UserMembershipSection({ detail, onUpdated }: { detail: AdminUserDetail;
                     <Form.Item noStyle shouldUpdate={(prev, next) => prev.planId !== next.planId}>
                         {() => {
                             const selectedPlan = plans.find((plan) => plan.id === form.getFieldValue("planId"));
-                            return selectedPlan && selectedPlan.monthlyGrantMicrocredits <= 0 ? (
-                                <p className="mb-2 text-xs text-amber-500">注意：该等级的每月到账积分为 0，开通后本期不会发放积分；请先在会员管理里调整额度，或开通后作废重开。</p>
-                            ) : null;
+                            return selectedPlan && selectedPlan.monthlyGrantMicrocredits <= 0 ? <p className="mb-2 text-xs text-amber-500">注意：该等级的每月到账积分为 0，开通后本期不会发放积分；请先在会员管理里调整额度，或开通后作废重开。</p> : null;
                         }}
                     </Form.Item>
                     <Form.Item name="planId" label="会员等级" rules={[{ required: true, message: "请选择等级" }]}>
@@ -399,7 +433,13 @@ function quotaUsageItems(detail: AdminUserDetail) {
         { label: "今日上传（UTC）", value: detail.dailyUploadBytes, limit: dailyLimit * 1024 ** 2, display: unlimited(dailyLimit) ? `${bytes(detail.dailyUploadBytes)} / 不限` : `${bytes(detail.dailyUploadBytes)} / ${dailyLimit} MB` },
         { label: "画布与素材数据", value: structuredBytes, limit: detail.quota.structuredDataMB * 1024 ** 2, display: `${bytes(structuredBytes)} / ${detail.quota.structuredDataMB} MB` },
         { label: "任务与请求日志数据", value: detail.storageUsage.taskBytes, limit: detail.quota.taskDataGB * 1024 ** 3, display: `${bytes(detail.storageUsage.taskBytes)} / ${detail.quota.taskDataGB} GB` },
-        { label: "Agent 会话与撤销历史", value: detail.storageUsage.agentBytes, limit: detail.storageUsage.agentLimitBytes, display: `${bytes(detail.storageUsage.agentBytes)} / ${bytes(detail.storageUsage.agentLimitBytes)}` },
+        {
+            agentHistory: true,
+            label: "Agent 会话与撤销历史",
+            value: detail.storageUsage.agentBytes,
+            limit: detail.storageUsage.agentLimitBytes,
+            display: `${(detail.storageUsage.agentBytes / 1024 ** 2).toFixed(2)} / ${detail.storageUsage.agentLimitBytes / 1024 ** 2} MiB`,
+        },
         { label: "MCP 配额占用", value: detail.storageUsage.mcpBytes, limit: detail.storageUsage.mcpLimitBytes, display: `${bytes(detail.storageUsage.mcpBytes)} / ${bytes(detail.storageUsage.mcpLimitBytes)}` },
         { label: "素材数量", value: detail.storageUsage.assetCount, limit: detail.quota.assetCount, display: `${number(detail.storageUsage.assetCount)} / ${number(detail.quota.assetCount)}` },
         { label: "画布数量", value: detail.storageUsage.canvasCount, limit: detail.quota.canvasCount, display: `${number(detail.storageUsage.canvasCount)} / ${number(detail.quota.canvasCount)}` },

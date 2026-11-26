@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { canGenerateImageInPlace, findAvailableGenerationGroupPosition, imageGenerationChildPosition, imageGenerationGroupSize } from "@/lib/canvas/canvas-generation-layout";
 import { cancelIncompleteImageBatch, hasImageBatchResult, reconcileImageBatchRoot, retireImageBatchChildren } from "@/lib/canvas/canvas-image-batch-retry";
-import { isGenericCanvasNodeTitle, manualNodeTitle, nextDefaultCanvasNodeTitles } from "@/lib/canvas/canvas-generation-title";
+import { buildImageGenerationNodeTitle, isGenericCanvasNodeTitle, manualNodeTitle } from "@/lib/canvas/canvas-generation-title";
 import { fitImageNodeSize, imageNodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { canvasImageReferenceLimitError, buildImageGenerationMetadata, getGenerationCount, isGenerationCanceled, resetGenerationTaskMetadata, runCanvasGenerationTaskToConsumer } from "@/lib/canvas/canvas-project-generation";
 import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
@@ -109,10 +109,6 @@ export async function executeImageGeneration(
     const parentHeight = sourceNode?.height || parentConfig.height;
     const rootId = reuseSourceNode ? nodeId : nanoid();
     const childIds = count > 1 ? Array.from({ length: count }, () => nanoid()) : [];
-    const defaultTitles = nextDefaultCanvasNodeTitles(workingNodes, "image", count + (reuseSourceNode ? 0 : 1));
-    const preservedTitle = reuseSourceNode && sourceNode && !isGenericCanvasNodeTitle(sourceNode.title) ? sourceNode.title : "";
-    const rootTitle = preservedTitle || defaultTitles[0] || "图片节点1";
-    const childTitles = defaultTitles.slice(reuseSourceNode ? 0 : 1);
     const targetIds = count > 1 ? childIds : [rootId];
     registerPendingNodeIds(reuseSourceNode ? childIds : [rootId, ...childIds]);
     const rootWidth = outputNodeSize.width;
@@ -123,17 +119,18 @@ export async function executeImageGeneration(
     };
     const rootPosition = reuseSourceNode ? parentPosition : findAvailableGenerationGroupPosition(workingNodes, preferredPosition, imageGenerationGroupSize({ width: rootWidth, height: rootHeight }, outputNodeSize, childIds.length));
     // 原位重新生成沿用用户起的名称，同批子图按「名称 · 序号」命名；新建的结果组仍按提示词命名。
-    const keptTitle = reuseSourceNode ? manualNodeTitle(sourceNode) : undefined;
+    const keptTitle = reuseSourceNode ? manualNodeTitle(canvasNodes.find((node) => node.id === nodeId)) : undefined;
 
     const rootNode: CanvasNodeData = {
         id: rootId,
         type: CanvasNodeType.Image,
-        title: keptTitle ?? rootTitle,
+        title: keptTitle ?? buildImageGenerationNodeTitle(effectivePrompt, sourceNode),
         position: rootPosition,
         width: rootWidth,
         height: rootHeight,
         metadata: {
             ...resetGenerationTaskMetadata(reuseSourceNode ? sourceNode?.metadata : undefined, NODE_STATUS_LOADING),
+            manualTitle: Boolean(keptTitle),
             // 原位生成会清空旧图，先把它登记进版本历史，失败时也能从版本面板恢复。
             ...(reuseSourceNode && count <= 1 ? mediaVersionFieldsBeforeReplace(sourceNode) : {}),
             imageLayerGroup: undefined,
@@ -166,12 +163,13 @@ export async function executeImageGeneration(
     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
         id,
         type: CanvasNodeType.Image,
-        title: keptTitle ? `${keptTitle} · ${index + 1}` : childTitles[index] || `图片节点${index + 2}`,
+        title: keptTitle ? `${keptTitle} · ${index + 1}` : buildImageGenerationNodeTitle(effectivePrompt, sourceNode, index, count),
         position: imageGenerationChildPosition(rootNode.position, rootNode.width, outputNodeSize, index),
         width: outputNodeSize.width,
         height: outputNodeSize.height,
         metadata: {
             ...canvasGenerationPromptMetadata(prompt, effectivePrompt),
+            manualTitle: Boolean(keptTitle),
             status: NODE_STATUS_LOADING,
             size: generationConfig.size,
             ...sizeSourceMetadata,
@@ -200,13 +198,14 @@ export async function executeImageGeneration(
             if (isConfigNode) return { ...node, metadata: { ...node.metadata, ...canvasGenerationPromptMetadata(prompt, effectivePrompt), status: NODE_STATUS_LOADING, errorDetails: undefined } };
             if (reuseSourceNode) return { ...node, position: rootNode.position, width: rootNode.width, height: rootNode.height, title: rootNode.title, metadata: rootNode.metadata };
             if (isImageNode) return node;
+            const sourceTitle = manualNodeTitle(node);
             return {
                 ...node,
                 type: CanvasNodeType.Text,
-                title: manualNodeTitle(node) ?? (prompt.slice(0, 32) || "Prompt"),
+                title: sourceTitle ?? (prompt.slice(0, 32) || "Prompt"),
                 width: parentConfig.width,
                 height: parentConfig.height,
-                metadata: { ...node.metadata, content: prompt, richText: undefined, prompt, composerContent: prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
+                metadata: { ...node.metadata, manualTitle: Boolean(sourceTitle), content: prompt, richText: undefined, prompt, composerContent: prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
             };
         }),
         ...(reuseSourceNode ? [] : [rootNode]),
@@ -248,6 +247,7 @@ export async function executeImageGeneration(
                         referenceImages,
                         signal: controller.signal,
                         metadata: {
+                            assetTitle: childNodes.find((node) => node.id === targetId)?.title || rootNode.title,
                             sourceNodeId: nodeId,
                             ...taskContext,
                             resolvedCharacterVersions: generationContext.resolvedCharacterVersions,

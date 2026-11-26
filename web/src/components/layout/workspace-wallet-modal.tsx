@@ -19,7 +19,7 @@ import { generationErrorMessage } from "@/lib/generation-error";
 import { estimatePaymentCharge, paymentOptionsFromProviders, type PaymentOption } from "@/lib/payment-options";
 import { getPaymentSettings, listPaymentProviders, listTopupProducts, type CreditStorePolicy, type PaymentOrder, type PaymentProvider, type TopupProduct, type TopupProductKind } from "@/services/api/payments";
 import { listMyStorageGrants } from "@/services/api/storage-grants";
-import { getWallet, redeemCredits, type CreditLedgerEntry, type WalletSummary } from "@/services/api/wallet";
+import { getWallet, redeemCredits, type WalletCreditEntry, type WalletSummary } from "@/services/api/wallet";
 import { cn } from "@/lib/utils";
 import { openWorkspaceWallet, WORKSPACE_WALLET_OPEN_EVENT, type WorkspaceWalletOpenDetail } from "@/lib/workspace-wallet";
 import { useAppearanceStore } from "@/stores/use-appearance-store";
@@ -67,7 +67,7 @@ export function WorkspaceWalletHost() {
         <WorkspaceWalletModal
             open={open}
             creditsEnabled={creditsEnabled}
-            initialTab={openDetail.tab}
+            initialTab={openDetail.tab === "income" || openDetail.tab === "orders" ? "history" : openDetail.tab}
             initialCategory={openDetail.category}
             pendingPaymentOrderId={openDetail.paymentOrderId}
             paymentInvalid={openDetail.paymentInvalid}
@@ -166,8 +166,11 @@ export function WorkspaceWalletModal({
                 const usableProviders = providerResult.providers.filter((item) => item.enabled && item.pluginEnabled && item.configured);
                 const options = paymentOptionsFromProviders(usableProviders);
                 setProducts(enabledProducts);
-                setCreditStore(productResult.creditStore);
-                setCreditAmount((current) => normalizeCreditStoreAmount(productResult.creditStore, current));
+                const creditPolicy = productResult.creditStore;
+                if (creditPolicy) {
+                    setCreditStore(creditPolicy);
+                    setCreditAmount((current) => normalizeCreditStoreAmount(creditPolicy, current));
+                }
                 setProviders(usableProviders);
                 setPaymentOptions(options);
                 setUsdCnyRate(settingsResult.settings.usdCnyRate || "");
@@ -460,11 +463,7 @@ export function WorkspaceWalletModal({
                                 ) : walletLoading && !wallet ? (
                                     <Skeleton active paragraph={{ rows: 6 }} />
                                 ) : wallet?.entries.length ? (
-                                    <div className="workspace-wallet-ledger">
-                                        {wallet.entries.map((entry) => (
-                                            <WalletLedgerRow key={entry.id} entry={entry} />
-                                        ))}
-                                    </div>
+                                    <div className="workspace-wallet-ledger">{wallet.entries.map((entry) => (entry.type === "billing" ? null : <WalletLedgerRow key={entry.id} entry={entry} />))}</div>
                                 ) : (
                                     <div className="workspace-wallet-empty">
                                         <History />
@@ -569,7 +568,7 @@ function WalletMembershipCard({
     );
 }
 
-function WalletLedgerRow({ entry }: { entry: CreditLedgerEntry }) {
+function WalletLedgerRow({ entry }: { entry: WalletCreditEntry }) {
     const { t } = useTranslation();
     const positive = entry.amountMicrocredits > 0;
     // 方舟素材组费用不是模型调用：标题按场景显示，说明只展示组名或退回原因。

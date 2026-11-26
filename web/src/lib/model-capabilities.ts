@@ -1,10 +1,12 @@
 import type { TextThinkingConfig } from "./text-thinking";
-import type { ModelProtocol, ModelProtocolWorkflow } from "@/lib/model-protocols";
+import type { ModelProtocol, ModelProtocolDefinition, ModelProtocolWorkflow, VideoModelModes } from "@/lib/model-protocols";
 import { projectImageParameters, normalizeImageParameters, imageParameterRequest } from "./image-parameters";
 import type { ImageResolutionOption, ImageResolutionTier } from "@/lib/image-resolution-tiers";
 import { IMAGE_RATIOS, IMAGE_RESOLUTIONS, imagePresetForRatio } from "@/lib/image-size-presets";
 import { kemeiSeedreamPresets } from "./kemei-image-presets";
+import { seedream55ImagePresets } from "./seedream-image-presets";
 import { type WorkflowVideoFieldLike, workflowImageCapabilityConfig, workflowVideoCapabilityConfig } from "./model-capabilities-workflow";
+import videoModelPresets from "../../../backend/internal/app/video_model_presets.json";
 import { resolveWorkflowVideoScreenSpec } from "./video-screen-specs";
 
 export {
@@ -109,6 +111,7 @@ export type ImageCapabilityConfig = {
 };
 
 export type VideoCapabilityConfig = {
+    modeLimits?: VideoModelModes[string];
     references: {
         promptMaxChars: number;
         minImages: number;
@@ -116,10 +119,12 @@ export type VideoCapabilityConfig = {
         maxImageBytes: number;
         maxVideos: number;
         maxVideoBytes: number;
-        maxVideoDurationSeconds: number;
+        maxTotalVideoDurationSeconds?: number;
         maxAudios: number;
         maxAudioBytes: number;
+        maxVideoDurationSeconds: number;
         maxAudioDurationSeconds: number;
+        maxTotalAudioDurationSeconds?: number;
         imageRoles: Array<"first_frame" | "last_frame" | "reference_image">;
     };
     duration: {
@@ -155,7 +160,9 @@ export type VideoProcessingConfig = {
 /** 与后端一致：轮询上限 1 小时，按 RTF≈20 估算源视频默认不超过 180 秒。 */
 export const DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS = 180;
 export const VOLCENGINE_MEDIAKIT_ENHANCE_VIDEO_PROTOCOL = "volcengine-mediakit-enhance-video";
-/** 火山 MediaKit 画质增强（大模型版）支持的目标分辨率，按从低到高排列。 */
+export const VOLCENGINE_MEDIAKIT_VIDEO_DEPTH_PROTOCOL = "volcengine-mediakit-video-depth";
+export const MEDIAKIT_DEPTH_MAX_SOURCE_SECONDS = 600;
+/** 火山 MediaKit 视频画质增强工具支持的目标分辨率，按从低到高排列。 */
 export const VIDEO_ENHANCE_RESOLUTIONS = ["720p", "1080p", "2k", "4k"] as const;
 /** 目标档对应的短边像素，用于判断是否低于源视频。 */
 export const VIDEO_ENHANCE_SHORT_EDGE: Record<string, number> = { "720p": 720, "1080p": 1080, "2k": 1440, "4k": 2160 };
@@ -398,6 +405,13 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
         image.transparentBackground.supported = false;
         image.responseFormat.supported = false;
         image.outputFormat.supported = false;
+        if (model === "doubao-seedream-5-5-261028") {
+            const presets = seedream55ImagePresets();
+            image.references.maxImages = 10;
+            image.size = { parameter: "size", values: presets.map((preset) => preset.size), default: "2048x2048", allowCustom: true, presets };
+            image.resolution = { supported: true, values: ["1k", "1.5k", "2k"], default: "2k" };
+            image.maxOutputs = 1;
+        }
     }
     if (protocol === "openai-image") {
         // OpenAI Images 只收 WIDTHxHEIGHT：默认配置声明了 1K/2K/4K，就必须自带档位换算表，
@@ -501,6 +515,40 @@ export function defaultImageCapabilityConfig(protocol?: ModelProtocol, model = "
     return image;
 }
 
+export function officialVideoCapabilityPreset(protocol?: ModelProtocol, model = "", release?: ModelProtocolDefinition): VideoCapabilityConfig | undefined {
+    const preset = videoModelPresets.find((entry) => entry.provider === protocol && entry.models.includes(model.trim()));
+    if (!preset) return undefined;
+    const video = structuredClone(preset.video) as VideoCapabilityConfig;
+    const modes = release?.videoModes?.[model.trim()];
+    if (release?.videoModes && !modes) return undefined;
+    if (modes) {
+        video.modeLimits = modes;
+        video.operations = Object.keys(modes);
+        video.ratios = [...new Set(Object.values(modes).flatMap((mode) => mode.ratios))];
+        if (!video.operations.includes(video.defaultOperation)) video.defaultOperation = video.operations[0];
+        if (!video.ratios.includes(video.defaultRatio)) video.defaultRatio = video.ratios[0] || "";
+    }
+    const output = release?.videoOutputs?.[model.trim()];
+    if (output) {
+        video.resolutions = [...output.resolutions];
+        if (!video.resolutions.includes(video.defaultResolution)) video.defaultResolution = video.resolutions[0];
+        video.duration = { selection: "range", min: output.minSeconds, max: output.maxSeconds, step: 1, default: Math.min(output.maxSeconds, Math.max(output.minSeconds, video.duration.default)) };
+    }
+    return video;
+}
+
+export function videoProfileForOperation(profile: VideoCapabilityConfig, operation = profile.defaultOperation): VideoCapabilityConfig {
+    const limits = profile.modeLimits?.[operation];
+    if (!limits) return profile;
+    const ratios = profile.ratios.filter((ratio) => limits.ratios.includes(ratio));
+    return {
+        ...profile,
+        references: { ...profile.references, maxImages: Math.min(profile.references.maxImages, limits.maxImages) },
+        ratios,
+        defaultRatio: ratios.includes(profile.defaultRatio) ? profile.defaultRatio : (ratios[0] ?? ""),
+    };
+}
+
 export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = ""): ModelCapabilityConfig {
     const text: TextCapabilityConfig = {
         streaming: true,
@@ -509,6 +557,8 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         // 文本模型的视觉能力必须由管理员明确开启，不能根据模型名猜测。
         references: { promptMaxChars: 32000, maxImages: 0, maxImageBytes: 0, maxVideos: 0, maxVideoBytes: 0 },
     };
+    const preset = officialVideoCapabilityPreset(protocol, model) ?? (protocol === "volcengine-ark-seedance-25" ? officialVideoCapabilityPreset(protocol) : undefined);
+    if (preset) return { version: 1, text, image: defaultImageCapabilityConfig(protocol, model), video: preset };
     const video: VideoCapabilityConfig = {
         references: {
             promptMaxChars: DEFAULT_VIDEO_PROMPT_MAX_CHARS,
@@ -549,8 +599,6 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.references.maxAudios = 3;
         video.references.maxVideoBytes = 200 * 1024 * 1024;
         video.references.maxAudioBytes = 15 * 1024 * 1024;
-        video.references.maxVideoDurationSeconds = 15;
-        video.references.maxAudioDurationSeconds = 15;
         video.generateAudio = { supported: true, default: true };
     }
     if (protocol === "volcengine-ark-video" || protocol === "volcengine-ark-agent-plan-video" || protocol === "newapi-channel-1") video.resolutions = ["480p", "720p", "1080p"];
@@ -559,6 +607,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.operations.push("reference_to_video", "audio_to_video");
         video.references.imageRoles = ["first_frame", "last_frame", "reference_image"];
     }
+    if (protocol === "newapi") video.references.maxImages = 1;
     if (protocol === "novita-video") {
         video.references.maxImages = 1;
         video.references.maxImageBytes = 10 * 1024 * 1024;
@@ -572,10 +621,8 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.references.maxImageBytes = 30 * 1024 * 1024;
         video.references.maxVideos = 3;
         video.references.maxVideoBytes = 50 * 1024 * 1024;
-        video.references.maxVideoDurationSeconds = 15;
         video.references.maxAudios = 3;
         video.references.maxAudioBytes = 15 * 1024 * 1024;
-        video.references.maxAudioDurationSeconds = 15;
         video.duration = { selection: "enum", values: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], default: 5 };
         video.ratios = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
         video.resolutions = ["768P", "2K"];
@@ -602,7 +649,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
     if (protocol === "lk888-seedance" || protocol === "lk888-seedance-anmiao") applyLK888SeedanceCapability(video, model);
     if (protocol === VOLCENGINE_MEDIAKIT_ENHANCE_VIDEO_PROTOCOL) {
         // 与后端默认值一致：只接收一个源视频，帧率默认保持原片。
-        video.references = { ...video.references, minImages: 0, maxImages: 0, maxImageBytes: 0, maxVideos: 1, maxVideoDurationSeconds: DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS, maxAudios: 0 };
+        video.references = { ...video.references, minImages: 0, maxImages: 0, maxImageBytes: 0, maxVideos: 1, maxAudios: 0 };
         video.duration = { selection: "range", min: 1, max: DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS, step: 1, default: 5 };
         video.ratios = [];
         video.defaultRatio = "";
@@ -613,6 +660,19 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
         video.operations = ["enhance"];
         video.defaultOperation = "enhance";
         video.processing = { fpsPolicy: "keep_source", maxSourceSeconds: DEFAULT_VIDEO_PROCESSING_MAX_SOURCE_SECONDS };
+    }
+    if (protocol === VOLCENGINE_MEDIAKIT_VIDEO_DEPTH_PROTOCOL) {
+        video.references = { ...video.references, minImages: 0, maxImages: 0, maxImageBytes: 0, maxVideos: 1, maxAudios: 0 };
+        video.duration = { selection: "range", min: 1, max: MEDIAKIT_DEPTH_MAX_SOURCE_SECONDS, step: 1, default: 5 };
+        video.ratios = [];
+        video.defaultRatio = "";
+        video.resolutions = [];
+        video.defaultResolution = "";
+        video.generateAudio = { supported: false, default: false };
+        video.watermark = { supported: false, default: false };
+        video.operations = ["depth"];
+        video.defaultOperation = "depth";
+        video.processing = { fpsPolicy: "keep_source", maxSourceSeconds: MEDIAKIT_DEPTH_MAX_SOURCE_SECONDS };
     }
     return { version: 1, text, image: defaultImageCapabilityConfig(protocol, model), video };
 }
@@ -827,8 +887,8 @@ export function normalizeImageValue(profile: ImageCapabilityConfig, value: { siz
         ? requestedQuality === "auto" || requestedQuality === "any"
             ? "auto"
             : value.quality && profile.quality.values.includes(value.quality)
-                ? value.quality
-                : profile.quality.default || "auto"
+              ? value.quality
+              : profile.quality.default || "auto"
         : profile.resolution.supported
           ? profile.quality.default || "auto"
           : requestedQuality === "1k" || requestedQuality === "1.5k" || requestedQuality === "2k" || requestedQuality === "3k" || requestedQuality === "4k"
@@ -926,6 +986,16 @@ export function videoDurationOptions(profile: VideoCapabilityConfig) {
     const max = profile.duration.max || min;
     const step = profile.duration.step || 1;
     return Array.from({ length: Math.floor((max - min) / step) + 1 }, (_, index) => min + index * step);
+}
+
+export function referenceMediaLimitError(kind: "video" | "audio", references: VideoCapabilityConfig["references"], durationsMs: readonly (number | undefined)[]) {
+    const label = kind === "video" ? "参考视频" : "参考音频";
+    const maxClips = kind === "video" ? references.maxVideos : references.maxAudios;
+    const maxTotalSeconds = (kind === "video" ? references.maxTotalVideoDurationSeconds : references.maxTotalAudioDurationSeconds) ?? 0;
+    if (durationsMs.length > maxClips) return `${label}最多支持 ${maxClips} 段`;
+    if (maxTotalSeconds <= 0) return "";
+    const totalMs = durationsMs.reduce<number>((total, duration) => total + Math.max(0, duration || 0), 0);
+    return totalMs > maxTotalSeconds * 1000 ? `${label}总时长不能超过 ${maxTotalSeconds} 秒` : "";
 }
 
 export function videoDurationAllowed(profile: VideoCapabilityConfig, value: number) {

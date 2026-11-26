@@ -20,6 +20,7 @@ func skillFeedbackCall(id, path string) cloudAgentCall {
 func skillFeedbackFixture(t *testing.T, packs map[string]map[string]string) (*Service, map[string]string, cloudAgentRuntime) {
 	t.Helper()
 	s, db, _, _ := creationTestService(t)
+	skillAdministratorFixture(t, db, "user")
 	if sqlDB, err := db.DB(); err == nil {
 		t.Cleanup(func() { _ = sqlDB.Close() })
 	}
@@ -41,7 +42,7 @@ func skillFeedbackFixture(t *testing.T, packs map[string]map[string]string) (*Se
 		}
 		ids[name] = created.SkillID
 	}
-	pool, err := s.cloudAgentBuildSkillPool("user", "", nil, defaultCloudAgentContextBudget())
+	pool, err := s.cloudAgentBuildSkillPool("user", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,11 +84,17 @@ func TestCloudAgentSkillEmptyDirectoryAndRepeatedRead(t *testing.T) {
 }
 
 func TestCloudAgentSkillReadAcceptsUniqueEnabledName(t *testing.T) {
-	state := cloudAgentRuntime{Skills: []cloudAgentSkill{{
-		ID: "123", Name: "omniailab-ai-director", Version: "v1", Instruction: "# 导演\n\n正文",
-		Files: map[string]string{cloudAgentSkillEntryPath: ""},
-	}}}
-	result, err := cloudAgentReadTool(nil, "user", &state, skillFeedbackCall("omniailab-ai-director", cloudAgentSkillEntryPath))
+	s, db, _, _ := creationTestService(t)
+	skillAdministratorFixture(t, db, "user")
+	created, err := s.CreateSkill("user", SkillMutationRequest{SkillName: "omniailab-ai-director", Description: "导演工作法", Instruction: "# 导演\n\n正文", Tag: "drama", IsPrivate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := cloudAgentRuntime{
+		Skills:        []cloudAgentSkill{{ID: created.SkillID, Name: "omniailab-ai-director", Version: created.VersionID, Instruction: "# 导演\n\n正文"}},
+		SkillVersions: map[string]string{created.SkillID: created.VersionID},
+	}
+	result, err := cloudAgentReadTool(nil, "user", &state, skillFeedbackCall("omniailab-ai-director", cloudAgentSkillEntryPath), s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +160,7 @@ func TestCloudAgentModelFailureRedactsProviderDetails(t *testing.T) {
 		{"connection refused", "model_connection_refused"},
 		{"unknown provider error", "model_task_failed"},
 	} {
-		text, reason := cloudAgentModelFailure(&model.Task{ID: "task-id", Error: `Post "https://private.example?key=secret": ` + test.raw})
+		text, reason := cloudAgentModelFailure(&model.Task{ID: "task-id", Error: `Post "https://private.example?key=secret": ` + test.raw, ExecutionDiagnosticJSON: `{"code":"` + test.reason + `"}`})
 		if reason != test.reason || !strings.Contains(text, "task-id") || strings.Contains(text, "private") || strings.Contains(text, "secret") {
 			t.Fatalf("unsafe or incorrect error: %q, %q", text, reason)
 		}
@@ -169,7 +176,7 @@ func TestCloudAgentFailedModelEmitsSafeReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(&model.Task{}).Where("id = ?", run.ID).Updates(map[string]any{"status": model.TaskStatusFailed, "error": "private-url connection reset by peer"}).Error; err != nil {
+	if err := db.Model(&model.Task{}).Where("id = ?", run.ID).Updates(map[string]any{"status": model.TaskStatusFailed, "error": "private-url connection reset by peer", "execution_diagnostic_json": `{"code":"model_connection_reset"}`}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := s.advanceCloudAgentByID("user", run.ID); err != nil {

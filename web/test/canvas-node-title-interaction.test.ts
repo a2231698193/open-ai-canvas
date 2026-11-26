@@ -10,8 +10,9 @@ const liveViewportSource = readFileSync(resolve(import.meta.dir, "../src/lib/can
 describe("canvas node title interaction", () => {
     test("disables iframe hit testing only during node dragging", () => {
         expect(canvasStylesSource).toMatch(/\[data-canvas-node-dragging="true"\] \.node-element iframe\s*\{\s*pointer-events: none;/);
-        expect(liveViewportSource).toContain('if (preview) container.dataset.canvasNodeDragging = "true"');
-        expect(liveViewportSource).toContain("else delete container.dataset.canvasNodeDragging");
+        expect(liveViewportSource).toContain('setCanvasGestureActive(container, "canvasNodeDragging", Boolean(preview))');
+        expect(liveViewportSource).toContain('if (active) container.dataset[attribute] = "true"');
+        expect(liveViewportSource).toContain("else delete container.dataset[attribute]");
     });
     test("exposes a drag handle without bypassing read-only or locked nodes", () => {
         // 上游画布节点重构重做了拖拽实现：onDragStart 手柄、指针捕获与「拖动此处移动节点」提示

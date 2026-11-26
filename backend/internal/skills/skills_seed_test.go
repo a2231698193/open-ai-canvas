@@ -114,10 +114,17 @@ func TestBuiltinMarkdownPackagesPreserveHistoryAndUserState(t *testing.T) {
 	if err := db.First(&model.Skill{}, "id = ?", "16000000000106").Error; err != nil {
 		t.Fatalf("STEPPS skill missing after migration: %v", err)
 	}
-	if err := svc.DeleteBuiltinSkill(&model.User{ID: state.UserID, Role: model.UserRoleUser}, historyID); appErrorStatus(err) != 403 {
+	ordinary := &model.User{ID: state.UserID, Username: state.UserID, Role: model.UserRoleUser, Status: model.UserStatusActive}
+	if err := db.Create(ordinary).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteBuiltinSkill(ordinary, historyID); appErrorStatus(err) != 403 {
 		t.Fatalf("ordinary user builtin deletion: %v", err)
 	}
-	admin := &model.User{ID: "admin", Role: model.UserRoleAdmin}
+	admin := &model.User{ID: "admin", Username: "admin", Role: model.UserRoleAdmin, Status: model.UserStatusActive}
+	if err := db.Create(admin).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.DeleteBuiltinSkill(admin, historyID); err != nil {
 		t.Fatal(err)
 	}

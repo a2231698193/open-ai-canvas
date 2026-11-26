@@ -589,7 +589,8 @@ type DramaEpisodeDetail struct {
 	Chapters []DramaChapterRef  `json:"chapters"`
 	Jobs     []DramaJobView     `json:"jobs"`
 	// ScriptJob 是本集最近一次改编剧本的调度工作，可查看改编提示词与模型返回。
-	ScriptJob *DramaJobView `json:"scriptJob,omitempty"`
+	ScriptJob  *DramaJobView `json:"scriptJob,omitempty"`
+	ComposeJob *DramaJobView `json:"composeJob,omitempty"`
 	// DialogueCheck 只在本集有镜头、且原文章节不与其他集共用时给出（共用时无法判断哪些台词属于本集）。
 	DialogueCheck *DramaDialogueCheck `json:"dialogueCheck,omitempty"`
 }
@@ -608,7 +609,7 @@ type DramaSegmentView struct {
 	VideoPrompt string `json:"videoPrompt"`
 	Generated   string `json:"generated"`
 	Custom      bool   `json:"custom"`
-	// PromptStatus：none 无记录、queued 待撰写、running 撰写中、ready 完成、stale 镜头已改动、failed 失败。
+	// PromptStatus：none 无记录、queued 待撰写、running 撰写中、ready 完成、stale 过期、failed 失败、conflict 待核对、review AI 新稿待采用。
 	PromptStatus string `json:"promptStatus"`
 	PromptError  string `json:"promptError,omitempty"`
 	// VideoStatus：空串待生成、running、ready、stale（提示词或上一段已变）、failed。
@@ -634,7 +635,7 @@ type DramaSegmentView struct {
 
 // DramaSegmentRequest 是一段视频请求的预演，与提交时同一函数计算。
 type DramaSegmentRequest struct {
-	// Operation：image_to_video（上一段最后一帧作首帧）、reference_to_video（参考图）、text_to_video。
+	// Operation 是实际使用的生成模式。续接使用图生视频或协议声明的参考图模式。
 	Operation       string `json:"operation"`
 	Seconds         int    `json:"seconds"`
 	MaxVideoSeconds int    `json:"maxVideoSeconds"`
@@ -650,8 +651,9 @@ type DramaSegmentRequest struct {
 	// FirstFrame 是上一段视频的最后一帧；第一段为空。FirstFramePending 表示上一段还没生成，生成后才能提交本段。
 	FirstFrameResourceID string                  `json:"firstFrameResourceId,omitempty"`
 	FirstFramePending    bool                    `json:"firstFramePending"`
+	TailFrameAsReference bool                    `json:"tailFrameAsReference,omitempty"`
 	References           []DramaSegmentReference `json:"references"`
-	// ReferenceCapacity 是本段最多随请求发送的参考图张数（已扣除首帧，并受每段上限约束）；ModelMaxImages 是视频模型声明的图片上限。
+	// ReferenceCapacity 扣除首帧并受每段上限约束，ModelMaxImages 是所选模型、工作流和生成方式共同允许的图片上限。
 	ReferenceCapacity int `json:"referenceCapacity"`
 	ModelMaxImages    int `json:"modelMaxImages"`
 	// ReferenceLimited 表示有参考图因“每段最多参考图”设置而未发送（而不是模型上限）。
@@ -811,7 +813,7 @@ type DramaModelOption struct {
 	MaxAudios       int `json:"maxAudios"`
 	// MinReferenceImages 仅视频模型：模型要求的最少参考图数（含首帧），0 表示不强制参考图。
 	MinReferenceImages int `json:"minReferenceImages,omitempty"`
-	// TailFrameChain 仅视频模型：是否支持图生视频，可用于“尾帧续接”；不支持的模型只能并行出片。
+	// TailFrameChain 是模型是否可使用上一段尾帧续接。
 	TailFrameChain bool `json:"tailFrameChain,omitempty"`
 	// VideoRatios 仅视频模型：能准确给出的作品画幅；不含作品画幅的模型不能用于该作品。
 	VideoRatios []string `json:"videoRatios,omitempty"`

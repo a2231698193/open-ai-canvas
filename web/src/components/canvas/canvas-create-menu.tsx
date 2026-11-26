@@ -78,7 +78,7 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
             </div>
 
             {footerCommands.length ? (
-                <div role="group" aria-label={t("canvasA.createMenu.footerGroup")} className="mt-2 grid gap-0.5 rounded-[10px] p-0.5" style={{ background: "var(--create-track)", gridTemplateColumns: `repeat(${footerCommands.length}, minmax(0, 1fr))` }}>
+                <div role="group" aria-label={t("canvasA.createMenu.footerGroup")} className="mt-3 grid gap-1 rounded-[10px] p-1" style={{ background: "var(--create-track)", gridTemplateColumns: `repeat(${footerCommands.length}, minmax(0, 1fr))` }}>
                     {footerCommands.map((command) => (
                         <button
                             key={command.id}

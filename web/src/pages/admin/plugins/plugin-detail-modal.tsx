@@ -20,6 +20,7 @@ export type AdminPluginDetail = {
     /** 以下只有后端登记过的插件（上传或后端内置）才有。 */
     fileName?: string;
     sha256?: string;
+    releases?: Array<{ version: string; sha256: string }>;
     installedAt?: string;
     updatedAt?: string;
 };
@@ -46,6 +47,7 @@ export function AdminPluginDetailModal({ plugin, state, typeLabel, icon, onClose
 
 function PluginDetail({ plugin, state, typeLabel, icon }: { plugin: AdminPluginDetail; state?: AdminPluginState; typeLabel: string; icon?: ReactNode }) {
     const { manifest, management } = plugin;
+    const permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
     const available = state?.platformAvailable ?? plugin.status === "enabled";
     const contributions = contributionSummary(manifest);
     const hasPackage = Boolean(plugin.fileName || plugin.sha256 || plugin.installedAt);
@@ -80,9 +82,9 @@ function PluginDetail({ plugin, state, typeLabel, icon }: { plugin: AdminPluginD
                         <Fact label="配置方式">{configurationLabel(management.configurationScope)}</Fact>
                     </FactGroup>
                     <FactGroup icon={<KeyRound />} title="权限">
-                        {manifest.permissions.length ? (
+                        {permissions.length ? (
                             <div className="admin-plugin-detail-chips">
-                                {manifest.permissions.map((permission) => (
+                                {permissions.map((permission) => (
                                     <span key={permission} title={permission}>
                                         {pluginPermissionLabel(permission)}
                                     </span>
@@ -116,6 +118,15 @@ function PluginDetail({ plugin, state, typeLabel, icon }: { plugin: AdminPluginD
                                 <Fact label="SHA-256">
                                     <span className="admin-plugin-detail-mono">{plugin.sha256 || "未记录"}</span>
                                 </Fact>
+                                {plugin.releases && plugin.releases.length > 1 && (
+                                    <Fact label="已安装发行版本">
+                                        {plugin.releases.map((release) => (
+                                            <div key={release.sha256} title={release.sha256}>
+                                                v{release.version} · <code>{release.sha256.slice(0, 12)}</code>
+                                            </div>
+                                        ))}
+                                    </Fact>
+                                )}
                             </>
                         ) : (
                             <Fact label="安装包">随平台内置</Fact>

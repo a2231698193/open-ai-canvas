@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 
 import type { AuthNavigate } from "@/lib/auth-entry";
 import { useAuthDialogStore } from "@/stores/use-auth-dialog-store";
@@ -6,10 +7,11 @@ import { useAuthDialogStore } from "@/stores/use-auth-dialog-store";
 const AuthDialog = lazy(() => import("./auth-dialog"));
 
 /**
- * 全局登录弹窗挂载点，放在 RouterProvider 旁边，分享页等路由外层页面也能打开。
- * 首次打开前不加载表单代码；navigate 由入口传入 router.navigate。
+ * 全局登录弹窗挂载在根路由布局中，登录表单可以使用路由 Hooks。
+ * 首次打开前不加载表单代码。
  */
-export function AuthDialogHost({ navigate }: { navigate: AuthNavigate }) {
+export function AuthDialogHost() {
+    const navigate = useNavigate();
     const open = useAuthDialogStore((state) => state.open);
     const [requested, setRequested] = useState(open);
     useEffect(() => {
@@ -18,7 +20,7 @@ export function AuthDialogHost({ navigate }: { navigate: AuthNavigate }) {
     if (!requested) return null;
     return (
         <Suspense fallback={null}>
-            <AuthDialog navigate={navigate} />
+            <AuthDialog navigate={(to) => void navigate(to)} />
         </Suspense>
     );
 }

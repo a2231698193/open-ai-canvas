@@ -17,21 +17,38 @@ func TestRegisterCanvasAPIExposesOpenAPIAndProjects(t *testing.T) {
 	RegisterCanvasAPI(router.Group("/api"), &service.Service{})
 
 	wanted := map[string]bool{
-		"GET /api/openapi.yaml":               false,
-		"GET /api/auth/settings":              false,
-		"POST /api/auth/login":                false,
-		"POST /api/auth/register":             false,
-		"GET /api/admin/settings/turnstile":   false,
-		"PATCH /api/admin/settings/turnstile": false,
-		"GET /api/workbench/tools":            false,
-		"GET /api/workbench/tasks":            false,
-		"POST /api/workbench/tasks":           false,
-		"GET /api/projects":                   false,
-		"POST /api/tasks":                     false,
-		"POST /api/tasks/:id/recover-media":   false,
-		"GET /api/resources":                  false,
-		"GET /api/skills/presets":             false,
-		"GET /api/agent/skills/usage":         false,
+		"POST /api/agent/quote":                                             false,
+		"POST /api/agent/analyze":                                           false,
+		"POST /api/agent/recommend":                                         false,
+		"POST /api/agent/generate":                                          false,
+		"POST /api/agent/generate/stream":                                   false,
+		"GET /api/openapi.yaml":                                             false,
+		"GET /api/auth/settings":                                            false,
+		"POST /api/auth/login":                                              false,
+		"POST /api/auth/register":                                           false,
+		"GET /api/admin/settings/turnstile":                                 false,
+		"PATCH /api/admin/settings/turnstile":                               false,
+		"GET /api/workbench/tools":                                          false,
+		"GET /api/workbench/tasks":                                          false,
+		"POST /api/workbench/tasks":                                         false,
+		"GET /api/projects":                                                 false,
+		"GET /api/teams":                                                    false,
+		"GET /api/teams/credit-overview":                                    false,
+		"POST /api/teams/:teamId/groups":                                    false,
+		"POST /api/team-invitations/:id/accept":                             false,
+		"GET /api/teams/:teamId/wallet":                                     false,
+		"POST /api/teams/:teamId/asset-publications":                        false,
+		"POST /api/teams/:teamId/workspace/tasks/quote":                     false,
+		"PATCH /api/teams/:teamId/workspace/canvas-projects/:id/operations": false,
+		"GET /api/teams/:teamId/workspace/assets":                           false,
+		"POST /api/tasks":                                                   false,
+		"POST /api/tasks/:id/recover-media":                                 false,
+		"GET /api/resources":                                                false,
+		"GET /api/skills/presets":                                           false,
+		"GET /api/agent/skills/usage":                                       false,
+		"GET /api/admin/request-protocols":                                  false,
+		"POST /api/admin/request-protocols":                                 false,
+		"POST /api/admin/request-protocols/check":                           false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path
@@ -53,7 +70,7 @@ func TestRegisterCanvasAPIExposesOpenAPIAndProjects(t *testing.T) {
 
 	recorder = httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/skills/presets", nil))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"presets"`) {
+	if recorder.Code != http.StatusUnauthorized || strings.Contains(recorder.Body.String(), `"presets"`) {
 		t.Fatalf("skills presets status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }

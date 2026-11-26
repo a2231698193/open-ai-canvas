@@ -9,7 +9,7 @@ import { reuseCanvasReferenceListMap, reuseCanvasReferenceMap } from "@/lib/canv
 import { buildSkillMentionReferences } from "@/lib/canvas/canvas-skill-mentions";
 import { buildCanvasConnectionIndex, type CanvasIndexedConnection } from "@/lib/canvas/canvas-connection-index";
 import { retainCanvasLayoutNodes } from "@/lib/canvas/canvas-layout-snapshot";
-import { buildCanvasSpatialIndex, canvasNodeBounds, type CanvasSpatialIndex } from "@/lib/canvas/canvas-spatial-index";
+import { buildCanvasSpatialIndex, canvasNodeBounds, type CanvasSpatialBounds, type CanvasSpatialIndex } from "@/lib/canvas/canvas-spatial-index";
 import { isGridImageBatchRoot } from "@/lib/canvas/canvas-image-batch-grid";
 import { canvasOverviewMode, resolveCanvasNodeLOD, type CanvasNodeRenderLOD } from "@/lib/canvas/canvas-node-lod";
 import { nodeGenerationPrompt } from "@/lib/canvas/generation-contract";
@@ -321,6 +321,32 @@ export function useCanvasRenderModel({
         });
     }, [connectionSpatialIndex, dragPreview, nodeById, renderBounds]);
 
+    const queryGesturePreview = useMemo(() => {
+        const mountedEdges = new Set(displayConnections.map(({ connection }) => connection.id));
+        const coveredIds = new Set(renderHiddenNodeIds);
+        for (const [id, lod] of nodeRenderLODById) if (lod !== "shell") coveredIds.add(id);
+        return (view: CanvasSpatialBounds, bounds: CanvasSpatialBounds, scale: number) => {
+            const previewNodes = selectCanvasVisibleNodes({
+                index: nodeSpatialIndex,
+                nodeById,
+                view,
+                enter: bounds,
+                retain: bounds,
+                hiddenIds: coveredIds,
+                retainedIds: forcedRenderNodeIds,
+                forcedIds: forcedRenderNodeIds,
+                budget: Math.max(0, canvasNodeRenderBudget(scale) - nodeRenderLODById.size),
+            });
+            const extraConnections = connectionSpatialIndex.index.query(bounds, CANVAS_MAX_RENDERED_CONNECTIONS).flatMap(({ connection, fromId, toId }) => {
+                if (mountedEdges.has(connection.id)) return [];
+                const from = nodeById.get(fromId);
+                const to = nodeById.get(toId);
+                return from && to ? [{ connection, from, to }] : [];
+            });
+            return { nodes: previewNodes, connections: extraConnections };
+        };
+    }, [displayConnections, connectionSpatialIndex, nodeSpatialIndex, nodeById, nodeRenderLODById, renderHiddenNodeIds, forcedRenderNodeIds]);
+
     const configInputsById = useMemo(() => {
         const map = new Map<string, NodeGenerationInput[]>();
         const configNodeIds = new Set<string>();
@@ -409,6 +435,7 @@ export function useCanvasRenderModel({
         contextMenuNode,
         cropNode,
         displayConnections,
+        queryGesturePreview,
         frameChildrenById,
         imageAssets,
         infoNode,

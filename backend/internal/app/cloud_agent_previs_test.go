@@ -16,7 +16,7 @@ func TestPrevisPreviewRequiresAutomaticPermission(t *testing.T) {
 
 func TestPrevisPreviewRejectsUnsupportedRecordingSettings(t *testing.T) {
 	for _, args := range []string{
-		`{"sceneId":"scene","shotId":"shot","fps":60}`,
+		`{"sceneId":"scene","shotId":"shot","fps":61}`,
 		`{"sceneId":"scene","shotId":"shot","fps":0}`,
 		`{"sceneId":"scene","shotId":"shot","duration":61}`,
 		`{"sceneId":"scene","shotId":"shot","duration":0}`,

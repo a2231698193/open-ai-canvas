@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { apiClient } from "@/services/api/request";
 import { addSkill, listAddedSkills } from "@/services/api/skills";
@@ -55,3 +55,8 @@ test("a pending skills response cannot replace the cache after installation", as
         apiClient.request = original;
     }
 });
+
+import { useUserStore } from "@/stores/use-user-store";
+const skillUser = { id: "skill-user", username: "member", displayName: "Member", role: "user" as const, status: "active" as const };
+beforeEach(() => useUserStore.setState({ user: skillUser, hydrated: true }));
+afterEach(() => useUserStore.setState({ user: null, hydrated: false }));

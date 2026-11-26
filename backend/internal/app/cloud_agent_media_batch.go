@@ -195,7 +195,7 @@ func cloudAgentMediaBatchNodePrompt(node map[string]any) string {
 	meta, _ := node["metadata"].(map[string]any)
 	if raw, exists := meta["generationSpec"]; exists {
 		if encoded, err := json.Marshal(raw); err == nil {
-			if spec, err := contract.Decode(encoded); err == nil && strings.TrimSpace(spec.Prompt) != "" {
+			if spec, err := contract.DecodeCanvasGenerationSpec(encoded); err == nil && strings.TrimSpace(spec.Prompt) != "" {
 				return strings.TrimSpace(spec.Prompt)
 			}
 		}
@@ -824,6 +824,9 @@ func (s *Service) markCloudAgentMediaBatchItemFailed(run *model.CloudAgentExecut
 }
 
 func (s *Service) submitCloudAgentMediaBatchItem(run *model.CloudAgentExecution, state *cloudAgentRuntime, index int, policy RuntimePolicySetting) error {
+	if err := s.RequireSkillAccess(run.UserID); err != nil {
+		return err
+	}
 	batch := state.MediaBatch
 	item := batch.Items[index]
 	budget := state.Request.Budget

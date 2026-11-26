@@ -361,10 +361,9 @@ test("Create forwards owned result assets through one new canvas and the project
     expect(workspace).toContain("onContinueCanvas(resultAssetIds)");
     expect(createPage).toContain("continueCreationConversationOnCanvas(source)");
     expect(createPage).toContain("if (ids.length !== Math.max(resultStorageKeys.length, resultUrls.length)) throw new Error");
-    // 本仓库尚未合入官方 v1.8.5 的跨设备对话同步，画布投送仍走本地会话存储；
-    // 不变的约定是「先持久化，再跳转画布」。
-    expect(createPage).toContain("await saveCreationConversations(next)");
-    expect(createPage.indexOf("await saveCreationConversations(next)")).toBeLessThan(createPage.indexOf("navigate(`/canvas/${result.id}?${params.toString()}`)"));
+    const saved = createPage.indexOf("await saveConversationHistory(next)", createPage.indexOf("continueCreationConversationOnCanvas(source)"));
+    expect(saved).toBeGreaterThan(-1);
+    expect(saved).toBeLessThan(createPage.indexOf("navigate(workspacePath(`/canvas/${result.id}?${params.toString()}`))", saved));
     expect(canvasIndex).toContain('const handoffMode = mode === "handoff"');
     expect(canvasIndex).toContain('mode !== "new" && mode !== "recent" && mode !== "handoff"');
     expect(canvasProject).toContain('import { canvasAssetHandoffAttempt, finalizeCanvasAssetHandoff, uninsertedCanvasAssetHandoffPayloads } from "@/lib/canvas/canvas-asset-handoff"');

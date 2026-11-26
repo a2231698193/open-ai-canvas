@@ -12,6 +12,10 @@
 
 ## 设计沉淀
 
+- [短剧拆镜与段间连续性调研](design/short-drama-shot-continuity-research.md)：对照制作台、同类产品和公开 Skill，区分同镜续拍、同场换镜与换场，附真实样片回查方法（调研建议，未实施）。
+
+- [团队空间、积分划拨与素材共享](design/team-workspace-design.md)：自由画布、创作页和素材库在个人与团队之间复用，按空间隔离作品与费用。使用入口见[功能清单](content/docs/overview/features.mdx)。
+
 - [资源访问与 OSS/CDN 分发架构重构](design/resource-delivery-architecture.md)：资源身份、场景授权与分发策略分离，统一访问合同、全入口迁移、旧实现退场及流量/安全验收门槛（核心代码已实施，待真实 OSS/CDN 链路验收）。
 
 - [短信渠道插件与登录注册策略](design/sms-channels-and-auth-policy.md)：阿里云/腾讯云官方 SDK 候选基线、多渠道与模板路由、发送记录、验证码安全、短信和邮箱登录注册组合及分阶段验收（核心代码已实施，待真实 OSS/CDN 链路验收）。
@@ -33,6 +37,8 @@
 - [多平台账号池最终指导方案](design/account-pool-design.mdx)：影策后端通用账号池框架、平台适配标准 `yingce.accountpool/v1`、独立适配服务、LibTV（官方 MCP）与即梦（官方 dreamina CLI）接入、页面内扫码添加账号、多档位调度、价格沿用渠道模型、部署约束、分期与 P0 验证清单（最终指导方案，未实施）。
 
 - [站点及外观与皮肤主题设计合同](design/site-appearance-and-skins.mdx)：品牌一致性、登录页与邮件、SEO/备案、三层皮肤令牌、无闪屏启动顺序和验收边界。
+
+- [管理后台信息架构与报表重设计](design/admin-console-redesign.md)：32 个入口的重复与分散、浮层承载主流程、报表口径缺陷的代码证据；5 组 19 入口、浮层规范、用户详情页、价格与倍率、积分账本、运营报表口径、后端缺口和分阶段计划（提案，未实施）。
 
 - [UI 皮肤库架构设计](design/ui-skin-library.mdx)：Foundation 固定尺度与可换肤层分离、皮肤清单格式、OKLCH 颜色推导、校验规则和分步迁移（提案，未实施）。
 
@@ -85,6 +91,7 @@ ADR-0001～0007 的站内手工剪辑方案已随产品减负退场，保留为�
 - [功能](content/docs/overview/features.mdx)
 - [本地开发](content/docs/backend/local-development.mdx)
 - [HTTP API 合同](content/docs/backend/http-api.mdx)
+- [相对深度视频](content/docs/backend/video-depth.mdx)
 - [后端数据库](content/docs/backend/backend-database.mdx)
 - [代码地图](content/docs/backend/code-map.mdx)
 - [待办](content/docs/progress/todo.mdx)

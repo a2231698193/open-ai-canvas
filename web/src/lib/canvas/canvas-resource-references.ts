@@ -19,6 +19,7 @@ export type CanvasResourceReference = {
     previewUrl?: string;
     /** 仅素材库视频在没有静态封面时使用的首帧回退源。 */
     mediaUrl?: string;
+    durationMs?: number;
     storageKey?: string;
     /** 视频首帧是独立的图片资源，不能用视频 storageKey 解析。 */
     previewStorageKey?: string;
@@ -105,6 +106,13 @@ export function applyToolMention(prompt: string, tool: { id: number; type: strin
 
 export function canvasNodeMentionToken(nodeId: string) {
     return `@[node:${nodeId}]`;
+}
+
+export function canvasReferenceDisplayName(reference: CanvasResourceReference) {
+    const displayLabel = reference.displayLabel?.trim();
+    if (displayLabel) return displayLabel;
+    const title = reference.title.trim();
+    return title && title !== reference.label ? `${title} · ${reference.label}` : reference.label;
 }
 
 const ASSET_MENTION_PATTERN = /@\[asset:([^\]]+)\]/g;
@@ -597,6 +605,12 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 kind,
                 label,
                 title: node.title || label,
+                // Keep the stable numbered label for serialization (for example
+                // @图片1), while showing the canvas node's own name in the
+                // inline mention chip and mention picker.  The generated prompt
+                // must continue to use `label` so existing references and
+                // connection rewrites remain backwards compatible.
+                displayLabel: node.title?.trim() || label,
                 previewUrl:
                     node.metadata?.workflowKind === "character"
                         ? node.metadata.characterCoverUrl
@@ -609,6 +623,8 @@ function labelResourceNodes(nodes: CanvasNodeData[], active: boolean) {
                 previewStorageKey: node.type === CanvasNodeType.Video ? node.metadata?.videoPreview?.storageKey : undefined,
                 drawingId: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingId : undefined,
                 drawingRevision: node.type === CanvasNodeType.Drawing ? node.metadata?.drawingRevision : undefined,
+                mediaUrl: kind === "audio" ? node.metadata?.content : undefined,
+                durationMs: kind === "audio" || kind === "video" ? node.metadata?.durationMs : undefined,
                 text:
                     node.metadata?.workflowKind === "character"
                         ? node.metadata.characterPrompt
@@ -631,7 +647,7 @@ function isResourceNode(node: CanvasNodeData) {
 
 function resourceKind(node: CanvasNodeData): CanvasResourceKind | null {
     // 角色卡是跨类型覆盖：任何节点带上角色元数据都按角色处理，故先于按类型判定。
-    if (node.metadata?.workflowKind === "character" && node.metadata.characterAssetId) return "character";
+    if (node.metadata?.workflowKind === "character" && (node.metadata.characterAssetId || node.metadata.officialAssetId)) return "character";
     return getNodeResourceKind(node);
 }
 

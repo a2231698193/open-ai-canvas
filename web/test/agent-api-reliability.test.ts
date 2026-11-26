@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AgentEvent, CreateAgentRunInput } from "../src/services/api/agent";
+import { useUserStore } from "../src/stores/use-user-store";
 
 // Exercise the production protocol, isolating only transport/storage dependencies.
 // Temporary modules avoid mock.module leaking into unrelated Bun test suites.
@@ -11,24 +12,26 @@ const dir = mkdtempSync(join(tmpdir(), "agent-reliability-"));
 const root = new URL("../src/", import.meta.url);
 const requestPath = join(dir, "request.ts");
 writeFileSync(requestPath, 'export const apiBaseURL = "https://agent.invalid/api"; export const http = { post: async () => { throw new Error("unexpected POST"); } };');
-writeFileSync(join(dir, "agent.ts"), readFileSync(new URL("services/api/agent.ts", root), "utf8")
-    .replace('"@/services/api/request"', JSON.stringify(requestPath))
-    .replace('"@/lib/user-scope"', JSON.stringify(fileURLToPath(new URL("lib/user-scope.ts", root))))
-    .replace('"@/services/api/task-text-stream"', JSON.stringify(fileURLToPath(new URL("services/api/task-text-stream.ts", root)))));
+writeFileSync(
+    join(dir, "agent.ts"),
+    readFileSync(new URL("services/api/agent.ts", root), "utf8")
+        .replace('"@/services/api/request"', JSON.stringify(requestPath))
+        .replace('"@/lib/skill-access"', JSON.stringify(fileURLToPath(new URL("lib/skill-access.ts", root))))
+        .replace('"@/lib/user-scope"', JSON.stringify(fileURLToPath(new URL("lib/user-scope.ts", root))))
+        .replace('"@/services/api/task-text-stream"', JSON.stringify(fileURLToPath(new URL("services/api/task-text-stream.ts", root)))),
+);
 const storagePath = join(dir, "storage.ts");
 writeFileSync(storagePath, "export const data = new Map(); export const localForageStorageForScope = () => ({ getItem: async (k) => data.get(k) ?? null, setItem: async (k,v) => {data.set(k,v);}, removeItem: async (k) => {data.delete(k);} });");
 writeFileSync(join(dir, "scope.ts"), 'export const getActiveUserScope = () => "test-user";');
-writeFileSync(join(dir, "conversations.ts"), readFileSync(new URL("services/cloud-agent-conversations.ts", root), "utf8")
-    .replace('"@/lib/localforage-storage"', '"./storage.ts"')
-    .replace('"@/lib/user-scope"', '"./scope.ts"')
-    .replace('"@/lib/markdown-plain-text"', JSON.stringify(fileURLToPath(new URL("lib/markdown-plain-text.ts", root))))
-    .replace('"@/lib/agent-page-context"', JSON.stringify(fileURLToPath(new URL("lib/agent-page-context.ts", root)))));
-writeFileSync(join(dir, "harness.ts"), [
-    'export * as api from "./agent.ts";',
-    'export * as transport from "./request.ts";',
-    'export * as conversations from "./conversations.ts";',
-    'export * as storage from "./storage.ts";',
-].join("\n"));
+writeFileSync(
+    join(dir, "conversations.ts"),
+    readFileSync(new URL("services/cloud-agent-conversations.ts", root), "utf8")
+        .replace('"@/lib/localforage-storage"', '"./storage.ts"')
+        .replace('"@/lib/user-scope"', '"./scope.ts"')
+        .replace('"@/lib/markdown-plain-text"', JSON.stringify(fileURLToPath(new URL("lib/markdown-plain-text.ts", root))))
+        .replace('"@/lib/agent-page-context"', JSON.stringify(fileURLToPath(new URL("lib/agent-page-context.ts", root)))),
+);
+writeFileSync(join(dir, "harness.ts"), ['export * as api from "./agent.ts";', 'export * as transport from "./request.ts";', 'export * as conversations from "./conversations.ts";', 'export * as storage from "./storage.ts";'].join("\n"));
 const harness = await import(pathToFileURL(join(dir, "harness.ts")).href);
 const api = harness.api as typeof import("../src/services/api/agent");
 const { transport, conversations, storage } = harness;
@@ -36,7 +39,10 @@ const nativeFetch = globalThis.fetch;
 const nativeTimer = globalThis.setTimeout;
 let delays: number[] = [];
 let stops: Array<() => void> = [];
+let originalUser: ReturnType<typeof useUserStore.getState>;
 beforeEach(() => {
+    originalUser = useUserStore.getState();
+    useUserStore.setState({ hydrated: true, user: { id: "agent-reliability-user", username: "agent-reliability-user", displayName: "Agent 测试用户", role: "user", status: "active" } });
     delays = [];
     storage.data.clear();
     // Retain watchdog semantics; accelerate only retry waits, recording real delays.
@@ -46,6 +52,7 @@ beforeEach(() => {
     }) as typeof setTimeout;
 });
 afterEach(() => {
+    useUserStore.setState(originalUser);
     stops.forEach((stop) => stop());
     stops = [];
     globalThis.fetch = nativeFetch;
@@ -120,7 +127,7 @@ describe("Agent SSE recovery", () => {
         globalThis.fetch = (async (url, init) => {
             const cursor = new URL(String(url)).searchParams.get("after")!;
             cursors.push(cursor);
-            expect((init?.headers as Record<string, string>)["Last-Event-ID"]).toBe(cursor);
+            expect((init?.headers as Record<string, string>)["Last-Event-ID"]).toBe(cursors.length === 1 ? undefined : cursor);
             if (cursors.length === 2) throw new TypeError("connection reset");
             return stream(cursors.length === 1 ? event(1) + snapshot("running") : event(1) + event(2) + snapshot("completed"));
         }) as typeof fetch;
@@ -128,6 +135,17 @@ describe("Agent SSE recovery", () => {
         expect(await result.done).toBeUndefined();
         expect(cursors).toEqual(["0", "1", "1"]);
         expect(result.events.filter((e) => e.seq > 0).map((e) => e.seq)).toEqual([1, 2]);
+    });
+
+    it("reconnects from zero after EOF on an empty live run", async () => {
+        const headers: Array<string | undefined> = [];
+        globalThis.fetch = (async (_url, init) => {
+            headers.push((init?.headers as Record<string, string>)["Last-Event-ID"]);
+            return stream(headers.length === 1 ? snapshot("running") : event(1) + snapshot("completed"));
+        }) as typeof fetch;
+        const result = observe();
+        expect(await result.done).toBeUndefined();
+        expect(headers).toEqual([undefined, "0"]);
     });
 
     it("waits for durable cleanup after a terminal status", async () => {
@@ -210,18 +228,21 @@ describe("Agent SSE recovery", () => {
 
 describe("Agent admission replay and durable pending records", () => {
     const input: CreateAgentRunInput = { canvasId: "canvas", prompt: "generate", model: "original", idempotencyKey: "stable-key-123" };
-    it("retries with a frozen original body/key and a bounded HTTP timeout", async () => {
+    it.each([false, true])("retries with a frozen original body/key and a bounded HTTP timeout (skills selected: %s)", async (withSkills) => {
         const bodies: unknown[] = [];
-        const mutable = { ...input };
+        const expectedBody: CreateAgentRunInput = withSkills ? { ...input, pinnedSkillIds: ["installed-skill"], contextScope: ["skills"] } : input;
+        const mutable = structuredClone(expectedBody);
         transport.http.post = async (_path: string, body: unknown, options: unknown) => {
             bodies.push(structuredClone(body));
             expect(options).toEqual({ timeout: 15_000 });
             mutable.model = "changed";
+            mutable.pinnedSkillIds?.push("changed-skill");
+            mutable.contextScope?.splice(0);
             if (bodies.length < 3) throw { retryable: true };
             return { run: { id: "accepted" } };
         };
         expect(await api.createAgentRun(mutable)).toMatchObject({ run: { id: "accepted" } });
-        expect(bodies).toEqual([input, input, input]);
+        expect(bodies).toEqual([expectedBody, expectedBody, expectedBody]);
     });
 
     it("limits transport failures to three attempts, but never retries admission rejection", async () => {

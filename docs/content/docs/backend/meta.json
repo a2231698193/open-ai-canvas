@@ -13,12 +13,18 @@
     "channel-configuration",
     "ecommerce-agent",
     "video-token-billing",
+    "image-usage-billing",
     "credit-rewards",
     "task-runtime-stability",
     "newapi-channel-2",
     "bailian-minimax-video",
+    "minimax-h3-image",
+    "minimax-speech",
+    "evolink-seed-audio",
     "system-update",
     "protocol-plugins",
+    "request-protocols",
+    "official-video-protocols",
     "canvas-data-structure",
     "canvas-operations-sync"
   ]

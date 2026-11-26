@@ -8,6 +8,7 @@ import { useNavigate } from "react-router";
 import { EmptyState } from "@/components/ui/product/empty-state";
 import { PageHeader } from "@/components/layout/workspace-page";
 import { listRegisteredPlugins } from "@/lib/plugins/plugin-registry";
+import { pluginMatchesSearch } from "@/lib/plugins/plugin-search";
 import "@/lib/plugins/builtin";
 import { EAGLE_PLUGIN_ID } from "@/lib/plugins/builtin/eagle";
 import { PROMPT_OPTIMIZER_PLUGIN_ID } from "@/lib/plugins/builtin/prompt-optimizer";
@@ -62,7 +63,7 @@ const pluginDateFormatter = new Intl.DateTimeFormat("zh-CN", { year: "numeric", 
 const protocolSectionMeta = [
     { key: "text", label: "文本协议", description: "对话、推理与流式响应", icon: MessageSquareText },
     { key: "image", label: "图片协议", description: "生成、编辑与参考图", icon: ImageIcon },
-    { key: "video", label: "视频协议", description: "创建任务、轮询与媒体结果", icon: Film },
+    { key: "video", label: "视频协议", description: "视频生成与媒体处理", icon: Film },
     { key: "audio", label: "音频协议", description: "语音与异步音频任务", icon: AudioLines },
     { key: "payment", label: "支付协议", description: "支付、查单、关单与对账", icon: CreditCard },
 ] as const;
@@ -105,8 +106,8 @@ export default function PluginsPage() {
         setBackendPluginsLoading(true);
         try {
             const result = await fetchPlugins();
-            setBackendPlugins(result.plugins);
-            setPluginStates(result.states);
+            setBackendPlugins(Array.isArray(result.plugins) ? result.plugins : []);
+            setPluginStates(result.states || {});
         } catch (error) {
             message.error(error instanceof Error ? error.message : "读取插件中心失败");
             setBackendPlugins([]);
@@ -139,17 +140,14 @@ export default function PluginsPage() {
     }, [eagle?.config.baseUrl, eagle?.config.autoUploadGenerated, eagle?.config.generatedFolderId]);
 
     const filteredPlugins = useMemo(() => {
-        const normalizedSearch = search.trim().toLocaleLowerCase();
         return registeredPlugins.filter((plugin) => {
             const state = pluginStates[plugin.manifest.id];
-            const isApplicationPlugin = backendPluginById.get(plugin.manifest.id)?.management.kind === "application" || isOfficialApplicationPluginId(plugin.manifest.id);
+            const isApplicationPlugin = backendPluginById.get(plugin.manifest.id)?.management?.kind === "application" || isOfficialApplicationPluginId(plugin.manifest.id);
             if (user?.role !== "admin" && !features.systemPluginsVisibleToUsers && !isApplicationPlugin) return false;
             const installation = installations.find((item) => item.manifest.id === plugin.manifest.id);
             const enabled = state?.effectiveEnabled ?? Boolean(installation?.enabled);
             const manifest = plugin.manifest;
-            const contributionKinds = contributionKindsFor(manifest);
-            const searchableText = [manifest.name, manifest.description, manifest.author, manifest.id, ...contributionKinds.map((kind) => categoryLabels[kind] || kind)].filter(Boolean).join(" ").toLocaleLowerCase();
-            if (normalizedSearch && !searchableText.includes(normalizedSearch)) return false;
+            if (!pluginMatchesSearch(manifest, search)) return false;
             if (categoryFilter !== "all" && !pluginMatchesCategory(manifest, categoryFilter)) return false;
             if (trustFilter === "trusted" && !manifest.trusted) return false;
             if (statusFilter === "enabled" && !enabled) return false;
@@ -300,7 +298,7 @@ export default function PluginsPage() {
                                 prefix={<Search className="size-4 text-foreground/38" aria-hidden="true" />}
                                 value={search}
                                 allowClear
-                                placeholder="搜索插件名称、描述或作者"
+                                placeholder="搜索名称、Provider ID 或协议（如 Seedance、火山视频、/api/v3）"
                                 onChange={(event) => setSearch(event.target.value)}
                             />
                             <Select
@@ -413,11 +411,15 @@ export default function PluginsPage() {
                                                                         {(plugin.manifest.surfaces || []).map((surface) => (
                                                                             <span key={surface}>{surfaceLabels[surface] ?? surface}</span>
                                                                         ))}
-                                                                        {providerCapabilitiesFor(plugin.manifest).map((capability) => (
-                                                                            <span key={capability}>{capabilityLabel(capability)}</span>
-                                                                        ))}
-                                                                        {plugin.manifest.contributes.providers?.some((provider) => provider.poll) ? <span>异步轮询</span> : null}
-                                                                        <span>{plugin.manifest.permissions.length} 项能力</span>
+                                                                        {(plugin.manifest.contributes?.providers || []).flatMap((provider) =>
+                                                                            (provider.capabilities || []).map((capability) => (
+                                                                                <span key={`${provider.id}-${capability}`} title={`Provider：${provider.label}（${provider.id}）`}>
+                                                                                    {provider.kind === "processing" ? "处理工具" : "生成协议"} · {provider.kind === "processing" ? `${capabilityLabel(capability)}处理` : `${capabilityLabel(capability)}生成`}
+                                                                                </span>
+                                                                            )),
+                                                                        )}
+                                                                        {plugin.manifest.contributes?.providers?.some((provider) => provider.poll) ? <span>异步轮询</span> : null}
+                                                                        <span>{(plugin.manifest.permissions || []).length} 项能力</span>
                                                                     </div>
                                                                 </button>
 
@@ -596,7 +598,7 @@ export default function PluginsPage() {
                                         </div>
                                         <div>
                                             <span>插件能力</span>
-                                            {settingsPlugin.manifest.permissions.map((permission) => permissionLabels[permission] ?? permission).join("、")}
+                                            {(settingsPlugin.manifest.permissions || []).map((permission) => permissionLabels[permission] ?? permission).join("、") || "未声明"}
                                         </div>
                                     </div>
                                 </div>
@@ -617,7 +619,14 @@ function formatPluginDate(value?: string) {
 }
 
 function toRegisteredPlugin(plugin: BackendPlugin): RegisteredPlugin {
-    return { manifest: plugin.manifest, source: plugin.source };
+    return {
+        manifest: {
+            ...plugin.manifest,
+            permissions: Array.isArray(plugin.manifest?.permissions) ? plugin.manifest.permissions : [],
+            contributes: plugin.manifest?.contributes || {},
+        },
+        source: plugin.source,
+    };
 }
 
 function pluginSourceLabel(plugin: RegisteredPlugin, state?: PluginState) {
@@ -628,7 +637,7 @@ function pluginSourceLabel(plugin: RegisteredPlugin, state?: PluginState) {
 }
 
 function contributionKindsFor(manifest: PluginManifest): string[] {
-    const contributions = manifest.contributes;
+    const contributions = manifest.contributes || {};
     const kinds: string[] = [];
     if (contributions.providers?.length) kinds.push("provider");
     if (contributions.paymentProviders?.length) kinds.push("payment-provider");
@@ -644,12 +653,12 @@ function contributionKindsFor(manifest: PluginManifest): string[] {
 }
 
 function providerCapabilitiesFor(manifest: PluginManifest) {
-    return [...new Set((manifest.contributes.providers || []).flatMap((provider) => provider.capabilities))];
+    return [...new Set((manifest.contributes?.providers || []).flatMap((provider) => provider.capabilities || []))];
 }
 
 function pluginMatchesCategory(manifest: PluginManifest, category: string) {
     const providerCapabilities = providerCapabilitiesFor(manifest);
-    const isPaymentProtocol = Boolean(manifest.contributes.paymentProviders?.length);
+    const isPaymentProtocol = Boolean(manifest.contributes?.paymentProviders?.length);
     if (category === "payment") return isPaymentProtocol;
     if (category === "other") return !isPaymentProtocol && providerCapabilities.length === 0;
     return providerCapabilities.includes(category as "text" | "image" | "video" | "audio");

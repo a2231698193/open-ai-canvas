@@ -59,6 +59,7 @@ export type ToolbarHandlers = {
     onAlign: (mode: CanvasAlignmentMode) => void;
     onArrange: (mode: "row" | "column" | "grid" | "flow") => void;
     onCreateStoryboard: () => void;
+    onCreateFrame: () => void;
     onCreateReferenceGroup: () => void;
     onBatchConnect: () => void;
     onCompareImages?: () => void;
@@ -91,11 +92,13 @@ export type ToolbarHandlers = {
     onNodeViewImage: (node: CanvasNodeData) => void;
     onNodeExtractVideoFrames: (node: CanvasNodeData) => void;
     onNodeExtractAudioFromVideo: (node: CanvasNodeData) => void;
+    onNodeRemakeVideo?: (node: CanvasNodeData) => void;
     onNodeTrimVideoSegments: (node: CanvasNodeData) => void;
     /** 视频画质增强；只在存在 processing 视频模型时由项目页提供。 */
     onNodeEnhanceVideo?: (node: CanvasNodeData) => void;
     /** 视频深度捕捉：逐帧估深生成静音深度视频；只在本机可用的项目页提供。 */
     onNodeDepthCapture?: (node: CanvasNodeData) => void;
+    onNodeDepthVideo?: (node: CanvasNodeData) => void;
     onNodeDownloadSubtitles?: (node: CanvasNodeData) => void;
     /** 打开媒体版本面板；只读分享页不提供。 */
     onNodeVersions?: (node: CanvasNodeData) => void;
